@@ -31,7 +31,7 @@ export type SelectedCharger = {
 const BRAND = { r: 15, g: 15, b: 15 }; // Beev black
 const LAVENDER = { r: 209, g: 196, b: 233 };
 
-export function generateProposalPdf(opts: {
+export async function generateProposalPdf(opts: {
   client: ClientInfo;
   vehicles: SelectedVehicle[];
   chargers: SelectedCharger[];
