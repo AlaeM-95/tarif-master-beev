@@ -330,10 +330,17 @@ function ChargerCard({ charger, selected, onToggle, onUpdate }: { charger: Charg
           <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)}>{editing ? "OK" : "Éditer"}</Button>
         </div>
         {editing && (
-          <div className="grid grid-cols-2 gap-2 pt-2 border-t">
-            <NumField label="Prix borne HT" value={charger.priceHt} onChange={(n) => onUpdate({ priceHt: n })} />
-            <NumField label="Install. HT" value={charger.installPriceHt} onChange={(n) => onUpdate({ installPriceHt: n })} />
-            <NumField label="Puissance kW" value={charger.powerKw} onChange={(n) => onUpdate({ powerKw: n })} />
+          <div className="space-y-2 pt-2 border-t">
+            <div className="grid grid-cols-2 gap-2">
+              <NumField label="Prix borne HT" value={charger.priceHt} onChange={(n) => onUpdate({ priceHt: n })} />
+              <NumField label="Install. HT" value={charger.installPriceHt} onChange={(n) => onUpdate({ installPriceHt: n })} />
+              <NumField label="Puissance kW" value={charger.powerKw} onChange={(n) => onUpdate({ powerKw: n })} />
+              <TxtField label="Type" value={charger.type} onChange={(s) => onUpdate({ type: s })} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Image (URL)</Label>
+              <Input value={charger.image} onChange={(e) => onUpdate({ image: e.target.value })} className="h-8 text-xs" />
+            </div>
           </div>
         )}
       </CardContent>
