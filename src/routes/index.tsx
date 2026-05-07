@@ -360,8 +360,13 @@ function TxtField({ label, value, onChange }: { label: string; value: string; on
 }
 
 function SelectedVehicleRow({ sv, onChange, onRemove }: { sv: SelectedVehicle; onChange: (p: Partial<SelectedVehicle>) => void; onRemove: () => void }) {
+  const [openSvc, setOpenSvc] = useState(false);
+  const toggleSvc = (s: string) => {
+    const next = sv.services.includes(s) ? sv.services.filter((x) => x !== s) : [...sv.services, s];
+    onChange({ services: next });
+  };
   return (
-    <div className="rounded-lg border bg-secondary/30 p-3 space-y-2">
+    <div className="rounded-lg border bg-secondary/40 p-3 space-y-2">
       <div className="flex justify-between items-start gap-2">
         <div className="min-w-0">
           <p className="text-sm font-medium truncate">{sv.vehicle.brand} {sv.vehicle.model}</p>
@@ -374,6 +379,40 @@ function SelectedVehicleRow({ sv, onChange, onRemove }: { sv: SelectedVehicle; o
         <MiniField label="Remise %" value={sv.discountPct} onChange={(n) => onChange({ discountPct: n })} step={0.5} />
         <MiniField label="LLD €/mois" value={sv.negotiatedMonthly} onChange={(n) => onChange({ negotiatedMonthly: n })} />
         <MiniField label="Durée mois" value={sv.durationMonths} onChange={(n) => onChange({ durationMonths: n })} />
+      </div>
+
+      <div className="space-y-1.5 pt-1">
+        <button
+          type="button"
+          onClick={() => setOpenSvc((o) => !o)}
+          className="w-full flex items-center justify-between text-xs font-medium px-2 py-1.5 rounded-md border bg-card hover:bg-accent/40 transition"
+        >
+          <span>Prestations incluses · {sv.services.length}</span>
+          <span className="text-muted-foreground">{openSvc ? "▴" : "▾"}</span>
+        </button>
+        {openSvc && (
+          <div className="rounded-md border bg-card p-2 max-h-52 overflow-auto space-y-1">
+            {VEHICLE_SERVICES.map((s) => {
+              const checked = sv.services.includes(s);
+              return (
+                <label key={s} className="flex items-start gap-2 text-xs cursor-pointer hover:bg-accent/30 rounded px-1.5 py-1">
+                  <Checkbox checked={checked} onCheckedChange={() => toggleSvc(s)} className="mt-0.5" />
+                  <span className="leading-tight">{s}</span>
+                </label>
+              );
+            })}
+          </div>
+        )}
+        {sv.services.length > 0 && !openSvc && (
+          <div className="flex flex-wrap gap-1">
+            {sv.services.slice(0, 3).map((s) => (
+              <Badge key={s} variant="secondary" className="text-[10px] font-normal">{s}</Badge>
+            ))}
+            {sv.services.length > 3 && (
+              <Badge variant="outline" className="text-[10px]">+{sv.services.length - 3}</Badge>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
