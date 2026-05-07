@@ -4,14 +4,15 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Beev brand: cream background, deep black primary, lavender + coral accents */
 @theme inline {
-  --font-display: "Sora", system-ui, sans-serif;
+  --font-display: "Inter", system-ui, sans-serif;
   --font-sans: "Inter", system-ui, sans-serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-xl: calc(var(--radius) + 6px);
+  --radius-2xl: calc(var(--radius) + 12px);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -31,68 +32,70 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-success: var(--success);
-  --color-success-foreground: var(--success-foreground);
+  --color-lavender: var(--lavender);
+  --color-coral: var(--coral);
+  --color-cream: var(--cream);
   --shadow-soft: 0 1px 2px oklch(0 0 0 / 0.04), 0 4px 16px oklch(0 0 0 / 0.06);
-  --shadow-elevated: 0 12px 40px -12px oklch(0.45 0.18 165 / 0.25);
-  --gradient-primary: linear-gradient(135deg, oklch(0.55 0.18 165), oklch(0.7 0.18 175));
+  --shadow-elevated: 0 12px 40px -12px oklch(0 0 0 / 0.18);
 }
 
 :root {
-  --radius: 0.75rem;
-  --background: oklch(0.99 0.005 160);
-  --foreground: oklch(0.18 0.02 165);
+  --radius: 0.875rem;
+  /* Beev cream */
+  --background: oklch(0.965 0.018 85);
+  --foreground: oklch(0.15 0 0);
+  --cream: oklch(0.965 0.018 85);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.02 165);
+  --card-foreground: oklch(0.15 0 0);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.02 165);
-  --primary: oklch(0.55 0.18 165);
-  --primary-foreground: oklch(0.99 0.005 160);
-  --secondary: oklch(0.96 0.015 165);
-  --secondary-foreground: oklch(0.25 0.04 165);
-  --muted: oklch(0.96 0.01 160);
-  --muted-foreground: oklch(0.5 0.02 165);
-  --accent: oklch(0.92 0.06 165);
-  --accent-foreground: oklch(0.25 0.06 165);
+  --popover-foreground: oklch(0.15 0 0);
+  /* Black primary like Beev CTA */
+  --primary: oklch(0.15 0 0);
+  --primary-foreground: oklch(0.98 0.01 85);
+  --secondary: oklch(0.93 0.015 85);
+  --secondary-foreground: oklch(0.15 0 0);
+  --muted: oklch(0.93 0.015 85);
+  --muted-foreground: oklch(0.45 0.01 85);
+  /* Lavender accent (header band on Beev) */
+  --lavender: oklch(0.82 0.06 295);
+  --coral: oklch(0.78 0.12 30);
+  --accent: oklch(0.88 0.05 295);
+  --accent-foreground: oklch(0.2 0.05 295);
   --destructive: oklch(0.6 0.22 27);
   --destructive-foreground: oklch(0.99 0 0);
-  --success: oklch(0.65 0.17 155);
-  --success-foreground: oklch(0.99 0 0);
-  --border: oklch(0.92 0.01 165);
-  --input: oklch(0.94 0.01 165);
-  --ring: oklch(0.55 0.18 165);
-  --sidebar: oklch(0.98 0.005 160);
-  --sidebar-foreground: oklch(0.18 0.02 165);
-  --sidebar-primary: oklch(0.55 0.18 165);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.94 0.02 165);
-  --sidebar-accent-foreground: oklch(0.25 0.04 165);
-  --sidebar-border: oklch(0.92 0.01 165);
-  --sidebar-ring: oklch(0.55 0.18 165);
+  --border: oklch(0.88 0.012 85);
+  --input: oklch(0.92 0.012 85);
+  --ring: oklch(0.15 0 0);
+  --sidebar: oklch(0.97 0.018 85);
+  --sidebar-foreground: oklch(0.15 0 0);
+  --sidebar-primary: oklch(0.15 0 0);
+  --sidebar-primary-foreground: oklch(0.98 0.01 85);
+  --sidebar-accent: oklch(0.92 0.04 295);
+  --sidebar-accent-foreground: oklch(0.2 0.05 295);
+  --sidebar-border: oklch(0.88 0.012 85);
+  --sidebar-ring: oklch(0.15 0 0);
 }
 
 .dark {
-  --background: oklch(0.15 0.02 165);
-  --foreground: oklch(0.98 0.005 160);
-  --card: oklch(0.2 0.025 165);
-  --card-foreground: oklch(0.98 0.005 160);
-  --popover: oklch(0.2 0.025 165);
-  --popover-foreground: oklch(0.98 0.005 160);
-  --primary: oklch(0.7 0.18 165);
-  --primary-foreground: oklch(0.15 0.02 165);
-  --secondary: oklch(0.25 0.03 165);
-  --secondary-foreground: oklch(0.98 0.005 160);
-  --muted: oklch(0.25 0.02 165);
-  --muted-foreground: oklch(0.7 0.02 165);
-  --accent: oklch(0.3 0.05 165);
-  --accent-foreground: oklch(0.98 0.005 160);
+  --background: oklch(0.15 0 0);
+  --foreground: oklch(0.96 0.01 85);
+  --card: oklch(0.2 0 0);
+  --card-foreground: oklch(0.96 0.01 85);
+  --popover: oklch(0.2 0 0);
+  --popover-foreground: oklch(0.96 0.01 85);
+  --primary: oklch(0.96 0.01 85);
+  --primary-foreground: oklch(0.15 0 0);
+  --secondary: oklch(0.25 0 0);
+  --secondary-foreground: oklch(0.96 0.01 85);
+  --muted: oklch(0.25 0 0);
+  --muted-foreground: oklch(0.7 0.01 85);
+  --accent: oklch(0.3 0.05 295);
+  --accent-foreground: oklch(0.96 0.01 85);
   --destructive: oklch(0.65 0.22 27);
   --destructive-foreground: oklch(0.98 0 0);
-  --success: oklch(0.7 0.17 155);
-  --success-foreground: oklch(0.15 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.7 0.18 165);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.96 0.01 85);
 }
 
 @layer base {
@@ -101,6 +104,11 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
   }
-  h1, h2, h3, h4 { font-family: var(--font-display); letter-spacing: -0.02em; }
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+    font-weight: 600;
+  }
 }
