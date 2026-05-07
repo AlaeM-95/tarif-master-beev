@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge } from "lucide-react";
 import { useChargers, useVehicles, fmtEur } from "@/lib/store";
 import { generateProposalPdf, type SelectedCharger, type SelectedVehicle } from "@/lib/pdf";
-import type { Charger, Vehicle } from "@/lib/catalog";
+import { VEHICLE_SERVICES, type Charger, type Vehicle } from "@/lib/catalog";
 
 export const Route = createFileRoute("/")({
   component: App,
@@ -57,7 +57,15 @@ function App() {
       if (s[v.id]) { const { [v.id]: _, ...rest } = s; return rest; }
       return {
         ...s,
-        [v.id]: { vehicle: v, quantity: 1, discountPct: 0, negotiatedMonthly: v.monthlyLld, durationMonths: 36, kmPerYear: 15000 },
+        [v.id]: {
+          vehicle: v,
+          quantity: 1,
+          discountPct: 0,
+          negotiatedMonthly: v.monthlyLld,
+          durationMonths: 36,
+          kmPerYear: 15000,
+          services: v.services ?? [],
+        },
       };
     });
   };
@@ -68,12 +76,12 @@ function App() {
     });
   };
 
-  const exportPdf = () => {
+  const exportPdf = async () => {
     if (!client.company) {
       alert("Renseignez au moins le nom de la société client.");
       return;
     }
-    generateProposalPdf({
+    await generateProposalPdf({
       client,
       vehicles: Object.values(selectedV),
       chargers: Object.values(selectedC),
@@ -82,10 +90,10 @@ function App() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card/60 backdrop-blur sticky top-0 z-30">
+      <header className="border-b bg-card/80 backdrop-blur sticky top-0 z-30">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-primary-foreground font-bold text-lg" style={{ background: "var(--gradient-primary)" }}>B</div>
+            <div className="w-11 h-11 rounded-2xl flex items-center justify-center bg-primary text-primary-foreground font-bold text-xl" style={{ fontFamily: "var(--font-display)" }}>B</div>
             <div>
               <h1 className="text-lg font-semibold leading-tight">Beev · Proposition commerciale</h1>
               <p className="text-xs text-muted-foreground">Catalogue interne grand compte · génération PDF</p>
@@ -269,11 +277,23 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate }: { vehicle: Vehic
         </div>
 
         {editing && (
-          <div className="grid grid-cols-2 gap-2 pt-2 border-t">
-            <NumField label="Prix TTC" value={vehicle.priceTtc} onChange={(n) => onUpdate({ priceTtc: n })} />
-            <NumField label="LLD €/mois" value={vehicle.monthlyLld} onChange={(n) => onUpdate({ monthlyLld: n })} />
-            <NumField label="Autonomie km" value={vehicle.rangeWltp} onChange={(n) => onUpdate({ rangeWltp: n })} />
-            <NumField label="Batterie kWh" value={vehicle.batteryKwh} onChange={(n) => onUpdate({ batteryKwh: n })} />
+          <div className="space-y-2 pt-2 border-t">
+            <div className="grid grid-cols-2 gap-2">
+              <NumField label="Prix TTC" value={vehicle.priceTtc} onChange={(n) => onUpdate({ priceTtc: n })} />
+              <NumField label="LLD €/mois" value={vehicle.monthlyLld} onChange={(n) => onUpdate({ monthlyLld: n })} />
+              <NumField label="Autonomie km" value={vehicle.rangeWltp} onChange={(n) => onUpdate({ rangeWltp: n })} />
+              <NumField label="Batterie kWh" value={vehicle.batteryKwh} onChange={(n) => onUpdate({ batteryKwh: n })} />
+              <NumField label="Puissance ch" value={vehicle.powerHp} onChange={(n) => onUpdate({ powerHp: n })} />
+              <NumField label="Conso kWh/100" value={vehicle.consumption} onChange={(n) => onUpdate({ consumption: n })} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Image (URL)</Label>
+              <Input value={vehicle.image} onChange={(e) => onUpdate({ image: e.target.value })} className="h-8 text-xs" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <TxtField label="Version" value={vehicle.version} onChange={(s) => onUpdate({ version: s })} />
+              <TxtField label="Catégorie" value={vehicle.category} onChange={(s) => onUpdate({ category: s })} />
+            </div>
           </div>
         )}
       </CardContent>
@@ -310,10 +330,17 @@ function ChargerCard({ charger, selected, onToggle, onUpdate }: { charger: Charg
           <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)}>{editing ? "OK" : "Éditer"}</Button>
         </div>
         {editing && (
-          <div className="grid grid-cols-2 gap-2 pt-2 border-t">
-            <NumField label="Prix borne HT" value={charger.priceHt} onChange={(n) => onUpdate({ priceHt: n })} />
-            <NumField label="Install. HT" value={charger.installPriceHt} onChange={(n) => onUpdate({ installPriceHt: n })} />
-            <NumField label="Puissance kW" value={charger.powerKw} onChange={(n) => onUpdate({ powerKw: n })} />
+          <div className="space-y-2 pt-2 border-t">
+            <div className="grid grid-cols-2 gap-2">
+              <NumField label="Prix borne HT" value={charger.priceHt} onChange={(n) => onUpdate({ priceHt: n })} />
+              <NumField label="Install. HT" value={charger.installPriceHt} onChange={(n) => onUpdate({ installPriceHt: n })} />
+              <NumField label="Puissance kW" value={charger.powerKw} onChange={(n) => onUpdate({ powerKw: n })} />
+              <TxtField label="Type" value={charger.type} onChange={(s) => onUpdate({ type: s })} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Image (URL)</Label>
+              <Input value={charger.image} onChange={(e) => onUpdate({ image: e.target.value })} className="h-8 text-xs" />
+            </div>
           </div>
         )}
       </CardContent>
@@ -330,9 +357,23 @@ function NumField({ label, value, onChange }: { label: string; value: number; on
   );
 }
 
-function SelectedVehicleRow({ sv, onChange, onRemove }: { sv: SelectedVehicle; onChange: (p: Partial<SelectedVehicle>) => void; onRemove: () => void }) {
+function TxtField({ label, value, onChange }: { label: string; value: string; onChange: (s: string) => void }) {
   return (
-    <div className="rounded-lg border bg-secondary/30 p-3 space-y-2">
+    <div className="space-y-1">
+      <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</Label>
+      <Input value={value} onChange={(e) => onChange(e.target.value)} className="h-8 text-xs" />
+    </div>
+  );
+}
+
+function SelectedVehicleRow({ sv, onChange, onRemove }: { sv: SelectedVehicle; onChange: (p: Partial<SelectedVehicle>) => void; onRemove: () => void }) {
+  const [openSvc, setOpenSvc] = useState(false);
+  const toggleSvc = (s: string) => {
+    const next = sv.services.includes(s) ? sv.services.filter((x) => x !== s) : [...sv.services, s];
+    onChange({ services: next });
+  };
+  return (
+    <div className="rounded-lg border bg-secondary/40 p-3 space-y-2">
       <div className="flex justify-between items-start gap-2">
         <div className="min-w-0">
           <p className="text-sm font-medium truncate">{sv.vehicle.brand} {sv.vehicle.model}</p>
@@ -345,6 +386,40 @@ function SelectedVehicleRow({ sv, onChange, onRemove }: { sv: SelectedVehicle; o
         <MiniField label="Remise %" value={sv.discountPct} onChange={(n) => onChange({ discountPct: n })} step={0.5} />
         <MiniField label="LLD €/mois" value={sv.negotiatedMonthly} onChange={(n) => onChange({ negotiatedMonthly: n })} />
         <MiniField label="Durée mois" value={sv.durationMonths} onChange={(n) => onChange({ durationMonths: n })} />
+      </div>
+
+      <div className="space-y-1.5 pt-1">
+        <button
+          type="button"
+          onClick={() => setOpenSvc((o) => !o)}
+          className="w-full flex items-center justify-between text-xs font-medium px-2 py-1.5 rounded-md border bg-card hover:bg-accent/40 transition"
+        >
+          <span>Prestations incluses · {sv.services.length}</span>
+          <span className="text-muted-foreground">{openSvc ? "▴" : "▾"}</span>
+        </button>
+        {openSvc && (
+          <div className="rounded-md border bg-card p-2 max-h-52 overflow-auto space-y-1">
+            {VEHICLE_SERVICES.map((s) => {
+              const checked = sv.services.includes(s);
+              return (
+                <label key={s} className="flex items-start gap-2 text-xs cursor-pointer hover:bg-accent/30 rounded px-1.5 py-1">
+                  <Checkbox checked={checked} onCheckedChange={() => toggleSvc(s)} className="mt-0.5" />
+                  <span className="leading-tight">{s}</span>
+                </label>
+              );
+            })}
+          </div>
+        )}
+        {sv.services.length > 0 && !openSvc && (
+          <div className="flex flex-wrap gap-1">
+            {sv.services.slice(0, 3).map((s) => (
+              <Badge key={s} variant="secondary" className="text-[10px] font-normal">{s}</Badge>
+            ))}
+            {sv.services.length > 3 && (
+              <Badge variant="outline" className="text-[10px]">+{sv.services.length - 3}</Badge>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

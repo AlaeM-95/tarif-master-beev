@@ -18,6 +18,7 @@ export type SelectedVehicle = {
   negotiatedMonthly: number;
   durationMonths: number;
   kmPerYear: number;
+  services: string[];
 };
 
 export type SelectedCharger = {
@@ -27,9 +28,10 @@ export type SelectedCharger = {
   installIncluded: boolean;
 };
 
-const BRAND = { r: 16, g: 122, b: 110 }; // teal/green
+const BRAND = { r: 15, g: 15, b: 15 }; // Beev black
+const LAVENDER = { r: 209, g: 196, b: 233 };
 
-export function generateProposalPdf(opts: {
+export async function generateProposalPdf(opts: {
   client: ClientInfo;
   vehicles: SelectedVehicle[];
   chargers: SelectedCharger[];
@@ -90,55 +92,89 @@ export function generateProposalPdf(opts: {
     doc.line(margin, y, margin + 100, y);
     y += 16;
 
-    vehicles.forEach((sv) => {
+    for (const sv of vehicles) {
       const v = sv.vehicle;
-      if (y > 700) { doc.addPage(); y = margin; }
-      doc.setFillColor(245, 250, 248);
-      doc.roundedRect(margin, y, pw - margin * 2, 110, 6, 6, "F");
+      const cardH = 130 + (sv.services.length ? 14 + Math.ceil(sv.services.length / 2) * 12 : 0);
+      if (y + cardH > 760) { doc.addPage(); y = margin; }
+      doc.setFillColor(248, 246, 240); // cream
+      doc.roundedRect(margin, y, pw - margin * 2, cardH, 10, 10, "F");
+
+      // Image
+      const imgX = margin + 12;
+      const imgY = y + 12;
+      const imgW = 130;
+      const imgH = 90;
+      try {
+        const dataUrl = await loadImage(v.image);
+        if (dataUrl) doc.addImage(dataUrl, "JPEG", imgX, imgY, imgW, imgH, undefined, "FAST");
+      } catch { /* skip image on error */ }
+
+      const tx = imgX + imgW + 16;
       doc.setFont("helvetica", "bold");
       doc.setFontSize(13);
       doc.setTextColor(20, 20, 20);
-      doc.text(`${v.brand} ${v.model}`, margin + 14, y + 22);
+      doc.text(`${v.brand} ${v.model}`, tx, y + 28);
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      doc.setTextColor(80, 80, 80);
-      doc.text(v.version, margin + 14, y + 38);
+      doc.setFontSize(9.5);
+      doc.setTextColor(90, 90, 90);
+      doc.text(v.version, tx, y + 42);
 
       doc.setTextColor(40, 40, 40);
-      doc.setFontSize(10);
+      doc.setFontSize(9.5);
       const specs = [
         `Autonomie WLTP : ${v.rangeWltp} km`,
         `Batterie : ${v.batteryKwh} kWh`,
         `Puissance : ${v.powerHp} ch`,
         `Conso : ${v.consumption} kWh/100km`,
       ];
-      specs.forEach((s, i) => doc.text(s, margin + 14, y + 58 + i * 12));
+      specs.forEach((s, i) => doc.text(s, tx, y + 60 + i * 12));
 
       // Price block
-      const px = pw - margin - 180;
+      const px = pw - margin - 175;
+      doc.setFillColor(LAVENDER.r, LAVENDER.g, LAVENDER.b);
+      doc.roundedRect(px - 8, y + 12, 165, 100, 8, 8, "F");
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
-      doc.setTextColor(BRAND.r, BRAND.g, BRAND.b);
-      doc.text("Tarif négocié", px, y + 22);
-      doc.setTextColor(20, 20, 20);
       doc.setFontSize(10);
+      doc.setTextColor(20, 20, 20);
+      doc.text("Tarif négocié", px, y + 28);
+      doc.setFontSize(9);
       doc.setFont("helvetica", "normal");
       const discounted = v.priceTtc * (1 - sv.discountPct / 100);
-      doc.text(`Prix catalogue : ${eur(v.priceTtc)} TTC`, px, y + 40);
-      doc.text(`Remise : ${sv.discountPct.toFixed(1)} %`, px, y + 54);
+      doc.text(`Catalogue : ${eur(v.priceTtc)} TTC`, px, y + 44);
+      doc.text(`Remise : ${sv.discountPct.toFixed(1)} %`, px, y + 56);
       doc.setFont("helvetica", "bold");
-      doc.text(`Prix client : ${eur(discounted)} TTC`, px, y + 68);
+      doc.setFontSize(10);
+      doc.text(`Prix client : ${eur(discounted)}`, px, y + 70);
       doc.setFont("helvetica", "normal");
+      doc.setFontSize(8.5);
       doc.text(`LLD ${sv.durationMonths} mois / ${sv.kmPerYear.toLocaleString("fr-FR")} km`, px, y + 84);
       doc.setFont("helvetica", "bold");
-      doc.text(`${eur(sv.negotiatedMonthly)} HT / mois`, px, y + 98);
+      doc.setFontSize(11);
+      doc.text(`${eur(sv.negotiatedMonthly)} HT/mois`, px, y + 100);
 
       doc.setFont("helvetica", "normal");
-      doc.setTextColor(80, 80, 80);
-      doc.setFontSize(9);
-      doc.text(`Quantité : ${sv.quantity}`, margin + 14, y + 100);
-      y += 124;
-    });
+      doc.setTextColor(90, 90, 90);
+      doc.setFontSize(8.5);
+      doc.text(`Quantité : ${sv.quantity}`, tx, y + 114);
+
+      // Services
+      if (sv.services.length) {
+        const sy = y + 130;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(20, 20, 20);
+        doc.text("Prestations incluses :", margin + 12, sy);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8.5);
+        doc.setTextColor(60, 60, 60);
+        sv.services.forEach((s, i) => {
+          const col = i % 2;
+          const row = Math.floor(i / 2);
+          doc.text(`• ${s}`, margin + 12 + col * 250, sy + 14 + row * 12);
+        });
+      }
+      y += cardH + 10;
+    }
   }
 
   // Chargers
@@ -249,3 +285,19 @@ export function generateProposalPdf(opts: {
 
 const eur = (n: number) =>
   new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
+
+async function loadImage(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, { mode: "cors" });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
