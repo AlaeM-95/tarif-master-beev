@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge } from "lucide-react";
 import { useChargers, useVehicles, fmtEur } from "@/lib/store";
 import { generateProposalPdf, type SelectedCharger, type SelectedVehicle } from "@/lib/pdf";
-import type { Charger, Vehicle } from "@/lib/catalog";
+import { VEHICLE_SERVICES, type Charger, type Vehicle } from "@/lib/catalog";
 
 export const Route = createFileRoute("/")({
   component: App,
