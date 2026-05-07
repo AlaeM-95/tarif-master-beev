@@ -11,7 +11,26 @@ export type Vehicle = {
   priceTtc: number;
   monthlyLld: number; // 36 mois indicatif
   image: string;
+  services: string[]; // prestations incluses sélectionnées
 };
+
+export const VEHICLE_SERVICES = [
+  "Livraison à domicile",
+  "Carte carburant / recharge",
+  "Assurance tous risques",
+  "Entretien & révisions",
+  "Pneumatiques",
+  "Véhicule de remplacement",
+  "Assistance 24/7",
+  "Gestion administrative",
+  "Carte grise incluse",
+  "Malus écologique pris en charge",
+  "Reprise du véhicule actuel",
+  "Borne de recharge à domicile",
+  "Badge de recharge multi-réseaux",
+  "Formation éco-conduite",
+  "Télématique & reporting flotte",
+] as const;
 
 export type Charger = {
   id: string;
