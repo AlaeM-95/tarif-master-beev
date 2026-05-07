@@ -57,7 +57,15 @@ function App() {
       if (s[v.id]) { const { [v.id]: _, ...rest } = s; return rest; }
       return {
         ...s,
-        [v.id]: { vehicle: v, quantity: 1, discountPct: 0, negotiatedMonthly: v.monthlyLld, durationMonths: 36, kmPerYear: 15000 },
+        [v.id]: {
+          vehicle: v,
+          quantity: 1,
+          discountPct: 0,
+          negotiatedMonthly: v.monthlyLld,
+          durationMonths: 36,
+          kmPerYear: 15000,
+          services: v.services ?? [],
+        },
       };
     });
   };
@@ -68,12 +76,12 @@ function App() {
     });
   };
 
-  const exportPdf = () => {
+  const exportPdf = async () => {
     if (!client.company) {
       alert("Renseignez au moins le nom de la société client.");
       return;
     }
-    generateProposalPdf({
+    await generateProposalPdf({
       client,
       vehicles: Object.values(selectedV),
       chargers: Object.values(selectedC),
@@ -82,10 +90,10 @@ function App() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card/60 backdrop-blur sticky top-0 z-30">
+      <header className="border-b bg-card/80 backdrop-blur sticky top-0 z-30">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-primary-foreground font-bold text-lg" style={{ background: "var(--gradient-primary)" }}>B</div>
+            <div className="w-11 h-11 rounded-2xl flex items-center justify-center bg-primary text-primary-foreground font-bold text-xl" style={{ fontFamily: "var(--font-display)" }}>B</div>
             <div>
               <h1 className="text-lg font-semibold leading-tight">Beev · Proposition commerciale</h1>
               <p className="text-xs text-muted-foreground">Catalogue interne grand compte · génération PDF</p>
