@@ -277,11 +277,23 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate }: { vehicle: Vehic
         </div>
 
         {editing && (
-          <div className="grid grid-cols-2 gap-2 pt-2 border-t">
-            <NumField label="Prix TTC" value={vehicle.priceTtc} onChange={(n) => onUpdate({ priceTtc: n })} />
-            <NumField label="LLD €/mois" value={vehicle.monthlyLld} onChange={(n) => onUpdate({ monthlyLld: n })} />
-            <NumField label="Autonomie km" value={vehicle.rangeWltp} onChange={(n) => onUpdate({ rangeWltp: n })} />
-            <NumField label="Batterie kWh" value={vehicle.batteryKwh} onChange={(n) => onUpdate({ batteryKwh: n })} />
+          <div className="space-y-2 pt-2 border-t">
+            <div className="grid grid-cols-2 gap-2">
+              <NumField label="Prix TTC" value={vehicle.priceTtc} onChange={(n) => onUpdate({ priceTtc: n })} />
+              <NumField label="LLD €/mois" value={vehicle.monthlyLld} onChange={(n) => onUpdate({ monthlyLld: n })} />
+              <NumField label="Autonomie km" value={vehicle.rangeWltp} onChange={(n) => onUpdate({ rangeWltp: n })} />
+              <NumField label="Batterie kWh" value={vehicle.batteryKwh} onChange={(n) => onUpdate({ batteryKwh: n })} />
+              <NumField label="Puissance ch" value={vehicle.powerHp} onChange={(n) => onUpdate({ powerHp: n })} />
+              <NumField label="Conso kWh/100" value={vehicle.consumption} onChange={(n) => onUpdate({ consumption: n })} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Image (URL)</Label>
+              <Input value={vehicle.image} onChange={(e) => onUpdate({ image: e.target.value })} className="h-8 text-xs" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <TxtField label="Version" value={vehicle.version} onChange={(s) => onUpdate({ version: s })} />
+              <TxtField label="Catégorie" value={vehicle.category} onChange={(s) => onUpdate({ category: s })} />
+            </div>
           </div>
         )}
       </CardContent>
@@ -334,6 +346,15 @@ function NumField({ label, value, onChange }: { label: string; value: number; on
     <div className="space-y-1">
       <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</Label>
       <Input type="number" value={value} onChange={(e) => onChange(Number(e.target.value))} className="h-8" />
+    </div>
+  );
+}
+
+function TxtField({ label, value, onChange }: { label: string; value: string; onChange: (s: string) => void }) {
+  return (
+    <div className="space-y-1">
+      <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</Label>
+      <Input value={value} onChange={(e) => onChange(e.target.value)} className="h-8 text-xs" />
     </div>
   );
 }
