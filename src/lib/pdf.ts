@@ -18,6 +18,7 @@ export type SelectedVehicle = {
   negotiatedMonthly: number;
   durationMonths: number;
   kmPerYear: number;
+  services: string[];
 };
 
 export type SelectedCharger = {
@@ -27,7 +28,8 @@ export type SelectedCharger = {
   installIncluded: boolean;
 };
 
-const BRAND = { r: 16, g: 122, b: 110 }; // teal/green
+const BRAND = { r: 15, g: 15, b: 15 }; // Beev black
+const LAVENDER = { r: 209, g: 196, b: 233 };
 
 export function generateProposalPdf(opts: {
   client: ClientInfo;
