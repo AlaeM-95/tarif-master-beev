@@ -11,7 +11,7 @@ export type Vehicle = {
   priceTtc: number;
   monthlyLld: number; // 36 mois indicatif
   image: string;
-  services: string[]; // prestations incluses sélectionnées
+  services?: string[];
 };
 
 export const VEHICLE_SERVICES = [
