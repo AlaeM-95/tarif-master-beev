@@ -57,7 +57,7 @@ export const DEFAULT_VEHICLES: Vehicle[] = [
     consumption: 13.2,
     priceTtc: 39990,
     monthlyLld: 469,
-    image: "https://images.unsplash.com/photo-1560958089-b8a1929cea89?w=800&q=80",
+    image: "https://upload.wikimedia.org/wikipedia/commons/a/ab/Tesla_Model_3_%282023%29_Autofr%C3%BChling_Ulm_IMG_9282.jpg",
   },
   {
     id: "tesla-model-y",
