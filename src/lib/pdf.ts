@@ -602,7 +602,7 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, idx: number, tot
     startY: y,
     theme: "grid",
     head: [["Désignation", "Qté", "PU HT", "Total HT"]],
-    body: [
+    body: ([
       ...sc.lineItems.map((li) => [li.label, String(li.qty), eur(li.unitHt), eur(li.qty * li.unitHt)]),
       [
         { content: "Total HT site", colSpan: 3, styles: { fontStyle: "bold", halign: "right", fillColor: BG } },
@@ -612,7 +612,7 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, idx: number, tot
         { content: `Total HT × ${sc.quantity}`, colSpan: 3, styles: { fontStyle: "bold", halign: "right", textColor: ACCENT } },
         { content: eur(total_ * sc.quantity), styles: { fontStyle: "bold", halign: "right", textColor: ACCENT } },
       ]] : []),
-    ],
+    ] as any),
     headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold" },
     bodyStyles: { fontSize: 9, cellPadding: 6, textColor: INK, lineColor: RULE },
     columnStyles: { 1: { halign: "center", cellWidth: 40 }, 2: { halign: "right", cellWidth: 80 }, 3: { halign: "right", cellWidth: 90, fontStyle: "bold" } },
