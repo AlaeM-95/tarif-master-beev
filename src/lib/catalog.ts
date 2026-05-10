@@ -44,6 +44,10 @@ export type Charger = {
   image: string;
 };
 
+// Images : Wikimedia Commons (libres de droits, CORS activé pour génération PDF).
+// Tu peux remplacer chaque URL par une image officielle constructeur depuis l'éditeur.
+const WM = (path: string) => `https://upload.wikimedia.org/wikipedia/commons/${path}`;
+
 export const DEFAULT_VEHICLES: Vehicle[] = [
   {
     id: "tesla-model-3",
@@ -57,7 +61,7 @@ export const DEFAULT_VEHICLES: Vehicle[] = [
     consumption: 13.2,
     priceTtc: 39990,
     monthlyLld: 469,
-    image: "https://images.unsplash.com/photo-1560958089-b8a1929cea89?w=800&q=80",
+    image: WM("a/ab/Tesla_Model_3_%282023%29_Autofr%C3%BChling_Ulm_IMG_9282.jpg"),
   },
   {
     id: "tesla-model-y",
@@ -71,7 +75,7 @@ export const DEFAULT_VEHICLES: Vehicle[] = [
     consumption: 14.9,
     priceTtc: 44990,
     monthlyLld: 529,
-    image: "https://images.unsplash.com/photo-1619767886558-efdc259cde1a?w=800&q=80",
+    image: WM("b/bd/2022_Tesla_Model_Y_Long_Range_AWD_Front.jpg"),
   },
   {
     id: "renault-megane-etech",
@@ -85,7 +89,7 @@ export const DEFAULT_VEHICLES: Vehicle[] = [
     consumption: 16.1,
     priceTtc: 38000,
     monthlyLld: 399,
-    image: "https://images.unsplash.com/photo-1617469767053-d3b523a0b982?w=800&q=80",
+    image: WM("4/42/Renault_M%C3%A9gane_E-Tech_IMG_4064.jpg"),
   },
   {
     id: "renault-scenic-etech",
@@ -99,7 +103,7 @@ export const DEFAULT_VEHICLES: Vehicle[] = [
     consumption: 16.3,
     priceTtc: 44900,
     monthlyLld: 489,
-    image: "https://images.unsplash.com/photo-1606664515524-ed2f786a0bd6?w=800&q=80",
+    image: WM("4/4f/Renault_Sc%C3%A9nic_E-Tech_IMG_9977.jpg"),
   },
   {
     id: "peugeot-e308",
@@ -113,7 +117,7 @@ export const DEFAULT_VEHICLES: Vehicle[] = [
     consumption: 15.3,
     priceTtc: 41600,
     monthlyLld: 449,
-    image: "https://images.unsplash.com/photo-1606220945770-b5b6c2c55bf1?w=800&q=80",
+    image: WM("9/99/Peugeot_e-308_IMG_9970.jpg"),
   },
   {
     id: "peugeot-e3008",
@@ -127,7 +131,7 @@ export const DEFAULT_VEHICLES: Vehicle[] = [
     consumption: 16.5,
     priceTtc: 49990,
     monthlyLld: 569,
-    image: "https://images.unsplash.com/photo-1583121274602-3e2820c69888?w=800&q=80",
+    image: WM("e/ed/Peugeot_e-3008_Automesse_Ludwigsburg_2024_IMG_1537.jpg"),
   },
   {
     id: "bmw-i4",
@@ -141,7 +145,7 @@ export const DEFAULT_VEHICLES: Vehicle[] = [
     consumption: 16.1,
     priceTtc: 60500,
     monthlyLld: 689,
-    image: "https://images.unsplash.com/photo-1617814086367-a8b8e4c2a3a3?w=800&q=80",
+    image: WM("a/ad/BMW_i4_IMG_6695.jpg"),
   },
   {
     id: "bmw-ix1",
@@ -155,7 +159,7 @@ export const DEFAULT_VEHICLES: Vehicle[] = [
     consumption: 17.3,
     priceTtc: 55950,
     monthlyLld: 649,
-    image: "https://images.unsplash.com/photo-1656468565449-3aafe8d6ddd2?w=800&q=80",
+    image: WM("6/65/2022_BMW_X1_sDrive18d_M_Sport_MHEV_Automatic_2.0.jpg"),
   },
   {
     id: "audi-q4-etron",
@@ -169,7 +173,7 @@ export const DEFAULT_VEHICLES: Vehicle[] = [
     consumption: 16.6,
     priceTtc: 56700,
     monthlyLld: 619,
-    image: "https://images.unsplash.com/photo-1606664922998-f180a4286d92?w=800&q=80",
+    image: WM("0/05/2021_Audi_Q4_e-tron_Sport_35.jpg"),
   },
   {
     id: "vw-id4",
@@ -183,7 +187,7 @@ export const DEFAULT_VEHICLES: Vehicle[] = [
     consumption: 16.2,
     priceTtc: 49990,
     monthlyLld: 549,
-    image: "https://images.unsplash.com/photo-1617704548623-340376564e68?w=800&q=80",
+    image: WM("5/55/2025_Volkswagen_ID4_Pro_Redspot_front.jpg"),
   },
   {
     id: "kia-ev6",
@@ -197,7 +201,7 @@ export const DEFAULT_VEHICLES: Vehicle[] = [
     consumption: 16.5,
     priceTtc: 47990,
     monthlyLld: 529,
-    image: "https://images.unsplash.com/photo-1669739245612-022b4e8d24fa?w=800&q=80",
+    image: WM("d/d9/2021_Kia_EV6_GT-Line_S.jpg"),
   },
   {
     id: "hyundai-ioniq5",
@@ -211,9 +215,12 @@ export const DEFAULT_VEHICLES: Vehicle[] = [
     consumption: 17.7,
     priceTtc: 49900,
     monthlyLld: 559,
-    image: "https://images.unsplash.com/photo-1669559808989-90e4f1cf01b4?w=800&q=80",
+    image: WM("8/85/Hyundai_Ioniq_5_AWD_Techniq-Paket_%E2%80%93_f_31122024.jpg"),
   },
 ];
+
+const CHARGER_IMG = WM("5/58/AmpCharge_EV_charging_station_at_Altona_North%2C_Victoria.jpg");
+const SCHNEIDER_IMG = WM("9/94/Schneider_Electric_EVLink_Pro_AC_Metal_used_for_a_Coles_EV_Charging_Station.jpg");
 
 export const DEFAULT_CHARGERS: Charger[] = [
   {
@@ -225,7 +232,7 @@ export const DEFAULT_CHARGERS: Charger[] = [
     priceHt: 749,
     installPriceHt: 890,
     features: ["Wi-Fi & Bluetooth", "Pilotage app myWallbox", "Compact"],
-    image: "https://images.unsplash.com/photo-1633706539037-1d5e9b97c3b9?w=800&q=80",
+    image: CHARGER_IMG,
   },
   {
     id: "wallbox-pulsar-max",
@@ -236,7 +243,7 @@ export const DEFAULT_CHARGERS: Charger[] = [
     priceHt: 999,
     installPriceHt: 1290,
     features: ["Wi-Fi, BT, Matter", "Délestage dynamique", "MID compteur"],
-    image: "https://images.unsplash.com/photo-1633706539037-1d5e9b97c3b9?w=800&q=80",
+    image: CHARGER_IMG,
   },
   {
     id: "schneider-evlink",
@@ -247,7 +254,7 @@ export const DEFAULT_CHARGERS: Charger[] = [
     priceHt: 1390,
     installPriceHt: 1490,
     features: ["MID + RFID", "Supervision OCPP 1.6", "Boîtier renforcé"],
-    image: "https://images.unsplash.com/photo-1593941707882-a5bba14938c7?w=800&q=80",
+    image: SCHNEIDER_IMG,
   },
   {
     id: "hager-witty",
@@ -258,7 +265,7 @@ export const DEFAULT_CHARGERS: Charger[] = [
     priceHt: 1190,
     installPriceHt: 1390,
     features: ["RFID badge", "Lecteur MID", "Pilotage à distance"],
-    image: "https://images.unsplash.com/photo-1647500666543-2dc34073f7d4?w=800&q=80",
+    image: CHARGER_IMG,
   },
   {
     id: "legrand-green-up",
@@ -269,7 +276,7 @@ export const DEFAULT_CHARGERS: Charger[] = [
     priceHt: 690,
     installPriceHt: 790,
     features: ["Plug & Play", "Sortie câble fixe", "Idéal collaborateur"],
-    image: "https://images.unsplash.com/photo-1647500666669-a86c0f0fec55?w=800&q=80",
+    image: CHARGER_IMG,
   },
   {
     id: "circontrol-erax",
@@ -280,6 +287,6 @@ export const DEFAULT_CHARGERS: Charger[] = [
     priceHt: 1090,
     installPriceHt: 1290,
     features: ["OCPP 1.6", "Délestage", "Compteur intégré"],
-    image: "https://images.unsplash.com/photo-1647500666543-2dc34073f7d4?w=800&q=80",
+    image: CHARGER_IMG,
   },
 ];

@@ -28,8 +28,16 @@ export type SelectedCharger = {
   installIncluded: boolean;
 };
 
-const BRAND = { r: 15, g: 15, b: 15 }; // Beev black
-const LAVENDER = { r: 209, g: 196, b: 233 };
+// Palette B2B sobre — noir Beev + accent lavande discret
+const INK = { r: 17, g: 17, b: 17 };
+const SUB = { r: 95, g: 95, b: 100 };
+const RULE = { r: 220, g: 218, b: 212 };
+const BG = { r: 250, g: 248, b: 244 };
+const ACCENT = { r: 168, g: 148, b: 214 }; // lavande Beev
+
+const PAGE_W = 595.28;
+const PAGE_H = 841.89;
+const M = 48; // marge pro
 
 export async function generateProposalPdf(opts: {
   client: ClientInfo;
@@ -38,249 +46,486 @@ export async function generateProposalPdf(opts: {
 }) {
   const { client, vehicles, chargers } = opts;
   const doc = new jsPDF({ unit: "pt", format: "a4" });
-  const pw = doc.internal.pageSize.getWidth();
-  const margin = 40;
 
-  // Header band
-  doc.setFillColor(BRAND.r, BRAND.g, BRAND.b);
-  doc.rect(0, 0, pw, 90, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(26);
-  doc.text("BEEV", margin, 45);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(11);
-  doc.text("Proposition commerciale — Mobilité électrique", margin, 65);
-  doc.setFontSize(10);
-  doc.text(client.date, pw - margin, 45, { align: "right" });
+  // ============== PAGE DE GARDE ==============
+  drawCover(doc, client, vehicles.length, chargers.length);
 
-  let y = 120;
-  doc.setTextColor(30, 30, 30);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.text("Informations client", margin, y);
-  y += 8;
-  doc.setDrawColor(BRAND.r, BRAND.g, BRAND.b);
-  doc.setLineWidth(1.5);
-  doc.line(margin, y, margin + 80, y);
-  y += 18;
+  // ============== SOMMAIRE / SYNTHÈSE ==============
+  doc.addPage();
+  drawHeader(doc, client);
+  let y = 130;
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(11);
-  const infoRows: [string, string][] = [
-    ["Société", client.company || "—"],
-    ["Contact", client.contact || "—"],
-    ["Email", client.email || "—"],
-    ["Commercial Beev", client.salesRep || "—"],
-  ];
-  infoRows.forEach(([k, v]) => {
-    doc.setFont("helvetica", "bold");
-    doc.text(k, margin, y);
-    doc.setFont("helvetica", "normal");
-    doc.text(v, margin + 110, y);
-    y += 16;
-  });
+  sectionTitle(doc, "Synthèse de la proposition", y);
+  y += 28;
 
-  y += 10;
-
-  // Vehicles
-  if (vehicles.length) {
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.text("Véhicules sélectionnés", margin, y);
-    y += 8;
-    doc.line(margin, y, margin + 100, y);
-    y += 16;
-
-    for (const sv of vehicles) {
-      const v = sv.vehicle;
-      const cardH = 130 + (sv.services.length ? 14 + Math.ceil(sv.services.length / 2) * 12 : 0);
-      if (y + cardH > 760) { doc.addPage(); y = margin; }
-      doc.setFillColor(248, 246, 240); // cream
-      doc.roundedRect(margin, y, pw - margin * 2, cardH, 10, 10, "F");
-
-      // Image
-      const imgX = margin + 12;
-      const imgY = y + 12;
-      const imgW = 130;
-      const imgH = 90;
-      try {
-        const dataUrl = await loadImage(v.image);
-        if (dataUrl) doc.addImage(dataUrl, "JPEG", imgX, imgY, imgW, imgH, undefined, "FAST");
-      } catch { /* skip image on error */ }
-
-      const tx = imgX + imgW + 16;
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(13);
-      doc.setTextColor(20, 20, 20);
-      doc.text(`${v.brand} ${v.model}`, tx, y + 28);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(9.5);
-      doc.setTextColor(90, 90, 90);
-      doc.text(v.version, tx, y + 42);
-
-      doc.setTextColor(40, 40, 40);
-      doc.setFontSize(9.5);
-      const specs = [
-        `Autonomie WLTP : ${v.rangeWltp} km`,
-        `Batterie : ${v.batteryKwh} kWh`,
-        `Puissance : ${v.powerHp} ch`,
-        `Conso : ${v.consumption} kWh/100km`,
-      ];
-      specs.forEach((s, i) => doc.text(s, tx, y + 60 + i * 12));
-
-      // Price block
-      const px = pw - margin - 175;
-      doc.setFillColor(LAVENDER.r, LAVENDER.g, LAVENDER.b);
-      doc.roundedRect(px - 8, y + 12, 165, 100, 8, 8, "F");
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-      doc.setTextColor(20, 20, 20);
-      doc.text("Tarif négocié", px, y + 28);
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "normal");
-      const discounted = v.priceTtc * (1 - sv.discountPct / 100);
-      doc.text(`Catalogue : ${eur(v.priceTtc)} TTC`, px, y + 44);
-      doc.text(`Remise : ${sv.discountPct.toFixed(1)} %`, px, y + 56);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-      doc.text(`Prix client : ${eur(discounted)}`, px, y + 70);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(8.5);
-      doc.text(`LLD ${sv.durationMonths} mois / ${sv.kmPerYear.toLocaleString("fr-FR")} km`, px, y + 84);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
-      doc.text(`${eur(sv.negotiatedMonthly)} HT/mois`, px, y + 100);
-
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(90, 90, 90);
-      doc.setFontSize(8.5);
-      doc.text(`Quantité : ${sv.quantity}`, tx, y + 114);
-
-      // Services
-      if (sv.services.length) {
-        const sy = y + 130;
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(9);
-        doc.setTextColor(20, 20, 20);
-        doc.text("Prestations incluses :", margin + 12, sy);
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(8.5);
-        doc.setTextColor(60, 60, 60);
-        sv.services.forEach((s, i) => {
-          const col = i % 2;
-          const row = Math.floor(i / 2);
-          doc.text(`• ${s}`, margin + 12 + col * 250, sy + 14 + row * 12);
-        });
-      }
-      y += cardH + 10;
-    }
-  }
-
-  // Chargers
-  if (chargers.length) {
-    if (y > 650) { doc.addPage(); y = margin; }
-    y += 6;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.setTextColor(20, 20, 20);
-    doc.text("Bornes de recharge", margin, y);
-    y += 8;
-    doc.setDrawColor(BRAND.r, BRAND.g, BRAND.b);
-    doc.line(margin, y, margin + 90, y);
-    y += 16;
-
-    chargers.forEach((sc) => {
-      const c = sc.charger;
-      if (y > 720) { doc.addPage(); y = margin; }
-      doc.setFillColor(245, 250, 248);
-      doc.roundedRect(margin, y, pw - margin * 2, 90, 6, 6, "F");
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(13);
-      doc.setTextColor(20, 20, 20);
-      doc.text(`${c.brand} ${c.model}`, margin + 14, y + 22);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      doc.setTextColor(80, 80, 80);
-      doc.text(`${c.powerKw} kW · ${c.type}`, margin + 14, y + 38);
-      doc.setTextColor(40, 40, 40);
-      doc.text(c.features.join(" · "), margin + 14, y + 54, { maxWidth: pw - margin * 2 - 220 });
-      doc.text(`Quantité : ${sc.quantity}`, margin + 14, y + 76);
-
-      const px = pw - margin - 180;
-      const unit = c.priceHt * (1 - sc.discountPct / 100);
-      const install = sc.installIncluded ? c.installPriceHt : 0;
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(BRAND.r, BRAND.g, BRAND.b);
-      doc.text("Tarif négocié", px, y + 22);
-      doc.setTextColor(20, 20, 20);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      doc.text(`Borne : ${eur(unit)} HT`, px, y + 40);
-      doc.text(`Installation : ${install ? eur(install) + " HT" : "non incluse"}`, px, y + 54);
-      doc.setFont("helvetica", "bold");
-      doc.text(`Total unitaire : ${eur(unit + install)} HT`, px, y + 70);
-      y += 100;
-    });
-  }
-
-  // Récap
-  if (y > 650) { doc.addPage(); y = margin; }
-  y += 10;
-  const totalVehMonthly = vehicles.reduce((s, v) => s + v.negotiatedMonthly * v.quantity, 0);
-  const totalVehUpfront = vehicles.reduce(
+  const totalMonthly = vehicles.reduce((s, v) => s + v.negotiatedMonthly * v.quantity, 0);
+  const totalUpfront = vehicles.reduce(
     (s, v) => s + v.vehicle.priceTtc * (1 - v.discountPct / 100) * v.quantity,
-    0
+    0,
   );
   const totalChargers = chargers.reduce((s, c) => {
-    const unit = c.charger.priceHt * (1 - c.discountPct / 100);
-    return s + (unit + (c.installIncluded ? c.charger.installPriceHt : 0)) * c.quantity;
+    const u = c.charger.priceHt * (1 - c.discountPct / 100);
+    return s + (u + (c.installIncluded ? c.charger.installPriceHt : 0)) * c.quantity;
   }, 0);
 
   autoTable(doc, {
     startY: y,
-    theme: "grid",
-    head: [["Récapitulatif", "Montant"]],
+    theme: "plain",
+    head: [["", "Quantité", "Détail", "Montant"]],
     body: [
-      ["Total véhicules (achat TTC)", eur(totalVehUpfront)],
-      ["Total véhicules (LLD / mois)", `${eur(totalVehMonthly)} HT / mois`],
-      ["Total bornes + installation (HT)", eur(totalChargers)],
+      ["Véhicules — achat TTC", String(vehicles.reduce((s, v) => s + v.quantity, 0)), `${vehicles.length} référence${vehicles.length > 1 ? "s" : ""}`, eur(totalUpfront)],
+      ["Véhicules — LLD HT / mois", String(vehicles.reduce((s, v) => s + v.quantity, 0)), "Loyer mensuel global", `${eur(totalMonthly)} / mois`],
+      ["Bornes + installation HT", String(chargers.reduce((s, c) => s + c.quantity, 0)), `${chargers.length} référence${chargers.length > 1 ? "s" : ""}`, eur(totalChargers)],
     ],
-    headStyles: { fillColor: [BRAND.r, BRAND.g, BRAND.b], textColor: 255 },
-    styles: { fontSize: 11, cellPadding: 8 },
-    margin: { left: margin, right: margin },
+    headStyles: { fillColor: [INK.r, INK.g, INK.b], textColor: 255, fontStyle: "bold", fontSize: 9, halign: "left" },
+    bodyStyles: { fontSize: 10, cellPadding: 10, textColor: [INK.r, INK.g, INK.b] },
+    alternateRowStyles: { fillColor: [BG.r, BG.g, BG.b] },
+    columnStyles: { 1: { halign: "center" }, 3: { halign: "right", fontStyle: "bold" } },
+    margin: { left: M, right: M },
   });
 
-  // Notes
-  if (client.notes) {
-    const finalY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y;
-    let ny = finalY + 24;
-    if (ny > 720) { doc.addPage(); ny = margin; }
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text("Notes & conditions", margin, ny);
+  y = (doc as any).lastAutoTable.finalY + 28;
+
+  sectionTitle(doc, "Informations client", y);
+  y += 24;
+
+  const infoRows: [string, string][] = [
+    ["Société", client.company || "—"],
+    ["Interlocuteur", client.contact || "—"],
+    ["Email", client.email || "—"],
+    ["Commercial Beev", client.salesRep || "—"],
+    ["Date d'émission", client.date],
+  ];
+  doc.setFontSize(10);
+  infoRows.forEach(([k, v]) => {
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    const lines = doc.splitTextToSize(client.notes, pw - margin * 2);
-    doc.text(lines, margin, ny + 18);
+    doc.setTextColor(SUB.r, SUB.g, SUB.b);
+    doc.text(k.toUpperCase(), M, y);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(INK.r, INK.g, INK.b);
+    doc.text(v, M + 140, y);
+    y += 18;
+  });
+
+  // ============== FICHES VÉHICULES (1 par page) ==============
+  for (let i = 0; i < vehicles.length; i++) {
+    doc.addPage();
+    drawHeader(doc, client);
+    await drawVehiclePage(doc, vehicles[i], i + 1, vehicles.length);
   }
 
-  // Footer pages
+  // ============== FICHES BORNES ==============
+  if (chargers.length) {
+    doc.addPage();
+    drawHeader(doc, client);
+    let cy = 130;
+    sectionTitle(doc, "Bornes de recharge", cy);
+    cy += 28;
+    for (const sc of chargers) {
+      if (cy > PAGE_H - 200) {
+        doc.addPage();
+        drawHeader(doc, client);
+        cy = 130;
+      }
+      cy = await drawChargerCard(doc, sc, cy);
+      cy += 18;
+    }
+  }
+
+  // ============== CONDITIONS ==============
+  doc.addPage();
+  drawHeader(doc, client);
+  let ny = 130;
+  sectionTitle(doc, "Conditions commerciales", ny);
+  ny += 28;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10.5);
+  doc.setTextColor(INK.r, INK.g, INK.b);
+  const notes =
+    client.notes ||
+    "Offre valable 30 jours. Tarifs indicatifs sous réserve de disponibilité constructeur et d'étude de financement.";
+  const lines = doc.splitTextToSize(notes, PAGE_W - M * 2);
+  doc.text(lines, M, ny);
+  ny += lines.length * 14 + 24;
+
+  doc.setDrawColor(RULE.r, RULE.g, RULE.b);
+  doc.line(M, ny, PAGE_W - M, ny);
+  ny += 30;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(SUB.r, SUB.g, SUB.b);
+  doc.text("BON POUR ACCORD", M, ny);
+  ny += 16;
+  doc.setFont("helvetica", "normal");
+  doc.text("Date :", M, ny + 26);
+  doc.text("Signature & cachet :", PAGE_W / 2, ny + 26);
+  doc.setDrawColor(INK.r, INK.g, INK.b);
+  doc.line(M + 40, ny + 26, M + 200, ny + 26);
+  doc.line(PAGE_W / 2 + 110, ny + 26, PAGE_W - M, ny + 26);
+
+  // Pieds de page sur toutes les pages sauf la garde
   const pages = doc.getNumberOfPages();
-  for (let i = 1; i <= pages; i++) {
+  for (let i = 2; i <= pages; i++) {
     doc.setPage(i);
-    doc.setFontSize(9);
-    doc.setTextColor(120, 120, 120);
-    doc.text(
-      `Beev · Proposition générée le ${client.date} · ${client.salesRep || ""}`,
-      margin,
-      doc.internal.pageSize.getHeight() - 18
-    );
-    doc.text(`${i} / ${pages}`, pw - margin, doc.internal.pageSize.getHeight() - 18, { align: "right" });
+    drawFooter(doc, client, i, pages);
   }
 
   const safe = (s: string) => s.replace(/[^a-z0-9]+/gi, "_").slice(0, 40) || "client";
-  doc.save(`Beev_Proposition_${safe(client.company)}_${client.date}.pdf`);
+  doc.save(`Beev_Proposition_${safe(client.company)}_${client.date.replace(/\//g, "-")}.pdf`);
+}
+
+// =================== HELPERS ===================
+
+function drawCover(doc: jsPDF, client: ClientInfo, nbV: number, nbC: number) {
+  // Bandeau noir plein
+  doc.setFillColor(INK.r, INK.g, INK.b);
+  doc.rect(0, 0, PAGE_W, PAGE_H, "F");
+
+  // Filet lavande
+  doc.setFillColor(ACCENT.r, ACCENT.g, ACCENT.b);
+  doc.rect(M, 110, 60, 4, "F");
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text("BEEV", M, 90);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(180, 180, 185);
+  doc.text("Mobilité électrique pour entreprises", M, 104);
+
+  // Titre
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(34);
+  doc.text("Proposition", M, 250);
+  doc.text("commerciale", M, 290);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(13);
+  doc.setTextColor(200, 200, 205);
+  doc.text("Véhicules électriques & infrastructure de recharge", M, 320);
+
+  // Bloc client
+  doc.setDrawColor(80, 80, 90);
+  doc.line(M, 420, PAGE_W - M, 420);
+
+  doc.setFontSize(9);
+  doc.setTextColor(170, 170, 175);
+  doc.text("PRÉPARÉ POUR", M, 450);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(20);
+  doc.setTextColor(255, 255, 255);
+  doc.text(client.company || "—", M, 478);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+  doc.setTextColor(200, 200, 205);
+  if (client.contact) doc.text(client.contact, M, 498);
+  if (client.email) doc.text(client.email, M, 514);
+
+  // Méta droite
+  doc.setFontSize(9);
+  doc.setTextColor(170, 170, 175);
+  doc.text("DATE", PAGE_W - M, 450, { align: "right" });
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(255, 255, 255);
+  doc.text(client.date, PAGE_W - M, 466, { align: "right" });
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(170, 170, 175);
+  doc.text("COMMERCIAL", PAGE_W - M, 488, { align: "right" });
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(255, 255, 255);
+  doc.text(client.salesRep || "Beev", PAGE_W - M, 504, { align: "right" });
+
+  // Compteurs
+  doc.setDrawColor(80, 80, 90);
+  doc.line(M, 600, PAGE_W - M, 600);
+  doc.setFontSize(40);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(255, 255, 255);
+  doc.text(String(nbV), M, 660);
+  doc.text(String(nbC), PAGE_W / 2, 660);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(180, 180, 185);
+  doc.text(`véhicule${nbV > 1 ? "s" : ""} sélectionné${nbV > 1 ? "s" : ""}`, M, 678);
+  doc.text(`borne${nbC > 1 ? "s" : ""} de recharge`, PAGE_W / 2, 678);
+
+  // Pied
+  doc.setFontSize(8.5);
+  doc.setTextColor(150, 150, 155);
+  doc.text("Document confidentiel — usage interne client", M, PAGE_H - 50);
+  doc.text("beev.co", PAGE_W - M, PAGE_H - 50, { align: "right" });
+}
+
+function drawHeader(doc: jsPDF, client: ClientInfo) {
+  doc.setTextColor(INK.r, INK.g, INK.b);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text("BEEV", M, 56);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(SUB.r, SUB.g, SUB.b);
+  doc.text("Proposition commerciale", M, 70);
+
+  doc.setTextColor(INK.r, INK.g, INK.b);
+  doc.setFontSize(9);
+  doc.text(client.company || "—", PAGE_W - M, 56, { align: "right" });
+  doc.setTextColor(SUB.r, SUB.g, SUB.b);
+  doc.setFontSize(8.5);
+  doc.text(client.date, PAGE_W - M, 70, { align: "right" });
+
+  doc.setDrawColor(RULE.r, RULE.g, RULE.b);
+  doc.setLineWidth(0.6);
+  doc.line(M, 86, PAGE_W - M, 86);
+}
+
+function drawFooter(doc: jsPDF, client: ClientInfo, page: number, total: number) {
+  doc.setDrawColor(RULE.r, RULE.g, RULE.b);
+  doc.line(M, PAGE_H - 50, PAGE_W - M, PAGE_H - 50);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(SUB.r, SUB.g, SUB.b);
+  doc.text(`Beev · ${client.salesRep || "Service grand compte"}`, M, PAGE_H - 36);
+  doc.text("Document confidentiel", PAGE_W / 2, PAGE_H - 36, { align: "center" });
+  doc.text(`${page} / ${total}`, PAGE_W - M, PAGE_H - 36, { align: "right" });
+}
+
+function sectionTitle(doc: jsPDF, label: string, y: number) {
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.setTextColor(INK.r, INK.g, INK.b);
+  doc.text(label, M, y);
+  doc.setFillColor(ACCENT.r, ACCENT.g, ACCENT.b);
+  doc.rect(M, y + 6, 32, 2.5, "F");
+}
+
+async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, idx: number, total: number) {
+  const v = sv.vehicle;
+
+  // Numérotation
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(SUB.r, SUB.g, SUB.b);
+  doc.text(`Véhicule ${idx} / ${total}`, M, 116);
+
+  // Titre véhicule
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(24);
+  doc.setTextColor(INK.r, INK.g, INK.b);
+  doc.text(`${v.brand} ${v.model}`, M, 148);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(12);
+  doc.setTextColor(SUB.r, SUB.g, SUB.b);
+  doc.text(`${v.version} · ${v.category}`, M, 168);
+
+  // Image (pleine largeur)
+  const imgY = 190;
+  const imgW = PAGE_W - M * 2;
+  const imgH = 230;
+  doc.setFillColor(BG.r, BG.g, BG.b);
+  doc.rect(M, imgY, imgW, imgH, "F");
+  try {
+    const dataUrl = await loadImage(v.image);
+    if (dataUrl) {
+      // contain dans le cadre
+      doc.addImage(dataUrl, "JPEG", M + 8, imgY + 8, imgW - 16, imgH - 16, undefined, "FAST");
+    }
+  } catch {
+    /* image facultative */
+  }
+
+  let y = imgY + imgH + 32;
+
+  // Caractéristiques en table propre
+  autoTable(doc, {
+    startY: y,
+    theme: "plain",
+    head: [["Caractéristique", "Valeur"]],
+    body: [
+      ["Autonomie WLTP", `${v.rangeWltp} km`],
+      ["Capacité batterie", `${v.batteryKwh} kWh`],
+      ["Puissance", `${v.powerHp} ch`],
+      ["Consommation moyenne", `${v.consumption} kWh / 100 km`],
+      ["Catégorie", v.category],
+    ],
+    headStyles: { fillColor: [INK.r, INK.g, INK.b], textColor: 255, fontSize: 9, fontStyle: "bold" },
+    bodyStyles: { fontSize: 10, cellPadding: 8, textColor: [INK.r, INK.g, INK.b] },
+    alternateRowStyles: { fillColor: [BG.r, BG.g, BG.b] },
+    columnStyles: { 1: { halign: "right", fontStyle: "bold" } },
+    margin: { left: M, right: PAGE_W / 2 + 8 },
+    tableWidth: PAGE_W / 2 - M - 8,
+  });
+
+  // Bloc tarif à droite
+  const px = PAGE_W / 2 + 8;
+  const pw = PAGE_W - M - px;
+  const py = y;
+  doc.setFillColor(INK.r, INK.g, INK.b);
+  doc.rect(px, py, pw, 28, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(255, 255, 255);
+  doc.text("TARIF NÉGOCIÉ", px + 12, py + 18);
+
+  const discounted = v.priceTtc * (1 - sv.discountPct / 100);
+  let py2 = py + 28;
+  doc.setFillColor(BG.r, BG.g, BG.b);
+  doc.rect(px, py2, pw, 180, "F");
+
+  doc.setTextColor(SUB.r, SUB.g, SUB.b);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.text("PRIX CATALOGUE TTC", px + 12, py2 + 20);
+  doc.setTextColor(INK.r, INK.g, INK.b);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+  doc.text(eur(v.priceTtc), px + 12, py2 + 36);
+
+  doc.setTextColor(SUB.r, SUB.g, SUB.b);
+  doc.setFontSize(8.5);
+  doc.text("REMISE COMMERCIALE", px + 12, py2 + 56);
+  doc.setTextColor(INK.r, INK.g, INK.b);
+  doc.setFontSize(11);
+  doc.text(`-${sv.discountPct.toFixed(1)} %`, px + 12, py2 + 72);
+
+  // Filet accent
+  doc.setDrawColor(ACCENT.r, ACCENT.g, ACCENT.b);
+  doc.setLineWidth(2);
+  doc.line(px + 12, py2 + 86, px + 60, py2 + 86);
+  doc.setLineWidth(0.5);
+
+  doc.setTextColor(SUB.r, SUB.g, SUB.b);
+  doc.setFontSize(8.5);
+  doc.setFont("helvetica", "normal");
+  doc.text("PRIX CLIENT TTC", px + 12, py2 + 104);
+  doc.setTextColor(INK.r, INK.g, INK.b);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.text(eur(discounted), px + 12, py2 + 124);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(SUB.r, SUB.g, SUB.b);
+  doc.text(
+    `LLD ${sv.durationMonths} mois · ${sv.kmPerYear.toLocaleString("fr-FR")} km/an`,
+    px + 12,
+    py2 + 146,
+  );
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.setTextColor(INK.r, INK.g, INK.b);
+  doc.text(`${eur(sv.negotiatedMonthly)} HT / mois`, px + 12, py2 + 164);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(SUB.r, SUB.g, SUB.b);
+  doc.text(`Quantité : ${sv.quantity}`, px + 12, py2 + 178);
+
+  y = Math.max((doc as any).lastAutoTable.finalY, py2 + 180) + 24;
+
+  // Prestations
+  if (sv.services.length) {
+    if (y > PAGE_H - 130) return;
+    sectionTitle(doc, "Prestations incluses", y);
+    y += 22;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(INK.r, INK.g, INK.b);
+    const colW = (PAGE_W - M * 2) / 2;
+    sv.services.forEach((s, i) => {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const xx = M + col * colW;
+      const yy = y + row * 18;
+      if (yy > PAGE_H - 80) return;
+      doc.setFillColor(ACCENT.r, ACCENT.g, ACCENT.b);
+      doc.circle(xx + 4, yy - 3, 2, "F");
+      doc.text(s, xx + 14, yy);
+    });
+  }
+}
+
+async function drawChargerCard(doc: jsPDF, sc: SelectedCharger, y: number): Promise<number> {
+  const c = sc.charger;
+  const cardH = 130;
+  const cardW = PAGE_W - M * 2;
+
+  doc.setDrawColor(RULE.r, RULE.g, RULE.b);
+  doc.setLineWidth(0.6);
+  doc.rect(M, y, cardW, cardH);
+
+  // Image gauche
+  const imgW = 150;
+  doc.setFillColor(BG.r, BG.g, BG.b);
+  doc.rect(M, y, imgW, cardH, "F");
+  try {
+    const data = await loadImage(c.image);
+    if (data) doc.addImage(data, "JPEG", M + 8, y + 8, imgW - 16, cardH - 16, undefined, "FAST");
+  } catch { /* */ }
+
+  // Texte
+  const tx = M + imgW + 18;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.setTextColor(INK.r, INK.g, INK.b);
+  doc.text(`${c.brand} ${c.model}`, tx, y + 24);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9.5);
+  doc.setTextColor(SUB.r, SUB.g, SUB.b);
+  doc.text(`${c.powerKw} kW · ${c.type}`, tx, y + 40);
+
+  doc.setTextColor(INK.r, INK.g, INK.b);
+  doc.setFontSize(9);
+  c.features.slice(0, 3).forEach((f, i) => {
+    doc.setFillColor(ACCENT.r, ACCENT.g, ACCENT.b);
+    doc.circle(tx + 3, y + 60 + i * 14 - 3, 1.8, "F");
+    doc.text(f, tx + 12, y + 60 + i * 14);
+  });
+
+  // Bloc prix droite
+  const unit = c.priceHt * (1 - sc.discountPct / 100);
+  const install = sc.installIncluded ? c.installPriceHt : 0;
+  const px = PAGE_W - M - 165;
+  doc.setFillColor(BG.r, BG.g, BG.b);
+  doc.rect(px, y + 12, 155, cardH - 24, "F");
+  doc.setTextColor(SUB.r, SUB.g, SUB.b);
+  doc.setFontSize(8);
+  doc.text("BORNE HT", px + 10, y + 28);
+  doc.setTextColor(INK.r, INK.g, INK.b);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text(eur(unit), px + 10, y + 44);
+
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(SUB.r, SUB.g, SUB.b);
+  doc.setFontSize(8);
+  doc.text("INSTALLATION HT", px + 10, y + 62);
+  doc.setTextColor(INK.r, INK.g, INK.b);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text(install ? eur(install) : "Non incluse", px + 10, y + 78);
+
+  doc.setDrawColor(ACCENT.r, ACCENT.g, ACCENT.b);
+  doc.setLineWidth(1.5);
+  doc.line(px + 10, y + 88, px + 40, y + 88);
+  doc.setLineWidth(0.5);
+
+  doc.setTextColor(SUB.r, SUB.g, SUB.b);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text(`TOTAL × ${sc.quantity}`, px + 10, y + 104);
+  doc.setTextColor(INK.r, INK.g, INK.b);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.text(eur((unit + install) * sc.quantity), px + 10, y + 120);
+
+  return y + cardH;
 }
 
 const eur = (n: number) =>
