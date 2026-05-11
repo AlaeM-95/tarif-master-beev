@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import type { Charger, LineItem, Vehicle } from "./catalog";
+import { MANDATORY_SERVICES, type Charger, type LineItem, type Vehicle } from "./catalog";
 import type { EnergyParams } from "./store";
 
 export type ClientInfo = {
@@ -249,85 +249,44 @@ function drawSynthesis(doc: jsPDF, c: ClientInfo, vs: SelectedVehicle[], cs: Sel
   }, 0);
   const totalQtyC = cs.reduce((s, sc) => s + sc.quantity, 0);
 
-  // Tableau de synthèse
+  // Tableau de synthèse SANS TOTAUX (volonté commerciale : ne pas alourdir le closing)
   const body: any[] = [];
   if (vs.length) {
     body.push([{ content: "VÉHICULES", colSpan: 4, styles: { fillColor: BG, fontStyle: "bold", textColor: INK } }]);
     vs.forEach((sv) => {
-      const unit = sv.vehicle.priceTtc * (1 - sv.discountPct / 100);
       body.push([
         `${sv.vehicle.brand} ${sv.vehicle.model}\n${sv.vehicle.version}`,
         `× ${sv.quantity}`,
-        `${eur(sv.negotiatedMonthly)} HT / mois`,
-        eur(unit * sv.quantity),
+        `${eur(sv.negotiatedMonthly)} TTC / mois`,
+        `${sv.durationMonths} mois · ${sv.kmPerYear.toLocaleString("fr-FR")} km/an`,
       ]);
     });
-    body.push([
-      { content: "Sous-total véhicules", colSpan: 2, styles: { fontStyle: "bold" } },
-      { content: `${eur(totalMonthly)} / mois`, styles: { fontStyle: "bold", halign: "right" } },
-      { content: eur(totalUpfront), styles: { fontStyle: "bold", halign: "right" } },
-    ]);
   }
   if (cs.length) {
     body.push([{ content: "BORNES & INSTALLATION", colSpan: 4, styles: { fillColor: BG, fontStyle: "bold", textColor: INK } }]);
     cs.forEach((sc) => {
-      const total = sc.lineItems.reduce((a, li) => a + li.qty * li.unitHt, 0) * sc.quantity;
+      const tag = sc.charger.deployment === "domicile" ? "Domicile collaborateur" : "Site entreprise";
       body.push([
         `${sc.siteName || sc.charger.brand + " " + sc.charger.model}\n${sc.charger.brand} ${sc.charger.model}`,
         `× ${sc.quantity}`,
         `${sc.charger.powerKw} kW`,
-        `${eur(total)} HT`,
+        tag,
       ]);
     });
-    body.push([
-      { content: "Sous-total bornes (HT, hors options)", colSpan: 3, styles: { fontStyle: "bold" } },
-      { content: eur(totalChargersHt), styles: { fontStyle: "bold", halign: "right" } },
-    ]);
   }
 
   if (body.length) {
     autoTable(doc, {
       startY: y,
       theme: "grid",
-      head: [["Désignation", "Qté", "Détail / loyer", "Total"]],
+      head: [["Désignation", "Qté", "Détail", "Modalités"]],
       body: body as any,
       headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold" },
       bodyStyles: { fontSize: 9.5, cellPadding: 7, textColor: INK, lineColor: RULE },
-      columnStyles: { 1: { halign: "center", cellWidth: 40 }, 2: { halign: "right" }, 3: { halign: "right", fontStyle: "bold" } },
+      columnStyles: { 1: { halign: "center", cellWidth: 40 }, 2: { halign: "right" }, 3: { halign: "right" } },
       margin: { left: M, right: M },
     });
-    y = (doc as any).lastAutoTable.finalY + 24;
   }
-
-  // KPI bandeau
-  if (y > PAGE_H - 140) return;
-  doc.setFillColor(...BG);
-  doc.rect(M, y, PAGE_W - M * 2, 100, "F");
-  const kpis = [
-    { v: String(totalQtyV), l: "véhicules" },
-    { v: `${eur(totalMonthly)}`, l: "loyer total HT/mois" },
-    { v: String(totalQtyC), l: "bornes (sites)" },
-    { v: eur(totalChargersHt), l: "investissement bornes HT" },
-  ];
-  const colW = (PAGE_W - M * 2) / kpis.length;
-  kpis.forEach((k, i) => {
-    const x = M + i * colW + 14;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.setTextColor(...INK);
-    doc.text(k.v, x, y + 42);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8.5);
-    doc.setTextColor(...SUB);
-    doc.text(k.l.toUpperCase(), x, y + 60);
-    if (i === 0) {
-      doc.setFillColor(...ACCENT);
-      doc.rect(x, y + 70, 24, 2, "F");
-    } else {
-      doc.setFillColor(...LAVENDER);
-      doc.rect(x, y + 70, 24, 2, "F");
-    }
-  });
 }
 
 // ============ POURQUOI BEEV ============
@@ -445,7 +404,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   py += 14;
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text(`LOYER MENSUEL HT · ${sv.durationMonths} mois`, px + 12, py);
+  doc.text(`LOYER MENSUEL TTC · ${sv.durationMonths} mois`, px + 12, py);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(18);
   doc.setTextColor(...INK);
