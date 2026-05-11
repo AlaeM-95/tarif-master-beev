@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { DEFAULT_CHARGERS, DEFAULT_VEHICLES, type Charger, type Vehicle } from "./catalog";
 
 const VK = "beev_vehicles_v3";
-const CK = "beev_chargers_v3";
+const CK = "beev_chargers_v4";
 const EK = "beev_energy_v1";
 
 export type EnergyParams = {
