@@ -438,59 +438,49 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   });
   y = (doc as any).lastAutoTable.finalY + 16;
 
-  // TCO
-  const t = computeTco(sv, e);
-  doc.setFillColor(...BG);
-  doc.rect(M, y, PAGE_W - M * 2, 78, "F");
-  doc.setFillColor(...ACCENT);
-  doc.rect(M, y, 4, 78, "F");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.setTextColor(...SUB);
-  doc.text("TCO AUX 100 KM (NON CONTRACTUEL)", M + 16, y + 18);
-  const blocks = [
-    { l: "Loyer / 100 km", v: eur2(t.lease100) },
-    { l: "Énergie / 100 km", v: eur2(t.energy100) },
-    { l: "TCO / 100 km", v: eur2(t.tco100), bold: true },
-    { l: "Économie vs essence ref.", v: t.economy100 >= 0 ? `+ ${eur2(t.economy100)}` : `- ${eur2(-t.economy100)}` },
-  ];
-  const cw = (PAGE_W - M * 2 - 20) / blocks.length;
-  blocks.forEach((b, i) => {
-    const x = M + 16 + i * cw;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8.5);
+  // TCO — uniquement si le commercial l'inclut pour ce véhicule
+  if (sv.includeTco) {
+    const t = computeTco(sv, e);
+    doc.setFillColor(...BG);
+    doc.rect(M, y, PAGE_W - M * 2, 78, "F");
+    doc.setFillColor(...ACCENT);
+    doc.rect(M, y, 4, 78, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
     doc.setTextColor(...SUB);
-    doc.text(b.l.toUpperCase(), x, y + 38);
-    doc.setFont("helvetica", b.bold ? "bold" : "normal");
-    doc.setFontSize(b.bold ? 16 : 13);
-    doc.setTextColor(...INK);
-    doc.text(b.v, x, y + 60);
-  });
-  y += 90;
+    doc.text(`TCO AUX 100 KM · ${sv.durationMonths} mois · ${sv.kmPerYear.toLocaleString("fr-FR")} km/an (NON CONTRACTUEL)`, M + 16, y + 18);
+    const blocks = [
+      { l: "Loyer / 100 km", v: eur2(t.lease100) },
+      { l: "Énergie / 100 km", v: eur2(t.energy100) },
+      { l: "TCO / 100 km", v: eur2(t.tco100), bold: true },
+      { l: "Économie vs essence ref.", v: t.economy100 >= 0 ? `+ ${eur2(t.economy100)}` : `- ${eur2(-t.economy100)}` },
+    ];
+    const cw = (PAGE_W - M * 2 - 20) / blocks.length;
+    blocks.forEach((b, i) => {
+      const x = M + 16 + i * cw;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8.5);
+      doc.setTextColor(...SUB);
+      doc.text(b.l.toUpperCase(), x, y + 38);
+      doc.setFont("helvetica", b.bold ? "bold" : "normal");
+      doc.setFontSize(b.bold ? 16 : 13);
+      doc.setTextColor(...INK);
+      doc.text(b.v, x, y + 60);
+    });
+    y += 90;
+  }
 
-  // Prestations & options (tableau type Ayvens)
+  // Prestations : 3 obligatoires + extras choisis par le commercial
   if (y > PAGE_H - 160) return;
-  const optionRows: any[] = sv.options.map((li) => [
-    li.label,
-    String(li.qty),
-    eur(li.unitHt),
-    eur(li.qty * li.unitHt),
-  ]);
-  const servicesText = sv.services.length
-    ? sv.services.map((s) => `· ${s}`).join("\n")
-    : "Loyer financier · Maintenance tous réseaux · Assistance 24/24";
+  const allServices = [...MANDATORY_SERVICES, ...sv.services.filter((s) => !MANDATORY_SERVICES.includes(s as any))];
+  const servicesText = allServices.map((s) => `· ${s}`).join("\n");
   const body: any[] = [
     [{ content: "Prestations & services compris dans le loyer", colSpan: 4, styles: { fillColor: BG, fontStyle: "bold", textColor: INK } }],
     [{ content: servicesText, colSpan: 4, styles: { fontSize: 9.5, textColor: INK } }],
   ];
-  if (optionRows.length) {
-    body.push([{ content: "Options & accessoires compris dans le loyer", colSpan: 4, styles: { fillColor: BG, fontStyle: "bold", textColor: INK } }]);
-    body.push(...optionRows);
-    const totalOpts = sv.options.reduce((a, li) => a + li.qty * li.unitHt, 0);
-    body.push([
-      { content: "Total options HT", colSpan: 3, styles: { fontStyle: "bold", halign: "right" } },
-      { content: eur(totalOpts), styles: { fontStyle: "bold", halign: "right" } },
-    ]);
+  if (sv.options.length) {
+    body.push([{ content: "Options & accessoires inclus", colSpan: 4, styles: { fillColor: BG, fontStyle: "bold", textColor: INK } }]);
+    sv.options.forEach((li) => body.push([li.label, String(li.qty), eur(li.unitHt), eur(li.qty * li.unitHt)]));
   }
   autoTable(doc, {
     startY: y,
