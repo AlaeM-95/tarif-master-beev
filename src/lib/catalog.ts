@@ -18,30 +18,21 @@ export type Vehicle = {
   fiscalHp: number;              // CV fiscaux
   envScore?: number;             // score ADEME
   priceTtc: number;              // prix catalogue TTC
-  monthlyLld: number;            // loyer LLD HT mensuel
+  monthlyLld: number;            // loyer LLD TTC mensuel (négocié, exprimé en TTC)
   image: string;
   services?: string[];
 };
 
 export type LineItem = { label: string; qty: number; unitHt: number };
 
-export const VEHICLE_SERVICES = [
+// Prestations obligatoires, toujours incluses, non décochables
+export const MANDATORY_SERVICES = [
   "Maintenance tous réseaux",
   "Assistance 24/24",
   "Gestion des pertes totales",
-  "Certificat d'immatriculation inclus",
-  "Certificat Qualité de l'Air",
-  "Énergie à la livraison",
-  "Pneumatiques",
-  "Véhicule de remplacement",
-  "Carte carburant / badge recharge",
-  "Assurance tous risques",
-  "Reprise du véhicule actuel",
-  "Borne à domicile collaborateur",
-  "Formation éco-conduite",
-  "Télématique & reporting flotte",
-  "Gestion administrative",
 ] as const;
+
+export type ChargerDeployment = "domicile" | "site";
 
 export type Charger = {
   id: string;
@@ -49,11 +40,12 @@ export type Charger = {
   model: string;
   powerKw: number;
   type: string;
-  priceHt: number;             // prix matériel HT
-  installPriceHt: number;      // installation IRVE forfaitaire HT (indicatif)
+  deployment: ChargerDeployment; // domicile collaborateur (B2B2E) ou site entreprise
+  priceHt: number;
+  installPriceHt: number;
   features: string[];
   image: string;
-  defaultLineItems?: LineItem[]; // devis détaillé type "Beev x BIG"
+  defaultLineItems?: LineItem[];
 };
 
 const WM = (p: string) => `https://upload.wikimedia.org/wikipedia/commons/${p}`;
