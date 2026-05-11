@@ -18,11 +18,12 @@ export type SelectedVehicle = {
   vehicle: Vehicle;
   quantity: number;
   discountPct: number;
-  negotiatedMonthly: number;     // loyer HT/mois après négociation
+  negotiatedMonthly: number;     // loyer TTC/mois après négociation
   durationMonths: number;
   kmPerYear: number;
-  services: string[];
-  options: LineItem[];           // options & accessoires compris dans le loyer
+  includeTco: boolean;           // afficher la fiche TCO pour ce véhicule
+  services: string[];            // prestations additionnelles libres (commercial)
+  options: LineItem[];
 };
 
 export type SelectedCharger = {
@@ -30,10 +31,10 @@ export type SelectedCharger = {
   quantity: number;
   discountPct: number;
   installIncluded: boolean;
-  siteName: string;              // ex. "Peltre · 57"
+  siteName: string;
   siteAddress: string;
   siteContact: string;
-  lineItems: LineItem[];         // devis détaillé site par site
+  lineItems: LineItem[];
 };
 
 // ---- Palette B2B Beev ----
