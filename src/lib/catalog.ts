@@ -1,6 +1,14 @@
 // Catalogue Beev synchronisé avec le calculateur TCO 2026
 // https://beev-tco-2026.lovable.app/
 
+export type ProjectType = "vehicles" | "home" | "site";
+
+export const PROJECT_LABEL: Record<ProjectType, string> = {
+  vehicles: "Projet Véhicules",
+  home: "Bornes domicile collaborateurs (B2B2E)",
+  site: "Bornes site entreprise",
+};
+
 export type Energy = "Électrique" | "Hybride Rechargeable" | "Hybride" | "Mild Hybrid" | "Essence" | "Diesel";
 
 export type Vehicle = {
@@ -10,17 +18,18 @@ export type Vehicle = {
   version: string;
   category: string;
   energy: Energy;
-  batteryKwh: number;            // 0 si thermique pur
-  rangeWltp: number;             // km WLTP (ou autonomie élec pour PHEV)
+  batteryKwh: number;
+  rangeWltp: number;
   powerHp: number;
-  consumption: number;           // kWh/100km (élec) ou L/100km (thermique)
-  co2: number;                   // g/km
-  fiscalHp: number;              // CV fiscaux
-  envScore?: number;             // score ADEME
-  priceTtc: number;              // prix catalogue TTC
-  monthlyLld: number;            // loyer LLD TTC mensuel (négocié, exprimé en TTC)
+  consumption: number;
+  co2: number;
+  fiscalHp: number;
+  envScore?: number;
+  priceTtc: number;
+  monthlyLld: number;
   image: string;
   services?: string[];
+  custom?: boolean;
 };
 
 export type LineItem = { label: string; qty: number; unitHt: number };
@@ -40,13 +49,51 @@ export type Charger = {
   model: string;
   powerKw: number;
   type: string;
-  deployment: ChargerDeployment; // domicile collaborateur (B2B2E) ou site entreprise
+  deployment: ChargerDeployment;
   priceHt: number;
   installPriceHt: number;
   features: string[];
   image: string;
   defaultLineItems?: LineItem[];
+  custom?: boolean;
 };
+
+// ===== Helpers création items custom =====
+const uid = () => `custom_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+
+export function createBlankVehicle(): Vehicle {
+  return {
+    id: uid(),
+    brand: "MARQUE", model: "MODÈLE", version: "Version", category: "Berline",
+    energy: "Électrique", batteryKwh: 60, rangeWltp: 400, powerHp: 200,
+    consumption: 16, co2: 0, fiscalHp: 5, envScore: 75,
+    priceTtc: 40000, monthlyLld: 600,
+    image: "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png",
+    custom: true,
+  };
+}
+
+export function createBlankCharger(deployment: ChargerDeployment): Charger {
+  const home = deployment === "domicile";
+  return {
+    id: uid(),
+    brand: "MARQUE", model: "MODÈLE",
+    powerKw: home ? 7.4 : 22,
+    type: home ? "Type 2 monophasé · domicile" : "Type 2 triphasé · entreprise",
+    deployment,
+    priceHt: home ? 1500 : 1500,
+    installPriceHt: home ? 0 : 1200,
+    features: ["À compléter"],
+    image: "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png",
+    defaultLineItems: home
+      ? [{ label: "Borne + forfait pose 0–10 m", qty: 1, unitHt: 1500 }]
+      : [
+          { label: "Borne", qty: 1, unitHt: 1500 },
+          { label: "Pose & raccordement IRVE certifié", qty: 1, unitHt: 1200 },
+        ],
+    custom: true,
+  };
+}
 
 const WM = (p: string) => `https://upload.wikimedia.org/wikipedia/commons/${p}`;
 

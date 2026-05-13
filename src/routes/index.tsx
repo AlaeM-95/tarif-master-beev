@@ -6,29 +6,30 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
-import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight } from "lucide-react";
-import { useChargers, useEnergy, useVehicles, fmtEur, type EnergyParams } from "@/lib/store";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, Car, Home, Building2, Download } from "lucide-react";
+import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type EnergyParams } from "@/lib/store";
 import { computeTco, generateProposalPdf, type SelectedCharger, type SelectedVehicle } from "@/lib/pdf";
-import { MANDATORY_SERVICES, type Charger, type ChargerDeployment, type LineItem, type Vehicle } from "@/lib/catalog";
+import { MANDATORY_SERVICES, createBlankCharger, createBlankVehicle, type Charger, type LineItem, type ProjectType, type Vehicle } from "@/lib/catalog";
 
 export const Route = createFileRoute("/")({
   component: App,
   head: () => ({
     meta: [
       { title: "Beev · Générateur d'offre commerciale grand compte" },
-      { name: "description", content: "Outil interne Beev : véhicules + bornes (domicile / site), TCO par véhicule, vue présentation et PDF B2B." },
+      { name: "description", content: "Outil interne Beev : 3 types de projet (véhicules, bornes domicile, bornes site) avec PDF dédié, TCO et mode présentation client." },
     ],
   }),
 });
 
 function App() {
-  const { vehicles, update: updateVehicle, reset: resetVehicles } = useVehicles();
-  const { chargers, update: updateCharger, reset: resetChargers } = useChargers();
+  const { vehicles, update: updateVehicle, add: addVehicle, remove: removeVehicle, importMany: importVehicles, reset: resetVehicles } = useVehicles();
+  const { chargers, update: updateCharger, add: addCharger, remove: removeCharger, reset: resetChargers } = useChargers();
   const { energy, set: setEnergy, reset: resetEnergy } = useEnergy();
+  const { projectType, setProjectType } = useProjectType();
 
   const [selectedV, setSelectedV] = useState<Record<string, SelectedVehicle>>({});
   const [selectedC, setSelectedC] = useState<Record<string, SelectedCharger>>({});
@@ -38,13 +39,15 @@ function App() {
     company: "", contact: "", email: "",
     salesRep: "", salesRepEmail: "", salesRepPhone: "",
     date: new Date().toLocaleDateString("fr-FR"),
-    notes: "Offre valable 30 jours. Tarifs TTC sous réserve de disponibilité constructeur, d'évolution de la fiscalité applicable et d'acceptation par la direction des risques du loueur. TCO indicatif, calculé hors malus.",
+    notes: "",
   });
 
   const counts = useMemo(() => ({
     v: Object.keys(selectedV).length,
     c: Object.keys(selectedC).length,
   }), [selectedV, selectedC]);
+
+  const visibleCount = projectType === "vehicles" ? counts.v : counts.c;
 
   const toggleV = (v: Vehicle) => {
     setSelectedV((s) => {
@@ -55,9 +58,7 @@ function App() {
           vehicle: v, quantity: 1, discountPct: 0,
           negotiatedMonthly: v.monthlyLld,
           durationMonths: 48, kmPerYear: energy.kmPerYear,
-          includeTco: false,
-          services: [],
-          options: [],
+          includeTco: false, services: [], options: [],
         },
       };
     });
@@ -82,7 +83,7 @@ function App() {
   const exportPdf = async () => {
     if (!client.company) { alert("Renseignez au moins le nom de la société client."); return; }
     await generateProposalPdf({
-      client, energy,
+      projectType, client, energy,
       vehicles: Object.values(selectedV),
       chargers: Object.values(selectedC),
     });
@@ -91,9 +92,17 @@ function App() {
   const chargersHome = chargers.filter((c) => c.deployment === "domicile");
   const chargersSite = chargers.filter((c) => c.deployment === "site");
 
+  // Réinitialise la sélection courante quand on change de type pour éviter les croisements
+  const switchProject = (t: ProjectType) => {
+    if (t === projectType) return;
+    setProjectType(t);
+    setSelectedV({});
+    setSelectedC({});
+  };
+
   if (presenting) {
     return <PresentationMode
-      client={client} energy={energy}
+      projectType={projectType} client={client} energy={energy}
       vehicles={Object.values(selectedV)}
       chargers={Object.values(selectedC)}
       onClose={() => setPresenting(false)}
@@ -104,20 +113,20 @@ function App() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card/80 backdrop-blur sticky top-0 z-30">
-        <div className="container mx-auto px-6 py-4 flex items-center justify-between gap-4">
+        <div className="container mx-auto px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-2xl flex items-center justify-center bg-primary text-primary-foreground font-bold text-xl">B</div>
             <div>
               <h1 className="text-lg font-semibold leading-tight">Beev · Offre commerciale grand compte</h1>
-              <p className="text-xs text-muted-foreground">Véhicules · Bornes domicile & site · TCO · Présentation & PDF</p>
+              <p className="text-xs text-muted-foreground">Un projet à la fois — véhicules, bornes domicile ou bornes site.</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="hidden sm:inline-flex">{counts.v} véh. · {counts.c} borne(s)</Badge>
-            <Button variant="outline" onClick={() => setPresenting(true)} disabled={counts.v + counts.c === 0} className="gap-2">
+            <Badge variant="secondary" className="hidden sm:inline-flex">{visibleCount} sélection(s)</Badge>
+            <Button variant="outline" onClick={() => setPresenting(true)} disabled={visibleCount === 0} className="gap-2">
               <Presentation className="w-4 h-4" /> Présenter au client
             </Button>
-            <Button onClick={exportPdf} disabled={counts.v + counts.c === 0} className="gap-2">
+            <Button onClick={exportPdf} disabled={visibleCount === 0} className="gap-2">
               <FileDown className="w-4 h-4" /> Générer le PDF
             </Button>
           </div>
@@ -126,71 +135,88 @@ function App() {
 
       <main className="container mx-auto px-6 py-8 grid gap-8 lg:grid-cols-[1fr_400px]">
         <div className="space-y-8">
+          <ProjectTypeSelector value={projectType} onChange={switchProject} />
           <ClientCard client={client} setClient={setClient} />
-          <EnergyCard energy={energy} setEnergy={setEnergy} reset={resetEnergy} />
+          {projectType === "vehicles" && (
+            <EnergyCard energy={energy} setEnergy={setEnergy} reset={resetEnergy} />
+          )}
 
-          <Tabs defaultValue="vehicles">
-            <TabsList>
-              <TabsTrigger value="vehicles">Véhicules ({vehicles.length})</TabsTrigger>
-              <TabsTrigger value="home">Bornes domicile ({chargersHome.length})</TabsTrigger>
-              <TabsTrigger value="site">Bornes site entreprise ({chargersSite.length})</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="vehicles" className="mt-6 space-y-4">
-              <div className="flex justify-between items-center">
-                <p className="text-sm text-muted-foreground">Catalogue synchronisé avec le calculateur TCO Beev. Loyers exprimés en TTC.</p>
-                <Button variant="ghost" size="sm" onClick={resetVehicles} className="gap-2"><RotateCcw className="w-3 h-3" /> Réinitialiser</Button>
-              </div>
+          {projectType === "vehicles" && (
+            <CatalogSection
+              title={`Véhicules (${vehicles.length})`}
+              subtitle="Catalogue synchronisé avec le calculateur TCO Beev. Loyers exprimés en TTC."
+              onReset={resetVehicles}
+              onAdd={() => addVehicle(createBlankVehicle())}
+              addLabel="Ajouter un véhicule"
+              importTco={(list) => importVehicles(list)}
+            >
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {vehicles.map((v) => (
                   <VehicleCard key={v.id} vehicle={v} selected={!!selectedV[v.id]}
-                    onToggle={() => toggleV(v)} onUpdate={(p) => updateVehicle(v.id, p)} />
+                    onToggle={() => toggleV(v)}
+                    onUpdate={(p) => updateVehicle(v.id, p)}
+                    onDelete={v.custom ? () => { if (selectedV[v.id]) toggleV(v); removeVehicle(v.id); } : undefined}
+                  />
                 ))}
               </div>
-            </TabsContent>
+            </CatalogSection>
+          )}
 
-            <TabsContent value="home" className="mt-6 space-y-4">
-              <div className="flex justify-between items-center">
-                <p className="text-sm text-muted-foreground">Catalogue B2B2E — kit collaborateur clé en main (pose 0–10 m incluse). Modèles V2C & Hager.</p>
-                <Button variant="ghost" size="sm" onClick={resetChargers} className="gap-2"><RotateCcw className="w-3 h-3" /> Réinitialiser</Button>
-              </div>
+          {projectType === "home" && (
+            <CatalogSection
+              title={`Bornes domicile collaborateurs (${chargersHome.length})`}
+              subtitle="Kit B2B2E clé en main · pose 0–10 m incluse · supervision & remboursement automatisé."
+              onReset={resetChargers}
+              onAdd={() => addCharger(createBlankCharger("domicile"))}
+              addLabel="Ajouter une borne domicile"
+            >
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {chargersHome.map((c) => (
                   <ChargerCard key={c.id} charger={c} selected={!!selectedC[c.id]}
-                    onToggle={() => toggleC(c)} onUpdate={(p) => updateCharger(c.id, p)} />
+                    onToggle={() => toggleC(c)}
+                    onUpdate={(p) => updateCharger(c.id, p)}
+                    onDelete={c.custom ? () => { if (selectedC[c.id]) toggleC(c); removeCharger(c.id); } : undefined}
+                  />
                 ))}
               </div>
-            </TabsContent>
+            </CatalogSection>
+          )}
 
-            <TabsContent value="site" className="mt-6 space-y-4">
-              <div className="flex justify-between items-center">
-                <p className="text-sm text-muted-foreground">Catalogue site entreprise — devis détaillé site par site (matériel + IRVE + génie civil).</p>
-                <Button variant="ghost" size="sm" onClick={resetChargers} className="gap-2"><RotateCcw className="w-3 h-3" /> Réinitialiser</Button>
-              </div>
+          {projectType === "site" && (
+            <CatalogSection
+              title={`Bornes site entreprise (${chargersSite.length})`}
+              subtitle="Devis détaillé site par site (matériel + IRVE + génie civil)."
+              onReset={resetChargers}
+              onAdd={() => addCharger(createBlankCharger("site"))}
+              addLabel="Ajouter une borne site"
+            >
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {chargersSite.map((c) => (
                   <ChargerCard key={c.id} charger={c} selected={!!selectedC[c.id]}
-                    onToggle={() => toggleC(c)} onUpdate={(p) => updateCharger(c.id, p)} />
+                    onToggle={() => toggleC(c)}
+                    onUpdate={(p) => updateCharger(c.id, p)}
+                    onDelete={c.custom ? () => { if (selectedC[c.id]) toggleC(c); removeCharger(c.id); } : undefined}
+                  />
                 ))}
               </div>
-            </TabsContent>
-          </Tabs>
+            </CatalogSection>
+          )}
         </div>
 
         <aside className="lg:sticky lg:top-24 self-start space-y-4 max-h-[calc(100vh-7rem)] overflow-auto">
           <Card>
             <CardHeader><CardTitle className="text-base">Sélection en cours</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              {counts.v + counts.c === 0 ? (
+              {visibleCount === 0 ? (
                 <p className="text-sm text-muted-foreground">Aucun produit sélectionné.</p>
               ) : (
                 <>
-                  {Object.values(selectedV).map((sv) => (
+                  {projectType === "vehicles" && Object.values(selectedV).map((sv) => (
                     <SelectedVehicleRow key={sv.vehicle.id} sv={sv} energy={energy}
                       onChange={(p) => setSelectedV((s) => ({ ...s, [sv.vehicle.id]: { ...sv, ...p } }))}
                       onRemove={() => toggleV(sv.vehicle)} />
                   ))}
-                  {Object.values(selectedC).map((sc) => (
+                  {projectType !== "vehicles" && Object.values(selectedC).map((sc) => (
                     <SelectedChargerRow key={sc.charger.id} sc={sc}
                       onChange={(p) => setSelectedC((s) => ({ ...s, [sc.charger.id]: { ...sc, ...p } }))}
                       onRemove={() => toggleC(sc.charger)} />
@@ -215,6 +241,140 @@ function App() {
   );
 }
 
+function ProjectTypeSelector({ value, onChange }: { value: ProjectType; onChange: (t: ProjectType) => void }) {
+  const opts: { id: ProjectType; icon: React.ReactNode; title: string; desc: string }[] = [
+    { id: "vehicles", icon: <Car className="w-5 h-5" />, title: "Projet Véhicules", desc: "Flotte LLD, TCO, prestations véhicule." },
+    { id: "home", icon: <Home className="w-5 h-5" />, title: "Bornes domicile", desc: "Kit B2B2E par collaborateur." },
+    { id: "site", icon: <Building2 className="w-5 h-5" />, title: "Bornes site entreprise", desc: "Déploiement IRVE site par site." },
+  ];
+  return (
+    <Card>
+      <CardHeader className="pb-3"><CardTitle className="text-base">Type de projet</CardTitle></CardHeader>
+      <CardContent className="grid gap-3 sm:grid-cols-3">
+        {opts.map((o) => {
+          const active = value === o.id;
+          return (
+            <button
+              key={o.id}
+              type="button"
+              onClick={() => onChange(o.id)}
+              className={`text-left rounded-xl border p-4 transition-all ${active ? "border-primary ring-2 ring-primary bg-primary/5" : "hover:border-foreground/30"}`}
+            >
+              <div className={`w-9 h-9 rounded-lg grid place-content-center mb-3 ${active ? "bg-primary text-primary-foreground" : "bg-muted"}`}>{o.icon}</div>
+              <p className="font-semibold text-sm leading-tight">{o.title}</p>
+              <p className="text-xs text-muted-foreground mt-1">{o.desc}</p>
+            </button>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
+function CatalogSection({ title, subtitle, onReset, onAdd, addLabel, importTco, children }: {
+  title: string; subtitle: string;
+  onReset: () => void; onAdd: () => void; addLabel: string;
+  importTco?: (list: Vehicle[]) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-4">
+      <div className="flex items-end justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <p className="text-sm text-muted-foreground max-w-2xl">{subtitle}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {importTco && <ImportTcoDialog onImport={importTco} />}
+          <Button variant="outline" size="sm" onClick={onAdd} className="gap-2"><Plus className="w-3 h-3" /> {addLabel}</Button>
+          <Button variant="ghost" size="sm" onClick={onReset} className="gap-2"><RotateCcw className="w-3 h-3" /> Réinitialiser</Button>
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function ImportTcoDialog({ onImport }: { onImport: (list: Vehicle[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const [json, setJson] = useState("");
+  const [err, setErr] = useState("");
+
+  const handleImport = () => {
+    setErr("");
+    try {
+      // 1) JSON brut collé (fallback en attendant l'API du calculateur)
+      if (json.trim()) {
+        const parsed = JSON.parse(json);
+        const list: any[] = Array.isArray(parsed) ? parsed : (parsed.vehicles ?? []);
+        if (!Array.isArray(list) || list.length === 0) throw new Error("Aucun véhicule détecté.");
+        const vehs: Vehicle[] = list.map((v: any) => ({
+          id: `tco_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          brand: String(v.brand ?? "Marque"),
+          model: String(v.model ?? "Modèle"),
+          version: String(v.version ?? ""),
+          category: String(v.category ?? "Berline"),
+          energy: (v.energy ?? "Électrique") as Vehicle["energy"],
+          batteryKwh: Number(v.batteryKwh ?? 0),
+          rangeWltp: Number(v.rangeWltp ?? 0),
+          powerHp: Number(v.powerHp ?? 0),
+          consumption: Number(v.consumption ?? 0),
+          co2: Number(v.co2 ?? 0),
+          fiscalHp: Number(v.fiscalHp ?? 0),
+          envScore: v.envScore != null ? Number(v.envScore) : undefined,
+          priceTtc: Number(v.priceTtc ?? 0),
+          monthlyLld: Number(v.monthlyLld ?? 0),
+          image: String(v.image ?? "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png"),
+          custom: true,
+        }));
+        onImport(vehs);
+        setOpen(false); setJson(""); setCode("");
+        return;
+      }
+      // 2) Code à 6 caractères → endpoint à brancher quand le calculateur exposera l'export
+      if (code.trim()) {
+        throw new Error("L'import par code unique sera disponible dès que le calculateur TCO exposera son endpoint d'export. En attendant, utilisez l'option JSON ci-dessous.");
+      }
+      throw new Error("Saisissez un code ou collez un JSON.");
+    } catch (e: any) {
+      setErr(e.message || "Import impossible.");
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="gap-2"><Download className="w-3 h-3" /> Importer du calculateur TCO</Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Importer une sélection depuis le calculateur TCO</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label className="text-xs uppercase text-muted-foreground">Code unique (6 caractères)</Label>
+            <Input placeholder="Ex. K7B2-9F" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} />
+            <p className="text-xs text-muted-foreground">
+              Méthode recommandée : depuis <a className="underline" href="https://beev-tco-2026.lovable.app/" target="_blank" rel="noreferrer">le calculateur TCO</a>, le commercial cliquera sur « Exporter vers catalogue Beev » et obtiendra un code à 6 caractères valable 24 h. Endpoint à brancher côté calculateur.
+            </p>
+          </div>
+          <Separator />
+          <div className="space-y-2">
+            <Label className="text-xs uppercase text-muted-foreground">Ou coller un JSON (fallback)</Label>
+            <Textarea rows={6} value={json} onChange={(e) => setJson(e.target.value)} placeholder='[{"brand":"Tesla","model":"Model 3","version":"Propulsion","energy":"Électrique","priceTtc":42990,"monthlyLld":650,"rangeWltp":513,"batteryKwh":60,"powerHp":283,"consumption":13.2,"co2":0,"fiscalHp":5,"image":"https://..."}]' className="font-mono text-xs" />
+          </div>
+          {err && <p className="text-sm text-destructive">{err}</p>}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
+          <Button onClick={handleImport}>Importer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ClientCard({ client, setClient }: { client: any; setClient: (c: any) => void }) {
   return (
     <Card>
@@ -228,7 +388,7 @@ function ClientCard({ client, setClient }: { client: any; setClient: (c: any) =>
         <Field label="Email commercial"><Input value={client.salesRepEmail} onChange={(e) => setClient({ ...client, salesRepEmail: e.target.value })} placeholder="alae@beev.co" /></Field>
         <Field label="Téléphone commercial"><Input value={client.salesRepPhone} onChange={(e) => setClient({ ...client, salesRepPhone: e.target.value })} placeholder="+33 6 ..." /></Field>
         <Field label="Notes & conditions" className="sm:col-span-2">
-          <Textarea rows={3} value={client.notes} onChange={(e) => setClient({ ...client, notes: e.target.value })} />
+          <Textarea rows={3} value={client.notes} onChange={(e) => setClient({ ...client, notes: e.target.value })} placeholder="Laisser vide pour appliquer les conditions standard du type de projet." />
         </Field>
       </CardContent>
     </Card>
@@ -253,9 +413,6 @@ function EnergyCard({ energy, setEnergy, reset }: { energy: EnergyParams; setEne
         <NumField label="kWh public €" value={energy.kWhPublic} onChange={(n) => setEnergy({ ...energy, kWhPublic: n })} step={0.01} />
         <NumField label="Mix domicile %" value={energy.mixHomePct} onChange={(n) => setEnergy({ ...energy, mixHomePct: n })} />
       </CardContent>
-      <CardContent className="pt-0">
-        <p className="text-xs text-muted-foreground">Chaque véhicule peut ensuite avoir sa propre durée, son propre kilométrage et son propre TCO (à activer dans le panneau de droite).</p>
-      </CardContent>
     </Card>
   );
 }
@@ -264,12 +421,13 @@ function Field({ label, children, className = "" }: { label: string; children: R
   return <div className={`space-y-1.5 ${className}`}><Label className="text-xs text-muted-foreground">{label}</Label>{children}</div>;
 }
 
-function VehicleCard({ vehicle, selected, onToggle, onUpdate }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate: (p: Partial<Vehicle>) => void }) {
+function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate: (p: Partial<Vehicle>) => void; onDelete?: () => void }) {
   const [editing, setEditing] = useState(false);
   return (
     <Card className={`overflow-hidden transition-all ${selected ? "ring-2 ring-primary" : "hover:shadow-md"}`}>
-      <div className="aspect-video bg-muted overflow-hidden">
+      <div className="aspect-video bg-muted overflow-hidden relative">
         <img src={vehicle.image} alt={`${vehicle.brand} ${vehicle.model}`} className="w-full h-full object-cover" loading="lazy" />
+        {vehicle.custom && <Badge className="absolute top-2 left-2 bg-primary">Custom</Badge>}
       </div>
       <CardContent className="p-4 space-y-3">
         <div className="flex items-start justify-between gap-2">
@@ -293,11 +451,16 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate }: { vehicle: Vehic
             <p className="font-semibold">{fmtEur(vehicle.priceTtc)} <span className="text-xs text-muted-foreground">TTC</span></p>
             <p className="text-xs text-primary font-medium">{fmtEur(vehicle.monthlyLld)} TTC/mois</p>
           </div>
-          <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)}>{editing ? "OK" : "Éditer"}</Button>
+          <div className="flex items-center gap-1">
+            {onDelete && <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={onDelete}><Trash2 className="w-3 h-3" /></Button>}
+            <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)}>{editing ? "OK" : "Éditer"}</Button>
+          </div>
         </div>
         {editing && (
           <div className="space-y-2 pt-2 border-t">
             <div className="grid grid-cols-2 gap-2">
+              <TxtField label="Marque" value={vehicle.brand} onChange={(s) => onUpdate({ brand: s })} />
+              <TxtField label="Modèle" value={vehicle.model} onChange={(s) => onUpdate({ model: s })} />
               <NumField label="Prix TTC" value={vehicle.priceTtc} onChange={(n) => onUpdate({ priceTtc: n })} />
               <NumField label="LLD €/mois TTC" value={vehicle.monthlyLld} onChange={(n) => onUpdate({ monthlyLld: n })} />
               <NumField label="Autonomie km" value={vehicle.rangeWltp} onChange={(n) => onUpdate({ rangeWltp: n })} />
@@ -322,24 +485,27 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate }: { vehicle: Vehic
   );
 }
 
-function ChargerCard({ charger, selected, onToggle, onUpdate }: { charger: Charger; selected: boolean; onToggle: () => void; onUpdate: (p: Partial<Charger>) => void }) {
+function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { charger: Charger; selected: boolean; onToggle: () => void; onUpdate: (p: Partial<Charger>) => void; onDelete?: () => void }) {
   const [editing, setEditing] = useState(false);
   return (
     <Card className={`overflow-hidden transition-all ${selected ? "ring-2 ring-primary" : "hover:shadow-md"}`}>
+      <div className="aspect-video bg-muted overflow-hidden relative">
+        <img src={charger.image} alt={`${charger.brand} ${charger.model}`} className="w-full h-full object-contain p-2" loading="lazy" />
+        {charger.custom && <Badge className="absolute top-2 left-2 bg-primary">Custom</Badge>}
+      </div>
       <CardContent className="p-4 space-y-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-semibold leading-tight">{charger.brand} {charger.model}</h3>
               <Badge variant="secondary" className="text-[10px]">{charger.powerKw} kW</Badge>
-              <Badge variant="outline" className="text-[10px]">{charger.deployment === "domicile" ? "Domicile" : "Site"}</Badge>
             </div>
             <p className="text-xs text-muted-foreground">{charger.type}</p>
           </div>
           <Checkbox checked={selected} onCheckedChange={onToggle} className="mt-1" />
         </div>
         <ul className="text-xs text-muted-foreground space-y-1">
-          {charger.features.slice(0, 4).map((f) => <li key={f} className="flex gap-1.5"><Plus className="w-3 h-3 mt-0.5 text-primary" />{f}</li>)}
+          {charger.features.slice(0, 4).map((f, i) => <li key={i} className="flex gap-1.5"><Plus className="w-3 h-3 mt-0.5 text-primary" />{f}</li>)}
         </ul>
         <div className="flex items-end justify-between pt-1">
           <div>
@@ -347,11 +513,16 @@ function ChargerCard({ charger, selected, onToggle, onUpdate }: { charger: Charg
             <p className="font-semibold">{fmtEur(charger.priceHt)}</p>
             {charger.installPriceHt > 0 && <p className="text-xs text-primary">+ pose ~{fmtEur(charger.installPriceHt)} HT</p>}
           </div>
-          <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)}>{editing ? "OK" : "Éditer"}</Button>
+          <div className="flex items-center gap-1">
+            {onDelete && <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={onDelete}><Trash2 className="w-3 h-3" /></Button>}
+            <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)}>{editing ? "OK" : "Éditer"}</Button>
+          </div>
         </div>
         {editing && (
           <div className="space-y-2 pt-2 border-t">
             <div className="grid grid-cols-2 gap-2">
+              <TxtField label="Marque" value={charger.brand} onChange={(s) => onUpdate({ brand: s })} />
+              <TxtField label="Modèle" value={charger.model} onChange={(s) => onUpdate({ model: s })} />
               <NumField label="Prix borne HT" value={charger.priceHt} onChange={(n) => onUpdate({ priceHt: n })} />
               <NumField label="Pose HT (réf.)" value={charger.installPriceHt} onChange={(n) => onUpdate({ installPriceHt: n })} />
               <NumField label="Puissance kW" value={charger.powerKw} onChange={(n) => onUpdate({ powerKw: n })} />
@@ -514,31 +685,34 @@ function SelectedChargerRow({ sc, onChange, onRemove }: { sc: SelectedCharger; o
   );
 }
 
-// ============ PRESENTATION MODE (vue client plein écran) ============
+// ============ PRESENTATION MODE ============
 
 type Slide =
   | { kind: "cover" }
   | { kind: "vehicle"; sv: SelectedVehicle }
-  | { kind: "chargers-home"; items: SelectedCharger[] }
-  | { kind: "chargers-site"; items: SelectedCharger[] };
+  | { kind: "charger"; sc: SelectedCharger };
 
-function PresentationMode({ client, energy, vehicles, chargers, onClose, onExport }: {
+function PresentationMode({ projectType, client, energy, vehicles, chargers, onClose, onExport }: {
+  projectType: ProjectType;
   client: any; energy: EnergyParams;
   vehicles: SelectedVehicle[]; chargers: SelectedCharger[];
   onClose: () => void; onExport: () => void;
 }) {
   const slides: Slide[] = useMemo(() => {
     const s: Slide[] = [{ kind: "cover" }];
-    vehicles.forEach((sv) => s.push({ kind: "vehicle", sv }));
-    const home = chargers.filter((c) => c.charger.deployment === "domicile");
-    const site = chargers.filter((c) => c.charger.deployment === "site");
-    if (home.length) s.push({ kind: "chargers-home", items: home });
-    if (site.length) s.push({ kind: "chargers-site", items: site });
+    if (projectType === "vehicles") {
+      vehicles.forEach((sv) => s.push({ kind: "vehicle", sv }));
+    } else {
+      chargers.forEach((sc) => s.push({ kind: "charger", sc }));
+    }
     return s;
-  }, [vehicles, chargers]);
+  }, [projectType, vehicles, chargers]);
 
   const [i, setI] = useState(0);
   const slide = slides[i];
+
+  const nbV = projectType === "vehicles" ? vehicles.length : 0;
+  const nbC = projectType === "vehicles" ? 0 : chargers.length;
 
   return (
     <div className="fixed inset-0 z-50 bg-background overflow-auto">
@@ -560,25 +734,23 @@ function PresentationMode({ client, energy, vehicles, chargers, onClose, onExpor
         </div>
       </header>
       <main className="container mx-auto px-8 py-12">
-        {slide.kind === "cover" && <CoverSlide client={client} nbV={vehicles.length} nbC={chargers.length} />}
+        {slide.kind === "cover" && <CoverSlide projectType={projectType} client={client} nbV={nbV} nbC={nbC} />}
         {slide.kind === "vehicle" && <VehicleSlide sv={slide.sv} energy={energy} />}
-        {slide.kind === "chargers-home" && <ChargersSlide title="Bornes domicile collaborateurs" subtitle="Kit B2B2E clé en main · pose 0–10 m incluse" items={slide.items} />}
-        {slide.kind === "chargers-site" && <ChargersSlide title="Bornes site entreprise" subtitle="Déploiement IRVE · matériel + génie civil" items={slide.items} />}
+        {slide.kind === "charger" && <ChargerSlide sc={slide.sc} projectType={projectType} />}
       </main>
     </div>
   );
 }
 
-function CoverSlide({ client, nbV, nbC }: { client: any; nbV: number; nbC: number }) {
+function CoverSlide({ projectType, client, nbV, nbC }: { projectType: ProjectType; client: any; nbV: number; nbC: number }) {
+  const sub = projectType === "vehicles" ? "Sélection de véhicules pour votre flotte."
+    : projectType === "home" ? "Bornes domicile collaborateurs — kit B2B2E clé en main."
+    : "Bornes site entreprise — déploiement IRVE clé en main.";
   return (
     <div className="max-w-4xl mx-auto py-12">
       <p className="text-xs uppercase tracking-widest text-muted-foreground mb-4">Offre commerciale · {client.date}</p>
       <h1 className="text-5xl md:text-6xl font-bold tracking-tight mb-4">Beev × {client.company || "Votre entreprise"}</h1>
-      <p className="text-xl text-muted-foreground mb-12">
-        {nbV > 0 && nbC > 0 ? "Véhicules électriques & infrastructure de recharge."
-          : nbC > 0 ? "Bornes de recharge — déploiement clé en main."
-          : "Sélection de véhicules pour votre flotte."}
-      </p>
+      <p className="text-xl text-muted-foreground mb-12">{sub}</p>
       <Separator className="mb-8" />
       <div className="grid sm:grid-cols-2 gap-8">
         <div>
@@ -595,8 +767,18 @@ function CoverSlide({ client, nbV, nbC }: { client: any; nbV: number; nbC: numbe
         </div>
       </div>
       <div className="mt-12 grid grid-cols-2 gap-6">
-        <div className="border rounded-2xl p-6"><p className="text-5xl font-bold">{nbV}</p><p className="text-sm text-muted-foreground mt-1">véhicule{nbV > 1 ? "s" : ""} étudié{nbV > 1 ? "s" : ""}</p></div>
-        <div className="border rounded-2xl p-6"><p className="text-5xl font-bold">{nbC}</p><p className="text-sm text-muted-foreground mt-1">solution{nbC > 1 ? "s" : ""} de recharge</p></div>
+        {projectType === "vehicles" ? (
+          <div className="border rounded-2xl p-6"><p className="text-5xl font-bold">{nbV}</p><p className="text-sm text-muted-foreground mt-1">véhicule{nbV > 1 ? "s" : ""} étudié{nbV > 1 ? "s" : ""}</p></div>
+        ) : (
+          <div className="border rounded-2xl p-6">
+            <p className="text-5xl font-bold">{nbC}</p>
+            <p className="text-sm text-muted-foreground mt-1">{projectType === "home" ? `collaborateur${nbC > 1 ? "s" : ""} équipé${nbC > 1 ? "s" : ""}` : `site${nbC > 1 ? "s" : ""} équipé${nbC > 1 ? "s" : ""}`}</p>
+          </div>
+        )}
+        <div className="border rounded-2xl p-6 bg-primary text-primary-foreground">
+          <p className="text-xs uppercase opacity-70">Type de projet</p>
+          <p className="text-2xl font-semibold mt-1">{projectType === "vehicles" ? "Véhicules LLD" : projectType === "home" ? "Domicile B2B2E" : "Site entreprise"}</p>
+        </div>
       </div>
     </div>
   );
@@ -669,52 +851,49 @@ function VehicleSlide({ sv, energy }: { sv: SelectedVehicle; energy: EnergyParam
   );
 }
 
-function ChargersSlide({ title, subtitle, items }: { title: string; subtitle: string; items: SelectedCharger[] }) {
+function ChargerSlide({ sc, projectType }: { sc: SelectedCharger; projectType: ProjectType }) {
+  const isHome = projectType === "home";
+  const total = sc.lineItems.reduce((a, li) => a + li.qty * li.unitHt, 0);
   return (
     <div className="max-w-6xl mx-auto">
-      <p className="text-xs uppercase tracking-widest text-muted-foreground mb-3">Infrastructure de recharge</p>
-      <h2 className="text-4xl font-bold mb-1">{title}</h2>
-      <p className="text-lg text-muted-foreground mb-8">{subtitle}</p>
+      <p className="text-xs uppercase tracking-widest text-muted-foreground mb-3">{isHome ? "Borne domicile collaborateur" : "Borne site entreprise"}</p>
+      <h2 className="text-4xl font-bold mb-1">{sc.siteName || `${sc.charger.brand} ${sc.charger.model}`}</h2>
+      <p className="text-lg text-muted-foreground mb-2">{sc.charger.brand} {sc.charger.model} · {sc.charger.powerKw} kW · {sc.charger.type}</p>
+      {sc.siteAddress && <p className="text-sm text-muted-foreground mb-8">{sc.siteAddress}</p>}
 
-      <div className="space-y-6">
-        {items.map((sc) => {
-          const total = sc.lineItems.reduce((a, li) => a + li.qty * li.unitHt, 0);
-          return (
-            <div key={sc.charger.id} className="border rounded-2xl p-6">
-              <div className="flex items-start justify-between mb-4 gap-4 flex-wrap">
-                <div>
-                  <h3 className="text-2xl font-semibold">{sc.siteName || `${sc.charger.brand} ${sc.charger.model}`}</h3>
-                  <p className="text-muted-foreground">{sc.charger.brand} {sc.charger.model} · {sc.charger.powerKw} kW · {sc.charger.type}</p>
-                  {sc.siteAddress && <p className="text-sm text-muted-foreground mt-1">{sc.siteAddress}</p>}
-                </div>
-                <div className="text-right">
-                  <p className="text-xs uppercase text-muted-foreground">Investissement HT</p>
-                  <p className="text-3xl font-bold">{fmtEur(total * sc.quantity)}</p>
-                  {sc.quantity > 1 && <p className="text-xs text-muted-foreground">{fmtEur(total)} × {sc.quantity}</p>}
-                </div>
-              </div>
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <p className="text-xs uppercase text-muted-foreground mb-2">Atouts matériel</p>
-                  <ul className="space-y-1 text-sm">
-                    {sc.charger.features.map((f) => <li key={f} className="flex gap-2"><span className="text-primary">●</span>{f}</li>)}
-                  </ul>
-                </div>
-                <div>
-                  <p className="text-xs uppercase text-muted-foreground mb-2">Devis détaillé</p>
-                  <ul className="space-y-1 text-sm">
-                    {sc.lineItems.map((li, i) => (
-                      <li key={i} className="flex justify-between gap-3">
-                        <span className="truncate">{li.label}</span>
-                        <span className="text-muted-foreground tabular-nums whitespace-nowrap">{li.qty} × {fmtEur(li.unitHt)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+      <div className="grid lg:grid-cols-[1fr_1.3fr] gap-8 mb-8">
+        <div className="rounded-2xl overflow-hidden bg-muted aspect-square flex items-center justify-center p-4">
+          <img src={sc.charger.image} alt={`${sc.charger.brand} ${sc.charger.model}`} className="max-w-full max-h-full object-contain" />
+        </div>
+        <div className="space-y-6">
+          <div>
+            <p className="text-xs uppercase text-muted-foreground mb-2">Atouts matériel</p>
+            <ul className="space-y-1.5 text-sm">
+              {sc.charger.features.map((f, i) => <li key={i} className="flex gap-2"><span className="text-primary">●</span>{f}</li>)}
+            </ul>
+          </div>
+          <div>
+            <p className="text-xs uppercase text-muted-foreground mb-2">Devis détaillé</p>
+            <ul className="space-y-1 text-sm">
+              {sc.lineItems.map((li, i) => (
+                <li key={i} className="flex justify-between gap-3 border-b py-1.5">
+                  <span>{li.label}</span>
+                  <span className="text-muted-foreground tabular-nums whitespace-nowrap">{li.qty} × {fmtEur(li.unitHt)}</span>
+                </li>
+              ))}
+              <li className="flex justify-between pt-2 font-semibold">
+                <span>{isHome ? "Total HT par collaborateur" : "Total HT site"}</span>
+                <span className="tabular-nums">{fmtEur(total)}</span>
+              </li>
+              {sc.quantity > 1 && (
+                <li className="flex justify-between text-primary font-semibold">
+                  <span>Total HT × {sc.quantity}</span>
+                  <span className="tabular-nums">{fmtEur(total * sc.quantity)}</span>
+                </li>
+              )}
+            </ul>
+          </div>
+        </div>
       </div>
     </div>
   );
