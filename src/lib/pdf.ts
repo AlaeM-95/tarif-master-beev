@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { MANDATORY_SERVICES, type Charger, type LineItem, type Vehicle } from "./catalog";
+import { MANDATORY_SERVICES, type Charger, type LineItem, type ProjectType, type Vehicle } from "./catalog";
 import type { EnergyParams } from "./store";
 
 export type ClientInfo = {
@@ -18,11 +18,11 @@ export type SelectedVehicle = {
   vehicle: Vehicle;
   quantity: number;
   discountPct: number;
-  negotiatedMonthly: number;     // loyer TTC/mois après négociation
+  negotiatedMonthly: number;
   durationMonths: number;
   kmPerYear: number;
-  includeTco: boolean;           // afficher la fiche TCO pour ce véhicule
-  services: string[];            // prestations additionnelles libres (commercial)
+  includeTco: boolean;
+  services: string[];
   options: LineItem[];
 };
 
@@ -37,17 +37,17 @@ export type SelectedCharger = {
   lineItems: LineItem[];
 };
 
-// ---- Palette B2B Beev ----
 const INK = [17, 17, 17] as [number, number, number];
 const SUB = [95, 95, 100] as [number, number, number];
 const RULE = [220, 218, 212] as [number, number, number];
 const BG = [250, 248, 244] as [number, number, number];
-const ACCENT = [140, 198, 63] as [number, number, number]; // vert Beev (proche logo)
+const ACCENT = [140, 198, 63] as [number, number, number];
 const LAVENDER = [168, 148, 214] as [number, number, number];
 
 const PAGE_W = 595.28;
 const PAGE_H = 841.89;
 const M = 48;
+const FOOTER_LIMIT = PAGE_H - 70;
 
 // ============ TCO ============
 export function computeTco(sv: SelectedVehicle, e: EnergyParams) {
@@ -55,16 +55,14 @@ export function computeTco(sv: SelectedVehicle, e: EnergyParams) {
   const v = sv.vehicle;
   const isElec = v.energy === "Électrique";
   const isPhev = v.energy === "Hybride Rechargeable";
-  // énergie / 100 km
   let energy100 = 0;
   if (isElec) {
     const kWhCost = mix * e.kWhHome + (1 - mix) * e.kWhPublic;
     energy100 = v.consumption * kWhCost;
   } else if (isPhev) {
     const kWhCost = mix * e.kWhHome + (1 - mix) * e.kWhPublic;
-    // approx : 60% élec / 40% essence si PHEV utilisé correctement
     const elecShare = 0.6;
-    const fuelL100 = 6.5; // base hors mode élec
+    const fuelL100 = 6.5;
     energy100 = elecShare * (v.batteryKwh / Math.max(v.rangeWltp, 1)) * 100 * kWhCost
               + (1 - elecShare) * fuelL100 * e.fuelPriceL;
   } else {
@@ -72,7 +70,6 @@ export function computeTco(sv: SelectedVehicle, e: EnergyParams) {
   }
   const lease100 = (sv.negotiatedMonthly * 12) / Math.max(sv.kmPerYear, 1) * 100;
   const tco100 = lease100 + energy100;
-  // Référence essence : Peugeot 308 SW 5.7L/100
   const refFuel100 = 6.0 * e.fuelPriceL;
   const refLease100 = (500 * 12) / Math.max(sv.kmPerYear, 1) * 100;
   const refTco100 = refLease100 + refFuel100;
@@ -80,48 +77,50 @@ export function computeTco(sv: SelectedVehicle, e: EnergyParams) {
   return { energy100, lease100, tco100, refTco100, economy100 };
 }
 
+const TYPE_TITLE: Record<ProjectType, string> = {
+  vehicles: "Véhicules électriques pour votre flotte",
+  home: "Bornes de recharge domicile collaborateurs",
+  site: "Bornes de recharge site entreprise",
+};
+
 // ============ MAIN ============
 export async function generateProposalPdf(opts: {
+  projectType: ProjectType;
   client: ClientInfo;
   vehicles: SelectedVehicle[];
   chargers: SelectedCharger[];
   energy: EnergyParams;
 }) {
-  const { client, vehicles, chargers, energy } = opts;
+  const { projectType, client, vehicles, chargers, energy } = opts;
   const doc = new jsPDF({ unit: "pt", format: "a4" });
 
-  drawCover(doc, client, vehicles.length, chargers.length);
+  const v = projectType === "vehicles" ? vehicles : [];
+  const c = projectType === "vehicles" ? [] : chargers;
 
-  // Synthèse
+  drawCover(doc, projectType, client, v.length, c.length);
+
   doc.addPage();
-  drawHeader(doc, client);
-  drawSynthesis(doc, client, vehicles, chargers, energy);
+  drawHeader(doc, client, projectType);
+  drawWhyBeev(doc, projectType);
 
-  // Pourquoi Beev
-  doc.addPage();
-  drawHeader(doc, client);
-  drawWhyBeev(doc);
-
-  // Fiches véhicules
-  for (let i = 0; i < vehicles.length; i++) {
-    doc.addPage();
-    drawHeader(doc, client);
-    await drawVehiclePage(doc, vehicles[i], energy, i + 1, vehicles.length);
+  if (projectType === "vehicles") {
+    for (let i = 0; i < v.length; i++) {
+      doc.addPage();
+      drawHeader(doc, client, projectType);
+      await drawVehiclePage(doc, v[i], energy, i + 1, v.length);
+    }
+  } else {
+    for (let i = 0; i < c.length; i++) {
+      doc.addPage();
+      drawHeader(doc, client, projectType);
+      await drawChargerPage(doc, c[i], projectType, i + 1, c.length);
+    }
   }
 
-  // Fiches bornes (1 page par site)
-  for (let i = 0; i < chargers.length; i++) {
-    doc.addPage();
-    drawHeader(doc, client);
-    await drawChargerPage(doc, chargers[i], i + 1, chargers.length);
-  }
-
-  // Conditions
   doc.addPage();
-  drawHeader(doc, client);
-  drawTerms(doc, client);
+  drawHeader(doc, client, projectType);
+  drawValidation(doc, projectType, client);
 
-  // Pieds + numérotation
   const pages = doc.getNumberOfPages();
   for (let i = 2; i <= pages; i++) {
     doc.setPage(i);
@@ -129,15 +128,15 @@ export async function generateProposalPdf(opts: {
   }
 
   const safe = (s: string) => s.replace(/[^a-z0-9]+/gi, "_").slice(0, 40) || "client";
-  doc.save(`Beev_Offre_${safe(client.company)}_${client.date.replace(/\//g, "-")}.pdf`);
+  const tag = projectType === "vehicles" ? "Vehicules" : projectType === "home" ? "Bornes_Domicile" : "Bornes_Site";
+  doc.save(`Beev_${tag}_${safe(client.company)}_${client.date.replace(/\//g, "-")}.pdf`);
 }
 
 // ============ COVER ============
-function drawCover(doc: jsPDF, c: ClientInfo, nbV: number, nbC: number) {
+function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nbC: number) {
   doc.setFillColor(...INK);
   doc.rect(0, 0, PAGE_W, PAGE_H, "F");
 
-  // Logo / nom
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
@@ -147,31 +146,25 @@ function drawCover(doc: jsPDF, c: ClientInfo, nbV: number, nbC: number) {
   doc.setTextColor(180, 180, 185);
   doc.text("Mobilité électrique pour entreprises · beev.co", M, 94);
 
-  // Filet vert
   doc.setFillColor(...ACCENT);
   doc.rect(M, 110, 60, 4, "F");
 
-  // Eyebrow
   doc.setFontSize(9);
   doc.setTextColor(180, 180, 185);
   doc.text(`OFFRE COMMERCIALE · ${c.date.toUpperCase()}`, M, 250);
 
-  // Titre
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(38);
+  doc.setFontSize(34);
   doc.setTextColor(255, 255, 255);
   doc.text("Beev × " + (c.company || "Votre entreprise"), M, 295);
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(15);
+  doc.setFontSize(14);
   doc.setTextColor(210, 210, 215);
-  const sub = nbC > 0 && nbV > 0
-    ? "Véhicules électriques & infrastructure de recharge."
-    : nbC > 0 ? "Bornes de recharge — déploiement clé en main."
-    : "Sélection de véhicules électriques pour votre flotte.";
-  doc.text(sub, M, 325);
+  const sub = TYPE_TITLE[type];
+  const subL = doc.splitTextToSize(sub, PAGE_W - M * 2);
+  doc.text(subL, M, 325);
 
-  // Bloc client
   doc.setDrawColor(80, 80, 90);
   doc.line(M, 470, PAGE_W - M, 470);
   doc.setFontSize(9);
@@ -200,124 +193,84 @@ function drawCover(doc: jsPDF, c: ClientInfo, nbV: number, nbC: number) {
   if (c.salesRepEmail) doc.text(c.salesRepEmail, PAGE_W - M, 540, { align: "right" });
   if (c.salesRepPhone) doc.text(c.salesRepPhone, PAGE_W - M, 555, { align: "right" });
 
-  // Compteurs
   doc.setDrawColor(80, 80, 90);
   doc.line(M, 640, PAGE_W - M, 640);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(40);
   doc.setTextColor(255, 255, 255);
-  doc.text(String(nbV), M, 700);
-  doc.text(String(nbC), PAGE_W / 2, 700);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.setTextColor(180, 180, 185);
-  doc.text(`véhicule${nbV > 1 ? "s" : ""} étudié${nbV > 1 ? "s" : ""}`, M, 718);
-  doc.text(`site${nbC > 1 ? "s" : ""} équipé${nbC > 1 ? "s" : ""} en bornes`, PAGE_W / 2, 718);
+  if (type === "vehicles") {
+    doc.text(String(nbV), M, 700);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(180, 180, 185);
+    doc.text(`véhicule${nbV > 1 ? "s" : ""} étudié${nbV > 1 ? "s" : ""}`, M, 718);
+  } else {
+    doc.text(String(nbC), M, 700);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(180, 180, 185);
+    const lbl = type === "home" ? `collaborateur${nbC > 1 ? "s" : ""} équipé${nbC > 1 ? "s" : ""} à domicile` : `site${nbC > 1 ? "s" : ""} entreprise équipé${nbC > 1 ? "s" : ""}`;
+    doc.text(lbl, M, 718);
+  }
 
-  // Pied
   doc.setFontSize(8.5);
   doc.setTextColor(150, 150, 155);
   doc.text("Document confidentiel — usage interne client", M, PAGE_H - 50);
   doc.text("beev.co", PAGE_W - M, PAGE_H - 50, { align: "right" });
 }
 
-// ============ SYNTHESE ============
-function drawSynthesis(doc: jsPDF, c: ClientInfo, vs: SelectedVehicle[], cs: SelectedCharger[], _e: EnergyParams) {
-  let y = 130;
-  eyebrow(doc, "SYNTHÈSE", y);
-  y += 18;
-  title(doc, "Une vision d'ensemble de votre projet.", y);
-  y += 36;
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10.5);
-  doc.setTextColor(...INK);
-  const intro = `${c.contact || "Bonjour"},\n\nVoici la synthèse consolidée de la proposition Beev pour ${c.company || "votre entreprise"}. Chaque véhicule a été étudié avec ses prestations associées, et le volet bornes est détaillé site par site, en cohérence avec les standards de déploiement IRVE Beev.`;
-  const lines = doc.splitTextToSize(intro, PAGE_W - M * 2);
-  doc.text(lines, M, y);
-  y += lines.length * 14 + 14;
-
-  // Totaux véhicules
-  const totalMonthly = vs.reduce((s, v) => s + v.negotiatedMonthly * v.quantity, 0);
-  const totalUpfront = vs.reduce((s, v) => s + v.vehicle.priceTtc * (1 - v.discountPct / 100) * v.quantity, 0);
-  const totalQtyV = vs.reduce((s, v) => s + v.quantity, 0);
-
-  // Totaux bornes
-  const totalChargersHt = cs.reduce((s, sc) => {
-    const fromItems = sc.lineItems.reduce((a, li) => a + li.qty * li.unitHt, 0);
-    return s + fromItems * sc.quantity;
-  }, 0);
-  const totalQtyC = cs.reduce((s, sc) => s + sc.quantity, 0);
-
-  // Tableau de synthèse SANS TOTAUX (volonté commerciale : ne pas alourdir le closing)
-  const body: any[] = [];
-  if (vs.length) {
-    body.push([{ content: "VÉHICULES", colSpan: 4, styles: { fillColor: BG, fontStyle: "bold", textColor: INK } }]);
-    vs.forEach((sv) => {
-      body.push([
-        `${sv.vehicle.brand} ${sv.vehicle.model}\n${sv.vehicle.version}`,
-        `× ${sv.quantity}`,
-        `${eur(sv.negotiatedMonthly)} TTC / mois`,
-        `${sv.durationMonths} mois · ${sv.kmPerYear.toLocaleString("fr-FR")} km/an`,
-      ]);
-    });
-  }
-  if (cs.length) {
-    body.push([{ content: "BORNES & INSTALLATION", colSpan: 4, styles: { fillColor: BG, fontStyle: "bold", textColor: INK } }]);
-    cs.forEach((sc) => {
-      const tag = sc.charger.deployment === "domicile" ? "Domicile collaborateur" : "Site entreprise";
-      body.push([
-        `${sc.siteName || sc.charger.brand + " " + sc.charger.model}\n${sc.charger.brand} ${sc.charger.model}`,
-        `× ${sc.quantity}`,
-        `${sc.charger.powerKw} kW`,
-        tag,
-      ]);
-    });
-  }
-
-  if (body.length) {
-    autoTable(doc, {
-      startY: y,
-      theme: "grid",
-      head: [["Désignation", "Qté", "Détail", "Modalités"]],
-      body: body as any,
-      headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold" },
-      bodyStyles: { fontSize: 9.5, cellPadding: 7, textColor: INK, lineColor: RULE },
-      columnStyles: { 1: { halign: "center", cellWidth: 40 }, 2: { halign: "right" }, 3: { halign: "right" } },
-      margin: { left: M, right: M },
-    });
-  }
-}
-
-// ============ POURQUOI BEEV ============
-function drawWhyBeev(doc: jsPDF) {
+// ============ POURQUOI BEEV (varie par type) ============
+function drawWhyBeev(doc: jsPDF, type: ProjectType) {
   let y = 130;
   eyebrow(doc, "NOTRE APPROCHE", y);
   y += 18;
-  title(doc, "Pourquoi centraliser chez Beev.", y);
+  title(doc, type === "vehicles" ? "Pourquoi confier vos véhicules à Beev." :
+              type === "home" ? "Le kit B2B2E clé en main pour vos collaborateurs." :
+              "Un déploiement IRVE site entreprise sans friction.", y);
   y += 36;
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10.5);
   doc.setTextColor(...INK);
-  const p1 = "Quand on équipe une flotte ou plusieurs sites en simultané, le choix des partenaires n'est pas anodin. Beev centralise pour vous le sourcing véhicule (Tesla, Mercedes, Renault, VW, Hyundai, Kia, Peugeot…), le financement LLD (Ayvens, Arval, Athlon, Leaseplan), et le déploiement IRVE de bornes premium (Alfen, Wallbox, Schneider, Hager).";
-  const l1 = doc.splitTextToSize(p1, PAGE_W - M * 2);
+
+  const intros: Record<ProjectType, string> = {
+    vehicles: "Beev centralise pour vous le sourcing constructeur (Tesla, Mercedes, Renault, VW, Hyundai, Kia, Peugeot…), le financement LLD (Ayvens, Arval, Athlon, Leaseplan), et l'assistance multimarque tout au long de la vie du contrat. Loyers exprimés en TTC.",
+    home: "Vous équipez vos collaborateurs roulant en véhicule électrique d'une borne à leur domicile. Beev gère l'intégralité : vente, installation IRVE certifiée par notre partenaire Seris, supervision, et remboursement automatisé de l'énergie consommée à titre professionnel.",
+    site: "Vous électrifiez vos sites tertiaires, logistiques ou commerciaux. Beev prend en charge l'étude de site, le matériel premium (Alfen, Schneider, Hager, Wallbox), la pose IRVE certifiée, le génie civil, la mise en service OCPP et la formation des utilisateurs.",
+  };
+  const l1 = doc.splitTextToSize(intros[type], PAGE_W - M * 2);
   doc.text(l1, M, y);
   y += l1.length * 14 + 16;
 
-  const p2 = "Concrètement, ce qui change pour vous :";
   doc.setFont("helvetica", "bold");
-  doc.text(p2, M, y);
+  doc.text("Concrètement, ce qui change pour vous :", M, y);
   y += 18;
   doc.setFont("helvetica", "normal");
-  const bullets = [
-    "Un interlocuteur unique pour les véhicules ET les bornes — un seul point de contact, une seule contractualisation.",
-    "Des tarifs négociés grand compte sur l'intégralité du panel constructeur, et un accès direct aux loueurs longue durée.",
-    "Une étude TCO (loyer + énergie + AEN) systématique, comparée à une référence thermique de votre flotte actuelle.",
-    "Un déploiement bornes IRVE clé en main : étude de site, pose, mise en service, supervision OCPP, formation utilisateurs.",
-    "Un suivi commercial dédié grand compte, et une absence totale de friction entre le volet véhicules et le volet infrastructure.",
-  ];
-  bullets.forEach((b) => {
+
+  const bulletsByType: Record<ProjectType, string[]> = {
+    vehicles: [
+      "Un interlocuteur unique pour l'intégralité de votre flotte VE.",
+      "Tarifs négociés grand compte sur tous les constructeurs.",
+      "Étude TCO (loyer + énergie) systématique vs référence thermique.",
+      "Maintenance, assistance 24/24 et gestion des pertes totales toujours incluses.",
+      "Suivi commercial dédié grand compte.",
+    ],
+    home: [
+      "Un kit standardisé : matériel + pose 0–10 m + supervision + remboursement.",
+      "Pose réalisée par technicien IRVE certifié partenaire Seris.",
+      "Supervision en marque blanche : visibilité par collaborateur, par site.",
+      "Remboursement automatisé de l'énergie consommée à des fins professionnelles.",
+      "Garantie matériel jusqu'à 4 ans selon la gamme retenue.",
+    ],
+    site: [
+      "Visite technique de chaque site et étude de faisabilité IRVE.",
+      "Devis détaillé matériel + pose + génie civil, ligne par ligne.",
+      "Pose par technicien IRVE certifié, mise en service OCPP, formation utilisateurs.",
+      "Supervision flotte multi-sites et compteurs MID conformes.",
+      "Garantie constructeur 3 ans extensible 6 ans.",
+    ],
+  };
+  bulletsByType[type].forEach((b) => {
     doc.setFillColor(...ACCENT);
     doc.circle(M + 4, y - 3, 2, "F");
     const t = doc.splitTextToSize(b, PAGE_W - M * 2 - 16);
@@ -325,21 +278,6 @@ function drawWhyBeev(doc: jsPDF) {
     doc.text(t, M + 14, y);
     y += t.length * 14 + 6;
   });
-
-  y += 10;
-  doc.setFillColor(...BG);
-  doc.rect(M, y, PAGE_W - M * 2, 90, "F");
-  doc.setFillColor(...ACCENT);
-  doc.rect(M, y, 4, 90, "F");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.setTextColor(...SUB);
-  doc.text("CE QUE JE VOUS GARANTIS", M + 16, y + 22);
-  doc.setFont("helvetica", "italic");
-  doc.setFontSize(11);
-  doc.setTextColor(...INK);
-  const q = doc.splitTextToSize("Une cohérence totale entre les véhicules livrés et les bornes installées : autonomie, profil d'usage, fiscalité, recharge à domicile, supervision flotte. Vous ne gérez ni les écarts entre fournisseurs, ni les surprises de calendrier.", PAGE_W - M * 2 - 32);
-  doc.text(q, M + 16, y + 42);
 }
 
 // ============ FICHE VÉHICULE ============
@@ -355,18 +293,13 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setTextColor(...SUB);
   doc.text(`${v.version} · ${v.category} · ${v.energy}`, M, 166);
 
-  // Image
   const imgY = 182;
   const imgW = (PAGE_W - M * 2) * 0.55;
   const imgH = 170;
   doc.setFillColor(...BG);
   doc.rect(M, imgY, imgW, imgH, "F");
-  try {
-    const data = await loadImage(v.image);
-    if (data) doc.addImage(data, "JPEG", M + 6, imgY + 6, imgW - 12, imgH - 12, undefined, "FAST");
-  } catch { /* */ }
+  await drawImageContain(doc, v.image, M + 6, imgY + 6, imgW - 12, imgH - 12);
 
-  // Bloc tarif
   const px = M + imgW + 14;
   const pw = PAGE_W - M - px;
   doc.setFillColor(...INK);
@@ -414,9 +347,8 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setTextColor(...SUB);
   doc.text(`× ${sv.quantity} véhicule${sv.quantity > 1 ? "s" : ""} · ${sv.kmPerYear.toLocaleString("fr-FR")} km/an`, px + 12, py + 38);
 
-  let y = imgY + imgH + 24;
+  let y = imgY + imgH + 20;
 
-  // Caractéristiques
   autoTable(doc, {
     startY: y,
     theme: "grid",
@@ -429,17 +361,15 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       [v.energy === "Électrique" || v.energy === "Hybride Rechargeable" ? "Consommation" : "Consommation moyenne", v.energy === "Électrique" ? `${v.consumption} kWh/100 km` : `${v.consumption} L/100 km`],
       ["CO₂", `${v.co2} g/km`],
       ["Puissance fiscale", `${v.fiscalHp} CV`],
-      ["Score environnemental ADEME", v.envScore ? String(v.envScore) : "—"],
     ],
     headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold" },
     bodyStyles: { fontSize: 9.5, cellPadding: 6, textColor: INK, lineColor: RULE },
     columnStyles: { 1: { halign: "right", fontStyle: "bold" } },
     margin: { left: M, right: M },
   });
-  y = (doc as any).lastAutoTable.finalY + 16;
+  y = (doc as any).lastAutoTable.finalY + 14;
 
-  // TCO — uniquement si le commercial l'inclut pour ce véhicule
-  if (sv.includeTco) {
+  if (sv.includeTco && y < FOOTER_LIMIT - 100) {
     const t = computeTco(sv, e);
     doc.setFillColor(...BG);
     doc.rect(M, y, PAGE_W - M * 2, 78, "F");
@@ -470,8 +400,6 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     y += 90;
   }
 
-  // Prestations : 3 obligatoires + extras choisis par le commercial
-  if (y > PAGE_H - 160) return;
   const allServices = [...MANDATORY_SERVICES, ...sv.services.filter((s) => !MANDATORY_SERVICES.includes(s as any))];
   const servicesText = allServices.map((s) => `· ${s}`).join("\n");
   const body: any[] = [
@@ -482,6 +410,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     body.push([{ content: "Options & accessoires inclus", colSpan: 4, styles: { fillColor: BG, fontStyle: "bold", textColor: INK } }]);
     sv.options.forEach((li) => body.push([li.label, String(li.qty), eur(li.unitHt), eur(li.qty * li.unitHt)]));
   }
+  ensureSpace(doc, y, 80);
   autoTable(doc, {
     startY: y,
     theme: "grid",
@@ -495,8 +424,9 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
 }
 
 // ============ FICHE BORNE / SITE ============
-async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, idx: number, total: number) {
-  eyebrow(doc, `BORNE ${idx} / ${total}`, 116);
+async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectType, idx: number, total: number) {
+  const isHome = type === "home";
+  eyebrow(doc, `${isHome ? "COLLABORATEUR" : "SITE"} ${idx} / ${total}`, 116);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(22);
   doc.setTextColor(...INK);
@@ -510,16 +440,13 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, idx: number, tot
     doc.text(sc.siteAddress, M, 182);
   }
 
-  // Image + features
+  // Image (format auto, ratio préservé) + features
   const imgY = 200;
   const imgW = 200;
   const imgH = 150;
   doc.setFillColor(...BG);
   doc.rect(M, imgY, imgW, imgH, "F");
-  try {
-    const data = await loadImage(sc.charger.image);
-    if (data) doc.addImage(data, "JPEG", M + 6, imgY + 6, imgW - 12, imgH - 12, undefined, "FAST");
-  } catch { /* */ }
+  await drawImageContain(doc, sc.charger.image, M + 6, imgY + 6, imgW - 12, imgH - 12);
 
   const fx = M + imgW + 18;
   doc.setFont("helvetica", "bold");
@@ -541,13 +468,13 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, idx: number, tot
     fy += 6;
     doc.setFontSize(9);
     doc.setTextColor(...SUB);
-    doc.text(`Contact site : ${sc.siteContact}`, fx, fy);
+    doc.text(`Contact ${isHome ? "collaborateur" : "site"} : ${sc.siteContact}`, fx, fy);
   }
 
-  let y = imgY + imgH + 24;
+  let y = imgY + imgH + 20;
 
-  // Devis détaillé site
   const total_ = sc.lineItems.reduce((a, li) => a + li.qty * li.unitHt, 0);
+  ensureSpace(doc, y, 90);
   autoTable(doc, {
     startY: y,
     theme: "grid",
@@ -555,7 +482,7 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, idx: number, tot
     body: ([
       ...sc.lineItems.map((li) => [li.label, String(li.qty), eur(li.unitHt), eur(li.qty * li.unitHt)]),
       [
-        { content: "Total HT site", colSpan: 3, styles: { fontStyle: "bold", halign: "right", fillColor: BG } },
+        { content: isHome ? "Total HT par collaborateur" : "Total HT site", colSpan: 3, styles: { fontStyle: "bold", halign: "right", fillColor: BG } },
         { content: eur(total_), styles: { fontStyle: "bold", halign: "right", fillColor: BG } },
       ],
       ...(sc.quantity > 1 ? [[
@@ -568,39 +495,58 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, idx: number, tot
     columnStyles: { 1: { halign: "center", cellWidth: 40 }, 2: { halign: "right", cellWidth: 80 }, 3: { halign: "right", cellWidth: 90, fontStyle: "bold" } },
     margin: { left: M, right: M },
   });
-  y = (doc as any).lastAutoTable.finalY + 16;
+  y = (doc as any).lastAutoTable.finalY + 14;
 
-  if (y > PAGE_H - 110) return;
-  doc.setFillColor(...BG);
-  doc.rect(M, y, PAGE_W - M * 2, 60, "F");
-  doc.setFillColor(...LAVENDER);
-  doc.rect(M, y, 4, 60, "F");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.setTextColor(...SUB);
-  doc.text("INCLUS DANS LA PRESTATION IRVE", M + 16, y + 18);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9.5);
-  doc.setTextColor(...INK);
-  const lines = doc.splitTextToSize("Étude de site · pose & raccordement par technicien IRVE certifié · paramétrage OCPP & superviseur · formation utilisateurs · gestion des déchets de chantier · garantie constructeur 3 ans (extensible 6 ans).", PAGE_W - M * 2 - 32);
-  doc.text(lines, M + 16, y + 36);
+  const inclusionTxt = isHome
+    ? "Pose 0–10 m incluse · matériel · raccordement par technicien IRVE certifié partenaire Seris · supervision en marque blanche · remboursement automatisé de l'énergie consommée à titre professionnel · garantie matériel selon gamme."
+    : "Étude de site · pose & raccordement par technicien IRVE certifié · paramétrage OCPP & superviseur · formation utilisateurs · gestion des déchets de chantier · garantie constructeur 3 ans (extensible 6 ans).";
+  if (y < FOOTER_LIMIT - 70) {
+    doc.setFillColor(...BG);
+    doc.rect(M, y, PAGE_W - M * 2, 60, "F");
+    doc.setFillColor(...LAVENDER);
+    doc.rect(M, y, 4, 60, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(...SUB);
+    doc.text(isHome ? "INCLUS DANS LE KIT B2B2E" : "INCLUS DANS LA PRESTATION IRVE", M + 16, y + 18);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(...INK);
+    const lines = doc.splitTextToSize(inclusionTxt, PAGE_W - M * 2 - 32);
+    doc.text(lines, M + 16, y + 36);
+  }
 }
 
-// ============ TERMS ============
-function drawTerms(doc: jsPDF, c: ClientInfo) {
+// ============ VALIDATION (varie par type) ============
+function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   let y = 130;
   eyebrow(doc, "PROCHAINES ÉTAPES", y);
   y += 18;
-  title(doc, "Comment on lance le projet.", y);
+  title(doc, "Validation et lancement du projet.", y);
   y += 36;
 
-  const steps = [
-    ["1", "Validation de l'offre", "Signature électronique ou bon pour accord scanné, retour à votre interlocuteur Beev."],
-    ["2", "Bons de commande véhicules", "Émission des BC LLD au loueur retenu (Ayvens, Arval, Athlon…), suivi de production."],
-    ["3", "Étude technique sites", "Visite de chaque site par nos équipes IRVE, validation des trajets de câble et planning de pose."],
-    ["4", "Livraison & mise en service", "Livraison des véhicules, pose des bornes, formation utilisateurs, supervision activée."],
-  ];
-  steps.forEach(([n, t, d]) => {
+  const stepsByType: Record<ProjectType, [string, string, string][]> = {
+    vehicles: [
+      ["1", "Validation de l'offre LLD", "Bon pour accord signé, sélection des véhicules définitive, choix du loueur (Ayvens, Arval, Athlon…)."],
+      ["2", "Étude de financement", "Constitution du dossier crédit-bailleur, accord de la direction des risques."],
+      ["3", "Bons de commande constructeurs", "Émission des BC LLD, suivi de production usine et planning de livraison."],
+      ["4", "Livraison & mise en service", "Livraison des véhicules sur site, prise en main, activation des cartes carburant / badges recharge."],
+    ],
+    home: [
+      ["1", "Validation cadre employeur", "Signature du cadre B2B2E par l'employeur : périmètre, modèle de borne, modalités de remboursement."],
+      ["2", "Mandat & onboarding collaborateur", "Le collaborateur signe un mandat d'installation à son domicile et complète le formulaire technique (logement, place de parking, tableau électrique)."],
+      ["3", "Visite technique & devis ferme", "Visite ou audit à distance par notre partenaire IRVE Seris, devis ferme transmis pour validation."],
+      ["4", "Pose & mise en service", "Installation par technicien IRVE certifié, mise en service de la supervision, premier remboursement énergie sous 30 jours."],
+    ],
+    site: [
+      ["1", "Validation de l'offre site", "Bon pour accord signé, sélection des modèles et nombre de points de charge par site."],
+      ["2", "Étude technique site", "Visite physique de chaque site, étude des trajets de câble, dimensionnement TGBT, planning de pose."],
+      ["3", "Devis ferme & génie civil", "Devis ferme par site (matériel + IRVE + génie civil), validation des accès chantier et planification des interventions."],
+      ["4", "Pose, mise en service & PV de réception", "Pose par technicien IRVE certifié, paramétrage OCPP, formation utilisateurs, signature du PV de réception de chantier."],
+    ],
+  };
+
+  stepsByType[type].forEach(([n, t, d]) => {
     doc.setFillColor(...ACCENT);
     doc.rect(M, y - 12, 26, 26, "F");
     doc.setFont("helvetica", "bold");
@@ -622,38 +568,58 @@ function drawTerms(doc: jsPDF, c: ClientInfo) {
   y += 6;
   doc.setDrawColor(...RULE);
   doc.line(M, y, PAGE_W - M, y);
-  y += 24;
+  y += 20;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
   doc.text("CONDITIONS COMMERCIALES", M, y);
-  y += 16;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.setTextColor(...INK);
-  const lines = doc.splitTextToSize(c.notes || "Offre valable 30 jours à compter de la date d'émission. Tarifs HT et TTC sous réserve de disponibilité constructeur, d'évolution de la fiscalité applicable et d'acceptation par la direction des risques du loueur. TCO indicatif, calculé hors malus, hors aides locales.", PAGE_W - M * 2);
-  doc.text(lines, M, y);
-  y += lines.length * 14 + 28;
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.setTextColor(...SUB);
-  doc.text("BON POUR ACCORD", M, y);
-  y += 16;
+  y += 14;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9.5);
   doc.setTextColor(...INK);
-  doc.text("Date :", M, y + 30);
-  doc.text("Nom & qualité :", M, y + 50);
-  doc.text("Signature & cachet :", PAGE_W / 2, y + 30);
+  const fallback: Record<ProjectType, string> = {
+    vehicles: "Offre valable 30 jours. Loyers exprimés en TTC, sous réserve de disponibilité constructeur, d'évolution de la fiscalité applicable et d'acceptation par la direction des risques du loueur. TCO indicatif, hors malus, hors aides locales.",
+    home: "Offre valable 30 jours. Tarifs HT, pose 0–10 m incluse. Au-delà : devis complémentaire après visite technique. Le mandat d'installation est signé individuellement par chaque collaborateur bénéficiaire.",
+    site: "Offre valable 30 jours. Tarifs HT, sous réserve de visite technique sur site. Le devis ferme par site est émis après audit IRVE. Garantie constructeur 3 ans, extensible 6 ans en option.",
+  };
+  const lines = doc.splitTextToSize(c.notes || fallback[type], PAGE_W - M * 2);
+  doc.text(lines, M, y);
+  y += lines.length * 13 + 22;
+
+  // Bon pour accord — libellé adapté au type
+  const bpaTitle: Record<ProjectType, string> = {
+    vehicles: "BON POUR ACCORD — OFFRE VÉHICULES LLD",
+    home: "BON POUR ACCORD — DÉPLOIEMENT DOMICILE COLLABORATEURS",
+    site: "BON POUR ACCORD — DÉPLOIEMENT SITE ENTREPRISE",
+  };
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...SUB);
+  doc.text(bpaTitle[type], M, y);
+  y += 14;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9.5);
+  doc.setTextColor(...INK);
+  const bpaText: Record<ProjectType, string> = {
+    vehicles: "Le client confirme la sélection des véhicules ci-avant et autorise Beev à transmettre les bons de commande LLD au loueur retenu, sous réserve de l'accord risque.",
+    home: "L'employeur valide le cadre du déploiement B2B2E. Chaque installation au domicile d'un collaborateur fera l'objet d'un mandat individuel signé par le collaborateur concerné.",
+    site: "Le client autorise Beev à lancer l'étude technique sur site. Le devis ferme par site sera émis après audit IRVE et signé séparément avant pose.",
+  };
+  const bl = doc.splitTextToSize(bpaText[type], PAGE_W - M * 2);
+  doc.text(bl, M, y);
+  y += bl.length * 13 + 18;
+
+  doc.text("Date :", M, y + 24);
+  doc.text("Nom & qualité :", M, y + 44);
+  doc.text("Signature & cachet :", PAGE_W / 2, y + 24);
   doc.setDrawColor(...INK);
-  doc.line(M + 50, y + 30, M + 220, y + 30);
-  doc.line(M + 90, y + 50, M + 280, y + 50);
-  doc.rect(PAGE_W / 2 + 100, y + 16, PAGE_W - M - (PAGE_W / 2 + 100), 60);
+  doc.line(M + 50, y + 24, M + 220, y + 24);
+  doc.line(M + 90, y + 44, M + 280, y + 44);
+  doc.rect(PAGE_W / 2 + 100, y + 10, PAGE_W - M - (PAGE_W / 2 + 100), 60);
 }
 
 // ============ HEADER / FOOTER / HELPERS ============
-function drawHeader(doc: jsPDF, c: ClientInfo) {
+function drawHeader(doc: jsPDF, c: ClientInfo, type: ProjectType) {
   doc.setTextColor(...INK);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
@@ -661,7 +627,8 @@ function drawHeader(doc: jsPDF, c: ClientInfo) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text("Offre commerciale", M, 70);
+  const tag = type === "vehicles" ? "Offre véhicules LLD" : type === "home" ? "Déploiement domicile (B2B2E)" : "Déploiement site entreprise";
+  doc.text(tag, M, 70);
 
   doc.setTextColor(...INK);
   doc.setFontSize(9);
@@ -699,7 +666,8 @@ function title(doc: jsPDF, label: string, y: number) {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(22);
   doc.setTextColor(...INK);
-  doc.text(label, M, y);
+  const lines = doc.splitTextToSize(label, PAGE_W - M * 2);
+  doc.text(lines, M, y);
 }
 
 const eur = (n: number) =>
@@ -707,18 +675,54 @@ const eur = (n: number) =>
 const eur2 = (n: number) =>
   new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(n);
 
-async function loadImage(url: string): Promise<string | null> {
+function ensureSpace(doc: jsPDF, y: number, needed: number) {
+  if (y + needed > FOOTER_LIMIT) {
+    doc.addPage();
+  }
+}
+
+type LoadedImage = { dataUrl: string; w: number; h: number; format: "JPEG" | "PNG" };
+
+async function loadImage(url: string): Promise<LoadedImage | null> {
   try {
     const res = await fetch(url, { mode: "cors" });
     if (!res.ok) return null;
     const blob = await res.blob();
-    return await new Promise<string>((resolve, reject) => {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve(reader.result as string);
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
+    const dims = await new Promise<{ w: number; h: number }>((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+      img.onerror = () => resolve({ w: 1, h: 1 });
+      img.src = dataUrl;
+    });
+    const format: "JPEG" | "PNG" = /\.png(\?|$)/i.test(url) || dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
+    return { dataUrl, w: dims.w, h: dims.h, format };
   } catch {
     return null;
+  }
+}
+
+// Affiche une image en gardant son ratio natif, centrée dans la zone (x,y,maxW,maxH).
+async function drawImageContain(doc: jsPDF, url: string, x: number, y: number, maxW: number, maxH: number) {
+  const img = await loadImage(url);
+  if (!img) return;
+  const ratio = img.w / Math.max(img.h, 1);
+  let w = maxW;
+  let h = w / ratio;
+  if (h > maxH) {
+    h = maxH;
+    w = h * ratio;
+  }
+  const cx = x + (maxW - w) / 2;
+  const cy = y + (maxH - h) / 2;
+  try {
+    doc.addImage(img.dataUrl, img.format, cx, cy, w, h, undefined, "FAST");
+  } catch {
+    /* image format non supporté — silencieux */
   }
 }
