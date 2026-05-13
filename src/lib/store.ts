@@ -1,17 +1,18 @@
 import { useEffect, useState } from "react";
-import { DEFAULT_CHARGERS, DEFAULT_VEHICLES, type Charger, type Vehicle } from "./catalog";
+import { DEFAULT_CHARGERS, DEFAULT_VEHICLES, type Charger, type ProjectType, type Vehicle } from "./catalog";
 
 const VK = "beev_vehicles_v3";
 const CK = "beev_chargers_v4";
 const EK = "beev_energy_v1";
+const PK = "beev_project_type_v1";
 
 export type EnergyParams = {
   durationYears: number;
   kmPerYear: number;
-  fuelPriceL: number;       // €/L essence ref
-  kWhHome: number;          // €/kWh domicile / bureau
-  kWhPublic: number;        // €/kWh itinérance
-  mixHomePct: number;       // 0-100
+  fuelPriceL: number;
+  kWhHome: number;
+  kWhPublic: number;
+  mixHomePct: number;
 };
 
 export const DEFAULT_ENERGY: EnergyParams = {
@@ -40,6 +41,9 @@ export function useVehicles() {
   return {
     vehicles: items,
     update: (id: string, patch: Partial<Vehicle>) => save(items.map((v) => (v.id === id ? { ...v, ...patch } : v))),
+    add: (v: Vehicle) => save([v, ...items]),
+    remove: (id: string) => save(items.filter((v) => v.id !== id)),
+    importMany: (list: Vehicle[]) => save([...list, ...items]),
     reset: () => save(DEFAULT_VEHICLES),
   };
 }
@@ -51,6 +55,8 @@ export function useChargers() {
   return {
     chargers: items,
     update: (id: string, patch: Partial<Charger>) => save(items.map((c) => (c.id === id ? { ...c, ...patch } : c))),
+    add: (c: Charger) => save([c, ...items]),
+    remove: (id: string) => save(items.filter((c) => c.id !== id)),
     reset: () => save(DEFAULT_CHARGERS),
   };
 }
@@ -60,6 +66,13 @@ export function useEnergy() {
   useEffect(() => setE(load(EK, DEFAULT_ENERGY)), []);
   const save = (next: EnergyParams) => { setE(next); localStorage.setItem(EK, JSON.stringify(next)); };
   return { energy: e, set: save, reset: () => save(DEFAULT_ENERGY) };
+}
+
+export function useProjectType() {
+  const [t, setT] = useState<ProjectType>("vehicles");
+  useEffect(() => setT(load(PK, "vehicles" as ProjectType)), []);
+  const save = (next: ProjectType) => { setT(next); localStorage.setItem(PK, JSON.stringify(next)); };
+  return { projectType: t, setProjectType: save };
 }
 
 export const fmtEur = (n: number) =>
