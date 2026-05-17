@@ -11,6 +11,124 @@ export const PROJECT_LABEL: Record<ProjectType, string> = {
 
 export type Energy = "Électrique" | "Hybride Rechargeable" | "Hybride" | "Mild Hybrid" | "Essence" | "Diesel";
 
+// ===== Parcours client Beev (process A → Z) =====
+export type JourneyStep = {
+  n: string;
+  title: string;
+  summary: string;
+  beev: string[];   // ce que Beev fait
+  client: string[]; // ce que le client fournit / valide
+  duration?: string;
+};
+
+export const BEEV_JOURNEYS: Record<ProjectType, { intro: string; steps: JourneyStep[] }> = {
+  vehicles: {
+    intro: "De la sélection des véhicules à la livraison en concession ou chez vos collaborateurs, Beev orchestre l'intégralité du parcours et vous garde un interlocuteur unique tout au long du contrat LLD.",
+    steps: [
+      {
+        n: "1", title: "Cadrage de la flotte", duration: "J → J+3",
+        summary: "Sélection définitive du nombre de véhicules, marques, modèles, couple durée / kilométrage, options et prestations.",
+        beev: ["Consolide la fiche besoin par véhicule", "Verrouille les tarifs loueurs (Ayvens, Arval, Athlon…)", "Émet le bon pour accord LLD"],
+        client: ["Valide la sélection véhicules", "Confirme durée, kilométrage et options", "Signe le BPA commercial"],
+      },
+      {
+        n: "2", title: "Constitution du dossier financement", duration: "J+3 → J+10",
+        summary: "Récupération des pièces comptables nécessaires à l'étude de crédit-bail.",
+        beev: ["Monte le dossier risque loueur", "Suit la décision du comité crédit", "Négocie en cas d'aller-retour"],
+        client: ["Kbis de moins de 3 mois", "Dernier bilan & liasse fiscale", "RIB société", "CNI du gérant ou mandat de signature"],
+      },
+      {
+        n: "3", title: "Signature des bons de commande", duration: "J+10 → J+15",
+        summary: "Une fois l'accord de financement obtenu, émission et signature des BC LLD constructeurs.",
+        beev: ["Édite les BC LLD par véhicule", "Transmet au constructeur retenu", "Confirme les délais usine"],
+        client: ["Signe les bons de commande", "Valide le planning prévisionnel"],
+      },
+      {
+        n: "4", title: "Choix du lieu de livraison", duration: "J+15 → livraison",
+        summary: "Sélection de la ville pour solliciter le distributeur partenaire le plus proche — livraison concession, collaborateur ou siège.",
+        beev: ["Sollicite le réseau distributeur partenaire", "Coordonne la logistique de livraison", "Prépare la prise en main"],
+        client: ["Indique l'adresse / la concession", "Désigne le contact réception", "Confirme la date de remise"],
+      },
+      {
+        n: "5", title: "Pilotage Fleet Manager Beev", duration: "Continu",
+        summary: "Synchronisation du suivi sur notre Fleet Manager — Ryma reprend la relation constructeur et vous tient informés.",
+        beev: ["Ryma pilote la livraison constructeur", "Updates hebdo sur l'avancement", "Hotline gestion de flotte tout au long du contrat"],
+        client: ["Accès Fleet Manager (multi-utilisateurs)", "Validation des PV de livraison"],
+      },
+    ],
+  },
+  home: {
+    intro: "Vous équipez vos collaborateurs roulant en VE d'une borne à leur domicile. Beev cadre côté employeur puis prend en charge chaque collaborateur de façon autonome, de la commande au remboursement de l'énergie.",
+    steps: [
+      {
+        n: "1", title: "Cadrage employeur B2B2E", duration: "J → J+5",
+        summary: "Définition du périmètre : collaborateurs éligibles, gamme de borne, modalités de remboursement de l'énergie.",
+        beev: ["Rédige la convention cadre B2B2E", "Configure le portail employeur", "Forme le RH / flotte"],
+        client: ["Liste des collaborateurs bénéficiaires", "Choix du modèle de borne standard", "Validation du tarif kWh remboursé"],
+      },
+      {
+        n: "2", title: "Onboarding collaborateur", duration: "Par collaborateur",
+        summary: "Chaque collaborateur signe un mandat d'installation et complète un formulaire technique sur son logement.",
+        beev: ["Envoi du lien d'onboarding au collaborateur", "Vérification de la complétude du dossier"],
+        client: ["Mandat d'installation signé", "Photos tableau électrique, parking, cheminement câble", "Justificatif d'occupation du logement"],
+      },
+      {
+        n: "3", title: "Visite technique & devis ferme", duration: "J+10 → J+20",
+        summary: "Audit à distance ou visite physique par notre partenaire IRVE Seris, puis devis ferme transmis pour validation.",
+        beev: ["Audit Seris (distance ou physique)", "Émission du devis ferme par collaborateur", "Gestion des dépassements 0–10 m"],
+        client: ["Validation du devis ferme", "Choix de la date de pose"],
+      },
+      {
+        n: "4", title: "Pose & mise en service", duration: "1 demi-journée",
+        summary: "Installation par technicien IRVE certifié, mise en service de la supervision en marque blanche.",
+        beev: ["Pose IRVE certifiée Seris", "Mise en service de la supervision", "Procès-verbal de mise en service"],
+        client: ["Accès au logement le jour J", "Réception et signature du PV"],
+      },
+      {
+        n: "5", title: "Supervision & remboursement énergie", duration: "Continu",
+        summary: "Pilotage en marque blanche par collaborateur, remboursement automatisé de l'énergie consommée à titre professionnel sous 30 jours.",
+        beev: ["Supervision marque blanche par site / collaborateur", "Calcul mensuel des kWh pro", "Remboursement automatisé"],
+        client: ["Dashboard employeur consolidé", "Reporting mensuel par collaborateur"],
+      },
+    ],
+  },
+  site: {
+    intro: "Vous électrifiez vos sites tertiaires, logistiques ou commerciaux. Beev pilote l'étude IRVE, le matériel, le génie civil et la mise en service OCPP, site par site.",
+    steps: [
+      {
+        n: "1", title: "Cadrage du projet IRVE", duration: "J → J+5",
+        summary: "Définition du nombre de sites, du nombre de points de charge par site et des usages (flotte interne, visiteurs, public).",
+        beev: ["Atelier de cadrage besoin", "Pré-dimensionnement par site", "Émission du bon pour accord"],
+        client: ["Liste des sites concernés", "Usages cibles par site", "Signature du BPA cadre"],
+      },
+      {
+        n: "2", title: "Audit technique site", duration: "J+5 → J+20",
+        summary: "Visite physique de chaque site : trajets de câble, dimensionnement TGBT, contraintes d'accès chantier.",
+        beev: ["Visite IRVE par site", "Étude électrique TGBT / délestage", "Reportage photo & note technique"],
+        client: ["Accès aux locaux techniques", "Plans du site (si disponibles)", "Désignation du référent site"],
+      },
+      {
+        n: "3", title: "Devis ferme & planification", duration: "J+20 → J+30",
+        summary: "Devis détaillé ligne par ligne (matériel + IRVE + génie civil) et planning de chantier par site.",
+        beev: ["Devis ferme par site", "Planning chantier consolidé", "Coordination génie civil le cas échéant"],
+        client: ["Validation du devis ferme", "Confirmation des créneaux d'intervention"],
+      },
+      {
+        n: "4", title: "Travaux, pose & mise en service", duration: "Selon site",
+        summary: "Pose par technicien IRVE certifié, paramétrage OCPP, formation utilisateurs, signature du PV de réception.",
+        beev: ["Pose IRVE certifiée", "Paramétrage superviseur OCPP", "Formation utilisateurs et gestionnaire"],
+        client: ["Réception chantier & PV", "Communication interne aux utilisateurs"],
+      },
+      {
+        n: "5", title: "Exploitation, supervision & SAV", duration: "Continu",
+        summary: "Supervision multi-sites, hotline utilisateurs, maintenance préventive, garantie 3 ans extensible 6 ans.",
+        beev: ["Supervision multi-sites Beev", "Hotline & GTR contractuelle", "Maintenance préventive annuelle"],
+        client: ["Dashboard consolidé", "Reporting d'usage trimestriel"],
+      },
+    ],
+  },
+};
+
 export type Vehicle = {
   id: string;
   brand: string;
