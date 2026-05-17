@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { MANDATORY_SERVICES, type Charger, type LineItem, type ProjectType, type Vehicle } from "./catalog";
+import { BEEV_JOURNEYS, MANDATORY_SERVICES, type Charger, type LineItem, type ProjectType, type Vehicle } from "./catalog";
 import type { EnergyParams } from "./store";
 
 export type ClientInfo = {
