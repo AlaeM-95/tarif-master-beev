@@ -521,6 +521,127 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   }
 }
 
+// ============ PARCOURS CLIENT BEEV (A → Z) ============
+function drawJourney(doc: jsPDF, type: ProjectType) {
+  const j = BEEV_JOURNEYS[type];
+  let y = 116;
+  eyebrow(doc, "PARCOURS CLIENT BEEV — DE A À Z", y);
+  y += 18;
+  title(doc, type === "vehicles" ? "Comment Beev pilote votre flotte." :
+              type === "home" ? "Comment Beev équipe vos collaborateurs." :
+              "Comment Beev déploie vos sites.", y);
+  y += 30;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...SUB);
+  const intro = doc.splitTextToSize(j.intro, PAGE_W - M * 2);
+  doc.text(intro, M, y);
+  y += intro.length * 13 + 14;
+
+  // Frise visuelle (5 cercles reliés)
+  const stripY = y + 6;
+  const stripX0 = M + 12;
+  const stripX1 = PAGE_W - M - 12;
+  doc.setDrawColor(...RULE);
+  doc.setLineWidth(1);
+  doc.line(stripX0, stripY, stripX1, stripY);
+  const step = (stripX1 - stripX0) / Math.max(j.steps.length - 1, 1);
+  j.steps.forEach((s, i) => {
+    const x = stripX0 + i * step;
+    doc.setFillColor(...ACCENT);
+    doc.circle(x, stripY, 8, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(255, 255, 255);
+    doc.text(s.n, x, stripY + 3, { align: "center" });
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...INK);
+    const lbl = doc.splitTextToSize(s.title, step - 8);
+    doc.text(lbl, x, stripY + 22, { align: "center" });
+  });
+  y = stripY + 50;
+
+  // Détail des étapes (split sur 2 pages si nécessaire)
+  for (const s of j.steps) {
+    const blockH = 110;
+    if (y + blockH > FOOTER_LIMIT) {
+      doc.addPage();
+      drawHeader(doc, { company: "", contact: "", email: "", date: "", salesRep: "", salesRepEmail: "", salesRepPhone: "", notes: "" } as ClientInfo, type);
+      y = 116;
+      eyebrow(doc, "PARCOURS CLIENT BEEV (SUITE)", y);
+      y += 30;
+    }
+    // bandeau étape
+    doc.setFillColor(...INK);
+    doc.rect(M, y, 28, 28, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.setTextColor(255, 255, 255);
+    doc.text(s.n, M + 14, y + 19, { align: "center" });
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(...INK);
+    doc.text(s.title, M + 38, y + 12);
+    if (s.duration) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8.5);
+      doc.setTextColor(...SUB);
+      doc.text(s.duration, PAGE_W - M, y + 12, { align: "right" });
+    }
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(...SUB);
+    const sum = doc.splitTextToSize(s.summary, PAGE_W - M - (M + 38));
+    doc.text(sum, M + 38, y + 26);
+    let yy = y + 26 + sum.length * 12 + 8;
+
+    // 2 colonnes : Beev / Client
+    const colW = (PAGE_W - M * 2 - 14) / 2;
+    const colYStart = yy;
+    doc.setFillColor(...BG);
+    doc.rect(M, yy, colW, 56, "F");
+    doc.setFillColor(...ACCENT);
+    doc.rect(M, yy, 3, 56, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...SUB);
+    doc.text("BEEV PREND EN CHARGE", M + 10, yy + 12);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...INK);
+    let by = yy + 24;
+    s.beev.forEach((b) => {
+      const ll = doc.splitTextToSize("· " + b, colW - 14);
+      doc.text(ll, M + 10, by);
+      by += ll.length * 10;
+    });
+
+    const cx = M + colW + 14;
+    doc.setFillColor(...BG);
+    doc.rect(cx, colYStart, colW, 56, "F");
+    doc.setFillColor(...LAVENDER);
+    doc.rect(cx, colYStart, 3, 56, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...SUB);
+    doc.text("CÔTÉ CLIENT", cx + 10, colYStart + 12);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...INK);
+    let cy2 = colYStart + 24;
+    s.client.forEach((b) => {
+      const ll = doc.splitTextToSize("· " + b, colW - 14);
+      doc.text(ll, cx + 10, cy2);
+      cy2 += ll.length * 10;
+    });
+
+    y = Math.max(by, cy2) + 18;
+  }
+}
+
 // ============ VALIDATION (varie par type) ============
 function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   let y = 130;
