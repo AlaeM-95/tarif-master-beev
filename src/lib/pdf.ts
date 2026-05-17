@@ -119,6 +119,10 @@ export async function generateProposalPdf(opts: {
 
   doc.addPage();
   drawHeader(doc, client, projectType);
+  drawJourney(doc, projectType);
+
+  doc.addPage();
+  drawHeader(doc, client, projectType);
   drawValidation(doc, projectType, client);
 
   const pages = doc.getNumberOfPages();
