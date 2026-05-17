@@ -739,6 +739,7 @@ function PresentationMode({ projectType, client, energy, vehicles, chargers, onC
         {slide.kind === "cover" && <CoverSlide projectType={projectType} client={client} nbV={nbV} nbC={nbC} />}
         {slide.kind === "vehicle" && <VehicleSlide sv={slide.sv} energy={energy} />}
         {slide.kind === "charger" && <ChargerSlide sc={slide.sc} projectType={projectType} />}
+        {slide.kind === "journey" && <JourneySlide projectType={projectType} />}
       </main>
     </div>
   );
