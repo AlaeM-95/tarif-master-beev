@@ -908,3 +908,62 @@ function KV({ k, v }: { k: string; v: string }) {
 function KPI({ k, v, highlight }: { k: string; v: string; highlight?: boolean }) {
   return <div><p className="text-[10px] uppercase text-muted-foreground">{k}</p><p className={`font-bold ${highlight ? "text-2xl text-primary" : "text-xl"}`}>{v}</p></div>;
 }
+
+function JourneySlide({ projectType }: { projectType: ProjectType }) {
+  const j = BEEV_JOURNEYS[projectType];
+  const heading = projectType === "vehicles" ? "Comment Beev pilote votre flotte"
+    : projectType === "home" ? "Comment Beev équipe vos collaborateurs"
+    : "Comment Beev déploie vos sites";
+  return (
+    <div className="max-w-6xl mx-auto">
+      <p className="text-xs uppercase tracking-widest text-muted-foreground mb-3">Parcours client Beev — de A à Z</p>
+      <h2 className="text-4xl font-bold mb-3">{heading}.</h2>
+      <p className="text-muted-foreground mb-10 max-w-3xl">{j.intro}</p>
+
+      {/* Frise horizontale */}
+      <div className="relative mb-12 hidden md:block">
+        <div className="absolute top-5 left-5 right-5 h-px bg-border" />
+        <div className="relative grid" style={{ gridTemplateColumns: `repeat(${j.steps.length}, minmax(0,1fr))` }}>
+          {j.steps.map((s) => (
+            <div key={s.n} className="flex flex-col items-center text-center px-2">
+              <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground font-bold grid place-content-center text-sm shadow">{s.n}</div>
+              <p className="mt-3 text-xs font-semibold leading-tight">{s.title}</p>
+              {s.duration && <p className="text-[10px] text-muted-foreground mt-1">{s.duration}</p>}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-5">
+        {j.steps.map((s) => (
+          <div key={s.n} className="border rounded-2xl p-5">
+            <div className="flex items-start gap-4 mb-3">
+              <div className="w-9 h-9 shrink-0 rounded-lg bg-foreground text-background font-bold grid place-content-center text-sm">{s.n}</div>
+              <div className="flex-1">
+                <div className="flex items-baseline justify-between gap-3 flex-wrap">
+                  <h3 className="font-semibold text-lg">{s.title}</h3>
+                  {s.duration && <span className="text-xs text-muted-foreground">{s.duration}</span>}
+                </div>
+                <p className="text-sm text-muted-foreground mt-1">{s.summary}</p>
+              </div>
+            </div>
+            <div className="grid md:grid-cols-2 gap-4 pl-0 md:pl-13">
+              <div className="rounded-lg bg-secondary/40 border-l-4 border-primary p-4">
+                <p className="text-[10px] uppercase font-semibold text-muted-foreground mb-2">Beev prend en charge</p>
+                <ul className="space-y-1 text-sm">
+                  {s.beev.map((b, i) => <li key={i} className="flex gap-2"><span className="text-primary">●</span><span>{b}</span></li>)}
+                </ul>
+              </div>
+              <div className="rounded-lg bg-secondary/40 border-l-4 border-accent p-4">
+                <p className="text-[10px] uppercase font-semibold text-muted-foreground mb-2">Côté client</p>
+                <ul className="space-y-1 text-sm">
+                  {s.client.map((b, i) => <li key={i} className="flex gap-2"><span className="text-accent-foreground">●</span><span>{b}</span></li>)}
+                </ul>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
