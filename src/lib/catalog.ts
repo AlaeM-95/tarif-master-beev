@@ -38,7 +38,7 @@ export type LineItem = { label: string; qty: number; unitHt: number };
 export const MANDATORY_SERVICES = [
   "Maintenance tous réseaux",
   "Assistance 24/24",
-  "Gestion des pertes totales",
+  "Garantie perte financière",
 ] as const;
 
 export type ChargerDeployment = "domicile" | "site";
@@ -68,7 +68,7 @@ export function createBlankVehicle(): Vehicle {
     energy: "Électrique", batteryKwh: 60, rangeWltp: 400, powerHp: 200,
     consumption: 16, co2: 0, fiscalHp: 5, envScore: 75,
     priceTtc: 40000, monthlyLld: 600,
-    image: "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png",
+    image: "https://upload.wikimedia.org/wikipedia/commons/f/f8/Question_mark_alternate.svg",
     custom: true,
   };
 }
@@ -84,7 +84,7 @@ export function createBlankCharger(deployment: ChargerDeployment): Charger {
     priceHt: home ? 1500 : 1500,
     installPriceHt: home ? 0 : 1200,
     features: ["À compléter"],
-    image: "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png",
+    image: "https://upload.wikimedia.org/wikipedia/commons/f/f8/Question_mark_alternate.svg",
     defaultLineItems: home
       ? [{ label: "Borne + forfait pose 0–10 m", qty: 1, unitHt: 1500 }]
       : [
@@ -98,7 +98,7 @@ export function createBlankCharger(deployment: ChargerDeployment): Charger {
 const WM = (p: string) => `https://upload.wikimedia.org/wikipedia/commons/${p}`;
 
 export const DEFAULT_VEHICLES: Vehicle[] = [
-  { id: "tesla-model-y", brand: "TESLA", model: "MODEL Y", version: "PREMIUM PROPULSION", category: "SUV", energy: "Électrique", batteryKwh: 75, rangeWltp: 622, powerHp: 295, consumption: 14.9, co2: 0, fiscalHp: 6, envScore: 80, priceTtc: 46990, monthlyLld: 700, image: WM("b/bd/2022_Tesla_Model_Y_Long_Range_AWD_Front.jpg") },
+  { id: "tesla-model-y", brand: "TESLA", model: "MODEL Y", version: "PREMIUM PROPULSION", category: "SUV", energy: "Électrique", batteryKwh: 75, rangeWltp: 622, powerHp: 295, consumption: 14.9, co2: 0, fiscalHp: 6, envScore: 80, priceTtc: 46990, monthlyLld: 700, image: ("https://static-assets.tesla.com/configurator/compositor?context=design_studio_2&options=$MTY82,$PPSW,$WY19P,$IPB11&view=FRONT34&model=my&size=1920&bkba_opt=2&crop=0,0,0,0&overlay=0&") },
   { id: "mercedes-cla-sb", brand: "MERCEDES", model: "CLA SHOOTING BREAK 250+", version: "BUSINESS LINE", category: "Break", energy: "Électrique", batteryKwh: 85, rangeWltp: 768, powerHp: 272, consumption: 14.0, co2: 0, fiscalHp: 5, envScore: 79, priceTtc: 56900, monthlyLld: 850, image: WM("3/3a/Mercedes-Benz_CLA_250e_Shooting_Brake_AMG_Line_X118.jpg") },
   { id: "mercedes-cla-250", brand: "MERCEDES", model: "CLA 250+", version: "BUSINESS EDITION EXECUTIVE", category: "Berline", energy: "Électrique", batteryKwh: 85, rangeWltp: 792, powerHp: 272, consumption: 13.8, co2: 0, fiscalHp: 5, envScore: 79, priceTtc: 58700, monthlyLld: 880, image: WM("8/8e/Mercedes-Benz_CLA_250%2B_C118_IAA_2023_1X7A0107.jpg") },
   { id: "vw-id7-tourer", brand: "VW", model: "ID.7 TOURER", version: "77 kWh PRO LIFE MAX 286", category: "Break", energy: "Électrique", batteryKwh: 77, rangeWltp: 608, powerHp: 286, consumption: 16.4, co2: 0, fiscalHp: 7, envScore: 75, priceTtc: 60690, monthlyLld: 900, image: WM("9/96/VW_ID.7_Tourer_Pro_S_IAA_2023_1X7A0156.jpg") },
