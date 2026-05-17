@@ -690,7 +690,8 @@ function SelectedChargerRow({ sc, onChange, onRemove }: { sc: SelectedCharger; o
 type Slide =
   | { kind: "cover" }
   | { kind: "vehicle"; sv: SelectedVehicle }
-  | { kind: "charger"; sc: SelectedCharger };
+  | { kind: "charger"; sc: SelectedCharger }
+  | { kind: "journey" };
 
 function PresentationMode({ projectType, client, energy, vehicles, chargers, onClose, onExport }: {
   projectType: ProjectType;
@@ -705,6 +706,7 @@ function PresentationMode({ projectType, client, energy, vehicles, chargers, onC
     } else {
       chargers.forEach((sc) => s.push({ kind: "charger", sc }));
     }
+    s.push({ kind: "journey" });
     return s;
   }, [projectType, vehicles, chargers]);
 
