@@ -227,7 +227,7 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
 function drawWhyBeev(doc: jsPDF, type: ProjectType) {
   let y = 130;
   eyebrow(doc, "NOTRE APPROCHE", y);
-  y += 18;
+  y += 32;
   title(doc, type === "vehicles" ? "Pourquoi confier vos véhicules à Beev." :
               type === "home" ? "Le kit B2B2E clé en main pour vos collaborateurs." :
               "Un déploiement IRVE site entreprise sans friction.", y);
@@ -526,7 +526,7 @@ function drawJourney(doc: jsPDF, type: ProjectType, client: ClientInfo) {
   const j = BEEV_JOURNEYS[type];
   let y = 116;
   eyebrow(doc, "PARCOURS CLIENT BEEV — DE A À Z", y);
-  y += 18;
+  y += 32;
   title(doc, type === "vehicles" ? "Comment Beev pilote votre flotte." :
               type === "home" ? "Comment Beev équipe vos collaborateurs." :
               "Comment Beev déploie vos sites.", y);
@@ -646,7 +646,7 @@ function drawJourney(doc: jsPDF, type: ProjectType, client: ClientInfo) {
 function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   let y = 130;
   eyebrow(doc, "PROCHAINES ÉTAPES", y);
-  y += 18;
+  y += 32;
   title(doc, "Validation et lancement du projet.", y);
   y += 36;
 
