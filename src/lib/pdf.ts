@@ -120,7 +120,7 @@ export async function generateProposalPdf(opts: {
   doc.addPage();
   drawHeader(doc, client, projectType);
   drawJourney(doc, projectType, client);
-  
+
   doc.addPage();
   drawHeader(doc, client, projectType);
   drawValidation(doc, projectType, client);
@@ -414,7 +414,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     body.push([{ content: "Options & accessoires inclus", colSpan: 4, styles: { fillColor: BG, fontStyle: "bold", textColor: INK } }]);
     sv.options.forEach((li) => body.push([li.label, String(li.qty), eur(li.unitHt), eur(li.qty * li.unitHt)]));
   }
-    y = ensureSpace(doc, y, 80, client, type);
+  y = ensureSpace(doc, y, 80, client, type);
   autoTable(doc, {
     startY: y,
     theme: "grid",
@@ -568,7 +568,8 @@ function drawJourney(doc: jsPDF, type: ProjectType, client: ClientInfo) {
     const blockH = 110;
     if (y + blockH > FOOTER_LIMIT) {
       doc.addPage();
-      drawHeader(doc, client, type);      y = 116;
+      drawHeader(doc, client, type);
+      y = 116;
       eyebrow(doc, "PARCOURS CLIENT BEEV (SUITE)", y);
       y += 30;
     }
