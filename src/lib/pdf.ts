@@ -349,7 +349,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text(`× ${sv.quantity} véhicule${sv.quantity > 1 ? "s" : ""} · ${sv.kmPerYear.toLocaleString("fr-FR")} km/an`, px + 12, py + 38);
+  doc.text(`× ${sv.quantity} véhicule${sv.quantity > 1 ? "s" : ""} · ${fmt(sv.kmPerYear)} km/an`, px + 12, py + 38);
 
   let y = imgY + imgH + 20;
 
@@ -382,7 +382,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
     doc.setTextColor(...SUB);
-    doc.text(`TCO AUX 100 KM · ${sv.durationMonths} mois · ${sv.kmPerYear.toLocaleString("fr-FR")} km/an (NON CONTRACTUEL)`, M + 16, y + 18);
+    doc.text(`TCO AUX 100 KM · ${sv.durationMonths} mois · ${fmt(sv.kmPerYear)} km/an (NON CONTRACTUEL)`, M + 16, y + 18);
     const blocks = [
       { l: "Loyer / 100 km", v: eur2(t.lease100) },
       { l: "Énergie / 100 km", v: eur2(t.energy100) },
@@ -795,10 +795,14 @@ function title(doc: jsPDF, label: string, y: number) {
   doc.text(lines, M, y);
 }
 
+// Remplace les espaces spéciaux (NARROW NO-BREAK SPACE U+202F et NO-BREAK SPACE U+00A0)
+// que Helvetica jsPDF ne sait pas rendre (apparaissent comme "/" dans le PDF)
+const cleanSpaces = (s: string) => s.replace(/ /g, " ").replace(/ /g, " ");
+const fmt = (n: number) => cleanSpaces(n.toLocaleString("fr-FR"));
 const eur = (n: number) =>
-  new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
+  cleanSpaces(new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n));
 const eur2 = (n: number) =>
-  new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(n);
+  cleanSpaces(new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(n));
 
 function ensureSpace(doc: jsPDF, y: number, needed: number, client?: ClientInfo, type?: ProjectType): number {
   if (y + needed > FOOTER_LIMIT) {
@@ -835,6 +839,28 @@ async function loadImage(url: string): Promise<LoadedImage | null> {
   }
 }
 
+// Aplatit une image PNG (potentiellement transparente) sur un fond cream
+// pour éviter les pixels noirs dans le PDF (jsPDF ne gère pas l'alpha PNG).
+async function flattenPngToJpeg(dataUrl: string, w: number, h: number): Promise<string> {
+  return new Promise((resolve) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return resolve(dataUrl);
+    // Fond cream identique au BG de la zone image
+    ctx.fillStyle = "rgb(250, 248, 244)";
+    ctx.fillRect(0, 0, w, h);
+    const imgEl = new Image();
+    imgEl.onload = () => {
+      ctx.drawImage(imgEl, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", 0.9));
+    };
+    imgEl.onerror = () => resolve(dataUrl);
+    imgEl.src = dataUrl;
+  });
+}
+
 // Affiche une image en gardant son ratio natif, centrée dans la zone (x,y,maxW,maxH).
 async function drawImageContain(doc: jsPDF, url: string, x: number, y: number, maxW: number, maxH: number) {
   const img = await loadImage(url);
@@ -848,8 +874,14 @@ async function drawImageContain(doc: jsPDF, url: string, x: number, y: number, m
   }
   const cx = x + (maxW - w) / 2;
   const cy = y + (maxH - h) / 2;
+  let finalDataUrl = img.dataUrl;
+  let finalFormat: "JPEG" | "PNG" = img.format;
+  if (img.format === "PNG") {
+    finalDataUrl = await flattenPngToJpeg(img.dataUrl, img.w, img.h);
+    finalFormat = "JPEG";
+  }
   try {
-    doc.addImage(img.dataUrl, img.format, cx, cy, w, h, undefined, "FAST");
+    doc.addImage(finalDataUrl, finalFormat, cx, cy, w, h, undefined, "FAST");
   } catch {
     /* image format non supporté — silencieux */
   }
