@@ -107,20 +107,20 @@ export async function generateProposalPdf(opts: {
     for (let i = 0; i < v.length; i++) {
       doc.addPage();
       drawHeader(doc, client, projectType);
-      await drawVehiclePage(doc, v[i], energy, i + 1, v.length);
+      await drawVehiclePage(doc, v[i], energy, i + 1, v.length, client, projectType);
     }
   } else {
     for (let i = 0; i < c.length; i++) {
       doc.addPage();
       drawHeader(doc, client, projectType);
-      await drawChargerPage(doc, c[i], projectType, i + 1, c.length);
+      await drawChargerPage(doc, c[i], projectType, i + 1, c.length, client);
     }
   }
 
   doc.addPage();
   drawHeader(doc, client, projectType);
-  drawJourney(doc, projectType);
-
+  drawJourney(doc, projectType, client);
+  
   doc.addPage();
   drawHeader(doc, client, projectType);
   drawValidation(doc, projectType, client);
@@ -285,7 +285,7 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
 }
 
 // ============ FICHE VÉHICULE ============
-async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams, idx: number, total: number) {
+async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams, idx: number, total: number, client: ClientInfo, type: ProjectType) {
   const v = sv.vehicle;
   eyebrow(doc, `VÉHICULE ${idx} / ${total}`, 116);
   doc.setFont("helvetica", "bold");
@@ -414,7 +414,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     body.push([{ content: "Options & accessoires inclus", colSpan: 4, styles: { fillColor: BG, fontStyle: "bold", textColor: INK } }]);
     sv.options.forEach((li) => body.push([li.label, String(li.qty), eur(li.unitHt), eur(li.qty * li.unitHt)]));
   }
-  ensureSpace(doc, y, 80);
+    y = ensureSpace(doc, y, 80, client, type);
   autoTable(doc, {
     startY: y,
     theme: "grid",
@@ -428,7 +428,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
 }
 
 // ============ FICHE BORNE / SITE ============
-async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectType, idx: number, total: number) {
+async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectType, idx: number, total: number, client: ClientInfo) {
   const isHome = type === "home";
   eyebrow(doc, `${isHome ? "COLLABORATEUR" : "SITE"} ${idx} / ${total}`, 116);
   doc.setFont("helvetica", "bold");
@@ -478,7 +478,7 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   let y = imgY + imgH + 20;
 
   const total_ = sc.lineItems.reduce((a, li) => a + li.qty * li.unitHt, 0);
-  ensureSpace(doc, y, 90);
+  y = ensureSpace(doc, y, 90, client, type);
   autoTable(doc, {
     startY: y,
     theme: "grid",
@@ -522,7 +522,7 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
 }
 
 // ============ PARCOURS CLIENT BEEV (A → Z) ============
-function drawJourney(doc: jsPDF, type: ProjectType) {
+function drawJourney(doc: jsPDF, type: ProjectType, client: ClientInfo) {
   const j = BEEV_JOURNEYS[type];
   let y = 116;
   eyebrow(doc, "PARCOURS CLIENT BEEV — DE A À Z", y);
@@ -568,8 +568,7 @@ function drawJourney(doc: jsPDF, type: ProjectType) {
     const blockH = 110;
     if (y + blockH > FOOTER_LIMIT) {
       doc.addPage();
-      drawHeader(doc, { company: "", contact: "", email: "", date: "", salesRep: "", salesRepEmail: "", salesRepPhone: "", notes: "" } as ClientInfo, type);
-      y = 116;
+      drawHeader(doc, client, type);      y = 116;
       eyebrow(doc, "PARCOURS CLIENT BEEV (SUITE)", y);
       y += 30;
     }
@@ -800,10 +799,13 @@ const eur = (n: number) =>
 const eur2 = (n: number) =>
   new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(n);
 
-function ensureSpace(doc: jsPDF, y: number, needed: number) {
+function ensureSpace(doc: jsPDF, y: number, needed: number, client?: ClientInfo, type?: ProjectType): number {
   if (y + needed > FOOTER_LIMIT) {
     doc.addPage();
+    if (client && type) drawHeader(doc, client, type);
+    return 116;
   }
+  return y;
 }
 
 type LoadedImage = { dataUrl: string; w: number; h: number; format: "JPEG" | "PNG" };
