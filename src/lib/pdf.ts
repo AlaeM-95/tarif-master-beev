@@ -37,12 +37,16 @@ export type SelectedCharger = {
   lineItems: LineItem[];
 };
 
-const INK = [17, 17, 17] as [number, number, number];
-const SUB = [95, 95, 100] as [number, number, number];
-const RULE = [220, 218, 212] as [number, number, number];
-const BG = [250, 248, 244] as [number, number, number];
-const ACCENT = [140, 198, 63] as [number, number, number];
-const LAVENDER = [168, 148, 214] as [number, number, number];
+// === CHARTE GRAPHIQUE BEEV 2026 ===
+const INK = [17, 17, 17] as [number, number, number];           // #111111 noir principal
+const SUB = [95, 95, 100] as [number, number, number];          // #5F5F64 gris secondaire
+const RULE = [220, 218, 212] as [number, number, number];       // #DCDAD4 filets
+const BG = [250, 248, 244] as [number, number, number];         // #FAF8F4 fond cream
+const ACCENT = [53, 218, 118] as [number, number, number];      // #35DA76 vert Beev
+const LAVENDER = [56, 9, 234] as [number, number, number];      // #3809EA bleu/violet Beev
+
+// Police de marque (chargée dynamiquement depuis public/fonts/)
+let BRAND_FONT = "helvetica"; // fallback si Roobert non disponible
 
 const PAGE_W = 595.28;
 const PAGE_H = 841.89;
@@ -83,6 +87,30 @@ const TYPE_TITLE: Record<ProjectType, string> = {
   site: "Bornes de recharge site entreprise",
 };
 
+// Charge la police Roobert depuis public/fonts/ et l'enregistre dans le document.
+// Si les fichiers ne sont pas disponibles, on retombe silencieusement sur Helvetica.
+async function loadBrandFont(doc: jsPDF): Promise<string> {
+  const toBase64 = (buf: ArrayBuffer): string => {
+    let binary = "";
+    const bytes = new Uint8Array(buf);
+    for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+  };
+  try {
+    const [regBuf, sbBuf] = await Promise.all([
+      fetch("/fonts/Roobert-Regular.ttf").then((r) => (r.ok ? r.arrayBuffer() : Promise.reject())),
+      fetch("/fonts/Roobert-SemiBold.ttf").then((r) => (r.ok ? r.arrayBuffer() : Promise.reject())),
+    ]);
+    doc.addFileToVFS("Roobert-Regular.ttf", toBase64(regBuf));
+    doc.addFont("Roobert-Regular.ttf", "Roobert", "normal");
+    doc.addFileToVFS("Roobert-SemiBold.ttf", toBase64(sbBuf));
+    doc.addFont("Roobert-SemiBold.ttf", "Roobert", "bold");
+    return "Roobert";
+  } catch {
+    return "helvetica";
+  }
+}
+
 // ============ MAIN ============
 export async function generateProposalPdf(opts: {
   projectType: ProjectType;
@@ -93,6 +121,7 @@ export async function generateProposalPdf(opts: {
 }) {
   const { projectType, client, vehicles, chargers, energy } = opts;
   const doc = new jsPDF({ unit: "pt", format: "a4" });
+  BRAND_FONT = await loadBrandFont(doc);
 
   const v = projectType === "vehicles" ? vehicles : [];
   const c = projectType === "vehicles" ? [] : chargers;
@@ -142,10 +171,10 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
   doc.rect(0, 0, PAGE_W, PAGE_H, "F");
 
   doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(11);
   doc.text("BEEV", M, 80);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
   doc.setTextColor(180, 180, 185);
   doc.text("Mobilité électrique pour entreprises · beev.co", M, 94);
@@ -157,12 +186,12 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
   doc.setTextColor(180, 180, 185);
   doc.text(`OFFRE COMMERCIALE · ${c.date.toUpperCase()}`, M, 250);
 
-  doc.setFont("helvetica", "bold");
+  doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(34);
   doc.setTextColor(255, 255, 255);
   doc.text("Beev × " + (c.company || "Votre entreprise"), M, 295);
 
-  doc.setFont("helvetica", "normal");
+  doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(14);
   doc.setTextColor(210, 210, 215);
   const sub = TYPE_TITLE[type];
@@ -174,11 +203,11 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
   doc.setFontSize(9);
   doc.setTextColor(170, 170, 175);
   doc.text("PRÉPARÉE POUR", M, 495);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(20);
   doc.setTextColor(255, 255, 255);
   doc.text(c.company || "—", M, 522);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(11);
   doc.setTextColor(200, 200, 205);
   if (c.contact) doc.text(c.contact, M, 542);
@@ -187,11 +216,11 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
   doc.setFontSize(9);
   doc.setTextColor(170, 170, 175);
   doc.text("PRÉPARÉE PAR", PAGE_W - M, 495, { align: "right" });
-  doc.setFont("helvetica", "bold");
+  doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(13);
   doc.setTextColor(255, 255, 255);
   doc.text(c.salesRep || "Beev", PAGE_W - M, 522, { align: "right" });
-  doc.setFont("helvetica", "normal");
+  doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(200, 200, 205);
   if (c.salesRepEmail) doc.text(c.salesRepEmail, PAGE_W - M, 540, { align: "right" });
@@ -199,18 +228,18 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
 
   doc.setDrawColor(80, 80, 90);
   doc.line(M, 640, PAGE_W - M, 640);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(40);
   doc.setTextColor(255, 255, 255);
   if (type === "vehicles") {
     doc.text(String(nbV), M, 700);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(10);
     doc.setTextColor(180, 180, 185);
     doc.text(`véhicule${nbV > 1 ? "s" : ""} étudié${nbV > 1 ? "s" : ""}`, M, 718);
   } else {
     doc.text(String(nbC), M, 700);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(10);
     doc.setTextColor(180, 180, 185);
     const lbl = type === "home" ? `collaborateur${nbC > 1 ? "s" : ""} équipé${nbC > 1 ? "s" : ""} à domicile` : `site${nbC > 1 ? "s" : ""} entreprise équipé${nbC > 1 ? "s" : ""}`;
@@ -233,7 +262,7 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
               "Un déploiement IRVE site entreprise sans friction.", y);
   y += 36;
 
-  doc.setFont("helvetica", "normal");
+  doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10.5);
   doc.setTextColor(...INK);
 
@@ -246,10 +275,10 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
   doc.text(l1, M, y);
   y += l1.length * 14 + 16;
 
-  doc.setFont("helvetica", "bold");
+  doc.setFont(BRAND_FONT, "bold");
   doc.text("Concrètement, ce qui change pour vous :", M, y);
   y += 18;
-  doc.setFont("helvetica", "normal");
+  doc.setFont(BRAND_FONT, "normal");
 
   const bulletsByType: Record<ProjectType, string[]> = {
     vehicles: [
@@ -288,11 +317,11 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
 async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams, idx: number, total: number, client: ClientInfo, type: ProjectType) {
   const v = sv.vehicle;
   eyebrow(doc, `VÉHICULE ${idx} / ${total}`, 116);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(22);
   doc.setTextColor(...INK);
   doc.text(`${v.brand} ${v.model}`, M, 148);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(11);
   doc.setTextColor(...SUB);
   doc.text(`${v.version} · ${v.category} · ${v.energy}`, M, 166);
@@ -308,7 +337,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   const pw = PAGE_W - M - px;
   doc.setFillColor(...INK);
   doc.rect(px, imgY, pw, 26, "F");
-  doc.setFont("helvetica", "bold");
+  doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(9);
   doc.setTextColor(255, 255, 255);
   doc.text("TARIFICATION LLD", px + 12, imgY + 17);
@@ -342,11 +371,11 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
   doc.text(`LOYER MENSUEL TTC · ${sv.durationMonths} mois`, px + 12, py);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(18);
   doc.setTextColor(...INK);
   doc.text(eur(sv.negotiatedMonthly), px + 12, py + 22);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
   doc.text(`× ${sv.quantity} véhicule${sv.quantity > 1 ? "s" : ""} · ${fmt(sv.kmPerYear)} km/an`, px + 12, py + 38);
@@ -366,8 +395,8 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       ["CO₂", `${v.co2} g/km`],
       ["Puissance fiscale", `${v.fiscalHp} CV`],
     ],
-    headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold" },
-    bodyStyles: { fontSize: 9.5, cellPadding: 6, textColor: INK, lineColor: RULE },
+    headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT },
+    bodyStyles: { fontSize: 9.5, cellPadding: 6, textColor: INK, lineColor: RULE, font: BRAND_FONT },
     columnStyles: { 1: { halign: "right", fontStyle: "bold" } },
     margin: { left: M, right: M },
   });
@@ -379,7 +408,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     doc.rect(M, y, PAGE_W - M * 2, 78, "F");
     doc.setFillColor(...ACCENT);
     doc.rect(M, y, 4, 78, "F");
-    doc.setFont("helvetica", "bold");
+    doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(10);
     doc.setTextColor(...SUB);
     doc.text(`TCO AUX 100 KM · ${sv.durationMonths} mois · ${fmt(sv.kmPerYear)} km/an (NON CONTRACTUEL)`, M + 16, y + 18);
@@ -392,11 +421,11 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     const cw = (PAGE_W - M * 2 - 20) / blocks.length;
     blocks.forEach((b, i) => {
       const x = M + 16 + i * cw;
-      doc.setFont("helvetica", "normal");
+      doc.setFont(BRAND_FONT, "normal");
       doc.setFontSize(8.5);
       doc.setTextColor(...SUB);
       doc.text(b.l.toUpperCase(), x, y + 38);
-      doc.setFont("helvetica", b.bold ? "bold" : "normal");
+      doc.setFont(BRAND_FONT, b.bold ? "bold" : "normal");
       doc.setFontSize(b.bold ? 16 : 13);
       doc.setTextColor(...INK);
       doc.text(b.v, x, y + 60);
@@ -420,8 +449,8 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     theme: "grid",
     head: [["Désignation", "Qté", "PU HT", "Total HT"]],
     body: body as any,
-    headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold" },
-    bodyStyles: { fontSize: 9, cellPadding: 6, textColor: INK, lineColor: RULE },
+    headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT },
+    bodyStyles: { fontSize: 9, cellPadding: 6, textColor: INK, lineColor: RULE, font: BRAND_FONT },
     columnStyles: { 1: { halign: "center", cellWidth: 40 }, 2: { halign: "right", cellWidth: 70 }, 3: { halign: "right", cellWidth: 80, fontStyle: "bold" } },
     margin: { left: M, right: M },
   });
@@ -431,11 +460,11 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
 async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectType, idx: number, total: number, client: ClientInfo) {
   const isHome = type === "home";
   eyebrow(doc, `${isHome ? "COLLABORATEUR" : "SITE"} ${idx} / ${total}`, 116);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(22);
   doc.setTextColor(...INK);
   doc.text(sc.siteName || `${sc.charger.brand} ${sc.charger.model}`, M, 148);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(11);
   doc.setTextColor(...SUB);
   doc.text(`${sc.charger.brand} ${sc.charger.model} · ${sc.charger.powerKw} kW · ${sc.charger.type}`, M, 166);
@@ -453,11 +482,11 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   await drawImageContain(doc, sc.charger.image, M + 6, imgY + 6, imgW - 12, imgH - 12);
 
   const fx = M + imgW + 18;
-  doc.setFont("helvetica", "bold");
+  doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
   doc.text("CARACTÉRISTIQUES MATÉRIEL", fx, imgY + 14);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...INK);
   let fy = imgY + 32;
@@ -494,8 +523,8 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
         { content: eur(total_ * sc.quantity), styles: { fontStyle: "bold", halign: "right", textColor: ACCENT } },
       ]] : []),
     ] as any),
-    headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold" },
-    bodyStyles: { fontSize: 9, cellPadding: 6, textColor: INK, lineColor: RULE },
+    headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT },
+    bodyStyles: { fontSize: 9, cellPadding: 6, textColor: INK, lineColor: RULE, font: BRAND_FONT },
     columnStyles: { 1: { halign: "center", cellWidth: 40 }, 2: { halign: "right", cellWidth: 80 }, 3: { halign: "right", cellWidth: 90, fontStyle: "bold" } },
     margin: { left: M, right: M },
   });
@@ -509,11 +538,11 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
     doc.rect(M, y, PAGE_W - M * 2, 60, "F");
     doc.setFillColor(...LAVENDER);
     doc.rect(M, y, 4, 60, "F");
-    doc.setFont("helvetica", "bold");
+    doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(9);
     doc.setTextColor(...SUB);
     doc.text(isHome ? "INCLUS DANS LE KIT B2B2E" : "INCLUS DANS LA PRESTATION IRVE", M + 16, y + 18);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(9.5);
     doc.setTextColor(...INK);
     const lines = doc.splitTextToSize(inclusionTxt, PAGE_W - M * 2 - 32);
@@ -532,7 +561,7 @@ function drawJourney(doc: jsPDF, type: ProjectType, client: ClientInfo) {
               "Comment Beev déploie vos sites.", y);
   y += 30;
 
-  doc.setFont("helvetica", "normal");
+  doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
   const intro = doc.splitTextToSize(j.intro, PAGE_W - M * 2);
@@ -551,11 +580,11 @@ function drawJourney(doc: jsPDF, type: ProjectType, client: ClientInfo) {
     const x = stripX0 + i * step;
     doc.setFillColor(...ACCENT);
     doc.circle(x, stripY, 8, "F");
-    doc.setFont("helvetica", "bold");
+    doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(9);
     doc.setTextColor(255, 255, 255);
     doc.text(s.n, x, stripY + 3, { align: "center" });
-    doc.setFont("helvetica", "bold");
+    doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(7.5);
     doc.setTextColor(...INK);
     const lbl = doc.splitTextToSize(s.title, step - 8);
@@ -576,22 +605,22 @@ function drawJourney(doc: jsPDF, type: ProjectType, client: ClientInfo) {
     // bandeau étape
     doc.setFillColor(...INK);
     doc.rect(M, y, 28, 28, "F");
-    doc.setFont("helvetica", "bold");
+    doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(13);
     doc.setTextColor(255, 255, 255);
     doc.text(s.n, M + 14, y + 19, { align: "center" });
 
-    doc.setFont("helvetica", "bold");
+    doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(12);
     doc.setTextColor(...INK);
     doc.text(s.title, M + 38, y + 12);
     if (s.duration) {
-      doc.setFont("helvetica", "normal");
+      doc.setFont(BRAND_FONT, "normal");
       doc.setFontSize(8.5);
       doc.setTextColor(...SUB);
       doc.text(s.duration, PAGE_W - M, y + 12, { align: "right" });
     }
-    doc.setFont("helvetica", "normal");
+    doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(9.5);
     doc.setTextColor(...SUB);
     const sum = doc.splitTextToSize(s.summary, PAGE_W - M - (M + 38));
@@ -605,11 +634,11 @@ function drawJourney(doc: jsPDF, type: ProjectType, client: ClientInfo) {
     doc.rect(M, yy, colW, 56, "F");
     doc.setFillColor(...ACCENT);
     doc.rect(M, yy, 3, 56, "F");
-    doc.setFont("helvetica", "bold");
+    doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(8);
     doc.setTextColor(...SUB);
     doc.text("BEEV PREND EN CHARGE", M + 10, yy + 12);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(8.5);
     doc.setTextColor(...INK);
     let by = yy + 24;
@@ -624,11 +653,11 @@ function drawJourney(doc: jsPDF, type: ProjectType, client: ClientInfo) {
     doc.rect(cx, colYStart, colW, 56, "F");
     doc.setFillColor(...LAVENDER);
     doc.rect(cx, colYStart, 3, 56, "F");
-    doc.setFont("helvetica", "bold");
+    doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(8);
     doc.setTextColor(...SUB);
     doc.text("CÔTÉ CLIENT", cx + 10, colYStart + 12);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(8.5);
     doc.setTextColor(...INK);
     let cy2 = colYStart + 24;
@@ -674,15 +703,15 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   stepsByType[type].forEach(([n, t, d]) => {
     doc.setFillColor(...ACCENT);
     doc.rect(M, y - 12, 26, 26, "F");
-    doc.setFont("helvetica", "bold");
+    doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(13);
     doc.setTextColor(255, 255, 255);
     doc.text(n, M + 13, y + 5, { align: "center" });
-    doc.setFont("helvetica", "bold");
+    doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(11);
     doc.setTextColor(...INK);
     doc.text(t, M + 38, y);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(10);
     doc.setTextColor(...SUB);
     const ll = doc.splitTextToSize(d, PAGE_W - M - (M + 38));
@@ -694,12 +723,12 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   doc.setDrawColor(...RULE);
   doc.line(M, y, PAGE_W - M, y);
   y += 20;
-  doc.setFont("helvetica", "bold");
+  doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
   doc.text("CONDITIONS COMMERCIALES", M, y);
   y += 14;
-  doc.setFont("helvetica", "normal");
+  doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9.5);
   doc.setTextColor(...INK);
   const fallback: Record<ProjectType, string> = {
@@ -717,12 +746,12 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
     home: "BON POUR ACCORD — DÉPLOIEMENT DOMICILE COLLABORATEURS",
     site: "BON POUR ACCORD — DÉPLOIEMENT SITE ENTREPRISE",
   };
-  doc.setFont("helvetica", "bold");
+  doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
   doc.text(bpaTitle[type], M, y);
   y += 14;
-  doc.setFont("helvetica", "normal");
+  doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9.5);
   doc.setTextColor(...INK);
   const bpaText: Record<ProjectType, string> = {
@@ -746,10 +775,10 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
 // ============ HEADER / FOOTER / HELPERS ============
 function drawHeader(doc: jsPDF, c: ClientInfo, type: ProjectType) {
   doc.setTextColor(...INK);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(11);
   doc.text("BEEV", M, 56);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
   const tag = type === "vehicles" ? "Offre véhicules LLD" : type === "home" ? "Déploiement domicile (B2B2E)" : "Déploiement site entreprise";
@@ -770,7 +799,7 @@ function drawHeader(doc: jsPDF, c: ClientInfo, type: ProjectType) {
 function drawFooter(doc: jsPDF, c: ClientInfo, page: number, total: number) {
   doc.setDrawColor(...RULE);
   doc.line(M, PAGE_H - 50, PAGE_W - M, PAGE_H - 50);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8);
   doc.setTextColor(...SUB);
   doc.text(`Beev · ${c.salesRep || "Commercial grand compte"}${c.salesRepEmail ? " · " + c.salesRepEmail : ""}`, M, PAGE_H - 36);
@@ -779,7 +808,7 @@ function drawFooter(doc: jsPDF, c: ClientInfo, page: number, total: number) {
 }
 
 function eyebrow(doc: jsPDF, label: string, y: number) {
-  doc.setFont("helvetica", "bold");
+  doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(9);
   doc.setTextColor(...SUB);
   doc.text(label, M, y);
@@ -788,7 +817,7 @@ function eyebrow(doc: jsPDF, label: string, y: number) {
 }
 
 function title(doc: jsPDF, label: string, y: number) {
-  doc.setFont("helvetica", "bold");
+  doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(22);
   doc.setTextColor(...INK);
   const lines = doc.splitTextToSize(label, PAGE_W - M * 2);
