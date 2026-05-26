@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { BEEV_JOURNEYS, MANDATORY_SERVICES, type Charger, type LineItem, type ProjectType, type Vehicle } from "./catalog";
+import { loadPdfSettings, hexToRgb } from "./pdf-settings";
 import type { EnergyParams } from "./store";
 
 export type ClientInfo = {
@@ -38,12 +39,37 @@ export type SelectedCharger = {
 };
 
 // === CHARTE GRAPHIQUE BEEV 2026 ===
-const INK = [17, 17, 17] as [number, number, number];           // #111111 noir principal
-const SUB = [95, 95, 100] as [number, number, number];          // #5F5F64 gris secondaire
-const RULE = [220, 218, 212] as [number, number, number];       // #DCDAD4 filets
-const BG = [250, 248, 244] as [number, number, number];         // #FAF8F4 fond cream
-const ACCENT = [53, 218, 118] as [number, number, number];      // #35DA76 vert Beev
-const LAVENDER = [56, 9, 234] as [number, number, number];      // #3809EA bleu/violet Beev
+// Les couleurs sont mutables : elles sont écrasées par les valeurs de pdf_settings
+// (Supabase) au début de chaque génération via applyPdfSettings().
+let INK: [number, number, number] = [17, 17, 17];           // #111111 noir principal
+const SUB: [number, number, number] = [95, 95, 100];        // #5F5F64 gris secondaire (non éditable)
+const RULE: [number, number, number] = [220, 218, 212];     // #DCDAD4 filets (non éditable)
+let BG: [number, number, number] = [250, 248, 244];         // #FAF8F4 fond cream
+let ACCENT: [number, number, number] = [53, 218, 118];      // #35DA76 vert Beev
+let LAVENDER: [number, number, number] = [56, 9, 234];      // #3809EA bleu/violet Beev
+
+// Contenus éditables depuis l'admin (chargés depuis pdf_settings + journey_steps).
+let PDF_CONTENT: {
+  logoUrl: string | null;
+  coverImageUrl: string | null;
+  coverSubtitle: string | null;
+  whyBeevIntro: string | null;
+  whyBeevBullets: string[];
+  validationConditions: string | null;
+  validationBpaText: string | null;
+  validationBpaTitle: string | null;
+  steps: Array<{ n: string; title: string; summary: string; duration: string; beev: string[]; client: string[] }>;
+} = {
+  logoUrl: null,
+  coverImageUrl: null,
+  coverSubtitle: null,
+  whyBeevIntro: null,
+  whyBeevBullets: [],
+  validationConditions: null,
+  validationBpaText: null,
+  validationBpaTitle: null,
+  steps: [],
+};
 
 // Police de marque (chargée dynamiquement depuis public/fonts/)
 let BRAND_FONT = "helvetica"; // fallback si Roobert non disponible
@@ -87,6 +113,41 @@ const TYPE_TITLE: Record<ProjectType, string> = {
   site: "Bornes de recharge site entreprise",
 };
 
+// Charge les paramètres PDF (couleurs, textes, étapes) depuis Supabase et les applique
+// aux variables module-level utilisées par les fonctions de dessin.
+async function applyPdfSettings(projectType: ProjectType) {
+  try {
+    const { settings, steps } = await loadPdfSettings(projectType);
+    if (settings) {
+      INK = hexToRgb(settings.colorInk);
+      BG = hexToRgb(settings.colorBg);
+      ACCENT = hexToRgb(settings.colorAccent);
+      LAVENDER = hexToRgb(settings.colorLavender);
+      PDF_CONTENT = {
+        logoUrl: settings.logoUrl,
+        coverImageUrl: settings.coverImageUrl,
+        coverSubtitle: settings.coverSubtitle,
+        whyBeevIntro: settings.whyBeevIntro,
+        whyBeevBullets: settings.whyBeevBullets,
+        validationConditions: settings.validationConditions,
+        validationBpaText: settings.validationBpaText,
+        validationBpaTitle: settings.validationBpaTitle,
+        steps: steps.map((s) => ({
+          n: s.stepNumber,
+          title: s.title,
+          summary: s.summary,
+          duration: s.duration,
+          beev: s.beevActions,
+          client: s.clientActions,
+        })),
+      };
+    }
+  } catch (err) {
+    console.error("Erreur chargement pdf_settings:", err);
+    // En cas d'erreur, on garde les valeurs par défaut
+  }
+}
+
 // Charge la police Roobert depuis public/fonts/ et l'enregistre dans le document.
 // Si les fichiers ne sont pas disponibles, on retombe silencieusement sur Helvetica.
 async function loadBrandFont(doc: jsPDF): Promise<string> {
@@ -121,7 +182,8 @@ export async function generateProposalPdf(opts: {
 }) {
   const { projectType, client, vehicles, chargers, energy } = opts;
   const doc = new jsPDF({ unit: "pt", format: "a4" });
-  BRAND_FONT = await loadBrandFont(doc);
+  // Charge les paramètres PDF (couleurs + textes) depuis Supabase ET la police
+  await Promise.all([applyPdfSettings(projectType), loadBrandFont(doc).then((f) => { BRAND_FONT = f; })]);
 
   const v = projectType === "vehicles" ? vehicles : [];
   const c = projectType === "vehicles" ? [] : chargers;
@@ -194,7 +256,7 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(14);
   doc.setTextColor(210, 210, 215);
-  const sub = TYPE_TITLE[type];
+  const sub = PDF_CONTENT.coverSubtitle ?? TYPE_TITLE[type];
   const subL = doc.splitTextToSize(sub, PAGE_W - M * 2);
   doc.text(subL, M, 325);
 
@@ -271,7 +333,8 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
     home: "Vous équipez vos collaborateurs roulant en véhicule électrique d'une borne à leur domicile. Beev gère l'intégralité : vente, installation IRVE certifiée par notre partenaire Seris, supervision, et remboursement automatisé de l'énergie consommée à titre professionnel.",
     site: "Vous électrifiez vos sites tertiaires, logistiques ou commerciaux. Beev prend en charge l'étude de site, le matériel premium (Alfen, Schneider, Hager, Wallbox), la pose IRVE certifiée, le génie civil, la mise en service OCPP et la formation des utilisateurs.",
   };
-  const l1 = doc.splitTextToSize(intros[type], PAGE_W - M * 2);
+  const introText = PDF_CONTENT.whyBeevIntro ?? intros[type];
+  const l1 = doc.splitTextToSize(introText, PAGE_W - M * 2);
   doc.text(l1, M, y);
   y += l1.length * 14 + 16;
 
@@ -303,7 +366,8 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
       "Garantie constructeur 3 ans extensible 6 ans.",
     ],
   };
-  bulletsByType[type].forEach((b) => {
+  const bullets = PDF_CONTENT.whyBeevBullets.length > 0 ? PDF_CONTENT.whyBeevBullets : bulletsByType[type];
+  bullets.forEach((b) => {
     doc.setFillColor(...ACCENT);
     doc.circle(M + 4, y - 3, 2, "F");
     const t = doc.splitTextToSize(b, PAGE_W - M * 2 - 16);
@@ -552,7 +616,10 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
 
 // ============ PARCOURS CLIENT BEEV (A → Z) ============
 function drawJourney(doc: jsPDF, type: ProjectType, client: ClientInfo) {
-  const j = BEEV_JOURNEYS[type];
+  const fallbackJourney = BEEV_JOURNEYS[type];
+  const j = PDF_CONTENT.steps.length > 0
+    ? { intro: fallbackJourney.intro, steps: PDF_CONTENT.steps }
+    : fallbackJourney;
   let y = 116;
   eyebrow(doc, "PARCOURS CLIENT BEEV — DE A À Z", y);
   y += 32;
@@ -736,7 +803,8 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
     home: "Offre valable 30 jours. Tarifs HT, pose 0–10 m incluse. Au-delà : devis complémentaire après visite technique. Le mandat d'installation est signé individuellement par chaque collaborateur bénéficiaire.",
     site: "Offre valable 30 jours. Tarifs HT, sous réserve de visite technique sur site. Le devis ferme par site est émis après audit IRVE. Garantie constructeur 3 ans, extensible 6 ans en option.",
   };
-  const lines = doc.splitTextToSize(c.notes || fallback[type], PAGE_W - M * 2);
+  const conditionsText = c.notes || PDF_CONTENT.validationConditions || fallback[type];
+  const lines = doc.splitTextToSize(conditionsText, PAGE_W - M * 2);
   doc.text(lines, M, y);
   y += lines.length * 13 + 22;
 
@@ -749,7 +817,7 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
-  doc.text(bpaTitle[type], M, y);
+  doc.text(PDF_CONTENT.validationBpaTitle || bpaTitle[type], M, y);
   y += 14;
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9.5);
@@ -759,7 +827,7 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
     home: "L'employeur valide le cadre du déploiement B2B2E. Chaque installation au domicile d'un collaborateur fera l'objet d'un mandat individuel signé par le collaborateur concerné.",
     site: "Le client autorise Beev à lancer l'étude technique sur site. Le devis ferme par site sera émis après audit IRVE et signé séparément avant pose.",
   };
-  const bl = doc.splitTextToSize(bpaText[type], PAGE_W - M * 2);
+  const bl = doc.splitTextToSize(PDF_CONTENT.validationBpaText || bpaText[type], PAGE_W - M * 2);
   doc.text(bl, M, y);
   y += bl.length * 13 + 18;
 
