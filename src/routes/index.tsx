@@ -936,42 +936,79 @@ function SelectedChargerRow({ sc, onChange, onRemove }: { sc: SelectedCharger; o
         <span>Chiffrage · {sc.lineItems.length} lignes · marge {margePct.toFixed(1)} %</span><span>{openLi ? "▴" : "▾"}</span>
       </button>
       {openLi && (
-        <div className="rounded-md border bg-card p-2 space-y-2">
-          <div className="grid grid-cols-[1fr_46px_70px_64px_70px_24px] gap-1 text-[10px] uppercase text-muted-foreground px-1">
-            <span>Désignation</span>
-            <span className="text-right">Qté</span>
-            <span className="text-right">PU achat</span>
-            <span className="text-right text-[#3809EA]">Marge %</span>
-            <span className="text-right">PU client</span>
-            <span></span>
-          </div>
+        <div className="rounded-md border bg-card p-2 space-y-3">
           {sc.lineItems.map((li, i) => {
             const clientUnit = lineItemClientUnit(li);
+            const lineTotalAchat = li.qty * li.unitHt;
+            const lineTotalClient = lineItemClientTotal(li);
             return (
-              <div key={i} className="grid grid-cols-[1fr_46px_70px_64px_70px_24px] gap-1 items-center">
-                <Input value={li.label} onChange={(e) => setLi(i, { label: e.target.value })} className="h-7 text-xs" />
-                <Input type="number" value={li.qty} onChange={(e) => setLi(i, { qty: Number(e.target.value) })} className="h-7 text-xs text-right" />
-                <Input type="number" value={li.unitHt} onChange={(e) => setLi(i, { unitHt: Number(e.target.value) })} className="h-7 text-xs text-right" />
-                <Input
-                  type="number"
-                  value={li.marginPct ?? 0}
-                  onChange={(e) => setLi(i, { marginPct: Number(e.target.value) })}
-                  className="h-7 text-xs text-right border-[#3809EA]/30"
-                  step={0.5}
-                  title="Marge appliquée pour le PDF client"
-                />
-                <div className="h-7 px-2 text-xs text-right flex items-center justify-end font-semibold text-[#3809EA]/80">
-                  {fmtEur(clientUnit)}
+              <div key={i} className="rounded-md border border-border bg-[#FAF8F4]/40 p-2 space-y-1.5">
+                {/* Ligne 1 : désignation pleine largeur + bouton supprimer */}
+                <div className="flex items-start gap-1">
+                  <Input
+                    value={li.label}
+                    onChange={(e) => setLi(i, { label: e.target.value })}
+                    className="h-7 text-xs flex-1"
+                    placeholder="Désignation de la ligne"
+                    title={li.label}
+                  />
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive flex-shrink-0" onClick={() => delLi(i)}>
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
                 </div>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => delLi(i)}><Trash2 className="w-3 h-3" /></Button>
+                {/* Ligne 2 : qté, PU achat, marge %, PU client */}
+                <div className="grid grid-cols-4 gap-1">
+                  <div className="space-y-0.5">
+                    <Label className="text-[9px] uppercase text-muted-foreground">Qté</Label>
+                    <Input
+                      type="number"
+                      value={li.qty}
+                      onChange={(e) => setLi(i, { qty: Number(e.target.value) })}
+                      className="h-7 text-xs text-right"
+                    />
+                  </div>
+                  <div className="space-y-0.5">
+                    <Label className="text-[9px] uppercase text-muted-foreground">PU achat</Label>
+                    <Input
+                      type="number"
+                      value={li.unitHt}
+                      onChange={(e) => setLi(i, { unitHt: Number(e.target.value) })}
+                      className="h-7 text-xs text-right"
+                    />
+                  </div>
+                  <div className="space-y-0.5">
+                    <Label className="text-[9px] uppercase text-[#3809EA]">Marge %</Label>
+                    <Input
+                      type="number"
+                      value={li.marginPct ?? 0}
+                      onChange={(e) => setLi(i, { marginPct: Number(e.target.value) })}
+                      className="h-7 text-xs text-right border-[#3809EA]/40"
+                      step={0.5}
+                      title="Marge appliquée pour le PDF client"
+                    />
+                  </div>
+                  <div className="space-y-0.5">
+                    <Label className="text-[9px] uppercase text-[#3809EA]">PU client</Label>
+                    <div className="h-7 px-2 text-xs text-right flex items-center justify-end font-semibold text-[#3809EA] rounded-md bg-[#3809EA]/5">
+                      {fmtEur(clientUnit)}
+                    </div>
+                  </div>
+                </div>
+                {/* Ligne 3 : totaux */}
+                <div className="flex justify-between items-center text-[10px] text-muted-foreground pt-1 border-t border-dashed border-border">
+                  <span>Total achat <strong className="text-[#111111]">{fmtEur(lineTotalAchat)}</strong></span>
+                  <span className="font-semibold text-[#3809EA]">Total client {fmtEur(lineTotalClient)}</span>
+                </div>
               </div>
             );
           })}
-          <Button variant="outline" size="sm" onClick={addLi} className="w-full gap-1 h-7 text-xs"><Plus className="w-3 h-3" /> Ajouter une ligne</Button>
-          <div className="flex justify-between items-center pt-2 border-t border-border text-xs">
-            <span className="text-muted-foreground">Total achat <strong className="text-[#111111]">{fmtEur(totalAchat)}</strong></span>
-            <span className="text-[#3809EA] font-semibold">Marge {fmtEur(margeAbs)} ({margePct.toFixed(1)} %)</span>
-            <span className="font-semibold">Total client <strong>{fmtEur(totalClient)}</strong></span>
+          <Button variant="outline" size="sm" onClick={addLi} className="w-full gap-1 h-7 text-xs">
+            <Plus className="w-3 h-3" /> Ajouter une ligne
+          </Button>
+          <div className="rounded-md border border-[#35DA76]/30 bg-[#35DA76]/5 p-2 space-y-1 text-xs">
+            <div className="flex justify-between"><span className="text-muted-foreground">Total achat</span><span className="font-semibold">{fmtEur(totalAchat)}</span></div>
+            <div className="flex justify-between text-[#3809EA]"><span>Marge totale</span><span className="font-semibold">{fmtEur(margeAbs)} ({margePct.toFixed(1)} %)</span></div>
+            <div className="flex justify-between border-t border-border pt-1 mt-1"><span className="font-semibold">Total client (PDF)</span><span className="font-bold text-base">{fmtEur(totalClient)}</span></div>
           </div>
         </div>
       )}
