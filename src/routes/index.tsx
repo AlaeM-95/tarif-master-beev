@@ -14,6 +14,8 @@ import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Pres
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type EnergyParams } from "@/lib/store";
 import { computeTco, generateProposalPdf, type SelectedCharger, type SelectedVehicle } from "@/lib/pdf";
 import { BEEV_JOURNEYS, MANDATORY_SERVICES, createBlankCharger, createBlankVehicle, type Charger, type LineItem, type ProjectType, type Vehicle } from "@/lib/catalog";
+import { AdminBadge } from "@/components/admin-badge";
+import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/")({
   component: App,
@@ -26,6 +28,7 @@ export const Route = createFileRoute("/")({
 });
 
 function App() {
+  const { isAdmin } = useAuth();
   const { vehicles, update: updateVehicle, add: addVehicle, remove: removeVehicle, importMany: importVehicles, reset: resetVehicles } = useVehicles();
   const { chargers, update: updateCharger, add: addCharger, remove: removeCharger, reset: resetChargers } = useChargers();
   const { energy, set: setEnergy, reset: resetEnergy } = useEnergy();
@@ -122,6 +125,7 @@ function App() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <AdminBadge />
             <Badge variant="secondary" className="hidden sm:inline-flex">{visibleCount} sélection(s)</Badge>
             <Button variant="outline" onClick={() => setPresenting(true)} disabled={visibleCount === 0} className="gap-2">
               <Presentation className="w-4 h-4" /> Présenter au client
@@ -145,17 +149,18 @@ function App() {
             <CatalogSection
               title={`Véhicules (${vehicles.length})`}
               subtitle="Catalogue synchronisé avec le calculateur TCO Beev. Loyers exprimés en TTC."
-              onReset={resetVehicles}
-              onAdd={() => addVehicle(createBlankVehicle())}
+              isAdmin={isAdmin}
+              onReset={isAdmin ? resetVehicles : undefined}
+              onAdd={isAdmin ? () => addVehicle(createBlankVehicle()) : undefined}
               addLabel="Ajouter un véhicule"
-              importTco={(list) => importVehicles(list)}
+              importTco={isAdmin ? (list) => importVehicles(list) : undefined}
             >
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {vehicles.map((v) => (
                   <VehicleCard key={v.id} vehicle={v} selected={!!selectedV[v.id]}
                     onToggle={() => toggleV(v)}
-                    onUpdate={(p) => updateVehicle(v.id, p)}
-                    onDelete={v.custom ? () => { if (selectedV[v.id]) toggleV(v); removeVehicle(v.id); } : undefined}
+                    onUpdate={isAdmin ? (p) => updateVehicle(v.id, p) : undefined}
+                    onDelete={isAdmin ? () => { if (selectedV[v.id]) toggleV(v); removeVehicle(v.id); } : undefined}
                   />
                 ))}
               </div>
@@ -166,16 +171,17 @@ function App() {
             <CatalogSection
               title={`Bornes domicile collaborateurs (${chargersHome.length})`}
               subtitle="Kit B2B2E clé en main · pose 0–10 m incluse · supervision & remboursement automatisé."
-              onReset={resetChargers}
-              onAdd={() => addCharger(createBlankCharger("domicile"))}
+              isAdmin={isAdmin}
+              onReset={isAdmin ? resetChargers : undefined}
+              onAdd={isAdmin ? () => addCharger(createBlankCharger("domicile")) : undefined}
               addLabel="Ajouter une borne domicile"
             >
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {chargersHome.map((c) => (
                   <ChargerCard key={c.id} charger={c} selected={!!selectedC[c.id]}
                     onToggle={() => toggleC(c)}
-                    onUpdate={(p) => updateCharger(c.id, p)}
-                    onDelete={c.custom ? () => { if (selectedC[c.id]) toggleC(c); removeCharger(c.id); } : undefined}
+                    onUpdate={isAdmin ? (p) => updateCharger(c.id, p) : undefined}
+                    onDelete={isAdmin ? () => { if (selectedC[c.id]) toggleC(c); removeCharger(c.id); } : undefined}
                   />
                 ))}
               </div>
@@ -186,16 +192,17 @@ function App() {
             <CatalogSection
               title={`Bornes site entreprise (${chargersSite.length})`}
               subtitle="Devis détaillé site par site (matériel + IRVE + génie civil)."
-              onReset={resetChargers}
-              onAdd={() => addCharger(createBlankCharger("site"))}
+              isAdmin={isAdmin}
+              onReset={isAdmin ? resetChargers : undefined}
+              onAdd={isAdmin ? () => addCharger(createBlankCharger("site")) : undefined}
               addLabel="Ajouter une borne site"
             >
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {chargersSite.map((c) => (
                   <ChargerCard key={c.id} charger={c} selected={!!selectedC[c.id]}
                     onToggle={() => toggleC(c)}
-                    onUpdate={(p) => updateCharger(c.id, p)}
-                    onDelete={c.custom ? () => { if (selectedC[c.id]) toggleC(c); removeCharger(c.id); } : undefined}
+                    onUpdate={isAdmin ? (p) => updateCharger(c.id, p) : undefined}
+                    onDelete={isAdmin ? () => { if (selectedC[c.id]) toggleC(c); removeCharger(c.id); } : undefined}
                   />
                 ))}
               </div>
@@ -271,11 +278,12 @@ function ProjectTypeSelector({ value, onChange }: { value: ProjectType; onChange
   );
 }
 
-function CatalogSection({ title, subtitle, onReset, onAdd, addLabel, importTco, children }: {
+function CatalogSection({ title, subtitle, onReset, onAdd, addLabel, importTco, children, isAdmin }: {
   title: string; subtitle: string;
-  onReset: () => void; onAdd: () => void; addLabel: string;
+  onReset?: () => void; onAdd?: () => void; addLabel: string;
   importTco?: (list: Vehicle[]) => void;
   children: React.ReactNode;
+  isAdmin?: boolean;
 }) {
   return (
     <section className="space-y-4">
@@ -284,11 +292,13 @@ function CatalogSection({ title, subtitle, onReset, onAdd, addLabel, importTco, 
           <h2 className="text-lg font-semibold">{title}</h2>
           <p className="text-sm text-muted-foreground max-w-2xl">{subtitle}</p>
         </div>
-        <div className="flex items-center gap-2">
-          {importTco && <ImportTcoDialog onImport={importTco} />}
-          <Button variant="outline" size="sm" onClick={onAdd} className="gap-2"><Plus className="w-3 h-3" /> {addLabel}</Button>
-          <Button variant="ghost" size="sm" onClick={onReset} className="gap-2"><RotateCcw className="w-3 h-3" /> Réinitialiser</Button>
-        </div>
+        {isAdmin && (
+          <div className="flex items-center gap-2">
+            {importTco && <ImportTcoDialog onImport={importTco} />}
+            {onAdd && <Button variant="outline" size="sm" onClick={onAdd} className="gap-2"><Plus className="w-3 h-3" /> {addLabel}</Button>}
+            {onReset && <Button variant="ghost" size="sm" onClick={onReset} className="gap-2"><RotateCcw className="w-3 h-3" /> Réinitialiser</Button>}
+          </div>
+        )}
       </div>
       {children}
     </section>
@@ -421,7 +431,7 @@ function Field({ label, children, className = "" }: { label: string; children: R
   return <div className={`space-y-1.5 ${className}`}><Label className="text-xs text-muted-foreground">{label}</Label>{children}</div>;
 }
 
-function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate: (p: Partial<Vehicle>) => void; onDelete?: () => void }) {
+function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Vehicle>) => void; onDelete?: () => void }) {
   const [editing, setEditing] = useState(false);
   return (
     <Card className={`overflow-hidden transition-all ${selected ? "ring-2 ring-primary" : "hover:shadow-md"}`}>
@@ -453,10 +463,10 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete }: { vehi
           </div>
           <div className="flex items-center gap-1">
             {onDelete && <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={onDelete}><Trash2 className="w-3 h-3" /></Button>}
-            <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)}>{editing ? "OK" : "Éditer"}</Button>
+            {onUpdate && <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)}>{editing ? "OK" : "Éditer"}</Button>}
           </div>
         </div>
-        {editing && (
+        {editing && onUpdate && (
           <div className="space-y-2 pt-2 border-t">
             <div className="grid grid-cols-2 gap-2">
               <TxtField label="Marque" value={vehicle.brand} onChange={(s) => onUpdate({ brand: s })} />
@@ -485,7 +495,7 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete }: { vehi
   );
 }
 
-function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { charger: Charger; selected: boolean; onToggle: () => void; onUpdate: (p: Partial<Charger>) => void; onDelete?: () => void }) {
+function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { charger: Charger; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Charger>) => void; onDelete?: () => void }) {
   const [editing, setEditing] = useState(false);
   return (
     <Card className={`overflow-hidden transition-all ${selected ? "ring-2 ring-primary" : "hover:shadow-md"}`}>
@@ -515,10 +525,10 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { char
           </div>
           <div className="flex items-center gap-1">
             {onDelete && <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={onDelete}><Trash2 className="w-3 h-3" /></Button>}
-            <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)}>{editing ? "OK" : "Éditer"}</Button>
+            {onUpdate && <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)}>{editing ? "OK" : "Éditer"}</Button>}
           </div>
         </div>
-        {editing && (
+        {editing && onUpdate && (
           <div className="space-y-2 pt-2 border-t">
             <div className="grid grid-cols-2 gap-2">
               <TxtField label="Marque" value={charger.brand} onChange={(s) => onUpdate({ brand: s })} />

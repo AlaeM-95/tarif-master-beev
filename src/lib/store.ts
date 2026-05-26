@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
-import { DEFAULT_CHARGERS, DEFAULT_VEHICLES, type Charger, type ProjectType, type Vehicle } from "./catalog";
+import { type ProjectType } from "./catalog";
+import { useVehiclesData, useChargersData } from "./data";
 
-const VK = "beev_vehicles_v3";
-const CK = "beev_chargers_v4";
 const EK = "beev_energy_v1";
 const PK = "beev_project_type_v1";
 
@@ -34,30 +33,32 @@ function load<T>(key: string, fallback: T): T {
   }
 }
 
+// Les véhicules et bornes sont maintenant stockés dans Supabase (table public.vehicles
+// et public.chargers). Les hooks ci-dessous réexposent l'API existante de useVehicles()
+// et useChargers() en lisant/écrivant depuis Supabase. Les RLS de Supabase garantissent
+// que seuls les utilisateurs avec role = 'admin' peuvent muter les données.
 export function useVehicles() {
-  const [items, setItems] = useState<Vehicle[]>(DEFAULT_VEHICLES);
-  useEffect(() => setItems(load(VK, DEFAULT_VEHICLES)), []);
-  const save = (next: Vehicle[]) => { setItems(next); localStorage.setItem(VK, JSON.stringify(next)); };
+  const { vehicles, update, add, remove, importMany } = useVehiclesData();
   return {
-    vehicles: items,
-    update: (id: string, patch: Partial<Vehicle>) => save(items.map((v) => (v.id === id ? { ...v, ...patch } : v))),
-    add: (v: Vehicle) => save([v, ...items]),
-    remove: (id: string) => save(items.filter((v) => v.id !== id)),
-    importMany: (list: Vehicle[]) => save([...list, ...items]),
-    reset: () => save(DEFAULT_VEHICLES),
+    vehicles,
+    update,
+    add,
+    remove,
+    importMany,
+    // reset() est désactivé tant que les véhicules sont en base — l'admin doit gérer
+    // les suppressions individuellement depuis l'UI admin.
+    reset: () => {},
   };
 }
 
 export function useChargers() {
-  const [items, setItems] = useState<Charger[]>(DEFAULT_CHARGERS);
-  useEffect(() => setItems(load(CK, DEFAULT_CHARGERS)), []);
-  const save = (next: Charger[]) => { setItems(next); localStorage.setItem(CK, JSON.stringify(next)); };
+  const { chargers, update, add, remove } = useChargersData();
   return {
-    chargers: items,
-    update: (id: string, patch: Partial<Charger>) => save(items.map((c) => (c.id === id ? { ...c, ...patch } : c))),
-    add: (c: Charger) => save([c, ...items]),
-    remove: (id: string) => save(items.filter((c) => c.id !== id)),
-    reset: () => save(DEFAULT_CHARGERS),
+    chargers,
+    update,
+    add,
+    remove,
+    reset: () => {},
   };
 }
 
