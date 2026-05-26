@@ -1624,13 +1624,64 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   doc.text(bl, M, y);
   y += bl.length * 13 + 18;
 
-  doc.text("Date :", M, y + 24);
-  doc.text("Nom & qualité :", M, y + 44);
-  doc.text("Signature & cachet :", PAGE_W / 2, y + 24);
+  // ===== Encart signature pro =====
+  const sigH = 110;
+  doc.setFillColor(...BG);
+  doc.rect(M, y, PAGE_W - M * 2, sigH, "F");
+  doc.setFillColor(...ACCENT);
+  doc.rect(M, y, 4, sigH, "F");
+
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(...SUB);
+  doc.text("CADRE RÉSERVÉ AU CLIENT", M + 16, y + 18);
+
+  // 2 colonnes : infos client | signature
+  const colY = y + 36;
+  const colW = (PAGE_W - M * 2 - 32) / 2;
+
+  // Colonne gauche : champs date / nom
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...INK);
+  doc.text("Date de signature :", M + 16, colY);
   doc.setDrawColor(...INK);
-  doc.line(M + 50, y + 24, M + 220, y + 24);
-  doc.line(M + 90, y + 44, M + 280, y + 44);
-  doc.rect(PAGE_W / 2 + 100, y + 10, PAGE_W - M - (PAGE_W / 2 + 100), 60);
+  doc.setLineWidth(0.5);
+  doc.line(M + 100, colY + 2, M + 16 + colW - 10, colY + 2);
+
+  doc.text("Nom & qualité :", M + 16, colY + 22);
+  doc.line(M + 100, colY + 24, M + 16 + colW - 10, colY + 24);
+
+  doc.text("Téléphone :", M + 16, colY + 44);
+  doc.line(M + 100, colY + 46, M + 16 + colW - 10, colY + 46);
+
+  // Colonne droite : zone signature
+  const sigX = M + 16 + colW + 16;
+  const sigW = colW - 16;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...SUB);
+  doc.text("Signature et cachet de l'entreprise", sigX, colY);
+  doc.setDrawColor(...INK);
+  doc.setLineWidth(0.5);
+  doc.rect(sigX, colY + 6, sigW, 60);
+  doc.setFontSize(7);
+  doc.setTextColor(160, 160, 165);
+  doc.text("(faire précéder de la mention 'Bon pour accord')", sigX, colY + 75);
+
+  // Sous-bandeau : références Beev pour démarrer
+  y += sigH + 14;
+  doc.setFillColor(...INK);
+  doc.rect(M, y, PAGE_W - M * 2, 36, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(...ACCENT);
+  doc.text("VOTRE INTERLOCUTEUR BEEV", M + 16, y + 14);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(255, 255, 255);
+  const repInfo = [c.salesRep, c.salesRepEmail, c.salesRepPhone].filter(Boolean).join(" · ");
+  doc.text(repInfo || "Commercial grand compte Beev", M + 16, y + 28);
 }
 
 // ============ HEADER / FOOTER / HELPERS ============
