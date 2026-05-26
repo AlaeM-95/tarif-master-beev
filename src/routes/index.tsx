@@ -1,5 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,9 +19,16 @@ import { BEEV_JOURNEYS, MANDATORY_SERVICES, createBlankCharger, createBlankVehic
 import { AdminBadge } from "@/components/admin-badge";
 import { ImageUpload } from "@/components/image-upload";
 import { useAuth } from "@/lib/auth";
+import { useProposals, useProposal } from "@/lib/proposals";
+import { Save, FolderOpen } from "lucide-react";
+
+type IndexSearch = { proposal?: string };
 
 export const Route = createFileRoute("/")({
   component: App,
+  validateSearch: (s: Record<string, unknown>): IndexSearch => ({
+    proposal: typeof s.proposal === "string" ? s.proposal : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Beev · Générateur d'offre commerciale grand compte" },
@@ -32,6 +39,11 @@ export const Route = createFileRoute("/")({
 
 function App() {
   const { isAdmin } = useAuth();
+  const navigate = useNavigate();
+  const search = Route.useSearch();
+  const loadedProposalId = search.proposal;
+  const { data: loadedProposal } = useProposal(loadedProposalId);
+  const { save: saveProposal } = useProposals();
   const { vehicles, update: updateVehicle, add: addVehicle, remove: removeVehicle, removeAll: removeAllVehicles, importMany: importVehicles } = useVehicles();
   const { chargers, update: updateCharger, add: addCharger, remove: removeCharger, removeAllByDeployment } = useChargers();
   const { energy, set: setEnergy, reset: resetEnergy } = useEnergy();
@@ -47,6 +59,61 @@ function App() {
     date: new Date().toLocaleDateString("fr-FR"),
     notes: "",
   });
+
+  // Chargement automatique d'une proposition depuis l'URL (?proposal=xxx)
+  useEffect(() => {
+    if (!loadedProposal) return;
+    setProjectType(loadedProposal.projectType);
+    setClient({
+      company: loadedProposal.clientCompany,
+      contact: loadedProposal.clientContact,
+      email: loadedProposal.clientEmail,
+      salesRep: loadedProposal.salesRepName,
+      salesRepEmail: loadedProposal.salesRepEmail,
+      salesRepPhone: loadedProposal.salesRepPhone,
+      date: loadedProposal.proposalDate || new Date().toLocaleDateString("fr-FR"),
+      notes: loadedProposal.clientNotes,
+    });
+    const sv: Record<string, SelectedVehicle> = {};
+    loadedProposal.selectedVehicles.forEach((v) => { sv[v.vehicle.id] = v; });
+    setSelectedV(sv);
+    const sc: Record<string, SelectedCharger> = {};
+    loadedProposal.selectedChargers.forEach((c) => { sc[c.charger.id] = c; });
+    setSelectedC(sc);
+    if (loadedProposal.energyParams) setEnergy(loadedProposal.energyParams);
+  }, [loadedProposal?.id]);
+
+  const handleSaveProposal = async () => {
+    if (!client.company.trim()) {
+      toast.error("La société client est requise pour sauvegarder");
+      return;
+    }
+    const result = await saveProposal({
+      id: loadedProposalId,
+      clientCompany: client.company,
+      clientContact: client.contact,
+      clientEmail: client.email,
+      clientNotes: client.notes,
+      proposalDate: client.date,
+      salesRepName: client.salesRep,
+      salesRepEmail: client.salesRepEmail,
+      salesRepPhone: client.salesRepPhone,
+      projectType,
+      selectedVehicles: Object.values(selectedV),
+      selectedChargers: Object.values(selectedC),
+      energyParams: energy,
+    });
+    if (result.error) {
+      toast.error(`Échec sauvegarde : ${result.error}`);
+      return;
+    }
+    if (result.id) {
+      toast.success(loadedProposalId ? "Proposition mise à jour" : "Proposition créée");
+      if (!loadedProposalId && result.id) {
+        navigate({ to: "/", search: { proposal: result.id } });
+      }
+    }
+  };
 
   const counts = useMemo(() => ({
     v: Object.keys(selectedV).length,
@@ -127,9 +194,19 @@ function App() {
               <p className="text-xs text-muted-foreground">Un projet à la fois — véhicules, bornes domicile ou bornes site.</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <AdminBadge />
             <Badge variant="secondary" className="hidden sm:inline-flex">{visibleCount} sélection(s)</Badge>
+            {isAdmin && (
+              <Button asChild variant="ghost" size="sm" className="gap-2">
+                <a href="/proposals"><FolderOpen className="w-4 h-4" /> Mes propositions</a>
+              </Button>
+            )}
+            {isAdmin && (
+              <Button variant="outline" onClick={handleSaveProposal} disabled={visibleCount === 0} className="gap-2">
+                <Save className="w-4 h-4" /> {loadedProposalId ? "Mettre à jour" : "Sauvegarder"}
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setPresenting(true)} disabled={visibleCount === 0} className="gap-2">
               <Presentation className="w-4 h-4" /> Présenter au client
             </Button>
