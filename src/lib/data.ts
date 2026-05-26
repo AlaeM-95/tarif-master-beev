@@ -126,17 +126,28 @@ export function useVehiclesData() {
     invalidate();
   };
 
-  const remove = async (id: string) => {
+  const remove = async (id: string): Promise<{ error: string | null }> => {
     const { error } = await supabase.from("vehicles").delete().eq("id", id);
-    if (error) console.error("Erreur remove vehicle:", error);
-    invalidate();
+    if (error) {
+      console.error("Erreur remove vehicle:", error);
+      return { error: error.message };
+    }
+    // Refetch immédiat pour garantir la cohérence UI ↔ DB
+    await qc.invalidateQueries({ queryKey: ["vehicles"] });
+    await qc.refetchQueries({ queryKey: ["vehicles"] });
+    return { error: null };
   };
 
   // Supprime TOUS les véhicules (réservé admin via RLS).
-  const removeAll = async () => {
+  const removeAll = async (): Promise<{ error: string | null }> => {
     const { error } = await supabase.from("vehicles").delete().neq("id", "__never__");
-    if (error) console.error("Erreur removeAll vehicles:", error);
-    invalidate();
+    if (error) {
+      console.error("Erreur removeAll vehicles:", error);
+      return { error: error.message };
+    }
+    await qc.invalidateQueries({ queryKey: ["vehicles"] });
+    await qc.refetchQueries({ queryKey: ["vehicles"] });
+    return { error: null };
   };
 
   const importMany = async (list: Vehicle[]) => {
@@ -189,17 +200,27 @@ export function useChargersData() {
     invalidate();
   };
 
-  const remove = async (id: string) => {
+  const remove = async (id: string): Promise<{ error: string | null }> => {
     const { error } = await supabase.from("chargers").delete().eq("id", id);
-    if (error) console.error("Erreur remove charger:", error);
-    invalidate();
+    if (error) {
+      console.error("Erreur remove charger:", error);
+      return { error: error.message };
+    }
+    await qc.invalidateQueries({ queryKey: ["chargers"] });
+    await qc.refetchQueries({ queryKey: ["chargers"] });
+    return { error: null };
   };
 
   // Supprime toutes les bornes d'un type (domicile ou site).
-  const removeAllByDeployment = async (deployment: "domicile" | "site") => {
+  const removeAllByDeployment = async (deployment: "domicile" | "site"): Promise<{ error: string | null }> => {
     const { error } = await supabase.from("chargers").delete().eq("deployment", deployment);
-    if (error) console.error("Erreur removeAllByDeployment:", error);
-    invalidate();
+    if (error) {
+      console.error("Erreur removeAllByDeployment:", error);
+      return { error: error.message };
+    }
+    await qc.invalidateQueries({ queryKey: ["chargers"] });
+    await qc.refetchQueries({ queryKey: ["chargers"] });
+    return { error: null };
   };
 
   return { chargers, isLoading, update, add, remove, removeAllByDeployment };

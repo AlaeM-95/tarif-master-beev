@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, Car, Home, Building2, Download, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type EnergyParams } from "@/lib/store";
 import { computeTco, generateProposalPdf, type SelectedCharger, type SelectedVehicle } from "@/lib/pdf";
 import { BEEV_JOURNEYS, MANDATORY_SERVICES, createBlankCharger, createBlankVehicle, type Charger, type LineItem, type ProjectType, type Vehicle } from "@/lib/catalog";
@@ -163,7 +164,12 @@ function App() {
                   <VehicleCard key={v.id} vehicle={v} selected={!!selectedV[v.id]}
                     onToggle={() => toggleV(v)}
                     onUpdate={isAdmin ? (p) => updateVehicle(v.id, p) : undefined}
-                    onDelete={isAdmin ? () => { if (selectedV[v.id]) toggleV(v); removeVehicle(v.id); } : undefined}
+                    onDelete={isAdmin ? async () => {
+                      if (selectedV[v.id]) toggleV(v);
+                      const result = await removeVehicle(v.id);
+                      if (result?.error) toast.error(`Échec suppression : ${result.error}`);
+                      else toast.success(`${v.brand} ${v.model} supprimé définitivement`);
+                    } : undefined}
                   />
                 ))}
               </div>
@@ -186,7 +192,12 @@ function App() {
                   <ChargerCard key={c.id} charger={c} selected={!!selectedC[c.id]}
                     onToggle={() => toggleC(c)}
                     onUpdate={isAdmin ? (p) => updateCharger(c.id, p) : undefined}
-                    onDelete={isAdmin ? () => { if (selectedC[c.id]) toggleC(c); removeCharger(c.id); } : undefined}
+                    onDelete={isAdmin ? async () => {
+                      if (selectedC[c.id]) toggleC(c);
+                      const result = await removeCharger(c.id);
+                      if (result?.error) toast.error(`Échec suppression : ${result.error}`);
+                      else toast.success(`${c.brand} ${c.model} supprimée définitivement`);
+                    } : undefined}
                   />
                 ))}
               </div>
@@ -209,7 +220,12 @@ function App() {
                   <ChargerCard key={c.id} charger={c} selected={!!selectedC[c.id]}
                     onToggle={() => toggleC(c)}
                     onUpdate={isAdmin ? (p) => updateCharger(c.id, p) : undefined}
-                    onDelete={isAdmin ? () => { if (selectedC[c.id]) toggleC(c); removeCharger(c.id); } : undefined}
+                    onDelete={isAdmin ? async () => {
+                      if (selectedC[c.id]) toggleC(c);
+                      const result = await removeCharger(c.id);
+                      if (result?.error) toast.error(`Échec suppression : ${result.error}`);
+                      else toast.success(`${c.brand} ${c.model} supprimée définitivement`);
+                    } : undefined}
                   />
                 ))}
               </div>
@@ -465,6 +481,35 @@ function Field({ label, children, className = "" }: { label: string; children: R
   return <div className={`space-y-1.5 ${className}`}><Label className="text-xs text-muted-foreground">{label}</Label>{children}</div>;
 }
 
+function ConfirmDeleteButton({ label, onConfirm }: { label: string; onConfirm: () => void }) {
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive">
+          <Trash2 className="w-3 h-3" />
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-destructive" />
+            Supprimer {label} ?
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            Cette action est <strong>définitive</strong> : l'élément sera supprimé de la base de données Supabase et disparaîtra immédiatement pour tous les utilisateurs.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Annuler</AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            Supprimer définitivement
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Vehicle>) => void; onDelete?: () => void }) {
   const [editing, setEditing] = useState(false);
   return (
@@ -496,7 +541,7 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete }: { vehi
             <p className="text-xs text-primary font-medium">{fmtEur(vehicle.monthlyLld)} TTC/mois</p>
           </div>
           <div className="flex items-center gap-1">
-            {onDelete && <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={onDelete}><Trash2 className="w-3 h-3" /></Button>}
+            {onDelete && <ConfirmDeleteButton label={`${vehicle.brand} ${vehicle.model}`} onConfirm={onDelete} />}
             {onUpdate && <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)}>{editing ? "OK" : "Éditer"}</Button>}
           </div>
         </div>
@@ -583,7 +628,7 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { char
             {charger.installPriceHt > 0 && <p className="text-xs text-primary">+ pose ~{fmtEur(charger.installPriceHt)} HT</p>}
           </div>
           <div className="flex items-center gap-1">
-            {onDelete && <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={onDelete}><Trash2 className="w-3 h-3" /></Button>}
+            {onDelete && <ConfirmDeleteButton label={`${charger.brand} ${charger.model}`} onConfirm={onDelete} />}
             {onUpdate && <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)}>{editing ? "OK" : "Éditer"}</Button>}
           </div>
         </div>
