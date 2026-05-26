@@ -18,9 +18,12 @@ import { computeTco, generateProposalPdf, type SelectedCharger, type SelectedVeh
 import { BEEV_JOURNEYS, MANDATORY_SERVICES, createBlankCharger, createBlankVehicle, type Charger, type LineItem, type ProjectType, type Vehicle } from "@/lib/catalog";
 import { AdminBadge } from "@/components/admin-badge";
 import { ImageUpload } from "@/components/image-upload";
+import { FileUpload } from "@/components/file-upload";
+import { MarginReviewDialog } from "@/components/margin-review-dialog";
 import { useAuth } from "@/lib/auth";
 import { useProposals, useProposal } from "@/lib/proposals";
 import { Save, FolderOpen } from "lucide-react";
+import { lineItemClientUnit, lineItemClientTotal } from "@/lib/pdf";
 
 type IndexSearch = { proposal?: string };
 
@@ -153,13 +156,25 @@ function App() {
     });
   };
 
-  const exportPdf = async () => {
-    if (!client.company) { alert("Renseignez au moins le nom de la société client."); return; }
+  const [marginDialog, setMarginDialog] = useState(false);
+
+  const doGeneratePdf = async () => {
     await generateProposalPdf({
       projectType, client, energy,
       vehicles: Object.values(selectedV),
       chargers: Object.values(selectedC),
     });
+  };
+
+  const exportPdf = async () => {
+    if (!client.company) { alert("Renseignez au moins le nom de la société client."); return; }
+    // Pour les projets Site entreprise, on ouvre un dialogue de validation des marges
+    // avant génération du PDF client (visibilité pour le commercial).
+    if (projectType === "site" && Object.values(selectedC).length > 0) {
+      setMarginDialog(true);
+      return;
+    }
+    await doGeneratePdf();
   };
 
   const chargersHome = chargers.filter((c) => c.deployment === "domicile");
@@ -185,6 +200,20 @@ function App() {
 
   return (
     <div className="min-h-screen bg-background">
+      <MarginReviewDialog
+        open={marginDialog}
+        onClose={() => setMarginDialog(false)}
+        selectedChargers={Object.values(selectedC)}
+        onUpdateLineItem={(chargerId, lineIndex, patch) => {
+          setSelectedC((s) => {
+            const sc = s[chargerId];
+            if (!sc) return s;
+            const newItems = sc.lineItems.map((li, idx) => (idx === lineIndex ? { ...li, ...patch } : li));
+            return { ...s, [chargerId]: { ...sc, lineItems: newItems } };
+          });
+        }}
+        onConfirm={doGeneratePdf}
+      />
       <header className="border-b bg-card/80 backdrop-blur sticky top-0 z-30">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
@@ -860,17 +889,23 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove }: { sv: SelectedVe
 function SelectedChargerRow({ sc, onChange, onRemove }: { sc: SelectedCharger; onChange: (p: Partial<SelectedCharger>) => void; onRemove: () => void }) {
   const [openLi, setOpenLi] = useState(false);
   const setLi = (i: number, p: Partial<LineItem>) => onChange({ lineItems: sc.lineItems.map((x, idx) => idx === i ? { ...x, ...p } : x) });
-  const addLi = () => onChange({ lineItems: [...sc.lineItems, { label: "Nouvelle ligne", qty: 1, unitHt: 0 }] });
+  const addLi = () => onChange({ lineItems: [...sc.lineItems, { label: "Nouvelle ligne", qty: 1, unitHt: 0, marginPct: 0 }] });
   const delLi = (i: number) => onChange({ lineItems: sc.lineItems.filter((_, idx) => idx !== i) });
-  const total = sc.lineItems.reduce((a, li) => a + li.qty * li.unitHt, 0);
+
   const isHome = sc.charger.deployment === "domicile";
+  // Total client (avec marge) — c'est ce qui apparaît dans le PDF
+  const totalClient = sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0);
+  // Total d'achat (sans marge) — pour le calcul de marge
+  const totalAchat = sc.lineItems.reduce((a, li) => a + li.qty * li.unitHt, 0);
+  const margeAbs = totalClient - totalAchat;
+  const margePct = totalAchat > 0 ? (margeAbs / totalAchat) * 100 : 0;
 
   return (
     <div className="rounded-lg border bg-secondary/30 p-3 space-y-2">
       <div className="flex justify-between items-start gap-2">
         <div className="min-w-0">
           <p className="text-sm font-medium truncate">{sc.charger.brand} {sc.charger.model}</p>
-          <p className="text-xs text-muted-foreground">{isHome ? "Domicile collaborateur" : "Site entreprise"} · {sc.charger.powerKw} kW · {fmtEur(total)} HT</p>
+          <p className="text-xs text-muted-foreground">{isHome ? "Domicile collaborateur" : "Site entreprise"} · {sc.charger.powerKw} kW · {fmtEur(totalClient)} HT client</p>
         </div>
         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onRemove}><Trash2 className="w-3 h-3" /></Button>
       </div>
@@ -881,20 +916,63 @@ function SelectedChargerRow({ sc, onChange, onRemove }: { sc: SelectedCharger; o
         <NumField label={isHome ? "Nb collab." : "Quantité bornes"} value={sc.quantity} onChange={(n) => onChange({ quantity: n })} />
         <NumField label="Remise %" value={sc.discountPct} onChange={(n) => onChange({ discountPct: n })} step={0.5} />
       </div>
+
+      {/* Encart Site entreprise : upload devis technicien (privé, jamais dans le PDF client) */}
+      {!isHome && (
+        <div className="rounded-md border border-dashed border-[#3809EA]/30 bg-[#3809EA]/5 p-2 space-y-2">
+          <p className="text-[11px] font-semibold uppercase text-[#3809EA]">Devis technicien (privé)</p>
+          <FileUpload
+            currentUrl={sc.technicianQuoteUrl}
+            onChange={(url) => onChange({ technicianQuoteUrl: url || undefined })}
+            folder="technician-quotes"
+            label=""
+            accept="application/pdf,image/png,image/jpeg"
+            helper="PDF du chiffrage technicien après visite. Conservé en interne, jamais joint au PDF client."
+          />
+        </div>
+      )}
+
       <button type="button" onClick={() => setOpenLi((o) => !o)} className="w-full text-xs px-2 py-1.5 rounded-md border bg-card hover:bg-accent/40 flex justify-between">
-        <span>Devis détaillé · {sc.lineItems.length} lignes</span><span>{openLi ? "▴" : "▾"}</span>
+        <span>Chiffrage · {sc.lineItems.length} lignes · marge {margePct.toFixed(1)} %</span><span>{openLi ? "▴" : "▾"}</span>
       </button>
       {openLi && (
         <div className="rounded-md border bg-card p-2 space-y-2">
-          {sc.lineItems.map((li, i) => (
-            <div key={i} className="grid grid-cols-[1fr_50px_70px_24px] gap-1 items-center">
-              <Input value={li.label} onChange={(e) => setLi(i, { label: e.target.value })} className="h-7 text-xs" />
-              <Input type="number" value={li.qty} onChange={(e) => setLi(i, { qty: Number(e.target.value) })} className="h-7 text-xs" />
-              <Input type="number" value={li.unitHt} onChange={(e) => setLi(i, { unitHt: Number(e.target.value) })} className="h-7 text-xs" />
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => delLi(i)}><Trash2 className="w-3 h-3" /></Button>
-            </div>
-          ))}
+          <div className="grid grid-cols-[1fr_46px_70px_64px_70px_24px] gap-1 text-[10px] uppercase text-muted-foreground px-1">
+            <span>Désignation</span>
+            <span className="text-right">Qté</span>
+            <span className="text-right">PU achat</span>
+            <span className="text-right text-[#3809EA]">Marge %</span>
+            <span className="text-right">PU client</span>
+            <span></span>
+          </div>
+          {sc.lineItems.map((li, i) => {
+            const clientUnit = lineItemClientUnit(li);
+            return (
+              <div key={i} className="grid grid-cols-[1fr_46px_70px_64px_70px_24px] gap-1 items-center">
+                <Input value={li.label} onChange={(e) => setLi(i, { label: e.target.value })} className="h-7 text-xs" />
+                <Input type="number" value={li.qty} onChange={(e) => setLi(i, { qty: Number(e.target.value) })} className="h-7 text-xs text-right" />
+                <Input type="number" value={li.unitHt} onChange={(e) => setLi(i, { unitHt: Number(e.target.value) })} className="h-7 text-xs text-right" />
+                <Input
+                  type="number"
+                  value={li.marginPct ?? 0}
+                  onChange={(e) => setLi(i, { marginPct: Number(e.target.value) })}
+                  className="h-7 text-xs text-right border-[#3809EA]/30"
+                  step={0.5}
+                  title="Marge appliquée pour le PDF client"
+                />
+                <div className="h-7 px-2 text-xs text-right flex items-center justify-end font-semibold text-[#3809EA]/80">
+                  {fmtEur(clientUnit)}
+                </div>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => delLi(i)}><Trash2 className="w-3 h-3" /></Button>
+              </div>
+            );
+          })}
           <Button variant="outline" size="sm" onClick={addLi} className="w-full gap-1 h-7 text-xs"><Plus className="w-3 h-3" /> Ajouter une ligne</Button>
+          <div className="flex justify-between items-center pt-2 border-t border-border text-xs">
+            <span className="text-muted-foreground">Total achat <strong className="text-[#111111]">{fmtEur(totalAchat)}</strong></span>
+            <span className="text-[#3809EA] font-semibold">Marge {fmtEur(margeAbs)} ({margePct.toFixed(1)} %)</span>
+            <span className="font-semibold">Total client <strong>{fmtEur(totalClient)}</strong></span>
+          </div>
         </div>
       )}
     </div>

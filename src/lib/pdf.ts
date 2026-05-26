@@ -36,7 +36,20 @@ export type SelectedCharger = {
   siteAddress: string;
   siteContact: string;
   lineItems: LineItem[];
+  // URL du devis technicien uploadé (privé, jamais inclus dans le PDF client)
+  technicianQuoteUrl?: string;
 };
+
+// Calcule le prix unitaire final (avec marge) qui sera présenté au client.
+// Le prix d'achat (unitHt) et la marge restent privés côté admin.
+export function lineItemClientUnit(li: LineItem): number {
+  const m = li.marginPct ?? 0;
+  return li.unitHt * (1 + m / 100);
+}
+
+export function lineItemClientTotal(li: LineItem): number {
+  return lineItemClientUnit(li) * li.qty;
+}
 
 // === CHARTE GRAPHIQUE BEEV 2026 ===
 // Les couleurs sont mutables : elles sont écrasées par les valeurs de pdf_settings
@@ -570,14 +583,16 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
 
   let y = imgY + imgH + 20;
 
-  const total_ = sc.lineItems.reduce((a, li) => a + li.qty * li.unitHt, 0);
+  // Le PDF client utilise les prix avec marge (lineItemClientUnit/Total).
+  // Le prix d'achat (unitHt brut) et la marge restent invisibles côté client.
+  const total_ = sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0);
   y = ensureSpace(doc, y, 90, client, type);
   autoTable(doc, {
     startY: y,
     theme: "grid",
     head: [["Désignation", "Qté", "PU HT", "Total HT"]],
     body: ([
-      ...sc.lineItems.map((li) => [li.label, String(li.qty), eur(li.unitHt), eur(li.qty * li.unitHt)]),
+      ...sc.lineItems.map((li) => [li.label, String(li.qty), eur(lineItemClientUnit(li)), eur(lineItemClientTotal(li))]),
       [
         { content: isHome ? "Total HT par collaborateur" : "Total HT site", colSpan: 3, styles: { fontStyle: "bold", halign: "right", fillColor: BG } },
         { content: eur(total_), styles: { fontStyle: "bold", halign: "right", fillColor: BG } },

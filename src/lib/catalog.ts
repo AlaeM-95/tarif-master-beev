@@ -150,7 +150,10 @@ export type Vehicle = {
   custom?: boolean;
 };
 
-export type LineItem = { label: string; qty: number; unitHt: number };
+// marginPct est appliqué uniquement à l'affichage côté client :
+// le PDF client affiche unitHt * (1 + marginPct/100), mais l'UI admin
+// montre les deux (prix d'achat + marge) pour le pilotage commercial.
+export type LineItem = { label: string; qty: number; unitHt: number; marginPct?: number };
 
 // Prestations obligatoires, toujours incluses, non décochables
 export const MANDATORY_SERVICES = [
