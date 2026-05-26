@@ -203,6 +203,13 @@ export async function generateProposalPdf(opts: {
 
   drawCover(doc, projectType, client, v.length, c.length);
 
+  // Executive summary "EN BREF" pour le décideur pressé
+  if (v.length > 0 || c.length > 0) {
+    doc.addPage();
+    drawHeader(doc, client, projectType);
+    drawExecutiveSummary(doc, projectType, client, v, c, energy);
+  }
+
   doc.addPage();
   drawHeader(doc, client, projectType);
   drawWhyBeev(doc, projectType);
@@ -227,6 +234,11 @@ export async function generateProposalPdf(opts: {
     drawHeader(doc, client, projectType);
     drawFinancialSummary(doc, projectType, v, c, energy);
   }
+
+  // Page garanties & engagements
+  doc.addPage();
+  drawHeader(doc, client, projectType);
+  drawGuarantees(doc, projectType);
 
   doc.addPage();
   drawHeader(doc, client, projectType);
@@ -651,6 +663,330 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
 }
 
 // ============ PARCOURS CLIENT BEEV (A → Z) ============
+// ============ GARANTIES & ENGAGEMENTS BEEV ============
+function drawGuarantees(doc: jsPDF, type: ProjectType) {
+  let y = 130;
+  eyebrow(doc, "GARANTIES & ENGAGEMENTS BEEV", y);
+  y += 32;
+  title(doc, "Ce que Beev s'engage à tenir.", y);
+  y += 36;
+
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10.5);
+  doc.setTextColor(...SUB);
+  const intro = type === "vehicles"
+    ? "Au-delà du tarif catalogue, Beev s'engage sur la qualité opérationnelle pendant toute la durée du contrat LLD."
+    : type === "home"
+    ? "Pour chaque collaborateur équipé, Beev pilote l'installation, la supervision et l'exploitation pendant toute la durée du contrat."
+    : "Pour chaque site IRVE, Beev s'engage sur des SLA opérationnels mesurables, du déploiement à l'exploitation.";
+  const introL = doc.splitTextToSize(intro, PAGE_W - M * 2);
+  doc.text(introL, M, y);
+  y += introL.length * 14 + 18;
+
+  // 3 piliers d'engagement (cartes alignées)
+  const pillarsByType: Record<ProjectType, Array<{ title: string; metric: string; details: string[] }>> = {
+    vehicles: [
+      {
+        title: "INTERLOCUTEUR UNIQUE",
+        metric: "Réponse J+1",
+        details: [
+          "Un commercial grand compte dédié",
+          "Hotline gestion de flotte mutualisée",
+          "Coordination loueurs (Ayvens, Arval, Athlon, Leaseplan)",
+          "Suivi livraisons et incidents constructeurs",
+        ],
+      },
+      {
+        title: "MAINTENANCE INCLUSE",
+        metric: "Tous réseaux",
+        details: [
+          "Entretien constructeur tous réseaux",
+          "Assistance 24/24, dépannage routier",
+          "Véhicule de remplacement selon contrat",
+          "Garantie perte financière en cas de vol/sinistre",
+        ],
+      },
+      {
+        title: "PILOTAGE FLEET MANAGER",
+        metric: "Dashboard live",
+        details: [
+          "Accès Fleet Manager Beev multi-utilisateurs",
+          "Suivi des PV de livraison et restitutions",
+          "Mise à jour fiscalité applicable",
+          "Reporting consolidé sur demande",
+        ],
+      },
+    ],
+    home: [
+      {
+        title: "POSE IRVE CERTIFIÉE",
+        metric: "Partenaire Seris",
+        details: [
+          "Pose 0–10 m incluse · garantie 4 ans",
+          "Visite technique systématique",
+          "Mise en service le jour de la pose",
+          "Procès-verbal signé collaborateur",
+        ],
+      },
+      {
+        title: "SUPERVISION MARQUE BLANCHE",
+        metric: "Temps réel",
+        details: [
+          "Visibilité par collaborateur, par site",
+          "Mesures conformes MID",
+          "Données disponibles sous 24h",
+          "API d'export pour SI RH si besoin",
+        ],
+      },
+      {
+        title: "REMBOURSEMENT AUTOMATISÉ",
+        metric: "Sous 30 jours",
+        details: [
+          "Calcul mensuel des kWh professionnels",
+          "Virement automatique au collaborateur",
+          "Facturation employeur consolidée",
+          "Garantie de conformité fiscale",
+        ],
+      },
+    ],
+    site: [
+      {
+        title: "GARANTIE MATÉRIEL",
+        metric: "3 ans (ext. 6)",
+        details: [
+          "Constructeurs premium : Alfen, Schneider, Hager, Wallbox",
+          "Garantie pièces & main d'œuvre 3 ans",
+          "Extension à 6 ans en option",
+          "SAV reconditionné en cas de panne hardware",
+        ],
+      },
+      {
+        title: "POSE IRVE CERTIFIÉE",
+        metric: "OCPP-ready",
+        details: [
+          "Technicien IRVE certifié AFNOR",
+          "Paramétrage OCPP 1.6/2.0",
+          "Mise en service & formation utilisateurs",
+          "Signature PV de réception conjoint",
+        ],
+      },
+      {
+        title: "EXPLOITATION & SAV",
+        metric: "GTR contractuelle",
+        details: [
+          "Hotline utilisateurs 24/24",
+          "GTR rétablissement sous 24h ouvrées",
+          "Supervision multi-sites consolidée",
+          "Maintenance préventive annuelle incluse",
+        ],
+      },
+    ],
+  };
+
+  const pillars = pillarsByType[type];
+  const colW = (PAGE_W - M * 2 - 16) / 3;
+  pillars.forEach((p, i) => {
+    const x = M + i * (colW + 8);
+    doc.setFillColor(...BG);
+    doc.rect(x, y, colW, 200, "F");
+    doc.setFillColor(...ACCENT);
+    doc.rect(x, y, colW, 4, "F");
+
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...SUB);
+    const titleLines = doc.splitTextToSize(p.title, colW - 20);
+    doc.text(titleLines, x + 10, y + 22);
+
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(18);
+    doc.setTextColor(...ACCENT);
+    const metricLines = doc.splitTextToSize(p.metric, colW - 20);
+    doc.text(metricLines, x + 10, y + 22 + titleLines.length * 11 + 18);
+
+    let yy = y + 22 + titleLines.length * 11 + 18 + metricLines.length * 18 + 12;
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...INK);
+    p.details.forEach((d) => {
+      doc.setFillColor(...ACCENT);
+      doc.circle(x + 13, yy - 3, 1.5, "F");
+      const dl = doc.splitTextToSize(d, colW - 24);
+      doc.text(dl, x + 20, yy);
+      yy += dl.length * 10 + 4;
+    });
+  });
+
+  y += 220;
+
+  // Bandeau "trust signal" en bas
+  doc.setFillColor(...INK);
+  doc.rect(M, y, PAGE_W - M * 2, 60, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...ACCENT);
+  doc.text("BEEV EN CHIFFRES (2026)", M + 16, y + 20);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(255, 255, 255);
+  doc.text("Le copilote tout-en-un de l'électrification des flottes en France :", M + 16, y + 36);
+  doc.text("vente VE multi-marques · installation IRVE · logiciel Fleet Manager.", M + 16, y + 50);
+}
+
+// ============ EXECUTIVE SUMMARY (page "EN BREF" — décideur) ============
+function drawExecutiveSummary(
+  doc: jsPDF,
+  type: ProjectType,
+  c: ClientInfo,
+  vehicles: SelectedVehicle[],
+  chargers: SelectedCharger[],
+  e: EnergyParams,
+) {
+  let y = 116;
+  eyebrow(doc, "EN BREF · POUR LE COMITÉ DE DIRECTION", y);
+  y += 32;
+  title(doc, type === "vehicles" ? "Votre flotte électrique en synthèse." :
+            type === "home" ? "Votre déploiement domicile en synthèse." :
+            "Votre projet IRVE site en synthèse.", y);
+  y += 30;
+
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...SUB);
+  const introText = type === "vehicles"
+    ? `Cette page résume l'essentiel pour ${c.company || "votre entreprise"} : périmètre, budget, économies attendues et engagements Beev.`
+    : `Cette page résume l'essentiel pour ${c.company || "votre entreprise"} : périmètre, budget, modalités et engagements Beev.`;
+  const introLines = doc.splitTextToSize(introText, PAGE_W - M * 2);
+  doc.text(introLines, M, y);
+  y += introLines.length * 13 + 16;
+
+  // ===== Calculs financiers =====
+  let monthlyTtc = 0, annualTtc = 0, totalContrat = 0;
+  let chargersHt = 0;
+  let economy100Total = 0;
+  let vehiclesCount = 0;
+
+  vehicles.forEach((sv) => {
+    monthlyTtc += sv.negotiatedMonthly * sv.quantity;
+    annualTtc += sv.negotiatedMonthly * 12 * sv.quantity;
+    totalContrat += sv.negotiatedMonthly * sv.durationMonths * sv.quantity;
+    vehiclesCount += sv.quantity;
+    if (sv.includeTco) {
+      const t = computeTco(sv, e);
+      economy100Total += t.economy100 * (sv.kmPerYear / 100) * sv.quantity;
+    } else {
+      // Estimation par défaut même sans TCO inclus
+      const t = computeTco(sv, e);
+      economy100Total += t.economy100 * (sv.kmPerYear / 100) * sv.quantity;
+    }
+  });
+  chargers.forEach((sc) => {
+    chargersHt += sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0) * sc.quantity;
+  });
+  const chargersTtc = chargersHt * 1.20;
+
+  // ===== Grille 2x2 de KPIs =====
+  const colW = (PAGE_W - M * 2 - 12) / 2;
+  const startY = y;
+  const rowH = 100;
+
+  // KPI 1 : Périmètre
+  drawKpiBlock(doc, M, startY, colW, rowH, "PÉRIMÈTRE DU PROJET", [
+    type === "vehicles"
+      ? { label: "Véhicules étudiés", value: String(vehiclesCount), accent: true }
+      : { label: type === "home" ? "Bornes domicile" : "Bornes site", value: String(chargers.reduce((a, sc) => a + sc.quantity, 0)), accent: true },
+    type === "vehicles" && vehicles[0]
+      ? { label: "Durée LLD", value: `${vehicles[0].durationMonths} mois` }
+      : { label: "Type", value: type === "home" ? "B2B2E" : "IRVE site" },
+    type === "vehicles" && vehicles[0]
+      ? { label: "Kilométrage", value: `${fmt(vehicles[0].kmPerYear)} km/an` }
+      : { label: "Modèles", value: String(chargers.length) },
+  ]);
+
+  // KPI 2 : Investissement
+  drawKpiBlock(doc, M + colW + 12, startY, colW, rowH, "INVESTISSEMENT", type === "vehicles" ? [
+    { label: "Loyer mensuel TTC", value: eur(monthlyTtc), accent: true },
+    { label: "Loyer annuel TTC", value: eur(annualTtc) },
+    { label: "Total contrat", value: eur(totalContrat) },
+  ] : [
+    { label: "Total HT", value: eur(chargersHt), accent: true },
+    { label: "TVA 20 %", value: eur(chargersTtc - chargersHt) },
+    { label: "Total TTC", value: eur(chargersTtc) },
+  ]);
+
+  // KPI 3 : Bénéfices (économies pour vehicles, garanties pour chargers)
+  drawKpiBlock(doc, M, startY + rowH + 12, colW, rowH, type === "vehicles" ? "ÉCONOMIES vs FLOTTE ESSENCE" : "GARANTIES MATÉRIEL", type === "vehicles" ? [
+    { label: "Économie annuelle estimée", value: economy100Total > 0 ? `+ ${eur(economy100Total)}` : eur(economy100Total), accent: economy100Total > 0 },
+    { label: "Sur la durée contrat", value: economy100Total > 0 ? `+ ${eur(economy100Total * (vehicles[0]?.durationMonths ?? 48) / 12)}` : "—" },
+    { label: "TVA récupérable", value: "100 %" },
+  ] : [
+    { label: "Garantie matériel", value: type === "home" ? "2 à 4 ans" : "3 ans (ext. 6)", accent: true },
+    { label: "Pose IRVE certifiée", value: type === "home" ? "Seris" : "Beev × partenaires" },
+    { label: "Supervision incluse", value: "OCPP / marque blanche" },
+  ]);
+
+  // KPI 4 : Engagements Beev
+  drawKpiBlock(doc, M + colW + 12, startY + rowH + 12, colW, rowH, "ENGAGEMENTS BEEV", [
+    { label: "Interlocuteur dédié", value: "Grand compte", accent: true },
+    { label: "Hotline réactive", value: "Réponse J+1 ouvré" },
+    { label: type === "vehicles" ? "Maintenance & assistance" : "Mise en service OCPP", value: "Incluses" },
+  ]);
+
+  // Prochaine étape en bas
+  y = startY + 2 * rowH + 32;
+  doc.setFillColor(...INK);
+  doc.rect(M, y, PAGE_W - M * 2, 50, "F");
+  doc.setFillColor(...ACCENT);
+  doc.rect(M, y, 4, 50, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...ACCENT);
+  doc.text("PROCHAINE ÉTAPE", M + 16, y + 18);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(11);
+  doc.setTextColor(255, 255, 255);
+  const nextStep = type === "vehicles"
+    ? "Signature du Bon Pour Accord → émission des BC LLD sous 10 jours ouvrés."
+    : type === "home"
+    ? "Validation de la convention B2B2E → onboarding des collaborateurs en parallèle."
+    : "Validation de l'offre cadre → étude technique site sous 5 jours ouvrés.";
+  doc.text(nextStep, M + 16, y + 36);
+}
+
+// Helper : dessine un bloc KPI sur fond cream avec accent vert
+function drawKpiBlock(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  title: string,
+  items: Array<{ label: string; value: string; accent?: boolean }>,
+) {
+  doc.setFillColor(...BG);
+  doc.rect(x, y, w, h, "F");
+  doc.setFillColor(...ACCENT);
+  doc.rect(x, y, 3, h, "F");
+
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text(title, x + 12, y + 14);
+
+  let yy = y + 30;
+  items.forEach((it, i) => {
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...SUB);
+    doc.text(it.label.toUpperCase(), x + 12, yy);
+    doc.setFont(BRAND_FONT, it.accent ? "bold" : "normal");
+    doc.setFontSize(i === 0 || it.accent ? 14 : 11);
+    doc.setTextColor(it.accent ? ACCENT[0] : INK[0], it.accent ? ACCENT[1] : INK[1], it.accent ? ACCENT[2] : INK[2]);
+    doc.text(it.value, x + 12, yy + 14);
+    yy += 22;
+  });
+}
+
 // ============ SYNTHÈSE FINANCIÈRE (récap HT / TVA / TTC) ============
 function drawFinancialSummary(
   doc: jsPDF,
@@ -1013,14 +1349,40 @@ function drawHeader(doc: jsPDF, c: ClientInfo, type: ProjectType) {
 }
 
 function drawFooter(doc: jsPDF, c: ClientInfo, page: number, total: number) {
+  // Filet supérieur
   doc.setDrawColor(...RULE);
-  doc.line(M, PAGE_H - 50, PAGE_W - M, PAGE_H - 50);
-  doc.setFont(BRAND_FONT, "normal");
+  doc.setLineWidth(0.6);
+  doc.line(M, PAGE_H - 56, PAGE_W - M, PAGE_H - 56);
+
+  // Ligne 1 : commercial + coordonnées Beev société
+  doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
+  doc.setTextColor(...INK);
+  const repName = c.salesRep || "Commercial grand compte";
+  doc.text(`BEEV · ${repName}`, M, PAGE_H - 42);
+
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(7.5);
   doc.setTextColor(...SUB);
-  doc.text(`Beev · ${c.salesRep || "Commercial grand compte"}${c.salesRepEmail ? " · " + c.salesRepEmail : ""}`, M, PAGE_H - 36);
-  doc.text("Document confidentiel", PAGE_W / 2, PAGE_H - 36, { align: "center" });
-  doc.text(`${page} / ${total}`, PAGE_W - M, PAGE_H - 36, { align: "right" });
+  const repContact = [c.salesRepEmail, c.salesRepPhone].filter(Boolean).join(" · ");
+  if (repContact) doc.text(repContact, M, PAGE_H - 32);
+
+  // Centre : mention confidentielle + tag offre
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...SUB);
+  doc.text("Document confidentiel · usage interne client", PAGE_W / 2, PAGE_H - 42, { align: "center" });
+  doc.text("beev.co · contact@beev.co", PAGE_W / 2, PAGE_H - 32, { align: "center" });
+
+  // Droite : numérotation page
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...INK);
+  doc.text(`Page ${page} / ${total}`, PAGE_W - M, PAGE_H - 42, { align: "right" });
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...SUB);
+  doc.text(c.date || "", PAGE_W - M, PAGE_H - 32, { align: "right" });
 }
 
 function eyebrow(doc: jsPDF, label: string, y: number) {
