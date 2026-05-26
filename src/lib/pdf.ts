@@ -450,6 +450,70 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
     doc.text(t, M + 14, y);
     y += t.length * 14 + 6;
   });
+
+  // ===== Section "Beev en chiffres" (preuve sociale) =====
+  if (y < FOOTER_LIMIT - 130) {
+    y += 14;
+    doc.setFillColor(...INK);
+    doc.rect(M, y, PAGE_W - M * 2, 90, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(...ACCENT);
+    doc.text("BEEV EN CHIFFRES", M + 16, y + 18);
+
+    const stats: Array<{ value: string; label: string }> = [
+      { value: "200+", label: "entreprises\naccompagnées" },
+      { value: "1500+", label: "véhicules\nlivrés" },
+      { value: "800+", label: "bornes\ninstallées" },
+      { value: "97 %", label: "clients satisfaits\n(NPS 2025)" },
+    ];
+    const cw = (PAGE_W - M * 2 - 32) / stats.length;
+    stats.forEach((s, i) => {
+      const x = M + 16 + i * cw;
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(22);
+      doc.setTextColor(255, 255, 255);
+      doc.text(s.value, x, y + 50);
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(180, 180, 185);
+      const lbl = doc.splitTextToSize(s.label, cw - 8);
+      doc.text(lbl, x, y + 64);
+    });
+    y += 100;
+  }
+
+  // ===== Citation client (témoignage) =====
+  if (y < FOOTER_LIMIT - 80) {
+    doc.setFillColor(...BG);
+    doc.rect(M, y, PAGE_W - M * 2, 60, "F");
+    doc.setFillColor(...LAVENDER);
+    doc.rect(M, y, 4, 60, "F");
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(11);
+    doc.setTextColor(...INK);
+    const quoteByType: Record<ProjectType, { quote: string; author: string }> = {
+      vehicles: {
+        quote: "« Beev nous a permis d'électrifier 22 véhicules en 3 mois, avec un interlocuteur unique et un suivi sans faille. »",
+        author: "DAF · ETI logistique 180 collaborateurs",
+      },
+      home: {
+        quote: "« Le kit B2B2E Beev a simplifié notre déploiement chez 35 collaborateurs : zéro charge pour notre équipe RH. »",
+        author: "DRH · PME tech 60 collaborateurs",
+      },
+      site: {
+        quote: "« Étude IRVE rigoureuse, pose dans les délais, supervision OCPP impeccable. Du clé en main. »",
+        author: "Directeur immobilier · ETI tertiaire 400 collaborateurs",
+      },
+    };
+    const q = quoteByType[type];
+    const ql = doc.splitTextToSize(q.quote, PAGE_W - M * 2 - 32);
+    doc.text(ql, M + 16, y + 22);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...SUB);
+    doc.text(q.author.toUpperCase(), M + 16, y + 50);
+  }
 }
 
 // ============ FICHE VÉHICULE ============
