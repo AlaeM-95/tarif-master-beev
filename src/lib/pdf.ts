@@ -221,6 +221,13 @@ export async function generateProposalPdf(opts: {
     }
   }
 
+  // Page synthèse financière (uniquement pour vehicles et chargers — pas si rien sélectionné)
+  if (v.length > 0 || c.length > 0) {
+    doc.addPage();
+    drawHeader(doc, client, projectType);
+    drawFinancialSummary(doc, projectType, v, c, energy);
+  }
+
   doc.addPage();
   drawHeader(doc, client, projectType);
   drawJourney(doc, projectType, client);
@@ -257,12 +264,26 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
   doc.setFillColor(...ACCENT);
   doc.rect(M, 110, 60, 4, "F");
 
+  // Référence devis générée automatiquement : BEEV-AAAA-MMJJ-HHMM
+  const now = new Date();
+  const ref = `BEEV-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
+
   doc.setFontSize(9);
   doc.setTextColor(180, 180, 185);
-  doc.text(`OFFRE COMMERCIALE · ${c.date.toUpperCase()}`, M, 250);
+  doc.text(`OFFRE COMMERCIALE · ${c.date.toUpperCase()}`, M, 230);
+
+  // Encart référence devis (gros + visible)
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(13);
+  doc.setTextColor(...ACCENT);
+  doc.text(`DEVIS ${ref}`, M, 250);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(180, 180, 185);
+  doc.text("Validité 30 jours · à compter de la date d'émission", M, 264);
 
   doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(34);
+  doc.setFontSize(32);
   doc.setTextColor(255, 255, 255);
   doc.text("Beev × " + (c.company || "Votre entreprise"), M, 295);
 
@@ -630,6 +651,118 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
 }
 
 // ============ PARCOURS CLIENT BEEV (A → Z) ============
+// ============ SYNTHÈSE FINANCIÈRE (récap HT / TVA / TTC) ============
+function drawFinancialSummary(
+  doc: jsPDF,
+  type: ProjectType,
+  vehicles: SelectedVehicle[],
+  chargers: SelectedCharger[],
+  _e: EnergyParams,
+) {
+  let y = 130;
+  eyebrow(doc, "SYNTHÈSE FINANCIÈRE", y);
+  y += 32;
+  title(doc, type === "vehicles" ? "Récapitulatif loyers LLD." : "Récapitulatif HT / TVA / TTC.", y);
+  y += 30;
+
+  if (type === "vehicles") {
+    // Pour les véhicules : récap LLD mensuel + annuel TTC (la fiscalité TVA récupérée)
+    let monthlyTotal = 0;
+    let annualTotal = 0;
+    const rows: Array<[string, string, string, string]> = [];
+    vehicles.forEach((sv) => {
+      const monthly = sv.negotiatedMonthly * sv.quantity;
+      const annual = monthly * 12;
+      monthlyTotal += monthly;
+      annualTotal += annual;
+      rows.push([
+        `${sv.vehicle.brand} ${sv.vehicle.model}`,
+        `${sv.quantity} × ${sv.durationMonths} mois`,
+        eur(sv.negotiatedMonthly),
+        eur(monthly),
+      ]);
+    });
+
+    autoTable(doc, {
+      startY: y,
+      theme: "grid",
+      head: [["Véhicule", "Conditions", "Loyer unitaire/mois", "Loyer mensuel TTC"]],
+      body: rows,
+      foot: [
+        ["", "", { content: "Loyer mensuel total TTC", styles: { fontStyle: "bold", halign: "right" } }, { content: eur(monthlyTotal), styles: { fontStyle: "bold", halign: "right", fillColor: BG } }],
+        ["", "", { content: "Loyer annuel total TTC", styles: { fontStyle: "bold", halign: "right" } }, { content: eur(annualTotal), styles: { fontStyle: "bold", halign: "right", fillColor: ACCENT, textColor: 255 } }],
+      ],
+      headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT },
+      bodyStyles: { fontSize: 9.5, cellPadding: 6, textColor: INK, lineColor: RULE, font: BRAND_FONT },
+      footStyles: { fontSize: 9.5, fillColor: BG, textColor: INK, font: BRAND_FONT },
+      columnStyles: { 1: { halign: "center" }, 2: { halign: "right" }, 3: { halign: "right", fontStyle: "bold" } },
+      margin: { left: M, right: M },
+    });
+    y = (doc as any).lastAutoTable.finalY + 16;
+
+    // Mention TVA
+    doc.setFontSize(9);
+    doc.setTextColor(...SUB);
+    doc.text("Loyers exprimés en TTC. Conformément à la fiscalité LLD, la TVA sur le loyer véhicule électrique est récupérable à 100 %.", M, y);
+  } else {
+    // Pour les chargers (home / site) : tableau HT par site + TVA 20 % + TTC
+    let totalHt = 0;
+    const rows: Array<[string, string, string]> = [];
+    chargers.forEach((sc) => {
+      const lineTotalHt = sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0);
+      const totalForSite = lineTotalHt * sc.quantity;
+      totalHt += totalForSite;
+      const label = sc.siteName ? `${sc.siteName} — ${sc.charger.brand} ${sc.charger.model}` : `${sc.charger.brand} ${sc.charger.model}`;
+      rows.push([
+        label,
+        `${sc.quantity} ${sc.charger.deployment === "domicile" ? "collab." : "borne(s)"}`,
+        eur(totalForSite),
+      ]);
+    });
+    const tva = totalHt * 0.20;
+    const ttc = totalHt + tva;
+
+    autoTable(doc, {
+      startY: y,
+      theme: "grid",
+      head: [["Désignation", "Quantité", "Total HT"]],
+      body: rows,
+      foot: [
+        ["", { content: "Sous-total HT", styles: { fontStyle: "bold", halign: "right" } }, { content: eur(totalHt), styles: { halign: "right", fontStyle: "bold" } }],
+        ["", { content: "TVA 20 %", styles: { halign: "right" } }, { content: eur(tva), styles: { halign: "right" } }],
+        ["", { content: "Total TTC", styles: { fontStyle: "bold", halign: "right" } }, { content: eur(ttc), styles: { halign: "right", fontStyle: "bold", fillColor: ACCENT, textColor: 255 } }],
+      ],
+      headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT },
+      bodyStyles: { fontSize: 9.5, cellPadding: 6, textColor: INK, lineColor: RULE, font: BRAND_FONT },
+      footStyles: { fontSize: 9.5, fillColor: BG, textColor: INK, font: BRAND_FONT },
+      columnStyles: { 1: { halign: "center" }, 2: { halign: "right", fontStyle: "bold" } },
+      margin: { left: M, right: M },
+    });
+    y = (doc as any).lastAutoTable.finalY + 16;
+
+    // Mentions de paiement standard
+    doc.setFillColor(...BG);
+    doc.rect(M, y, PAGE_W - M * 2, 60, "F");
+    doc.setFillColor(...ACCENT);
+    doc.rect(M, y, 4, 60, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(...SUB);
+    doc.text("MODALITÉS DE PAIEMENT (À CONFIRMER LORS DE LA SIGNATURE)", M + 16, y + 16);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...INK);
+    const modalities = [
+      "30 % à la commande, 60 % à la pose, 10 % à la mise en service.",
+      "Acompte facturé sous 8 jours. Solde sous 30 jours après PV de réception.",
+      "TVA 20 % facturée selon le régime applicable à votre entreprise.",
+    ];
+    modalities.forEach((m, i) => {
+      doc.text("· " + m, M + 16, y + 32 + i * 11);
+    });
+  }
+}
+
 function drawJourney(doc: jsPDF, type: ProjectType, client: ClientInfo) {
   const fallbackJourney = BEEV_JOURNEYS[type];
   const j = PDF_CONTENT.steps.length > 0
