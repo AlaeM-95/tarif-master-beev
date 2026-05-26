@@ -17,6 +17,7 @@ import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type Energ
 import { computeTco, generateProposalPdf, type SelectedCharger, type SelectedVehicle } from "@/lib/pdf";
 import { BEEV_JOURNEYS, MANDATORY_SERVICES, createBlankCharger, createBlankVehicle, type Charger, type LineItem, type ProjectType, type Vehicle } from "@/lib/catalog";
 import { AdminBadge } from "@/components/admin-badge";
+import { ImageUpload } from "@/components/image-upload";
 import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/")({
@@ -579,10 +580,12 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete }: { vehi
               <TxtField label="Version" value={vehicle.version} onChange={(s) => onUpdate({ version: s })} />
               <TxtField label="Catégorie" value={vehicle.category} onChange={(s) => onUpdate({ category: s })} />
             </div>
-            <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground uppercase">Image (URL ou /images/...)</Label>
-              <Input value={vehicle.image} onChange={(e) => onUpdate({ image: e.target.value })} className="h-8 text-xs" />
-            </div>
+            <ImageUpload
+              currentUrl={vehicle.image}
+              onChange={(url) => onUpdate({ image: url })}
+              folder="vehicles"
+              label="Photo du véhicule"
+            />
             <div className="space-y-1">
               <Label className="text-[10px] text-muted-foreground uppercase">Services inclus (un par ligne)</Label>
               <Textarea
@@ -653,10 +656,12 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { char
                 </select>
               </div>
             </div>
-            <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground uppercase">Image (URL ou /images/...)</Label>
-              <Input value={charger.image} onChange={(e) => onUpdate({ image: e.target.value })} className="h-8 text-xs" />
-            </div>
+            <ImageUpload
+              currentUrl={charger.image}
+              onChange={(url) => onUpdate({ image: url })}
+              folder="chargers"
+              label="Photo de la borne"
+            />
             <div className="space-y-1">
               <Label className="text-[10px] text-muted-foreground uppercase">Caractéristiques (une par ligne)</Label>
               <Textarea

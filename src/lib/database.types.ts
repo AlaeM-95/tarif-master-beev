@@ -98,6 +98,66 @@ export type Database = {
         };
         Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
       };
+      pdf_settings: {
+        Row: {
+          project_type: "vehicles" | "home" | "site";
+          color_ink: string;
+          color_accent: string;
+          color_lavender: string;
+          color_bg: string;
+          logo_url: string | null;
+          cover_image_url: string | null;
+          cover_subtitle: string | null;
+          why_beev_intro: string | null;
+          why_beev_bullets: Json | null;
+          validation_conditions: string | null;
+          validation_bpa_text: string | null;
+          validation_bpa_title: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          project_type: "vehicles" | "home" | "site";
+          color_ink?: string;
+          color_accent?: string;
+          color_lavender?: string;
+          color_bg?: string;
+          logo_url?: string | null;
+          cover_image_url?: string | null;
+          cover_subtitle?: string | null;
+          why_beev_intro?: string | null;
+          why_beev_bullets?: Json | null;
+          validation_conditions?: string | null;
+          validation_bpa_text?: string | null;
+          validation_bpa_title?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["pdf_settings"]["Insert"]>;
+      };
+      journey_steps: {
+        Row: {
+          id: string;
+          project_type: "vehicles" | "home" | "site";
+          position: number;
+          step_number: string;
+          title: string;
+          summary: string | null;
+          duration: string | null;
+          beev_actions: Json | null;
+          client_actions: Json | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_type: "vehicles" | "home" | "site";
+          position: number;
+          step_number: string;
+          title: string;
+          summary?: string | null;
+          duration?: string | null;
+          beev_actions?: Json | null;
+          client_actions?: Json | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["journey_steps"]["Insert"]>;
+      };
     };
   };
 };

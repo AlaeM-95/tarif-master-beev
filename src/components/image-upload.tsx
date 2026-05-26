@@ -1,0 +1,122 @@
+import { useRef, useState } from "react";
+import { Upload, X, Image as ImageIcon } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { supabase } from "@/lib/supabase";
+
+type ImageUploadProps = {
+  currentUrl?: string;
+  onChange: (url: string) => void;
+  folder: "vehicles" | "chargers" | "pdf";
+  label?: string;
+};
+
+export function ImageUpload({ currentUrl, onChange, folder, label = "Image" }: ImageUploadProps) {
+  const [uploading, setUploading] = useState(false);
+  const [showUrlInput, setShowUrlInput] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Fichier trop volumineux (max 5 Mo)");
+      return;
+    }
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      toast.error("Format non supporté (PNG, JPEG ou WebP uniquement)");
+      return;
+    }
+
+    setUploading(true);
+    const ext = file.name.split(".").pop() || "png";
+    const fileName = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+    const { data, error } = await supabase.storage
+      .from("vehicle-images")
+      .upload(fileName, file, { upsert: false, contentType: file.type });
+
+    if (error) {
+      toast.error(`Échec upload : ${error.message}`);
+      setUploading(false);
+      return;
+    }
+
+    const { data: urlData } = supabase.storage.from("vehicle-images").getPublicUrl(data.path);
+    onChange(urlData.publicUrl);
+    toast.success("Image uploadée");
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  return (
+    <div className="space-y-2">
+      <Label className="text-[10px] text-muted-foreground uppercase">{label}</Label>
+
+      {currentUrl && (
+        <div className="relative inline-block">
+          <img
+            src={currentUrl}
+            alt="Aperçu"
+            className="h-24 w-32 object-contain rounded-md border border-border bg-muted"
+            onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.3"; }}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute -top-2 -right-2 h-5 w-5 bg-background border border-border rounded-full"
+            onClick={() => onChange("")}
+            title="Retirer l'image"
+          >
+            <X className="w-3 h-3" />
+          </Button>
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          className="gap-2 h-8 text-xs"
+        >
+          <Upload className="w-3 h-3" />
+          {uploading ? "Upload..." : currentUrl ? "Remplacer" : "Téléverser une image"}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowUrlInput((v) => !v)}
+          className="gap-2 h-8 text-xs"
+        >
+          <ImageIcon className="w-3 h-3" />
+          {showUrlInput ? "Masquer URL" : "Coller une URL"}
+        </Button>
+      </div>
+
+      {showUrlInput && (
+        <Input
+          type="text"
+          value={currentUrl ?? ""}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="https://... ou /images/..."
+          className="h-8 text-xs"
+        />
+      )}
+    </div>
+  );
+}
