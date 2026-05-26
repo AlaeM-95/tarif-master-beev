@@ -203,13 +203,6 @@ export async function generateProposalPdf(opts: {
 
   drawCover(doc, projectType, client, v.length, c.length);
 
-  // Executive summary "EN BREF" pour le décideur pressé
-  if (v.length > 0 || c.length > 0) {
-    doc.addPage();
-    drawHeader(doc, client, projectType);
-    drawExecutiveSummary(doc, projectType, client, v, c, energy);
-  }
-
   doc.addPage();
   drawHeader(doc, client, projectType);
   drawWhyBeev(doc, projectType);
@@ -250,6 +243,14 @@ export async function generateProposalPdf(opts: {
   doc.addPage();
   drawHeader(doc, client, projectType);
   drawJourney(doc, projectType, client);
+
+  // Executive summary "EN BREF" — placé en avant-dernière page pour rester
+  // sous les yeux du décideur juste avant la signature.
+  if (v.length > 0 || c.length > 0) {
+    doc.addPage();
+    drawHeader(doc, client, projectType);
+    drawExecutiveSummary(doc, projectType, client, v, c, energy);
+  }
 
   doc.addPage();
   drawHeader(doc, client, projectType);
@@ -628,14 +629,18 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     doc.setFontSize(7.5);
     doc.text(`${sv.durationMonths} mois · ${fmt(sv.kmPerYear)} km/an · estimation non contractuelle`, M + 16, y + 27);
 
-    // Graphique à barres horizontales
+    // Graphique à barres horizontales — sécurisé contre les valeurs anormales
     const chartX = M + 16;
     const chartW = PAGE_W - M * 2 - 32;
     const labelW = 90;
     const valueW = 70;
     const barMaxW = chartW - labelW - valueW;
-    const maxVal = Math.max(t.tco100, t.refTco100);
+    // Garde-fou : si max <= 0 (cas impossible mais on protège), on évite division par zéro
+    const maxVal = Math.max(t.tco100, t.refTco100, 1);
     const barH = 14;
+    // Cap les valeurs négatives à 0 pour l'affichage (les barres ne peuvent pas être négatives)
+    const safeLease = Math.max(t.lease100, 0);
+    const safeEnergy = Math.max(t.energy100, 0);
 
     // Bar 1 : Votre véhicule (vert)
     const y1 = y + 48;
@@ -643,8 +648,8 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     doc.setFontSize(8);
     doc.setTextColor(...INK);
     doc.text("Votre VE", chartX, y1 + 10);
-    const leaseW1 = (t.lease100 / maxVal) * barMaxW;
-    const energyW1 = (t.energy100 / maxVal) * barMaxW;
+    const leaseW1 = Math.max(0, Math.min(barMaxW, (safeLease / maxVal) * barMaxW));
+    const energyW1 = Math.max(0, Math.min(barMaxW - leaseW1, (safeEnergy / maxVal) * barMaxW));
     doc.setFillColor(...ACCENT);
     doc.rect(chartX + labelW, y1, leaseW1, barH, "F");
     doc.setFillColor(120, 180, 100);
@@ -654,14 +659,16 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     doc.setTextColor(...INK);
     doc.text(eur2(t.tco100), chartX + labelW + leaseW1 + energyW1 + 6, y1 + 10);
 
-    // Bar 2 : Référence essence (gris)
+    // Bar 2 : Référence essence (gris) — sécurisé
     const y2 = y + 72;
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(8);
     doc.setTextColor(...SUB);
     doc.text("Réf. essence*", chartX, y2 + 10);
-    const refLeaseW2 = (((500 * 12) / Math.max(sv.kmPerYear, 1) * 100) / maxVal) * barMaxW;
-    const refFuelW2 = ((6.0 * e.fuelPriceL) / maxVal) * barMaxW;
+    const refLease = (500 * 12) / Math.max(sv.kmPerYear, 1) * 100;
+    const refFuel = 6.0 * Math.max(e.fuelPriceL, 0);
+    const refLeaseW2 = Math.max(0, Math.min(barMaxW, (refLease / maxVal) * barMaxW));
+    const refFuelW2 = Math.max(0, Math.min(barMaxW - refLeaseW2, (refFuel / maxVal) * barMaxW));
     doc.setFillColor(140, 140, 145);
     doc.rect(chartX + labelW, y2, refLeaseW2, barH, "F");
     doc.setFillColor(190, 190, 195);
@@ -1407,7 +1414,9 @@ function drawFinancialSummary(
   }
 }
 
-function drawJourney(doc: jsPDF, type: ProjectType, client: ClientInfo) {
+// Parcours client compact : 5 colonnes verticales sur 1 seule page.
+// Chaque colonne = 1 étape avec son cercle numéroté + titre + durée + résumé court.
+function drawJourney(doc: jsPDF, type: ProjectType, _client: ClientInfo) {
   const fallbackJourney = BEEV_JOURNEYS[type];
   const j = PDF_CONTENT.steps.length > 0
     ? { intro: fallbackJourney.intro, steps: PDF_CONTENT.steps }
@@ -1425,109 +1434,103 @@ function drawJourney(doc: jsPDF, type: ProjectType, client: ClientInfo) {
   doc.setTextColor(...SUB);
   const intro = doc.splitTextToSize(j.intro, PAGE_W - M * 2);
   doc.text(intro, M, y);
-  y += intro.length * 13 + 14;
+  y += intro.length * 13 + 18;
 
-  // Frise visuelle (5 cercles reliés)
-  const stripY = y + 6;
-  const stripX0 = M + 12;
-  const stripX1 = PAGE_W - M - 12;
+  // ===== Frise horizontale (cercles + ligne) =====
+  const stripY = y + 14;
+  const stripX0 = M + 18;
+  const stripX1 = PAGE_W - M - 18;
   doc.setDrawColor(...RULE);
-  doc.setLineWidth(1);
+  doc.setLineWidth(1.2);
   doc.line(stripX0, stripY, stripX1, stripY);
-  const step = (stripX1 - stripX0) / Math.max(j.steps.length - 1, 1);
+  const stepX = (stripX1 - stripX0) / Math.max(j.steps.length - 1, 1);
   j.steps.forEach((s, i) => {
-    const x = stripX0 + i * step;
+    const x = stripX0 + i * stepX;
     doc.setFillColor(...ACCENT);
-    doc.circle(x, stripY, 8, "F");
+    doc.circle(x, stripY, 11, "F");
     doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(9);
+    doc.setFontSize(11);
     doc.setTextColor(255, 255, 255);
-    doc.text(s.n, x, stripY + 3, { align: "center" });
+    doc.text(s.n, x, stripY + 4, { align: "center" });
+  });
+  y = stripY + 30;
+
+  // ===== Colonnes verticales : 1 par étape =====
+  const cardW = (PAGE_W - M * 2 - (j.steps.length - 1) * 8) / j.steps.length;
+  const cardH = 380;
+  const colY = y;
+
+  j.steps.forEach((s, i) => {
+    const x = M + i * (cardW + 8);
+
+    // Fond cream + barre accent
+    doc.setFillColor(...BG);
+    doc.rect(x, colY, cardW, cardH, "F");
+    doc.setFillColor(...ACCENT);
+    doc.rect(x, colY, cardW, 3, "F");
+
+    // Durée en haut
+    if (s.duration) {
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(7.5);
+      doc.setTextColor(...ACCENT);
+      doc.text(s.duration.toUpperCase(), x + 10, colY + 18);
+    }
+
+    // Titre étape
     doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...INK);
+    const titleL = doc.splitTextToSize(s.title, cardW - 20);
+    doc.text(titleL, x + 10, colY + 36);
+    let yy = colY + 36 + titleL.length * 11 + 8;
+
+    // Résumé (très court, max 3 lignes)
+    if (s.summary) {
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(...SUB);
+      const sumL = doc.splitTextToSize(s.summary, cardW - 20).slice(0, 3);
+      doc.text(sumL, x + 10, yy);
+      yy += sumL.length * 10 + 10;
+    }
+
+    // Section "Beev fait"
+    doc.setFillColor(...ACCENT);
+    doc.rect(x + 10, yy - 6, 16, 2, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7);
+    doc.setTextColor(...SUB);
+    doc.text("BEEV", x + 10, yy + 4);
+    yy += 12;
+    doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(7.5);
     doc.setTextColor(...INK);
-    const lbl = doc.splitTextToSize(s.title, step - 8);
-    doc.text(lbl, x, stripY + 22, { align: "center" });
-  });
-  y = stripY + 50;
-
-  // Détail des étapes (split sur 2 pages si nécessaire)
-  for (const s of j.steps) {
-    const blockH = 110;
-    if (y + blockH > FOOTER_LIMIT) {
-      doc.addPage();
-      drawHeader(doc, client, type);
-      y = 116;
-      eyebrow(doc, "PARCOURS CLIENT BEEV (SUITE)", y);
-      y += 30;
-    }
-    // bandeau étape
-    doc.setFillColor(...INK);
-    doc.rect(M, y, 28, 28, "F");
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(13);
-    doc.setTextColor(255, 255, 255);
-    doc.text(s.n, M + 14, y + 19, { align: "center" });
-
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(12);
-    doc.setTextColor(...INK);
-    doc.text(s.title, M + 38, y + 12);
-    if (s.duration) {
-      doc.setFont(BRAND_FONT, "normal");
-      doc.setFontSize(8.5);
-      doc.setTextColor(...SUB);
-      doc.text(s.duration, PAGE_W - M, y + 12, { align: "right" });
-    }
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(9.5);
-    doc.setTextColor(...SUB);
-    const sum = doc.splitTextToSize(s.summary, PAGE_W - M - (M + 38));
-    doc.text(sum, M + 38, y + 26);
-    let yy = y + 26 + sum.length * 12 + 8;
-
-    // 2 colonnes : Beev / Client
-    const colW = (PAGE_W - M * 2 - 14) / 2;
-    const colYStart = yy;
-    doc.setFillColor(...BG);
-    doc.rect(M, yy, colW, 56, "F");
-    doc.setFillColor(...ACCENT);
-    doc.rect(M, yy, 3, 56, "F");
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(8);
-    doc.setTextColor(...SUB);
-    doc.text("BEEV PREND EN CHARGE", M + 10, yy + 12);
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(8.5);
-    doc.setTextColor(...INK);
-    let by = yy + 24;
-    s.beev.forEach((b) => {
-      const ll = doc.splitTextToSize("· " + b, colW - 14);
-      doc.text(ll, M + 10, by);
-      by += ll.length * 10;
+    s.beev.slice(0, 3).forEach((b) => {
+      const ll = doc.splitTextToSize("· " + b, cardW - 20);
+      doc.text(ll, x + 10, yy);
+      yy += ll.length * 9 + 2;
     });
 
-    const cx = M + colW + 14;
-    doc.setFillColor(...BG);
-    doc.rect(cx, colYStart, colW, 56, "F");
+    yy += 6;
+
+    // Section "Client"
     doc.setFillColor(...LAVENDER);
-    doc.rect(cx, colYStart, 3, 56, "F");
+    doc.rect(x + 10, yy - 6, 16, 2, "F");
     doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(8);
+    doc.setFontSize(7);
     doc.setTextColor(...SUB);
-    doc.text("CÔTÉ CLIENT", cx + 10, colYStart + 12);
+    doc.text("CLIENT", x + 10, yy + 4);
+    yy += 12;
     doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(8.5);
+    doc.setFontSize(7.5);
     doc.setTextColor(...INK);
-    let cy2 = colYStart + 24;
-    s.client.forEach((b) => {
-      const ll = doc.splitTextToSize("· " + b, colW - 14);
-      doc.text(ll, cx + 10, cy2);
-      cy2 += ll.length * 10;
+    s.client.slice(0, 3).forEach((b) => {
+      const ll = doc.splitTextToSize("· " + b, cardW - 20);
+      doc.text(ll, x + 10, yy);
+      yy += ll.length * 9 + 2;
     });
-
-    y = Math.max(by, cy2) + 18;
-  }
+  });
 }
 
 // ============ VALIDATION (varie par type) ============
@@ -1685,9 +1688,6 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
 
 // ============ HEADER / FOOTER / HELPERS ============
 function drawHeader(doc: jsPDF, c: ClientInfo, type: ProjectType) {
-  // Filigrane "DEVIS" en premier (sous le contenu de la page)
-  drawWatermark(doc);
-
   doc.setTextColor(...INK);
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(11);
