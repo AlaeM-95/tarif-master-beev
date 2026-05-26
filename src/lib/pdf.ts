@@ -239,7 +239,7 @@ export async function generateProposalPdf(opts: {
   if (v.length > 0 || c.length > 0) {
     doc.addPage();
     drawHeader(doc, client, projectType);
-    drawFinancialSummary(doc, projectType, v, c, energy);
+    drawFinancialSummary(doc, projectType, v, c);
   }
 
   // Page garanties & engagements
@@ -1302,7 +1302,6 @@ function drawFinancialSummary(
   type: ProjectType,
   vehicles: SelectedVehicle[],
   chargers: SelectedCharger[],
-  _e: EnergyParams,
 ) {
   let y = 130;
   eyebrow(doc, "SYNTHÈSE FINANCIÈRE", y);
@@ -1714,16 +1713,21 @@ function drawHeader(doc: jsPDF, c: ClientInfo, type: ProjectType) {
 // Filigrane "DEVIS" en diagonale, gris très clair, sous le contenu.
 // Différencie visuellement une offre commerciale d'un contrat / facture.
 function drawWatermark(doc: jsPDF) {
-  doc.saveGraphicsState?.();
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(120);
-  doc.setTextColor(240, 238, 232); // gris cream très clair
-  // Texte diagonal au centre de la page
-  doc.text("DEVIS", PAGE_W / 2, PAGE_H / 2 + 40, {
-    align: "center",
-    angle: 35,
-  });
-  doc.restoreGraphicsState?.();
+  try {
+    const anyDoc = doc as any;
+    anyDoc.saveGraphicsState?.();
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(120);
+    doc.setTextColor(240, 238, 232); // gris cream très clair
+    // Texte diagonal au centre de la page — angle non typé selon versions jsPDF
+    (doc.text as any)("DEVIS", PAGE_W / 2, PAGE_H / 2 + 40, {
+      align: "center",
+      angle: 35,
+    });
+    anyDoc.restoreGraphicsState?.();
+  } catch {
+    // Si le filigrane échoue, on continue sans (non bloquant)
+  }
 }
 
 function drawFooter(doc: jsPDF, c: ClientInfo, page: number, total: number) {
