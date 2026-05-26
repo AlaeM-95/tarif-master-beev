@@ -20,40 +20,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Récupère le rôle de l'utilisateur depuis la table profiles
+  // Récupère le rôle de l'utilisateur depuis la table profiles.
+  // Try-catch global pour ne JAMAIS bloquer le loading state.
   const fetchRole = async (userId: string): Promise<UserRole | null> => {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", userId)
-      .maybeSingle();
-    if (error || !data) return null;
-    return data.role;
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", userId)
+        .maybeSingle();
+      if (error) {
+        console.error("[auth] fetchRole error:", error);
+        return null;
+      }
+      return data?.role ?? null;
+    } catch (err) {
+      console.error("[auth] fetchRole exception:", err);
+      return null;
+    }
   };
 
   useEffect(() => {
-    // Session initiale
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        const userRole = await fetchRole(session.user.id);
-        setRole(userRole);
+    // Init session — try/finally garantit que loading passe TOUJOURS à false,
+    // même si Supabase plante ou si fetchRole throw.
+    const init = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          const userRole = await fetchRole(session.user.id);
+          setRole(userRole);
+        }
+      } catch (err) {
+        console.error("[auth] init session error:", err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    };
+    init();
 
-    // Écoute les changements de session
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        const userRole = await fetchRole(session.user.id);
-        setRole(userRole);
-      } else {
-        setRole(null);
+    // Listener changements de session — wrappé dans try/catch défensif
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      try {
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          const userRole = await fetchRole(session.user.id);
+          setRole(userRole);
+        } else {
+          setRole(null);
+        }
+      } catch (err) {
+        console.error("[auth] onAuthStateChange error:", err);
       }
     });
 
