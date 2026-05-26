@@ -10,7 +10,8 @@ import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
-import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, Car, Home, Building2, Download } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, Car, Home, Building2, Download, AlertTriangle } from "lucide-react";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type EnergyParams } from "@/lib/store";
 import { computeTco, generateProposalPdf, type SelectedCharger, type SelectedVehicle } from "@/lib/pdf";
 import { BEEV_JOURNEYS, MANDATORY_SERVICES, createBlankCharger, createBlankVehicle, type Charger, type LineItem, type ProjectType, type Vehicle } from "@/lib/catalog";
@@ -29,8 +30,8 @@ export const Route = createFileRoute("/")({
 
 function App() {
   const { isAdmin } = useAuth();
-  const { vehicles, update: updateVehicle, add: addVehicle, remove: removeVehicle, importMany: importVehicles, reset: resetVehicles } = useVehicles();
-  const { chargers, update: updateCharger, add: addCharger, remove: removeCharger, reset: resetChargers } = useChargers();
+  const { vehicles, update: updateVehicle, add: addVehicle, remove: removeVehicle, removeAll: removeAllVehicles, importMany: importVehicles } = useVehicles();
+  const { chargers, update: updateCharger, add: addCharger, remove: removeCharger, removeAllByDeployment } = useChargers();
   const { energy, set: setEnergy, reset: resetEnergy } = useEnergy();
   const { projectType, setProjectType } = useProjectType();
 
@@ -150,7 +151,9 @@ function App() {
               title={`Véhicules (${vehicles.length})`}
               subtitle="Catalogue synchronisé avec le calculateur TCO Beev. Loyers exprimés en TTC."
               isAdmin={isAdmin}
-              onReset={isAdmin ? resetVehicles : undefined}
+              itemCount={vehicles.length}
+              onDeleteAll={isAdmin ? () => { setSelectedV({}); removeAllVehicles(); } : undefined}
+              deleteAllLabel="Supprimer tous les véhicules ?"
               onAdd={isAdmin ? () => addVehicle(createBlankVehicle()) : undefined}
               addLabel="Ajouter un véhicule"
               importTco={isAdmin ? (list) => importVehicles(list) : undefined}
@@ -172,7 +175,9 @@ function App() {
               title={`Bornes domicile collaborateurs (${chargersHome.length})`}
               subtitle="Kit B2B2E clé en main · pose 0–10 m incluse · supervision & remboursement automatisé."
               isAdmin={isAdmin}
-              onReset={isAdmin ? resetChargers : undefined}
+              itemCount={chargersHome.length}
+              onDeleteAll={isAdmin ? () => { setSelectedC({}); removeAllByDeployment("domicile"); } : undefined}
+              deleteAllLabel="Supprimer toutes les bornes domicile ?"
               onAdd={isAdmin ? () => addCharger(createBlankCharger("domicile")) : undefined}
               addLabel="Ajouter une borne domicile"
             >
@@ -193,7 +198,9 @@ function App() {
               title={`Bornes site entreprise (${chargersSite.length})`}
               subtitle="Devis détaillé site par site (matériel + IRVE + génie civil)."
               isAdmin={isAdmin}
-              onReset={isAdmin ? resetChargers : undefined}
+              itemCount={chargersSite.length}
+              onDeleteAll={isAdmin ? () => { setSelectedC({}); removeAllByDeployment("site"); } : undefined}
+              deleteAllLabel="Supprimer toutes les bornes site ?"
               onAdd={isAdmin ? () => addCharger(createBlankCharger("site")) : undefined}
               addLabel="Ajouter une borne site"
             >
@@ -278,10 +285,12 @@ function ProjectTypeSelector({ value, onChange }: { value: ProjectType; onChange
   );
 }
 
-function CatalogSection({ title, subtitle, onReset, onAdd, addLabel, importTco, children, isAdmin }: {
+function CatalogSection({ title, subtitle, onDeleteAll, deleteAllLabel, onAdd, addLabel, importTco, itemCount, children, isAdmin }: {
   title: string; subtitle: string;
-  onReset?: () => void; onAdd?: () => void; addLabel: string;
+  onDeleteAll?: () => void; deleteAllLabel?: string;
+  onAdd?: () => void; addLabel: string;
   importTco?: (list: Vehicle[]) => void;
+  itemCount?: number;
   children: React.ReactNode;
   isAdmin?: boolean;
 }) {
@@ -296,7 +305,32 @@ function CatalogSection({ title, subtitle, onReset, onAdd, addLabel, importTco, 
           <div className="flex items-center gap-2">
             {importTco && <ImportTcoDialog onImport={importTco} />}
             {onAdd && <Button variant="outline" size="sm" onClick={onAdd} className="gap-2"><Plus className="w-3 h-3" /> {addLabel}</Button>}
-            {onReset && <Button variant="ghost" size="sm" onClick={onReset} className="gap-2"><RotateCcw className="w-3 h-3" /> Réinitialiser</Button>}
+            {onDeleteAll && (itemCount === undefined || itemCount > 0) && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="sm" className="gap-2 text-destructive hover:text-destructive">
+                    <Trash2 className="w-3 h-3" /> Tout supprimer
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-destructive" />
+                      {deleteAllLabel ?? "Tout supprimer ?"}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Cette action supprime {itemCount !== undefined ? `les ${itemCount} éléments` : "tous les éléments"} de la base. Elle est <strong>définitive</strong> et ne peut pas être annulée.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Annuler</AlertDialogCancel>
+                    <AlertDialogAction onClick={onDeleteAll} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                      Confirmer la suppression
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
           </div>
         )}
       </div>
@@ -479,14 +513,39 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete }: { vehi
               <NumField label="Conso" value={vehicle.consumption} onChange={(n) => onUpdate({ consumption: n })} step={0.1} />
               <NumField label="CO₂ g/km" value={vehicle.co2} onChange={(n) => onUpdate({ co2: n })} />
               <NumField label="CV fiscaux" value={vehicle.fiscalHp} onChange={(n) => onUpdate({ fiscalHp: n })} />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground uppercase">Image (URL)</Label>
-              <Input value={vehicle.image} onChange={(e) => onUpdate({ image: e.target.value })} className="h-8 text-xs" />
+              <NumField label="Score env. (0-100)" value={vehicle.envScore ?? 0} onChange={(n) => onUpdate({ envScore: n })} />
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground uppercase">Énergie</Label>
+                <select
+                  value={vehicle.energy}
+                  onChange={(e) => onUpdate({ energy: e.target.value as Vehicle["energy"] })}
+                  className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+                >
+                  <option value="Électrique">Électrique</option>
+                  <option value="Hybride Rechargeable">Hybride Rechargeable</option>
+                  <option value="Hybride">Hybride</option>
+                  <option value="Mild Hybrid">Mild Hybrid</option>
+                  <option value="Essence">Essence</option>
+                  <option value="Diesel">Diesel</option>
+                </select>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <TxtField label="Version" value={vehicle.version} onChange={(s) => onUpdate({ version: s })} />
               <TxtField label="Catégorie" value={vehicle.category} onChange={(s) => onUpdate({ category: s })} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground uppercase">Image (URL ou /images/...)</Label>
+              <Input value={vehicle.image} onChange={(e) => onUpdate({ image: e.target.value })} className="h-8 text-xs" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground uppercase">Services inclus (un par ligne)</Label>
+              <Textarea
+                value={(vehicle.services ?? []).join("\n")}
+                onChange={(e) => onUpdate({ services: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) })}
+                className="min-h-[60px] text-xs"
+                placeholder="Maintenance tous réseaux&#10;Assistance 24/24&#10;..."
+              />
             </div>
           </div>
         )}
@@ -535,12 +594,32 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { char
               <TxtField label="Modèle" value={charger.model} onChange={(s) => onUpdate({ model: s })} />
               <NumField label="Prix borne HT" value={charger.priceHt} onChange={(n) => onUpdate({ priceHt: n })} />
               <NumField label="Pose HT (réf.)" value={charger.installPriceHt} onChange={(n) => onUpdate({ installPriceHt: n })} />
-              <NumField label="Puissance kW" value={charger.powerKw} onChange={(n) => onUpdate({ powerKw: n })} />
+              <NumField label="Puissance kW" value={charger.powerKw} onChange={(n) => onUpdate({ powerKw: n })} step={0.1} />
               <TxtField label="Type" value={charger.type} onChange={(s) => onUpdate({ type: s })} />
+              <div className="space-y-1 col-span-2">
+                <Label className="text-[10px] text-muted-foreground uppercase">Déploiement</Label>
+                <select
+                  value={charger.deployment}
+                  onChange={(e) => onUpdate({ deployment: e.target.value as "domicile" | "site" })}
+                  className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+                >
+                  <option value="domicile">Domicile collaborateur (B2B2E)</option>
+                  <option value="site">Site entreprise</option>
+                </select>
+              </div>
             </div>
             <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground uppercase">Image (URL)</Label>
+              <Label className="text-[10px] text-muted-foreground uppercase">Image (URL ou /images/...)</Label>
               <Input value={charger.image} onChange={(e) => onUpdate({ image: e.target.value })} className="h-8 text-xs" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground uppercase">Caractéristiques (une par ligne)</Label>
+              <Textarea
+                value={charger.features.join("\n")}
+                onChange={(e) => onUpdate({ features: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) })}
+                className="min-h-[80px] text-xs"
+                placeholder="OCPP 1.6&#10;MID + RFID&#10;..."
+              />
             </div>
           </div>
         )}

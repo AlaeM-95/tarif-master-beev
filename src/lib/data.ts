@@ -132,6 +132,13 @@ export function useVehiclesData() {
     invalidate();
   };
 
+  // Supprime TOUS les véhicules (réservé admin via RLS).
+  const removeAll = async () => {
+    const { error } = await supabase.from("vehicles").delete().neq("id", "__never__");
+    if (error) console.error("Erreur removeAll vehicles:", error);
+    invalidate();
+  };
+
   const importMany = async (list: Vehicle[]) => {
     const startPos = vehicles.length + 1;
     const rows = list.map((v, i) => ({ ...vehicleToDb(v), position: startPos + i }));
@@ -140,7 +147,7 @@ export function useVehiclesData() {
     invalidate();
   };
 
-  return { vehicles, isLoading, update, add, remove, importMany };
+  return { vehicles, isLoading, update, add, remove, removeAll, importMany };
 }
 
 // ===== HOOK BORNES =====
@@ -188,5 +195,12 @@ export function useChargersData() {
     invalidate();
   };
 
-  return { chargers, isLoading, update, add, remove };
+  // Supprime toutes les bornes d'un type (domicile ou site).
+  const removeAllByDeployment = async (deployment: "domicile" | "site") => {
+    const { error } = await supabase.from("chargers").delete().eq("deployment", deployment);
+    if (error) console.error("Erreur removeAllByDeployment:", error);
+    invalidate();
+  };
+
+  return { chargers, isLoading, update, add, remove, removeAllByDeployment };
 }

@@ -38,27 +38,27 @@ function load<T>(key: string, fallback: T): T {
 // et useChargers() en lisant/écrivant depuis Supabase. Les RLS de Supabase garantissent
 // que seuls les utilisateurs avec role = 'admin' peuvent muter les données.
 export function useVehicles() {
-  const { vehicles, update, add, remove, importMany } = useVehiclesData();
+  const { vehicles, update, add, remove, removeAll, importMany } = useVehiclesData();
   return {
     vehicles,
     update,
     add,
     remove,
+    removeAll,
     importMany,
-    // reset() est désactivé tant que les véhicules sont en base — l'admin doit gérer
-    // les suppressions individuellement depuis l'UI admin.
-    reset: () => {},
+    reset: removeAll, // reset = supprimer tout
   };
 }
 
 export function useChargers() {
-  const { chargers, update, add, remove } = useChargersData();
+  const { chargers, update, add, remove, removeAllByDeployment } = useChargersData();
   return {
     chargers,
     update,
     add,
     remove,
-    reset: () => {},
+    removeAllByDeployment,
+    reset: () => {}, // pas de reset global, on utilise removeAllByDeployment
   };
 }
 
