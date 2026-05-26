@@ -90,7 +90,7 @@ let BRAND_FONT = "helvetica"; // fallback si Roobert non disponible
 const PAGE_W = 595.28;
 const PAGE_H = 841.89;
 const M = 48;
-const FOOTER_LIMIT = PAGE_H - 70;
+const FOOTER_LIMIT = PAGE_H - 78; // footer enrichi (2 lignes) prend ~22pt + filet
 
 // ============ TCO ============
 export function computeTco(sv: SelectedVehicle, e: EnergyParams) {
@@ -261,18 +261,30 @@ export async function generateProposalPdf(opts: {
 
 // ============ COVER ============
 function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nbC: number) {
+  // Fond noir
   doc.setFillColor(...INK);
   doc.rect(0, 0, PAGE_W, PAGE_H, "F");
 
+  // Motif décoratif subtil : cercles concentriques en haut à droite
+  // (couleur très proche du noir pour rester discret, donne profondeur visuelle)
+  doc.setDrawColor(35, 50, 35);
+  doc.setLineWidth(0.4);
+  for (let r = 80; r <= 220; r += 28) {
+    doc.circle(PAGE_W - 50, 90, r, "S");
+  }
+  doc.setLineWidth(0.5);
+
+  // Logo "BEEV"
   doc.setTextColor(255, 255, 255);
   doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(11);
+  doc.setFontSize(14);
   doc.text("BEEV", M, 80);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
   doc.setTextColor(180, 180, 185);
-  doc.text("Mobilité électrique pour entreprises · beev.co", M, 94);
+  doc.text("Le copilote de l'électrification des flottes · beev.co", M, 94);
 
+  // Accent vert
   doc.setFillColor(...ACCENT);
   doc.rect(M, 110, 60, 4, "F");
 
@@ -334,30 +346,47 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
   if (c.salesRepEmail) doc.text(c.salesRepEmail, PAGE_W - M, 540, { align: "right" });
   if (c.salesRepPhone) doc.text(c.salesRepPhone, PAGE_W - M, 555, { align: "right" });
 
+  // Section "Périmètre" en bas — encart avec accent vert
   doc.setDrawColor(80, 80, 90);
   doc.line(M, 640, PAGE_W - M, 640);
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(40);
-  doc.setTextColor(255, 255, 255);
-  if (type === "vehicles") {
-    doc.text(String(nbV), M, 700);
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(180, 180, 185);
-    doc.text(`véhicule${nbV > 1 ? "s" : ""} étudié${nbV > 1 ? "s" : ""}`, M, 718);
-  } else {
-    doc.text(String(nbC), M, 700);
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(180, 180, 185);
-    const lbl = type === "home" ? `collaborateur${nbC > 1 ? "s" : ""} équipé${nbC > 1 ? "s" : ""} à domicile` : `site${nbC > 1 ? "s" : ""} entreprise équipé${nbC > 1 ? "s" : ""}`;
-    doc.text(lbl, M, 718);
-  }
 
-  doc.setFontSize(8.5);
+  doc.setFontSize(9);
+  doc.setTextColor(170, 170, 175);
+  doc.text("PÉRIMÈTRE", M, 665);
+
+  const total = type === "vehicles" ? nbV : nbC;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(56);
+  doc.setTextColor(...ACCENT);
+  doc.text(String(total), M, 720);
+
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(11);
+  doc.setTextColor(255, 255, 255);
+  let label: string;
+  if (type === "vehicles") label = `véhicule${nbV > 1 ? "s" : ""} électrique${nbV > 1 ? "s" : ""}`;
+  else if (type === "home") label = `collaborateur${nbC > 1 ? "s" : ""} équipé${nbC > 1 ? "s" : ""}`;
+  else label = `site${nbC > 1 ? "s" : ""} entreprise équipé${nbC > 1 ? "s" : ""}`;
+  doc.text(label.toUpperCase(), M + 90, 720);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(180, 180, 185);
+  doc.text("dans cette proposition", M + 90, 735);
+
+  // Coordonnées Beev en bas — pied de couverture sobre
+  doc.setDrawColor(60, 60, 70);
+  doc.line(M, PAGE_H - 60, PAGE_W - M, PAGE_H - 60);
+  doc.setFontSize(8);
   doc.setTextColor(150, 150, 155);
-  doc.text("Document confidentiel — usage interne client", M, PAGE_H - 50);
-  doc.text("beev.co", PAGE_W - M, PAGE_H - 50, { align: "right" });
+  doc.text("DOCUMENT CONFIDENTIEL · USAGE INTERNE CLIENT", M, PAGE_H - 42);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setTextColor(...ACCENT);
+  doc.text("beev.co", PAGE_W - M, PAGE_H - 42, { align: "right" });
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(120, 120, 125);
+  doc.text(`Référence devis : ${ref}`, M, PAGE_H - 28);
+  doc.text("contact@beev.co", PAGE_W - M, PAGE_H - 28, { align: "right" });
 }
 
 // ============ POURQUOI BEEV (varie par type) ============
