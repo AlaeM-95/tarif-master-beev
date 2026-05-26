@@ -1114,6 +1114,27 @@ function PresentationMode({ projectType, client, energy, vehicles, chargers, onC
   const nbV = projectType === "vehicles" ? vehicles.length : 0;
   const nbC = projectType === "vehicles" ? 0 : chargers.length;
 
+  // Navigation clavier : ← → pour naviguer entre les slides, Esc pour fermer
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight" || e.key === " ") {
+        e.preventDefault();
+        setI((cur) => Math.min(slides.length - 1, cur + 1));
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setI((cur) => Math.max(0, cur - 1));
+      } else if (e.key === "Escape") {
+        onClose();
+      } else if (e.key === "f" || e.key === "F") {
+        // Toggle fullscreen
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+        else document.exitFullscreen().catch(() => {});
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [slides.length, onClose]);
+
   return (
     <div className="fixed inset-0 z-50 bg-background overflow-auto">
       <header className="sticky top-0 z-10 bg-card/90 backdrop-blur border-b">

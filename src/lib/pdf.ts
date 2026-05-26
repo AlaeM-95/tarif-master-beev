@@ -228,6 +228,13 @@ export async function generateProposalPdf(opts: {
     }
   }
 
+  // Page comparaison TCO multi-véhicules (uniquement pour vehicles avec 2+ véhicules)
+  if (projectType === "vehicles" && v.length >= 2 && v.some((sv) => sv.includeTco)) {
+    doc.addPage();
+    drawHeader(doc, client, projectType);
+    drawTcoComparison(doc, v, energy);
+  }
+
   // Page synthèse financière (uniquement pour vehicles et chargers — pas si rien sélectionné)
   if (v.length > 0 || c.length > 0) {
     doc.addPage();
@@ -820,6 +827,151 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
 }
 
 // ============ PARCOURS CLIENT BEEV (A → Z) ============
+// ============ COMPARAISON TCO MULTI-VÉHICULES ============
+// Affichée uniquement si 2+ véhicules sont dans la sélection. Donne au client
+// une vue d'ensemble visuelle des économies attendues sur l'ensemble du parc.
+function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams) {
+  let y = 130;
+  eyebrow(doc, "COMPARAISON TCO FLOTTE", y);
+  y += 32;
+  title(doc, "Économies cumulées sur l'ensemble du parc.", y);
+  y += 36;
+
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10.5);
+  doc.setTextColor(...SUB);
+  const intro = "Visualisation du TCO aux 100 km par véhicule sélectionné, comparé à une flotte essence équivalente. Les valeurs sont indicatives et non contractuelles.";
+  const introL = doc.splitTextToSize(intro, PAGE_W - M * 2);
+  doc.text(introL, M, y);
+  y += introL.length * 14 + 18;
+
+  // Calcule les TCO pour tous les véhicules
+  const tcos = vehicles.map((sv) => ({
+    sv,
+    tco: computeTco(sv, e),
+  }));
+
+  // Trouve le max pour normaliser le graphique
+  const maxTco = Math.max(
+    ...tcos.map((t) => Math.max(t.tco.tco100, t.tco.refTco100)),
+  );
+
+  const chartX = M;
+  const chartW = PAGE_W - M * 2;
+  const labelW = 130;
+  const valueW = 56;
+  const barMaxW = chartW - labelW - valueW;
+  const rowH = 36;
+
+  // Header chart
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...SUB);
+  doc.text("VÉHICULE", chartX, y);
+  doc.text("TCO / 100 km (vs essence)", chartX + labelW, y);
+  doc.text("ÉCONOMIE", chartX + chartW, y, { align: "right" });
+  y += 6;
+  doc.setDrawColor(...RULE);
+  doc.line(chartX, y, chartX + chartW, y);
+  y += 10;
+
+  tcos.forEach(({ sv, tco }) => {
+    // Label véhicule
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(...INK);
+    const lblShort = `${sv.vehicle.brand} ${sv.vehicle.model}`.slice(0, 22);
+    doc.text(lblShort, chartX, y + 8);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...SUB);
+    doc.text(`× ${sv.quantity}`, chartX, y + 19);
+
+    // Barre TCO VE (vert)
+    const veBarW = (tco.tco100 / maxTco) * barMaxW;
+    doc.setFillColor(...ACCENT);
+    doc.rect(chartX + labelW, y, veBarW, 11, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...INK);
+    doc.text(eur2(tco.tco100), chartX + labelW + veBarW + 4, y + 8);
+
+    // Barre référence essence (gris)
+    const refBarW = (tco.refTco100 / maxTco) * barMaxW;
+    doc.setFillColor(170, 170, 175);
+    doc.rect(chartX + labelW, y + 14, refBarW, 11, "F");
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...SUB);
+    doc.text(`vs ${eur2(tco.refTco100)} essence`, chartX + labelW + refBarW + 4, y + 22);
+
+    // Économie à droite
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...(tco.economy100 >= 0 ? ACCENT : INK));
+    const ecoText = tco.economy100 >= 0 ? `+ ${eur2(tco.economy100)}` : `- ${eur2(-tco.economy100)}`;
+    doc.text(ecoText, chartX + chartW, y + 12, { align: "right" });
+
+    y += rowH;
+  });
+
+  // ===== Totaux cumulés =====
+  y += 10;
+  doc.setDrawColor(...INK);
+  doc.setLineWidth(1);
+  doc.line(chartX, y, chartX + chartW, y);
+  y += 14;
+
+  let totalEconomyAnnual = 0;
+  let totalEconomyContract = 0;
+  tcos.forEach(({ sv, tco }) => {
+    const annual = tco.economy100 * (sv.kmPerYear / 100) * sv.quantity;
+    totalEconomyAnnual += annual;
+    totalEconomyContract += annual * (sv.durationMonths / 12);
+  });
+
+  // Bandeau "économies cumulées" en gros
+  doc.setFillColor(...INK);
+  doc.rect(chartX, y, chartW, 80, "F");
+  doc.setFillColor(...ACCENT);
+  doc.rect(chartX, y, 4, 80, "F");
+
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(...ACCENT);
+  doc.text("ÉCONOMIES CUMULÉES POUR VOTRE FLOTTE", chartX + 16, y + 20);
+
+  const colW = (chartW - 32) / 2;
+
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(180, 180, 185);
+  doc.text("PAR AN", chartX + 16, y + 40);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(22);
+  doc.setTextColor(255, 255, 255);
+  doc.text(totalEconomyAnnual >= 0 ? `+ ${eur(totalEconomyAnnual)}` : eur(totalEconomyAnnual), chartX + 16, y + 64);
+
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(180, 180, 185);
+  doc.text("SUR LA DURÉE TOTALE DU CONTRAT", chartX + 16 + colW, y + 40);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(22);
+  doc.setTextColor(...ACCENT);
+  doc.text(totalEconomyContract >= 0 ? `+ ${eur(totalEconomyContract)}` : eur(totalEconomyContract), chartX + 16 + colW, y + 64);
+
+  y += 90;
+
+  // Mention bas
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...SUB);
+  doc.text("Estimation indicative basée sur les paramètres énergie & kilométrage de votre projet. Référence essence : véhicule équivalent loyer 500 €/mois, conso 6 L/100 km.", chartX, y, {
+    maxWidth: chartW,
+  });
+}
+
 // ============ GARANTIES & ENGAGEMENTS BEEV ============
 function drawGuarantees(doc: jsPDF, type: ProjectType) {
   let y = 130;
