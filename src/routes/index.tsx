@@ -123,6 +123,21 @@ function App() {
     c: Object.keys(selectedC).length,
   }), [selectedV, selectedC]);
 
+  // Recherche & filtres catalogue véhicules
+  const [vehicleSearch, setVehicleSearch] = useState("");
+  const [vehicleEnergyFilter, setVehicleEnergyFilter] = useState<string>("all");
+  const [vehiclePriceMax, setVehiclePriceMax] = useState<number | null>(null);
+
+  const filteredVehicles = useMemo(() => {
+    const q = vehicleSearch.trim().toLowerCase();
+    return vehicles.filter((v) => {
+      if (q && !`${v.brand} ${v.model} ${v.version} ${v.category}`.toLowerCase().includes(q)) return false;
+      if (vehicleEnergyFilter !== "all" && v.energy !== vehicleEnergyFilter) return false;
+      if (vehiclePriceMax !== null && v.priceTtc > vehiclePriceMax) return false;
+      return true;
+    });
+  }, [vehicles, vehicleSearch, vehicleEnergyFilter, vehiclePriceMax]);
+
   const visibleCount = projectType === "vehicles" ? counts.v : counts.c;
 
   const toggleV = (v: Vehicle) => {
@@ -256,7 +271,7 @@ function App() {
 
           {projectType === "vehicles" && (
             <CatalogSection
-              title={`Véhicules (${vehicles.length})`}
+              title={`Véhicules (${filteredVehicles.length}${filteredVehicles.length !== vehicles.length ? ` / ${vehicles.length}` : ""})`}
               subtitle="Catalogue synchronisé avec le calculateur TCO Beev. Loyers exprimés en TTC."
               isAdmin={isAdmin}
               itemCount={vehicles.length}
@@ -266,8 +281,55 @@ function App() {
               addLabel="Ajouter un véhicule"
               importTco={isAdmin ? (list) => importVehicles(list) : undefined}
             >
+              {/* Barre recherche + filtres */}
+              <div className="flex flex-wrap items-center gap-2 mb-4 p-3 rounded-lg bg-card border">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Input
+                    type="search"
+                    value={vehicleSearch}
+                    onChange={(e) => setVehicleSearch(e.target.value)}
+                    placeholder="Rechercher marque, modèle, version..."
+                    className="h-9 pl-3"
+                  />
+                </div>
+                <div className="flex items-center gap-1 flex-wrap">
+                  {(["all", "Électrique", "Hybride Rechargeable", "Hybride", "Mild Hybrid", "Essence", "Diesel"] as const).map((e) => (
+                    <Button
+                      key={e}
+                      size="sm"
+                      variant={vehicleEnergyFilter === e ? "default" : "outline"}
+                      onClick={() => setVehicleEnergyFilter(e)}
+                      className="h-8 text-xs"
+                    >
+                      {e === "all" ? "Toutes énergies" : e}
+                    </Button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="whitespace-nowrap">Prix max</span>
+                  <Input
+                    type="number"
+                    value={vehiclePriceMax ?? ""}
+                    onChange={(e) => setVehiclePriceMax(e.target.value ? Number(e.target.value) : null)}
+                    placeholder="—"
+                    className="h-8 w-24 text-xs"
+                  />
+                  <span>€</span>
+                </div>
+                {(vehicleSearch || vehicleEnergyFilter !== "all" || vehiclePriceMax !== null) && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => { setVehicleSearch(""); setVehicleEnergyFilter("all"); setVehiclePriceMax(null); }}
+                    className="h-8 text-xs gap-1"
+                  >
+                    <X className="w-3 h-3" /> Effacer
+                  </Button>
+                )}
+              </div>
+
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {vehicles.map((v) => (
+                {filteredVehicles.map((v) => (
                   <VehicleCard key={v.id} vehicle={v} selected={!!selectedV[v.id]}
                     onToggle={() => toggleV(v)}
                     onUpdate={isAdmin ? (p) => updateVehicle(v.id, p) : undefined}
@@ -279,6 +341,11 @@ function App() {
                     } : undefined}
                   />
                 ))}
+                {filteredVehicles.length === 0 && vehicles.length > 0 && (
+                  <div className="col-span-full text-center py-12 text-sm text-muted-foreground">
+                    Aucun véhicule ne correspond à votre recherche.
+                  </div>
+                )}
               </div>
             </CatalogSection>
           )}

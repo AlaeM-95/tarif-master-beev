@@ -541,35 +541,99 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   });
   y = (doc as any).lastAutoTable.finalY + 14;
 
-  if (sv.includeTco && y < FOOTER_LIMIT - 100) {
+  if (sv.includeTco && y < FOOTER_LIMIT - 130) {
     const t = computeTco(sv, e);
+    const cardH = 120;
     doc.setFillColor(...BG);
-    doc.rect(M, y, PAGE_W - M * 2, 78, "F");
+    doc.rect(M, y, PAGE_W - M * 2, cardH, "F");
     doc.setFillColor(...ACCENT);
-    doc.rect(M, y, 4, 78, "F");
+    doc.rect(M, y, 4, cardH, "F");
+
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(9.5);
+    doc.setTextColor(...SUB);
+    doc.text(`COMPARAISON TCO AUX 100 KM`, M + 16, y + 16);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(7.5);
+    doc.text(`${sv.durationMonths} mois · ${fmt(sv.kmPerYear)} km/an · estimation non contractuelle`, M + 16, y + 27);
+
+    // Graphique à barres horizontales
+    const chartX = M + 16;
+    const chartW = PAGE_W - M * 2 - 32;
+    const labelW = 90;
+    const valueW = 70;
+    const barMaxW = chartW - labelW - valueW;
+    const maxVal = Math.max(t.tco100, t.refTco100);
+    const barH = 14;
+
+    // Bar 1 : Votre véhicule (vert)
+    const y1 = y + 48;
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...INK);
+    doc.text("Votre VE", chartX, y1 + 10);
+    const leaseW1 = (t.lease100 / maxVal) * barMaxW;
+    const energyW1 = (t.energy100 / maxVal) * barMaxW;
+    doc.setFillColor(...ACCENT);
+    doc.rect(chartX + labelW, y1, leaseW1, barH, "F");
+    doc.setFillColor(120, 180, 100);
+    doc.rect(chartX + labelW + leaseW1, y1, energyW1, barH, "F");
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(10);
+    doc.setTextColor(...INK);
+    doc.text(eur2(t.tco100), chartX + labelW + leaseW1 + energyW1 + 6, y1 + 10);
+
+    // Bar 2 : Référence essence (gris)
+    const y2 = y + 72;
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8);
     doc.setTextColor(...SUB);
-    doc.text(`TCO AUX 100 KM · ${sv.durationMonths} mois · ${fmt(sv.kmPerYear)} km/an (NON CONTRACTUEL)`, M + 16, y + 18);
-    const blocks = [
-      { l: "Loyer / 100 km", v: eur2(t.lease100) },
-      { l: "Énergie / 100 km", v: eur2(t.energy100) },
-      { l: "TCO / 100 km", v: eur2(t.tco100), bold: true },
-      { l: "Économie vs essence ref.", v: t.economy100 >= 0 ? `+ ${eur2(t.economy100)}` : `- ${eur2(-t.economy100)}` },
-    ];
-    const cw = (PAGE_W - M * 2 - 20) / blocks.length;
-    blocks.forEach((b, i) => {
-      const x = M + 16 + i * cw;
-      doc.setFont(BRAND_FONT, "normal");
-      doc.setFontSize(8.5);
-      doc.setTextColor(...SUB);
-      doc.text(b.l.toUpperCase(), x, y + 38);
-      doc.setFont(BRAND_FONT, b.bold ? "bold" : "normal");
-      doc.setFontSize(b.bold ? 16 : 13);
-      doc.setTextColor(...INK);
-      doc.text(b.v, x, y + 60);
-    });
-    y += 90;
+    doc.text("Réf. essence*", chartX, y2 + 10);
+    const refLeaseW2 = (((500 * 12) / Math.max(sv.kmPerYear, 1) * 100) / maxVal) * barMaxW;
+    const refFuelW2 = ((6.0 * e.fuelPriceL) / maxVal) * barMaxW;
+    doc.setFillColor(140, 140, 145);
+    doc.rect(chartX + labelW, y2, refLeaseW2, barH, "F");
+    doc.setFillColor(190, 190, 195);
+    doc.rect(chartX + labelW + refLeaseW2, y2, refFuelW2, barH, "F");
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...SUB);
+    doc.text(eur2(t.refTco100), chartX + labelW + refLeaseW2 + refFuelW2 + 6, y2 + 10);
+
+    // Économie en gros à droite
+    const economyText = t.economy100 >= 0 ? `+ ${eur2(t.economy100)}` : `- ${eur2(-t.economy100)}`;
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...SUB);
+    doc.text("ÉCONOMIE / 100 km", PAGE_W - M - 16, y + 50, { align: "right" });
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(18);
+    doc.setTextColor(...(t.economy100 >= 0 ? ACCENT : INK));
+    doc.text(economyText, PAGE_W - M - 16, y + 70, { align: "right" });
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(...SUB);
+    if (t.economy100 >= 0) {
+      const yearlyEconomy = t.economy100 * (sv.kmPerYear / 100);
+      doc.text(`soit ${eur(yearlyEconomy)}/an`, PAGE_W - M - 16, y + 82, { align: "right" });
+    }
+
+    // Légende en bas
+    const legendY = y + cardH - 12;
+    doc.setFillColor(...ACCENT);
+    doc.rect(chartX, legendY, 8, 6, "F");
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(...SUB);
+    doc.text("Loyer / 100 km", chartX + 12, legendY + 5);
+    doc.setFillColor(120, 180, 100);
+    doc.rect(chartX + 90, legendY, 8, 6, "F");
+    doc.text("Énergie / 100 km", chartX + 102, legendY + 5);
+    doc.setFontSize(6.5);
+    doc.setTextColor(150, 150, 155);
+    doc.text("*Réf. : véhicule essence équiv. 500 €/mois, 6 L/100 km", chartX + 200, legendY + 5);
+
+    y += cardH + 12;
   }
 
   const allServices = [...MANDATORY_SERVICES, ...sv.services.filter((s) => !MANDATORY_SERVICES.includes(s as any))];
@@ -1355,6 +1419,9 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
 
 // ============ HEADER / FOOTER / HELPERS ============
 function drawHeader(doc: jsPDF, c: ClientInfo, type: ProjectType) {
+  // Filigrane "DEVIS" en premier (sous le contenu de la page)
+  drawWatermark(doc);
+
   doc.setTextColor(...INK);
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(11);
@@ -1375,6 +1442,21 @@ function drawHeader(doc: jsPDF, c: ClientInfo, type: ProjectType) {
   doc.setDrawColor(...RULE);
   doc.setLineWidth(0.6);
   doc.line(M, 86, PAGE_W - M, 86);
+}
+
+// Filigrane "DEVIS" en diagonale, gris très clair, sous le contenu.
+// Différencie visuellement une offre commerciale d'un contrat / facture.
+function drawWatermark(doc: jsPDF) {
+  doc.saveGraphicsState?.();
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(120);
+  doc.setTextColor(240, 238, 232); // gris cream très clair
+  // Texte diagonal au centre de la page
+  doc.text("DEVIS", PAGE_W / 2, PAGE_H / 2 + 40, {
+    align: "center",
+    angle: 35,
+  });
+  doc.restoreGraphicsState?.();
 }
 
 function drawFooter(doc: jsPDF, c: ClientInfo, page: number, total: number) {
