@@ -1,9 +1,9 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Percent, FileText, ExternalLink, FileDown } from "lucide-react";
 import { lineItemClientUnit, lineItemClientTotal, type SelectedCharger } from "@/lib/pdf";
+import { MarginSelect } from "@/components/margin-select";
 import type { LineItem } from "@/lib/catalog";
 
 const fmt = (n: number) =>
@@ -79,12 +79,10 @@ export function MarginReviewDialog({ open, onClose, selectedChargers, onUpdateLi
                       <span className="truncate">{li.label}</span>
                       <span className="text-right">{li.qty}</span>
                       <span className="text-right text-muted-foreground">{fmt(li.unitHt)}</span>
-                      <Input
-                        type="number"
+                      <MarginSelect
                         value={li.marginPct ?? 0}
-                        onChange={(e) => onUpdateLineItem(sc.charger.id, i, { marginPct: Number(e.target.value) })}
-                        className="h-7 text-xs text-right border-[#3809EA]/30"
-                        step={0.5}
+                        onChange={(v) => onUpdateLineItem(sc.charger.id, i, { marginPct: v })}
+                        className="h-7 w-full rounded-md border border-[#3809EA]/40 bg-background px-2 text-xs text-right font-semibold text-[#3809EA] cursor-pointer"
                       />
                       <span className="text-right font-semibold text-[#3809EA]">{fmt(lineItemClientUnit(li))}</span>
                     </div>

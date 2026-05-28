@@ -22,6 +22,7 @@ import { FileUpload } from "@/components/file-upload";
 import { MarginReviewDialog } from "@/components/margin-review-dialog";
 import { PdfConfigPanel } from "@/components/pdf-config-panel";
 import { CategoryField } from "@/components/category-field";
+import { MarginSelect } from "@/components/margin-select";
 import { useAuth } from "@/lib/auth";
 import { useProposals, useProposal } from "@/lib/proposals";
 import { usePdfConfig } from "@/lib/pdf-config";
@@ -1088,13 +1089,9 @@ function SelectedChargerRow({ sc, onChange, onRemove }: { sc: SelectedCharger; o
                   </div>
                   <div className="space-y-0.5">
                     <Label className="text-[9px] uppercase text-[#3809EA]">Marge %</Label>
-                    <Input
-                      type="number"
+                    <MarginSelect
                       value={li.marginPct ?? 0}
-                      onChange={(e) => setLi(i, { marginPct: Number(e.target.value) })}
-                      className="h-7 text-xs text-right border-[#3809EA]/40"
-                      step={0.5}
-                      title="Marge appliquée pour le PDF client"
+                      onChange={(v) => setLi(i, { marginPct: v })}
                     />
                   </div>
                   <div className="space-y-0.5">
