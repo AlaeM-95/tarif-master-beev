@@ -21,6 +21,7 @@ import { ImageUpload } from "@/components/image-upload";
 import { FileUpload } from "@/components/file-upload";
 import { MarginReviewDialog } from "@/components/margin-review-dialog";
 import { PdfConfigPanel } from "@/components/pdf-config-panel";
+import { CategoryField } from "@/components/category-field";
 import { useAuth } from "@/lib/auth";
 import { useProposals, useProposal } from "@/lib/proposals";
 import { usePdfConfig } from "@/lib/pdf-config";
@@ -127,6 +128,12 @@ function App() {
   const [vehicleSearch, setVehicleSearch] = useState("");
   const [vehicleEnergyFilter, setVehicleEnergyFilter] = useState<string>("all");
   const [vehiclePriceMax, setVehiclePriceMax] = useState<number | null>(null);
+
+  // Catégories existantes (extraites du catalogue) pour le dropdown admin
+  const existingCategories = useMemo(
+    () => Array.from(new Set(vehicles.map((v) => v.category).filter(Boolean))),
+    [vehicles],
+  );
 
   const filteredVehicles = useMemo(() => {
     const q = vehicleSearch.trim().toLowerCase();
@@ -341,6 +348,7 @@ function App() {
                       if (result?.error) toast.error(`Échec suppression : ${result.error}`);
                       else toast.success(`${v.brand} ${v.model} supprimé définitivement`);
                     } : undefined}
+                    existingCategories={existingCategories}
                   />
                 ))}
                 {filteredVehicles.length === 0 && vehicles.length > 0 && (
@@ -694,7 +702,7 @@ function ConfirmDeleteButton({ label, onConfirm }: { label: string; onConfirm: (
   );
 }
 
-function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Vehicle>) => void; onDelete?: () => void }) {
+function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existingCategories = [] }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Vehicle>) => void; onDelete?: () => void; existingCategories?: string[] }) {
   const [editing, setEditing] = useState(false);
   return (
     <Card className={`overflow-hidden transition-all ${selected ? "ring-2 ring-primary" : "hover:shadow-md"}`}>
@@ -761,7 +769,11 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete }: { vehi
             </div>
             <div className="grid grid-cols-2 gap-2">
               <TxtField label="Version" value={vehicle.version} onChange={(s) => onUpdate({ version: s })} />
-              <TxtField label="Catégorie" value={vehicle.category} onChange={(s) => onUpdate({ category: s })} />
+              <CategoryField
+                value={vehicle.category}
+                onChange={(s) => onUpdate({ category: s })}
+                existingCategories={existingCategories}
+              />
             </div>
             <ImageUpload
               currentUrl={vehicle.image}

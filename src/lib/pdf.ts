@@ -572,6 +572,11 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setFillColor(...BG);
   doc.rect(M, imgY, imgW, imgH, "F");
   await drawImageContain(doc, v.image, M + 6, imgY + 6, imgW - 12, imgH - 12);
+  // Mention "(photo non contractuelle)" sous l'image
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(6.5);
+  doc.setTextColor(150, 150, 155);
+  doc.text("(photo non contractuelle)", M + imgW / 2, imgY + imgH + 8, { align: "center" });
 
   const px = M + imgW + 14;
   const pw = PAGE_W - M - px;
@@ -783,6 +788,11 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   doc.setFillColor(...BG);
   doc.rect(M, imgY, imgW, imgH, "F");
   await drawImageContain(doc, sc.charger.image, M + 6, imgY + 6, imgW - 12, imgH - 12);
+  // Mention "(photo non contractuelle)" sous l'image
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(6.5);
+  doc.setTextColor(150, 150, 155);
+  doc.text("(photo non contractuelle)", M + imgW / 2, imgY + imgH + 8, { align: "center" });
 
   const fx = M + imgW + 18;
   doc.setFont(BRAND_FONT, "bold");
@@ -901,93 +911,117 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
   const mostExpensive = sorted[sorted.length - 1];
   const maxTco = mostExpensive.tco100 || 1;
 
-  // ===== Chart =====
+  // ===== Warning si catégories différentes =====
+  const categories = new Set(vehicles.map((v) => (v.vehicle.category || "").trim().toLowerCase()).filter(Boolean));
+  if (categories.size > 1) {
+    doc.setFillColor(255, 244, 220); // jaune pâle
+    doc.rect(M, y, PAGE_W - M * 2, 36, "F");
+    doc.setFillColor(230, 170, 30);
+    doc.rect(M, y, 4, 36, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(150, 100, 0);
+    doc.text("⚠ ATTENTION : COMPARAISON ENTRE CATÉGORIES DIFFÉRENTES", M + 14, y + 14);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(120, 80, 0);
+    const catsList = [...categories].map((c) => c.toUpperCase()).join(" · ");
+    doc.text(`Les véhicules comparés appartiennent à plusieurs catégories (${catsList}). Le match n'est pas à 100 %, utilisez ces données avec prudence.`, M + 14, y + 28, { maxWidth: PAGE_W - M * 2 - 24 });
+    y += 46;
+  }
+
+  // ===== Chart — colonnes fixes pour éviter toute superposition =====
   const chartX = M;
   const chartW = PAGE_W - M * 2;
-  const labelW = 140;
-  const valueW = 60;
-  const ecartW = 70;
-  const barMaxW = chartW - labelW - valueW - ecartW;
-  const rowH = 34;
+  const labelW = 130;              // colonne véhicule (rang + nom)
+  const barAreaW = 180;            // zone barre horizontale
+  const tcoPer100W = 60;           // colonne TCO / 100 km (right-aligned)
+  const tcoTotalW = 70;            // colonne TCO total contrat (right-aligned)
+  const ecartW = chartW - labelW - barAreaW - tcoPer100W - tcoTotalW; // reste pour écart
+  const rowH = 32;
 
-  // Header tableau
+  const colLabelX = chartX;
+  const colBarX = chartX + labelW;
+  const colTco100X = chartX + labelW + barAreaW + 6;
+  const colTcoTotalX = chartX + labelW + barAreaW + tcoPer100W + 6;
+  const colEcartX = chartX + chartW;
+
+  // Header tableau (positions fixes alignées sur les colonnes)
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
   doc.setTextColor(...SUB);
-  doc.text("VÉHICULE", chartX, y);
-  doc.text("TCO / 100 KM (RANG)", chartX + labelW, y);
-  doc.text("TCO TOTAL", chartX + labelW + barMaxW + 6, y);
-  doc.text("ÉCART", chartX + chartW, y, { align: "right" });
+  doc.text("VÉHICULE", colLabelX, y);
+  doc.text("TCO / 100 KM", colBarX, y);
+  doc.text("PRIX TCO", colTco100X + tcoPer100W - 6, y, { align: "right" });
+  doc.text("TCO TOTAL", colTcoTotalX + tcoTotalW - 6, y, { align: "right" });
+  doc.text("ÉCART", colEcartX, y, { align: "right" });
   y += 6;
   doc.setDrawColor(...RULE);
   doc.line(chartX, y, chartX + chartW, y);
-  y += 10;
+  y += 12;
 
   sorted.forEach((row, idx) => {
     const isCheapest = idx === 0;
     const ecartVsCheapest = row.tco100 - cheapest.tco100;
     const ecartPct = cheapest.tco100 > 0 ? (ecartVsCheapest / cheapest.tco100) * 100 : 0;
 
-    // Rang + label véhicule
+    // === Colonne véhicule (rang + nom) ===
     doc.setFillColor(isCheapest ? ACCENT[0] : 200, isCheapest ? ACCENT[1] : 200, isCheapest ? ACCENT[2] : 205);
-    doc.circle(chartX + 8, y + 8, 8, "F");
+    doc.circle(colLabelX + 8, y + 8, 7, "F");
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(9);
     doc.setTextColor(isCheapest ? 255 : INK[0], isCheapest ? 255 : INK[1], isCheapest ? 255 : INK[2]);
-    doc.text(String(idx + 1), chartX + 8, y + 11, { align: "center" });
+    doc.text(String(idx + 1), colLabelX + 8, y + 11, { align: "center" });
 
     doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(9);
+    doc.setFontSize(8.5);
     doc.setTextColor(...INK);
-    const lblShort = `${row.sv.vehicle.brand} ${row.sv.vehicle.model}`.slice(0, 24);
-    doc.text(lblShort, chartX + 22, y + 8);
+    const maxLblChars = 18;
+    const lblShort = `${row.sv.vehicle.brand} ${row.sv.vehicle.model}`.slice(0, maxLblChars);
+    doc.text(lblShort, colLabelX + 20, y + 7);
     doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(7.5);
+    doc.setFontSize(7);
     doc.setTextColor(...SUB);
-    const badge = isCheapest ? "🏆 MEILLEUR TCO" : `Rang ${idx + 1}`;
-    doc.text(`× ${row.sv.quantity}${row.synced ? " · TCO précis" : ""}`, chartX + 22, y + 19);
+    doc.text(`× ${row.sv.quantity}${row.synced ? " · sync" : ""}`, colLabelX + 20, y + 17);
 
-    // Barre TCO horizontale
-    const veBarW = (row.tco100 / maxTco) * barMaxW;
+    // === Colonne barre (largeur clampée pour ne jamais déborder) ===
+    const veBarW = Math.min(barAreaW - 4, (row.tco100 / maxTco) * (barAreaW - 4));
     if (isCheapest) {
       doc.setFillColor(...ACCENT);
     } else {
-      // Dégradé en fonction du rang : du gris clair au gris foncé
       const ratio = idx / Math.max(sorted.length - 1, 1);
       const gray = Math.round(200 - ratio * 60);
       doc.setFillColor(gray, gray, gray + 5);
     }
-    doc.rect(chartX + labelW, y + 4, Math.max(veBarW, 2), 14, "F");
+    doc.rect(colBarX, y + 4, Math.max(veBarW, 2), 14, "F");
 
-    // Valeur TCO/100km au bout de la barre
+    // === Colonne TCO / 100 km (right-aligned dans sa zone) ===
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(9);
     doc.setTextColor(...INK);
-    doc.text(eur2(row.tco100), chartX + labelW + veBarW + 6, y + 14);
+    doc.text(eur2(row.tco100), colTco100X + tcoPer100W - 6, y + 14, { align: "right" });
 
-    // TCO total dans la colonne dédiée
+    // === Colonne TCO total (right-aligned) ===
     doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(8);
+    doc.setFontSize(8.5);
     doc.setTextColor(...SUB);
-    doc.text(eur(row.tcoTotal), chartX + labelW + barMaxW + 6, y + 14);
+    doc.text(eur(row.tcoTotal), colTcoTotalX + tcoTotalW - 6, y + 14, { align: "right" });
 
-    // Écart vs le meilleur, à droite
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(11);
+    // === Colonne écart vs le meilleur ===
     if (isCheapest) {
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(10);
       doc.setTextColor(...ACCENT);
-      doc.text("—", chartX + chartW, y + 12, { align: "right" });
-      doc.setFont(BRAND_FONT, "normal");
-      doc.setFontSize(7);
-      doc.setTextColor(...SUB);
-      doc.text("Référence", chartX + chartW, y + 22, { align: "right" });
+      doc.text("MEILLEUR", colEcartX, y + 12, { align: "right" });
     } else {
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(10);
       doc.setTextColor(...INK);
-      doc.text(`+ ${eur2(ecartVsCheapest)}`, chartX + chartW, y + 12, { align: "right" });
+      doc.text(`+ ${eur2(ecartVsCheapest)}`, colEcartX, y + 11, { align: "right" });
       doc.setFont(BRAND_FONT, "normal");
       doc.setFontSize(7);
       doc.setTextColor(...SUB);
-      doc.text(`+ ${ecartPct.toFixed(1)} %`, chartX + chartW, y + 22, { align: "right" });
+      doc.text(`+ ${ecartPct.toFixed(1)} %`, colEcartX, y + 22, { align: "right" });
     }
 
     y += rowH;
