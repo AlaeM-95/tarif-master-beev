@@ -35,19 +35,45 @@ export function ImageUpload({ currentUrl, onChange, folder, label = "Image" }: I
     const ext = file.name.split(".").pop() || "png";
     const fileName = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
 
-    const { data, error } = await supabase.storage
-      .from("vehicle-images")
+    // Essaie 'vehicle-images' d'abord, fallback sur 'documents' si le bucket
+    // n'existe pas (les deux acceptent les images).
+    let bucketUsed = "vehicle-images";
+    let result = await supabase.storage
+      .from(bucketUsed)
       .upload(fileName, file, { upsert: false, contentType: file.type });
 
-    if (error) {
-      toast.error(`Échec upload : ${error.message}`);
+    if (result.error && (result.error.message?.toLowerCase().includes("bucket") || result.error.message?.toLowerCase().includes("not found"))) {
+      console.warn("[upload] Bucket vehicle-images indisponible, fallback sur 'documents'");
+      bucketUsed = "documents";
+      result = await supabase.storage
+        .from(bucketUsed)
+        .upload(fileName, file, { upsert: false, contentType: file.type });
+    }
+
+    if (result.error) {
+      console.error("[upload] Échec :", result.error);
+      let msg = result.error.message;
+      if (msg?.toLowerCase().includes("policy") || msg?.toLowerCase().includes("permission")) {
+        msg = "Permissions insuffisantes — vérifiez que votre compte a role='admin' dans la table profiles.";
+      } else if (msg?.toLowerCase().includes("bucket") || msg?.toLowerCase().includes("not found")) {
+        msg = "Aucun bucket de stockage configuré. Lancez le SQL 005_image_buckets.sql sur Supabase.";
+      } else if (msg?.toLowerCase().includes("size") || msg?.toLowerCase().includes("payload")) {
+        msg = "Fichier trop volumineux (max 5 Mo).";
+      }
+      toast.error(`Échec upload : ${msg}`);
       setUploading(false);
       return;
     }
 
-    const { data: urlData } = supabase.storage.from("vehicle-images").getPublicUrl(data.path);
+    if (!result.data) {
+      toast.error("Upload échoué : aucune donnée retournée");
+      setUploading(false);
+      return;
+    }
+
+    const { data: urlData } = supabase.storage.from(bucketUsed).getPublicUrl(result.data.path);
     onChange(urlData.publicUrl);
-    toast.success("Image uploadée");
+    toast.success(`Image uploadée (${bucketUsed})`);
     setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };

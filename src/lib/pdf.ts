@@ -2,6 +2,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { BEEV_JOURNEYS, MANDATORY_SERVICES, type Charger, type LineItem, type ProjectType, type Vehicle } from "./catalog";
 import { loadPdfSettings, hexToRgb } from "./pdf-settings";
+import { DEFAULT_PDF_CONFIG, type PdfDisplayConfig } from "./pdf-config";
 import type { EnergyParams } from "./store";
 
 export type ClientInfo = {
@@ -86,6 +87,9 @@ let PDF_CONTENT: {
 
 // Police de marque (chargée dynamiquement depuis public/fonts/)
 let BRAND_FONT = "helvetica"; // fallback si Roobert non disponible
+
+// Configuration d'affichage du PDF (toggleable depuis l'app par le commercial)
+let PDF_CFG: PdfDisplayConfig = DEFAULT_PDF_CONFIG;
 
 const PAGE_W = 595.28;
 const PAGE_H = 841.89;
@@ -192,8 +196,11 @@ export async function generateProposalPdf(opts: {
   vehicles: SelectedVehicle[];
   chargers: SelectedCharger[];
   energy: EnergyParams;
+  pdfConfig?: PdfDisplayConfig;
 }) {
-  const { projectType, client, vehicles, chargers, energy } = opts;
+  const { projectType, client, vehicles, chargers, energy, pdfConfig } = opts;
+  const cfg: PdfDisplayConfig = pdfConfig ?? DEFAULT_PDF_CONFIG;
+  PDF_CFG = cfg; // expose la config pour les fonctions draw*
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   // Charge les paramètres PDF (couleurs + textes) depuis Supabase ET la police
   await Promise.all([applyPdfSettings(projectType), loadBrandFont(doc).then((f) => { BRAND_FONT = f; })]);
@@ -203,9 +210,11 @@ export async function generateProposalPdf(opts: {
 
   drawCover(doc, projectType, client, v.length, c.length);
 
-  doc.addPage();
-  drawHeader(doc, client, projectType);
-  drawWhyBeev(doc, projectType);
+  if (cfg.showWhyBeev) {
+    doc.addPage();
+    drawHeader(doc, client, projectType);
+    drawWhyBeev(doc, projectType);
+  }
 
   if (projectType === "vehicles") {
     for (let i = 0; i < v.length; i++) {
@@ -221,32 +230,36 @@ export async function generateProposalPdf(opts: {
     }
   }
 
-  // Page comparaison TCO multi-véhicules (uniquement pour vehicles avec 2+ véhicules)
-  if (projectType === "vehicles" && v.length >= 2 && v.some((sv) => sv.includeTco)) {
+  // Page comparaison TCO multi-véhicules (toggleable)
+  if (cfg.showTcoComparison && projectType === "vehicles" && v.length >= 2 && v.some((sv) => sv.includeTco)) {
     doc.addPage();
     drawHeader(doc, client, projectType);
     drawTcoComparison(doc, v, energy);
   }
 
-  // Page synthèse financière (uniquement pour vehicles et chargers — pas si rien sélectionné)
-  if (v.length > 0 || c.length > 0) {
+  // Page synthèse financière (toggleable)
+  if (cfg.showFinancialSummary && (v.length > 0 || c.length > 0)) {
     doc.addPage();
     drawHeader(doc, client, projectType);
     drawFinancialSummary(doc, projectType, v, c);
   }
 
-  // Page garanties & engagements
-  doc.addPage();
-  drawHeader(doc, client, projectType);
-  drawGuarantees(doc, projectType);
+  // Page garanties & engagements (toggleable)
+  if (cfg.showGuarantees) {
+    doc.addPage();
+    drawHeader(doc, client, projectType);
+    drawGuarantees(doc, projectType);
+  }
 
-  doc.addPage();
-  drawHeader(doc, client, projectType);
-  drawJourney(doc, projectType, client);
+  // Parcours client (toggleable)
+  if (cfg.showJourney) {
+    doc.addPage();
+    drawHeader(doc, client, projectType);
+    drawJourney(doc, projectType, client);
+  }
 
-  // Executive summary "EN BREF" — placé en avant-dernière page pour rester
-  // sous les yeux du décideur juste avant la signature.
-  if (v.length > 0 || c.length > 0) {
+  // Executive summary "EN BREF" (toggleable, avant-dernière page)
+  if (cfg.showExecutiveSummary && (v.length > 0 || c.length > 0)) {
     doc.addPage();
     drawHeader(doc, client, projectType);
     drawExecutiveSummary(doc, projectType, client, v, c, energy);
@@ -459,8 +472,8 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
     y += t.length * 14 + 6;
   });
 
-  // ===== Section "Beev en chiffres" (preuve sociale) =====
-  if (y < FOOTER_LIMIT - 130) {
+  // ===== Section "Beev en chiffres" (preuve sociale, conditionnée) =====
+  if (PDF_CFG.showSocialProof && y < FOOTER_LIMIT - 130) {
     y += 14;
     doc.setFillColor(...INK);
     doc.rect(M, y, PAGE_W - M * 2, 90, "F");
@@ -491,8 +504,8 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
     y += 100;
   }
 
-  // ===== Citation client (témoignage) =====
-  if (y < FOOTER_LIMIT - 80) {
+  // ===== Citation client (témoignage, conditionnée par showSocialProof) =====
+  if (PDF_CFG.showSocialProof && y < FOOTER_LIMIT - 80) {
     doc.setFillColor(...BG);
     doc.rect(M, y, PAGE_W - M * 2, 60, "F");
     doc.setFillColor(...LAVENDER);

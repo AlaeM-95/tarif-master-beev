@@ -20,8 +20,10 @@ import { AdminBadge } from "@/components/admin-badge";
 import { ImageUpload } from "@/components/image-upload";
 import { FileUpload } from "@/components/file-upload";
 import { MarginReviewDialog } from "@/components/margin-review-dialog";
+import { PdfConfigPanel } from "@/components/pdf-config-panel";
 import { useAuth } from "@/lib/auth";
 import { useProposals, useProposal } from "@/lib/proposals";
+import { usePdfConfig } from "@/lib/pdf-config";
 
 type IndexSearch = { proposal?: string };
 
@@ -170,12 +172,14 @@ function App() {
   };
 
   const [marginDialog, setMarginDialog] = useState(false);
+  const { config: pdfConfig, update: updatePdfConfig, reset: resetPdfConfig } = usePdfConfig();
 
   const doGeneratePdf = async () => {
     await generateProposalPdf({
       projectType, client, energy,
       vehicles: Object.values(selectedV),
       chargers: Object.values(selectedC),
+      pdfConfig,
     });
   };
 
@@ -406,6 +410,14 @@ function App() {
         </div>
 
         <aside className="lg:sticky lg:top-24 self-start space-y-4 max-h-[calc(100vh-7rem)] overflow-auto">
+          {/* Panneau de configuration PDF — toggle des sections à inclure */}
+          <PdfConfigPanel
+            config={pdfConfig}
+            update={updatePdfConfig}
+            reset={resetPdfConfig}
+            projectType={projectType}
+          />
+
           <Card>
             <CardHeader><CardTitle className="text-base">Sélection en cours</CardTitle></CardHeader>
             <CardContent className="space-y-4">
