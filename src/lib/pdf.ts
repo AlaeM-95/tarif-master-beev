@@ -636,9 +636,12 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   });
   y = (doc as any).lastAutoTable.finalY + 14;
 
-  if (sv.includeTco && y < FOOTER_LIMIT - 130) {
+  if (PDF_CFG.showVehicleTcoBlock && sv.includeTco && y < FOOTER_LIMIT - 130) {
     const t = computeTco(sv, e);
-    const cardH = 120;
+    // Vérifie si on a une TCO synchronisée depuis beev-tco-2026
+    const synced = TCO_RESULTS.get(sv.vehicle.id);
+    const cardH = synced ? 150 : 120; // plus haute si synced (ligne supplémentaire)
+
     doc.setFillColor(...BG);
     doc.rect(M, y, PAGE_W - M * 2, cardH, "F");
     doc.setFillColor(...ACCENT);
@@ -651,6 +654,18 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(7.5);
     doc.text(`${sv.durationMonths} mois · ${fmt(sv.kmPerYear)} km/an · estimation non contractuelle`, M + 16, y + 27);
+
+    // Badge "TCO calculé via Beev 2026" si données synchronisées
+    if (synced) {
+      const badgeText = "✓ TCO précis Beev 2026";
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(7);
+      const badgeW = doc.getTextWidth(badgeText) + 16;
+      doc.setFillColor(...ACCENT);
+      doc.roundedRect(PAGE_W - M - badgeW - 16, y + 8, badgeW, 14, 4, 4, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.text(badgeText, PAGE_W - M - 16 - 8, y + 17, { align: "right" });
+    }
 
     // Graphique à barres horizontales — sécurisé contre les valeurs anormales
     const chartX = M + 16;
@@ -717,6 +732,39 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     if (t.economy100 >= 0) {
       const yearlyEconomy = t.economy100 * (sv.kmPerYear / 100);
       doc.text(`soit ${eur(yearlyEconomy)}/an`, PAGE_W - M - 16, y + 82, { align: "right" });
+    }
+
+    // Si TCO sync : ligne supplémentaire avec détails fiscaux
+    if (synced) {
+      const fiscalY = y + 100;
+      doc.setDrawColor(...RULE);
+      doc.setLineWidth(0.4);
+      doc.line(chartX, fiscalY, chartX + chartW, fiscalY);
+
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(7);
+      doc.setTextColor(...LAVENDER);
+      doc.text("DÉTAILS FISCAUX (CALCUL BEEV 2026)", chartX, fiscalY + 12);
+
+      // 4 colonnes de stats fiscales
+      const fiscalCols = [
+        { label: "Malus CO₂", value: eur(synced.malusCo2) },
+        { label: "Malus poids", value: eur(synced.malusPoids) },
+        { label: "TCO mensuel", value: synced.tcoPerYear ? eur(synced.tcoPerYear / 12) : "—" },
+        { label: "TCO total contrat", value: synced.tcoTotalContract ? eur(synced.tcoTotalContract) : "—" },
+      ];
+      const fcW = chartW / fiscalCols.length;
+      fiscalCols.forEach((col, i) => {
+        const cx = chartX + i * fcW;
+        doc.setFont(BRAND_FONT, "normal");
+        doc.setFontSize(7);
+        doc.setTextColor(...SUB);
+        doc.text(col.label.toUpperCase(), cx, fiscalY + 24);
+        doc.setFont(BRAND_FONT, "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(...INK);
+        doc.text(col.value, cx, fiscalY + 36);
+      });
     }
 
     // Légende en bas
@@ -875,11 +923,29 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
   doc.text(introL, M, y);
   y += introL.length * 14 + 18;
 
-  // Calcule les TCO pour tous les véhicules
-  const tcos = vehicles.map((sv) => ({
-    sv,
-    tco: computeTco(sv, e),
-  }));
+  // Calcule les TCO pour tous les véhicules.
+  // Si le véhicule a un TCO synchronisé depuis beev-tco-2026, utilise ces
+  // chiffres précis (calculs fiscaux complets : malus CO2, AEN, TVS, etc.).
+  // Sinon, fallback sur computeTco interne (approximation).
+  const tcos = vehicles.map((sv) => {
+    const synced = TCO_RESULTS.get(sv.vehicle.id);
+    const fallback = computeTco(sv, e);
+    if (synced && synced.tcoPer100km != null) {
+      // Construit un objet compatible avec la suite du dessin
+      return {
+        sv,
+        synced: true,
+        tco: {
+          lease100: synced.leasePer100km ?? fallback.lease100,
+          energy100: synced.energyPer100km ?? fallback.energy100,
+          tco100: synced.tcoPer100km,
+          refTco100: fallback.refTco100, // pas dispo dans synced, on garde le fallback
+          economy100: synced.economyPer100km ?? (fallback.refTco100 - synced.tcoPer100km),
+        },
+      };
+    }
+    return { sv, synced: false, tco: fallback };
+  });
 
   // Trouve le max pour normaliser le graphique
   const maxTco = Math.max(
@@ -905,7 +971,7 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
   doc.line(chartX, y, chartX + chartW, y);
   y += 10;
 
-  tcos.forEach(({ sv, tco }) => {
+  tcos.forEach(({ sv, tco, synced }) => {
     // Label véhicule
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(9);
@@ -915,7 +981,7 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(7.5);
     doc.setTextColor(...SUB);
-    doc.text(`× ${sv.quantity}`, chartX, y + 19);
+    doc.text(`× ${sv.quantity}${synced ? " · TCO précis" : ""}`, chartX, y + 19);
 
     // Barre TCO VE (vert)
     const veBarW = (tco.tco100 / maxTco) * barMaxW;
