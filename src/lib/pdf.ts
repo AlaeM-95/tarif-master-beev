@@ -207,12 +207,18 @@ export async function generateProposalPdf(opts: {
   const cfg: PdfDisplayConfig = pdfConfig ?? DEFAULT_PDF_CONFIG;
   PDF_CFG = cfg; // expose la config pour les fonctions draw*
   const doc = new jsPDF({ unit: "pt", format: "a4" });
-  // Charge en parallèle : settings PDF, police, et résultats TCO depuis Supabase
-  const vehicleIds = vehicles.map((sv) => sv.vehicle.id);
+  // Charge en parallèle : settings PDF, police, et résultats TCO depuis Supabase.
+  // Le matching TCO est tolérant : ID exact OU (brand + model) pour gérer les
+  // différences de nomenclature entre les 2 apps (tarif-master / beev-tco-2026).
+  const vehiclesForTcoMatch = vehicles.map((sv) => ({
+    id: sv.vehicle.id,
+    brand: sv.vehicle.brand,
+    model: sv.vehicle.model,
+  }));
   await Promise.all([
     applyPdfSettings(projectType),
     loadBrandFont(doc).then((f) => { BRAND_FONT = f; }),
-    fetchTcoResultsForVehicles(vehicleIds).then((m) => { TCO_RESULTS = m; }).catch(() => { TCO_RESULTS = new Map(); }),
+    fetchTcoResultsForVehicles(vehiclesForTcoMatch).then((m) => { TCO_RESULTS = m; }).catch(() => { TCO_RESULTS = new Map(); }),
   ]);
 
   const v = projectType === "vehicles" ? vehicles : [];

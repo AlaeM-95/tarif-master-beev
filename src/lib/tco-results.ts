@@ -122,23 +122,47 @@ export async function fetchLatestTcoResult(vehicleId: string): Promise<TcoResult
   return rowToTcoResult(data as unknown as TcoResultRow);
 }
 
-// Récupère tous les TCO résultats pour une liste de véhicules
-export async function fetchTcoResultsForVehicles(vehicleIds: string[]): Promise<Map<string, TcoResult>> {
-  if (vehicleIds.length === 0) return new Map();
+// Récupère les TCO résultats pour une liste de véhicules.
+// Le matching est tolérant : essaie d'abord par ID exact, puis fallback
+// sur (brand + model) case-insensitive. Permet aux 2 apps d'avoir des
+// systèmes d'ID légèrement différents (ex: "tesla-model-y" vs
+// "tesla-model-y-premium") tant que marque + modèle correspondent.
+export async function fetchTcoResultsForVehicles(
+  vehicles: Array<{ id: string; brand: string; model: string }>,
+): Promise<Map<string, TcoResult>> {
+  if (vehicles.length === 0) return new Map();
+
+  // Récupère un large lot des résultats récents pour faire le matching côté JS
   const { data, error } = await supabase
     .from("tco_results")
     .select("*")
-    .in("vehicle_id", vehicleIds)
-    .order("computed_at", { ascending: false });
+    .order("computed_at", { ascending: false })
+    .limit(200);
   if (error || !data) return new Map();
+
+  const allResults = (data as unknown as TcoResultRow[]).map(rowToTcoResult);
   const map = new Map<string, TcoResult>();
-  (data as unknown as TcoResultRow[]).forEach((row) => {
-    const result = rowToTcoResult(row);
-    // Garde le plus récent par véhicule (la query est triée DESC par computed_at)
-    if (result.vehicleId && !map.has(result.vehicleId)) {
-      map.set(result.vehicleId, result);
+
+  for (const vehicle of vehicles) {
+    // 1. Match exact par ID
+    let match = allResults.find((r) => r.vehicleId === vehicle.id);
+
+    // 2. Fallback : match par brand + model (insensible à la casse et aux espaces)
+    if (!match) {
+      const vBrand = vehicle.brand.toLowerCase().trim();
+      const vModel = vehicle.model.toLowerCase().trim();
+      match = allResults.find((r) => {
+        if (!r.vehicleBrand || !r.vehicleModel) return false;
+        return (
+          r.vehicleBrand.toLowerCase().trim() === vBrand &&
+          r.vehicleModel.toLowerCase().trim() === vModel
+        );
+      });
     }
-  });
+
+    if (match) map.set(vehicle.id, match);
+  }
+
   return map;
 }
 
