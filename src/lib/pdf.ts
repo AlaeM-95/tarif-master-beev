@@ -3,6 +3,7 @@ import autoTable from "jspdf-autotable";
 import { BEEV_JOURNEYS, MANDATORY_SERVICES, type Charger, type LineItem, type ProjectType, type Vehicle } from "./catalog";
 import { loadPdfSettings, hexToRgb } from "./pdf-settings";
 import { DEFAULT_PDF_CONFIG, type PdfDisplayConfig } from "./pdf-config";
+import { fetchTcoResultsForVehicles, type TcoResult } from "./tco-results";
 import type { EnergyParams } from "./store";
 
 export type ClientInfo = {
@@ -90,6 +91,10 @@ let BRAND_FONT = "helvetica"; // fallback si Roobert non disponible
 
 // Configuration d'affichage du PDF (toggleable depuis l'app par le commercial)
 let PDF_CFG: PdfDisplayConfig = DEFAULT_PDF_CONFIG;
+
+// Résultats TCO chargés depuis Supabase (synchronisés avec beev-tco-2026)
+// Map vehicleId → TcoResult le plus récent. Vide si l'app TCO n'a rien écrit.
+let TCO_RESULTS: Map<string, TcoResult> = new Map();
 
 const PAGE_W = 595.28;
 const PAGE_H = 841.89;
@@ -202,8 +207,13 @@ export async function generateProposalPdf(opts: {
   const cfg: PdfDisplayConfig = pdfConfig ?? DEFAULT_PDF_CONFIG;
   PDF_CFG = cfg; // expose la config pour les fonctions draw*
   const doc = new jsPDF({ unit: "pt", format: "a4" });
-  // Charge les paramètres PDF (couleurs + textes) depuis Supabase ET la police
-  await Promise.all([applyPdfSettings(projectType), loadBrandFont(doc).then((f) => { BRAND_FONT = f; })]);
+  // Charge en parallèle : settings PDF, police, et résultats TCO depuis Supabase
+  const vehicleIds = vehicles.map((sv) => sv.vehicle.id);
+  await Promise.all([
+    applyPdfSettings(projectType),
+    loadBrandFont(doc).then((f) => { BRAND_FONT = f; }),
+    fetchTcoResultsForVehicles(vehicleIds).then((m) => { TCO_RESULTS = m; }).catch(() => { TCO_RESULTS = new Map(); }),
+  ]);
 
   const v = projectType === "vehicles" ? vehicles : [];
   const c = projectType === "vehicles" ? [] : chargers;
