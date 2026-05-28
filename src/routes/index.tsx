@@ -145,7 +145,9 @@ function App() {
     });
   }, [vehicles, vehicleSearch, vehicleEnergyFilter, vehiclePriceMax]);
 
-  const visibleCount = projectType === "vehicles" ? counts.v : counts.c;
+  // visibleCount = TOUTES les sélections (véhicules + bornes), pour permettre
+  // au commercial de générer un PDF même si la sélection mélange plusieurs types.
+  const visibleCount = counts.v + counts.c;
 
   const toggleV = (v: Vehicle) => {
     setSelectedV((s) => {
@@ -192,9 +194,11 @@ function App() {
 
   const exportPdf = async () => {
     if (!client.company) { alert("Renseignez au moins le nom de la société client."); return; }
-    // Pour les projets Site entreprise, on ouvre un dialogue de validation des marges
-    // avant génération du PDF client (visibilité pour le commercial).
-    if (projectType === "site" && Object.values(selectedC).length > 0) {
+    // Si l'offre contient des bornes site entreprise (peu importe le projectType
+    // courant — utile pour les offres combinées véhicules + bornes), on ouvre
+    // le dialogue de validation des marges avant génération du PDF client.
+    const hasSiteChargers = Object.values(selectedC).some((sc) => sc.charger.deployment === "site");
+    if (hasSiteChargers) {
       setMarginDialog(true);
       return;
     }
@@ -205,11 +209,11 @@ function App() {
   const chargersSite = chargers.filter((c) => c.deployment === "site");
 
   // Réinitialise la sélection courante quand on change de type pour éviter les croisements
+  // Permet de passer d'un type de projet à l'autre SANS réinitialiser les sélections.
+  // Le commercial peut donc construire une offre combinée (véhicules + bornes domicile
+  // + bornes site dans le même PDF).
   const switchProject = (t: ProjectType) => {
-    if (t === projectType) return;
     setProjectType(t);
-    setSelectedV({});
-    setSelectedC({});
   };
 
   if (presenting) {
@@ -433,16 +437,33 @@ function App() {
                 <p className="text-sm text-muted-foreground">Aucun produit sélectionné.</p>
               ) : (
                 <>
-                  {projectType === "vehicles" && Object.values(selectedV).map((sv) => (
-                    <SelectedVehicleRow key={sv.vehicle.id} sv={sv} energy={energy}
-                      onChange={(p) => setSelectedV((s) => ({ ...s, [sv.vehicle.id]: { ...sv, ...p } }))}
-                      onRemove={() => toggleV(sv.vehicle)} />
-                  ))}
-                  {projectType !== "vehicles" && Object.values(selectedC).map((sc) => (
-                    <SelectedChargerRow key={sc.charger.id} sc={sc}
-                      onChange={(p) => setSelectedC((s) => ({ ...s, [sc.charger.id]: { ...sc, ...p } }))}
-                      onRemove={() => toggleC(sc.charger)} />
-                  ))}
+                  {/* Section véhicules — toujours affichée si au moins 1 sélectionné, quel que soit le projectType */}
+                  {counts.v > 0 && (
+                    <>
+                      <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wide">
+                        Véhicules ({counts.v})
+                      </p>
+                      {Object.values(selectedV).map((sv) => (
+                        <SelectedVehicleRow key={sv.vehicle.id} sv={sv} energy={energy}
+                          onChange={(p) => setSelectedV((s) => ({ ...s, [sv.vehicle.id]: { ...sv, ...p } }))}
+                          onRemove={() => toggleV(sv.vehicle)} />
+                      ))}
+                    </>
+                  )}
+                  {/* Section bornes — toujours affichée si au moins 1 sélectionnée */}
+                  {counts.c > 0 && (
+                    <>
+                      {counts.v > 0 && <Separator />}
+                      <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wide">
+                        Bornes de recharge ({counts.c})
+                      </p>
+                      {Object.values(selectedC).map((sc) => (
+                        <SelectedChargerRow key={sc.charger.id} sc={sc}
+                          onChange={(p) => setSelectedC((s) => ({ ...s, [sc.charger.id]: { ...sc, ...p } }))}
+                          onRemove={() => toggleC(sc.charger)} />
+                      ))}
+                    </>
+                  )}
 
                   <Separator />
                   <div className="grid grid-cols-2 gap-2">
@@ -1297,7 +1318,8 @@ function VehicleSlide({ sv, energy }: { sv: SelectedVehicle; energy: EnergyParam
 
 function ChargerSlide({ sc, projectType }: { sc: SelectedCharger; projectType: ProjectType }) {
   const isHome = projectType === "home";
-  const total = sc.lineItems.reduce((a, li) => a + li.qty * li.unitHt, 0);
+  // Total CLIENT = avec la marge appliquée (visible par le client en présentation et PDF)
+  const total = sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0);
   return (
     <div className="max-w-6xl mx-auto">
       <p className="text-xs uppercase tracking-widest text-muted-foreground mb-3">{isHome ? "Borne domicile collaborateur" : "Borne site entreprise"}</p>
@@ -1322,7 +1344,9 @@ function ChargerSlide({ sc, projectType }: { sc: SelectedCharger; projectType: P
               {sc.lineItems.map((li, i) => (
                 <li key={i} className="flex justify-between gap-3 border-b py-1.5">
                   <span>{li.label}</span>
-                  <span className="text-muted-foreground tabular-nums whitespace-nowrap">{li.qty} × {fmtEur(li.unitHt)}</span>
+                  <span className="text-muted-foreground tabular-nums whitespace-nowrap">
+                    {li.qty} × {fmtEur(lineItemClientUnit(li))}
+                  </span>
                 </li>
               ))}
               <li className="flex justify-between pt-2 font-semibold">

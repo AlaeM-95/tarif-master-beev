@@ -221,69 +221,93 @@ export async function generateProposalPdf(opts: {
     fetchTcoResultsForVehicles(vehiclesForTcoMatch).then((m) => { TCO_RESULTS = m; }).catch(() => { TCO_RESULTS = new Map(); }),
   ]);
 
-  const v = projectType === "vehicles" ? vehicles : [];
-  const c = projectType === "vehicles" ? [] : chargers;
+  // Offre potentiellement combinée : on inclut TOUS les véhicules et TOUTES
+  // les bornes sélectionnés, quel que soit projectType courant. Le commercial
+  // peut donc construire une offre véhicules + bornes dans le même PDF.
+  const v = vehicles;
+  const c = chargers;
+  // Détermine le type "dominant" pour les pages génériques (Pourquoi Beev,
+  // Garanties, Parcours) en fonction de la sélection majoritaire.
+  const hasVehicles = v.length > 0;
+  const hasChargers = c.length > 0;
+  const hasHome = c.some((sc) => sc.charger.deployment === "domicile");
+  const hasSite = c.some((sc) => sc.charger.deployment === "site");
+  // Type effectif : si véhicules dominants → vehicles, sinon le déploiement majoritaire
+  const effectiveType: ProjectType = hasVehicles && !hasChargers
+    ? "vehicles"
+    : (!hasVehicles && hasHome && !hasSite)
+      ? "home"
+      : (!hasVehicles && hasSite && !hasHome)
+        ? "site"
+        : projectType; // par défaut : ce que le commercial a choisi en dernier
 
-  drawCover(doc, projectType, client, v.length, c.length);
+  drawCover(doc, effectiveType, client, v.length, c.length);
 
   if (cfg.showWhyBeev) {
     doc.addPage();
-    drawHeader(doc, client, projectType);
-    drawWhyBeev(doc, projectType);
+    drawHeader(doc, client, effectiveType);
+    drawWhyBeev(doc, effectiveType);
   }
 
-  if (projectType === "vehicles") {
-    for (let i = 0; i < v.length; i++) {
-      doc.addPage();
-      drawHeader(doc, client, projectType);
-      await drawVehiclePage(doc, v[i], energy, i + 1, v.length, client, projectType);
-    }
-  } else {
-    for (let i = 0; i < c.length; i++) {
-      doc.addPage();
-      drawHeader(doc, client, projectType);
-      await drawChargerPage(doc, c[i], projectType, i + 1, c.length, client);
-    }
-  }
-
-  // Page comparaison TCO multi-véhicules (toggleable)
-  if (cfg.showTcoComparison && projectType === "vehicles" && v.length >= 2 && v.some((sv) => sv.includeTco)) {
+  // Boucle véhicules : pour les projets mixtes, on affiche toujours les véhicules
+  for (let i = 0; i < v.length; i++) {
     doc.addPage();
-    drawHeader(doc, client, projectType);
+    drawHeader(doc, client, effectiveType);
+    await drawVehiclePage(doc, v[i], energy, i + 1, v.length, client, effectiveType);
+  }
+  // Boucle bornes : on regroupe par deployment (domicile puis site) pour
+  // une présentation cohérente
+  const chargersHome = c.filter((sc) => sc.charger.deployment === "domicile");
+  const chargersSite = c.filter((sc) => sc.charger.deployment === "site");
+  for (let i = 0; i < chargersHome.length; i++) {
+    doc.addPage();
+    drawHeader(doc, client, "home");
+    await drawChargerPage(doc, chargersHome[i], "home", i + 1, chargersHome.length, client);
+  }
+  for (let i = 0; i < chargersSite.length; i++) {
+    doc.addPage();
+    drawHeader(doc, client, "site");
+    await drawChargerPage(doc, chargersSite[i], "site", i + 1, chargersSite.length, client);
+  }
+
+  // Page comparaison TCO multi-véhicules (toggleable) — toujours si 2+ véhicules
+  if (cfg.showTcoComparison && v.length >= 2 && v.some((sv) => sv.includeTco)) {
+    doc.addPage();
+    drawHeader(doc, client, "vehicles");
     drawTcoComparison(doc, v, energy);
   }
 
   // Page synthèse financière (toggleable)
   if (cfg.showFinancialSummary && (v.length > 0 || c.length > 0)) {
     doc.addPage();
-    drawHeader(doc, client, projectType);
-    drawFinancialSummary(doc, projectType, v, c);
+    drawHeader(doc, client, effectiveType);
+    drawFinancialSummary(doc, effectiveType, v, c);
   }
 
   // Page garanties & engagements (toggleable)
   if (cfg.showGuarantees) {
     doc.addPage();
-    drawHeader(doc, client, projectType);
-    drawGuarantees(doc, projectType);
+    drawHeader(doc, client, effectiveType);
+    drawGuarantees(doc, effectiveType);
   }
 
   // Parcours client (toggleable)
   if (cfg.showJourney) {
     doc.addPage();
-    drawHeader(doc, client, projectType);
-    drawJourney(doc, projectType, client);
+    drawHeader(doc, client, effectiveType);
+    drawJourney(doc, effectiveType, client);
   }
 
   // Executive summary "EN BREF" (toggleable, avant-dernière page)
   if (cfg.showExecutiveSummary && (v.length > 0 || c.length > 0)) {
     doc.addPage();
-    drawHeader(doc, client, projectType);
-    drawExecutiveSummary(doc, projectType, client, v, c, energy);
+    drawHeader(doc, client, effectiveType);
+    drawExecutiveSummary(doc, effectiveType, client, v, c, energy);
   }
 
   doc.addPage();
-  drawHeader(doc, client, projectType);
-  drawValidation(doc, projectType, client);
+  drawHeader(doc, client, effectiveType);
+  drawValidation(doc, effectiveType, client);
 
   const pages = doc.getNumberOfPages();
   for (let i = 2; i <= pages; i++) {
@@ -351,7 +375,11 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(14);
   doc.setTextColor(210, 210, 215);
-  const sub = PDF_CONTENT.coverSubtitle ?? TYPE_TITLE[type];
+  // Offre combinée ? On adapte le sous-titre.
+  const isCombinedOffer = nbV > 0 && nbC > 0;
+  const sub = isCombinedOffer
+    ? "Offre combinée : véhicules électriques et bornes de recharge"
+    : (PDF_CONTENT.coverSubtitle ?? TYPE_TITLE[type]);
   const subL = doc.splitTextToSize(sub, PAGE_W - M * 2);
   doc.text(subL, M, 325);
 
@@ -383,7 +411,7 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
   if (c.salesRepEmail) doc.text(c.salesRepEmail, PAGE_W - M, 540, { align: "right" });
   if (c.salesRepPhone) doc.text(c.salesRepPhone, PAGE_W - M, 555, { align: "right" });
 
-  // Section "Périmètre" en bas — encart avec accent vert
+  // Section "Périmètre" en bas — adapte selon offre simple ou combinée
   doc.setDrawColor(80, 80, 90);
   doc.line(M, 640, PAGE_W - M, 640);
 
@@ -391,24 +419,58 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
   doc.setTextColor(170, 170, 175);
   doc.text("PÉRIMÈTRE", M, 665);
 
-  const total = type === "vehicles" ? nbV : nbC;
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(56);
-  doc.setTextColor(...ACCENT);
-  doc.text(String(total), M, 720);
+  const isCombined = nbV > 0 && nbC > 0;
 
-  doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(11);
-  doc.setTextColor(255, 255, 255);
-  let label: string;
-  if (type === "vehicles") label = `véhicule${nbV > 1 ? "s" : ""} électrique${nbV > 1 ? "s" : ""}`;
-  else if (type === "home") label = `collaborateur${nbC > 1 ? "s" : ""} équipé${nbC > 1 ? "s" : ""}`;
-  else label = `site${nbC > 1 ? "s" : ""} entreprise équipé${nbC > 1 ? "s" : ""}`;
-  doc.text(label.toUpperCase(), M + 90, 720);
-  doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(9);
-  doc.setTextColor(180, 180, 185);
-  doc.text("dans cette proposition", M + 90, 735);
+  if (isCombined) {
+    // Offre combinée : 2 blocs côte à côte
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(42);
+    doc.setTextColor(...ACCENT);
+    doc.text(String(nbV), M, 720);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(255, 255, 255);
+    doc.text(`VÉHICULE${nbV > 1 ? "S" : ""}`, M + 70, 710);
+    doc.setFontSize(8);
+    doc.setTextColor(180, 180, 185);
+    doc.text("électrique" + (nbV > 1 ? "s" : ""), M + 70, 722);
+
+    // Séparateur vertical
+    doc.setDrawColor(80, 80, 90);
+    doc.line(M + 200, 685, M + 200, 745);
+
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(42);
+    doc.setTextColor(...ACCENT);
+    doc.text(String(nbC), M + 230, 720);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(255, 255, 255);
+    doc.text(`BORNE${nbC > 1 ? "S" : ""}`, M + 300, 710);
+    doc.setFontSize(8);
+    doc.setTextColor(180, 180, 185);
+    doc.text("de recharge", M + 300, 722);
+  } else {
+    // Offre simple : 1 seul bloc
+    const total = type === "vehicles" ? nbV : nbC;
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(56);
+    doc.setTextColor(...ACCENT);
+    doc.text(String(total), M, 720);
+
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(11);
+    doc.setTextColor(255, 255, 255);
+    let label: string;
+    if (type === "vehicles") label = `véhicule${nbV > 1 ? "s" : ""} électrique${nbV > 1 ? "s" : ""}`;
+    else if (type === "home") label = `collaborateur${nbC > 1 ? "s" : ""} équipé${nbC > 1 ? "s" : ""}`;
+    else label = `site${nbC > 1 ? "s" : ""} entreprise équipé${nbC > 1 ? "s" : ""}`;
+    doc.text(label.toUpperCase(), M + 90, 720);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(180, 180, 185);
+    doc.text("dans cette proposition", M + 90, 735);
+  }
 
   // Coordonnées Beev en bas — pied de couverture sobre
   doc.setDrawColor(60, 60, 70);
@@ -1429,13 +1491,29 @@ function drawFinancialSummary(
   vehicles: SelectedVehicle[],
   chargers: SelectedCharger[],
 ) {
+  const hasVehicles = vehicles.length > 0;
+  const hasChargers = chargers.length > 0;
+  const isCombined = hasVehicles && hasChargers;
+
   let y = 130;
   eyebrow(doc, "SYNTHÈSE FINANCIÈRE", y);
   y += 32;
-  title(doc, type === "vehicles" ? "Récapitulatif loyers LLD." : "Récapitulatif HT / TVA / TTC.", y);
+  const titleText = isCombined
+    ? "Récapitulatif loyers LLD + bornes HT/TTC."
+    : (hasVehicles ? "Récapitulatif loyers LLD." : "Récapitulatif HT / TVA / TTC.");
+  title(doc, titleText, y);
   y += 30;
 
-  if (type === "vehicles") {
+  // ===== Section véhicules (LLD) =====
+  if (hasVehicles) {
+    if (isCombined) {
+      // Sous-titre pour distinguer en mode combiné
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(...SUB);
+      doc.text("VÉHICULES — LOYERS LLD TTC", M, y);
+      y += 14;
+    }
     // Pour les véhicules : récap LLD mensuel + annuel TTC (la fiscalité TVA récupérée)
     let monthlyTotal = 0;
     let annualTotal = 0;
@@ -1474,7 +1552,19 @@ function drawFinancialSummary(
     doc.setFontSize(9);
     doc.setTextColor(...SUB);
     doc.text("Loyers exprimés en TTC. Conformément à la fiscalité LLD, la TVA sur le loyer véhicule électrique est récupérable à 100 %.", M, y);
-  } else {
+    y += 28;
+  }
+
+  // ===== Section bornes (HT / TVA / TTC) =====
+  if (hasChargers) {
+    if (isCombined) {
+      // Sous-titre quand on a déjà la section véhicules au-dessus
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(...SUB);
+      doc.text("BORNES DE RECHARGE — HT / TVA / TTC", M, y);
+      y += 14;
+    }
     // Pour les chargers (home / site) : tableau HT par site + TVA 20 % + TTC
     let totalHt = 0;
     const rows: Array<[string, string, string]> = [];
