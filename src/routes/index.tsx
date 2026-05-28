@@ -23,6 +23,7 @@ import { MarginReviewDialog } from "@/components/margin-review-dialog";
 import { PdfConfigPanel } from "@/components/pdf-config-panel";
 import { CategoryField } from "@/components/category-field";
 import { MarginSelect } from "@/components/margin-select";
+import { RefreshButton } from "@/components/refresh-button";
 import { useAuth } from "@/lib/auth";
 import { useProposals, useProposal } from "@/lib/proposals";
 import { usePdfConfig } from "@/lib/pdf-config";
@@ -54,16 +55,44 @@ function App() {
   const { energy, set: setEnergy, reset: resetEnergy } = useEnergy();
   const { projectType, setProjectType } = useProjectType();
 
-  const [selectedV, setSelectedV] = useState<Record<string, SelectedVehicle>>({});
-  const [selectedC, setSelectedC] = useState<Record<string, SelectedCharger>>({});
+  // Auto-save : restaure les sélections depuis localStorage au montage.
+  // Le commercial peut ainsi recharger la page sans perdre son travail.
+  const SK_V = "beev_session_selected_v";
+  const SK_C = "beev_session_selected_c";
+  const SK_CLIENT = "beev_session_client";
+  const loadFromStorage = <T,>(key: string, fallback: T): T => {
+    if (typeof window === "undefined") return fallback;
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? (JSON.parse(raw) as T) : fallback;
+    } catch {
+      return fallback;
+    }
+  };
+  const [selectedV, setSelectedV] = useState<Record<string, SelectedVehicle>>(() => loadFromStorage(SK_V, {}));
+  const [selectedC, setSelectedC] = useState<Record<string, SelectedCharger>>(() => loadFromStorage(SK_C, {}));
   const [presenting, setPresenting] = useState(false);
 
-  const [client, setClient] = useState({
+  const [client, setClient] = useState(() => loadFromStorage(SK_CLIENT, {
     company: "", contact: "", email: "",
     salesRep: "", salesRepEmail: "", salesRepPhone: "",
     date: new Date().toLocaleDateString("fr-FR"),
     notes: "",
-  });
+  }));
+
+  // Persiste automatiquement chaque changement en localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try { localStorage.setItem(SK_V, JSON.stringify(selectedV)); } catch { /* ignore */ }
+  }, [selectedV]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try { localStorage.setItem(SK_C, JSON.stringify(selectedC)); } catch { /* ignore */ }
+  }, [selectedC]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try { localStorage.setItem(SK_CLIENT, JSON.stringify(client)); } catch { /* ignore */ }
+  }, [client]);
 
   // Chargement automatique d'une proposition depuis l'URL (?proposal=xxx)
   useEffect(() => {
@@ -182,15 +211,30 @@ function App() {
   };
 
   const [marginDialog, setMarginDialog] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const { config: pdfConfig, update: updatePdfConfig, reset: resetPdfConfig } = usePdfConfig();
 
+  // Génère le PDF avec try/catch pour ne jamais bloquer une re-génération.
+  // En cas d'erreur (réseau Supabase, navigateur, etc.), affiche un toast
+  // sans bloquer le bouton. Le commercial peut re-cliquer immédiatement.
   const doGeneratePdf = async () => {
-    await generateProposalPdf({
-      projectType, client, energy,
-      vehicles: Object.values(selectedV),
-      chargers: Object.values(selectedC),
-      pdfConfig,
-    });
+    if (isGenerating) return; // évite les double-clics rapides
+    setIsGenerating(true);
+    try {
+      await generateProposalPdf({
+        projectType, client, energy,
+        vehicles: Object.values(selectedV),
+        chargers: Object.values(selectedC),
+        pdfConfig,
+      });
+      toast.success("PDF généré avec succès");
+    } catch (err) {
+      console.error("[pdf] Erreur génération :", err);
+      const msg = err instanceof Error ? err.message : "Erreur inconnue";
+      toast.error(`Échec génération PDF : ${msg}`);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const exportPdf = async () => {
@@ -253,6 +297,7 @@ function App() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <RefreshButton />
             <AdminBadge />
             <Badge variant="secondary" className="hidden sm:inline-flex">{visibleCount} sélection(s)</Badge>
             {isAdmin && (
@@ -268,8 +313,12 @@ function App() {
             <Button variant="outline" onClick={() => setPresenting(true)} disabled={visibleCount === 0} className="gap-2">
               <Presentation className="w-4 h-4" /> Présenter au client
             </Button>
-            <Button onClick={exportPdf} disabled={visibleCount === 0} className="gap-2">
-              <FileDown className="w-4 h-4" /> Générer le PDF
+            <Button onClick={exportPdf} disabled={visibleCount === 0 || isGenerating} className="gap-2">
+              {isGenerating ? (
+                <><RotateCcw className="w-4 h-4 animate-spin" /> Génération...</>
+              ) : (
+                <><FileDown className="w-4 h-4" /> Générer le PDF</>
+              )}
             </Button>
           </div>
         </div>
