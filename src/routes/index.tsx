@@ -24,6 +24,7 @@ import { PdfConfigPanel } from "@/components/pdf-config-panel";
 import { CategoryField } from "@/components/category-field";
 import { MarginSelect } from "@/components/margin-select";
 import { RefreshButton } from "@/components/refresh-button";
+import { SaveIndicator } from "@/components/save-indicator";
 import { useAuth } from "@/lib/auth";
 import { useProposals, useProposal } from "@/lib/proposals";
 import { usePdfConfig } from "@/lib/pdf-config";
@@ -489,7 +490,10 @@ function App() {
           />
 
           <Card>
-            <CardHeader><CardTitle className="text-base">Sélection en cours</CardTitle></CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-base">Sélection en cours</CardTitle>
+              <SaveIndicator watch={[selectedV, selectedC, client]} />
+            </CardHeader>
             <CardContent className="space-y-4">
               {visibleCount === 0 ? (
                 <p className="text-sm text-muted-foreground">Aucun produit sélectionné.</p>
