@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -864,15 +864,12 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
               folder="vehicles"
               label="Photo du véhicule"
             />
-            <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground uppercase">Services inclus (un par ligne)</Label>
-              <Textarea
-                value={(vehicle.services ?? []).join("\n")}
-                onChange={(e) => onUpdate({ services: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) })}
-                className="min-h-[60px] text-xs"
-                placeholder="Maintenance tous réseaux&#10;Assistance 24/24&#10;..."
-              />
-            </div>
+            <LongTxtField
+              label="Services inclus (un par ligne)"
+              value={(vehicle.services ?? []).join("\n")}
+              onChange={(s) => onUpdate({ services: s.split("\n").map((x) => x.trim()).filter(Boolean) })}
+              placeholder={"Maintenance tous réseaux\nAssistance 24/24\n..."}
+            />
           </div>
         )}
       </CardContent>
@@ -935,30 +932,25 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { char
               </div>
             </div>
             {/* Description longue (paragraphe affiché dans le PDF) */}
-            <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground uppercase">Description longue (PDF)</Label>
-              <Textarea
-                value={charger.description ?? ""}
-                onChange={(e) => onUpdate({ description: e.target.value })}
-                placeholder="Description complète de la borne, affichée dans le PDF client en plus du type. Ex: borne haute performance pour flotte d'entreprise..."
-                className="min-h-[60px] text-xs"
-              />
-            </div>
+            <LongTxtField
+              label="Description longue (PDF)"
+              value={charger.description ?? ""}
+              onChange={(s) => onUpdate({ description: s })}
+              placeholder="Description complète de la borne, affichée dans le PDF client en plus du type. Ex: borne haute performance pour flotte d'entreprise..."
+            />
             <ImageUpload
               currentUrl={charger.image}
               onChange={(url) => onUpdate({ image: url })}
               folder="chargers"
               label="Photo de la borne"
             />
-            <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground uppercase">Caractéristiques (une par ligne)</Label>
-              <Textarea
-                value={charger.features.join("\n")}
-                onChange={(e) => onUpdate({ features: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) })}
-                className="min-h-[80px] text-xs"
-                placeholder="OCPP 1.6&#10;MID + RFID&#10;..."
-              />
-            </div>
+            <LongTxtField
+              label="Caractéristiques (une par ligne)"
+              value={charger.features.join("\n")}
+              onChange={(s) => onUpdate({ features: s.split("\n").map((x) => x.trim()).filter(Boolean) })}
+              placeholder={"OCPP 1.6\nMID + RFID\n..."}
+              minHeight="80px"
+            />
           </div>
         )}
       </CardContent>
@@ -966,11 +958,78 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { char
   );
 }
 
+// Hook utilitaire : buffer local + debounce avant de remonter au parent.
+// Évite que le champ contrôlé "snap back" à la valeur DB tant que le refetch
+// react-query n'est pas revenu, ce qui bloquait l'édition (voir LongTxtField).
+function useBufferedValue<T>(external: T, onCommit: (v: T) => void, delayMs = 400) {
+  const [local, setLocal] = useState<T>(external);
+  const lastExternal = useRef<T>(external);
+  const lastCommitted = useRef<T>(external);
+
+  // Sync depuis le parent uniquement quand la valeur externe change pour une
+  // raison autre que notre propre commit (ex : refetch, sélection d'un autre item).
+  useEffect(() => {
+    if (external !== lastExternal.current && external !== lastCommitted.current) {
+      lastExternal.current = external;
+      setLocal(external);
+    } else {
+      lastExternal.current = external;
+    }
+  }, [external]);
+
+  // Debounce commit : on attend que l'utilisateur arrête de taper.
+  useEffect(() => {
+    if (local === lastCommitted.current) return;
+    const t = setTimeout(() => {
+      lastCommitted.current = local;
+      onCommit(local);
+    }, delayMs);
+    return () => clearTimeout(t);
+  }, [local, onCommit, delayMs]);
+
+  return [local, setLocal] as const;
+}
+
 function NumField({ label, value, onChange, step = 1 }: { label: string; value: number; onChange: (n: number) => void; step?: number }) {
-  return <div className="space-y-1"><Label className="text-[10px] text-muted-foreground uppercase">{label}</Label><Input type="number" step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="h-8" /></div>;
+  const [local, setLocal] = useBufferedValue<number>(value, onChange);
+  return (
+    <div className="space-y-1">
+      <Label className="text-[10px] text-muted-foreground uppercase">{label}</Label>
+      <Input
+        type="number"
+        step={step}
+        value={Number.isFinite(local) ? local : 0}
+        onChange={(e) => setLocal(Number(e.target.value))}
+        className="h-8"
+      />
+    </div>
+  );
 }
 function TxtField({ label, value, onChange }: { label: string; value: string; onChange: (s: string) => void }) {
-  return <div className="space-y-1"><Label className="text-[10px] text-muted-foreground uppercase">{label}</Label><Input value={value} onChange={(e) => onChange(e.target.value)} className="h-8 text-xs" /></div>;
+  const [local, setLocal] = useBufferedValue<string>(value, onChange);
+  return (
+    <div className="space-y-1">
+      <Label className="text-[10px] text-muted-foreground uppercase">{label}</Label>
+      <Input value={local} onChange={(e) => setLocal(e.target.value)} className="h-8 text-xs" />
+    </div>
+  );
+}
+// Textarea avec buffer local + debounce, à utiliser pour tout champ multiligne
+// dont la valeur provient d'une source asynchrone (Supabase + react-query).
+function LongTxtField({ label, value, onChange, placeholder, minHeight = "60px" }: { label: string; value: string; onChange: (s: string) => void; placeholder?: string; minHeight?: string }) {
+  const [local, setLocal] = useBufferedValue<string>(value, onChange);
+  return (
+    <div className="space-y-1">
+      <Label className="text-[10px] text-muted-foreground uppercase">{label}</Label>
+      <Textarea
+        value={local}
+        onChange={(e) => setLocal(e.target.value)}
+        placeholder={placeholder}
+        className="text-xs"
+        style={{ minHeight }}
+      />
+    </div>
+  );
 }
 function Spec({ icon, v }: { icon: React.ReactNode; v: string }) {
   return <div className="flex items-center gap-1">{icon}<span>{v}</span></div>;
