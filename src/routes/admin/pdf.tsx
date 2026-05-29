@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { ArrowLeft, Save } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -236,14 +236,31 @@ function JourneyStepsEditor({ steps, onSaveStep }: { steps: JourneyStep[]; onSav
 
 function StepEditor({ step, onSave }: { step: JourneyStep; onSave: (patch: Partial<JourneyStep>) => Promise<void> }) {
   const [draft, setDraft] = useState(step);
-  useEffect(() => { setDraft(step); }, [step]);
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
 
-  const dirty =
-    draft.title !== step.title ||
-    draft.summary !== step.summary ||
-    draft.duration !== step.duration ||
-    JSON.stringify(draft.beevActions) !== JSON.stringify(step.beevActions) ||
-    JSON.stringify(draft.clientActions) !== JSON.stringify(step.clientActions);
+  // Sync depuis le serveur uniquement quand on change d'étape (id différent),
+  // pas à chaque refetch — évite d'écraser les modifs locales en cours.
+  useEffect(() => { setDraft(step); }, [step.id]);
+
+  // Auto-save debounced 800ms : à chaque modif, on attend la fin de la frappe
+  // puis on persiste. Pas de bouton à cliquer, pas de risque d'oubli.
+  useEffect(() => {
+    const normalized = {
+      ...draft,
+      beevActions: draft.beevActions.map((s) => s.trim()).filter(Boolean),
+      clientActions: draft.clientActions.map((s) => s.trim()).filter(Boolean),
+    };
+    const same =
+      normalized.title === step.title &&
+      normalized.summary === step.summary &&
+      normalized.duration === step.duration &&
+      JSON.stringify(normalized.beevActions) === JSON.stringify(step.beevActions) &&
+      JSON.stringify(normalized.clientActions) === JSON.stringify(step.clientActions);
+    if (same) return;
+    const t = setTimeout(() => { onSaveRef.current(normalized); }, 800);
+    return () => clearTimeout(t);
+  }, [draft, step]);
 
   return (
     <div className="rounded-lg border border-border p-4 space-y-3">
@@ -252,21 +269,7 @@ function StepEditor({ step, onSave }: { step: JourneyStep; onSave: (patch: Parti
           <div className="w-8 h-8 rounded-full bg-[#35DA76] text-white flex items-center justify-center text-sm font-bold">{draft.stepNumber}</div>
           <h4 className="font-semibold">Étape {draft.position}</h4>
         </div>
-        {dirty && (
-          <Button
-            size="sm"
-            onClick={() =>
-              onSave({
-                ...draft,
-                beevActions: draft.beevActions.map((s) => s.trim()).filter(Boolean),
-                clientActions: draft.clientActions.map((s) => s.trim()).filter(Boolean),
-              })
-            }
-            className="gap-2"
-          >
-            <Save className="w-3 h-3" /> Enregistrer
-          </Button>
-        )}
+        <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Auto-sauvegardé</span>
       </div>
       <div className="grid md:grid-cols-2 gap-3">
         <div className="space-y-1">
