@@ -154,8 +154,8 @@ function SettingsForm({ settings, onSave }: { settings: PdfSettings; onSave: (pa
             <Label className="text-xs">"Pourquoi Beev" — bullets (une par ligne)</Label>
             <Textarea
               value={draft.whyBeevBullets.join("\n")}
-              onChange={(e) => setDraft({ ...draft, whyBeevBullets: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) })}
-              onBlur={() => save({ whyBeevBullets: draft.whyBeevBullets })}
+              onChange={(e) => setDraft({ ...draft, whyBeevBullets: e.target.value.split("\n") })}
+              onBlur={() => save({ whyBeevBullets: draft.whyBeevBullets.map((s) => s.trim()).filter(Boolean) })}
               className="min-h-[120px]"
             />
           </div>
@@ -253,7 +253,17 @@ function StepEditor({ step, onSave }: { step: JourneyStep; onSave: (patch: Parti
           <h4 className="font-semibold">Étape {draft.position}</h4>
         </div>
         {dirty && (
-          <Button size="sm" onClick={() => onSave(draft)} className="gap-2">
+          <Button
+            size="sm"
+            onClick={() =>
+              onSave({
+                ...draft,
+                beevActions: draft.beevActions.map((s) => s.trim()).filter(Boolean),
+                clientActions: draft.clientActions.map((s) => s.trim()).filter(Boolean),
+              })
+            }
+            className="gap-2"
+          >
             <Save className="w-3 h-3" /> Enregistrer
           </Button>
         )}
@@ -277,7 +287,7 @@ function StepEditor({ step, onSave }: { step: JourneyStep; onSave: (patch: Parti
           <Label className="text-xs">Actions Beev (une par ligne)</Label>
           <Textarea
             value={draft.beevActions.join("\n")}
-            onChange={(e) => setDraft({ ...draft, beevActions: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) })}
+            onChange={(e) => setDraft({ ...draft, beevActions: e.target.value.split("\n") })}
             className="min-h-[80px]"
           />
         </div>
@@ -285,7 +295,7 @@ function StepEditor({ step, onSave }: { step: JourneyStep; onSave: (patch: Parti
           <Label className="text-xs">Actions client (une par ligne)</Label>
           <Textarea
             value={draft.clientActions.join("\n")}
-            onChange={(e) => setDraft({ ...draft, clientActions: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) })}
+            onChange={(e) => setDraft({ ...draft, clientActions: e.target.value.split("\n") })}
             className="min-h-[80px]"
           />
         </div>
