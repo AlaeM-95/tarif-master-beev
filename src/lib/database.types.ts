@@ -88,6 +88,29 @@ export type Database = {
         };
         Update: Partial<Database["public"]["Tables"]["chargers"]["Insert"]>;
       };
+      beev_pillars: {
+        Row: {
+          id: string;
+          project_type: "vehicles" | "home" | "site";
+          position: number;
+          title: string;
+          metric: string;
+          details: Json;
+          active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_type: "vehicles" | "home" | "site";
+          position: number;
+          title: string;
+          metric: string;
+          details?: Json;
+          active?: boolean;
+        };
+        Update: Partial<Database["public"]["Tables"]["beev_pillars"]["Insert"]>;
+      };
       bpu_forfaits: {
         Row: {
           id: string;

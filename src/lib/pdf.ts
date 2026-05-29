@@ -4,6 +4,7 @@ import { BEEV_JOURNEYS, MANDATORY_SERVICES, type Charger, type LineItem, type Pr
 import { loadPdfSettings, hexToRgb } from "./pdf-settings";
 import { DEFAULT_PDF_CONFIG, type PdfDisplayConfig } from "./pdf-config";
 import { fetchTcoResultsForVehicles, type TcoResult } from "./tco-results";
+import { loadBeevPillars, type BeevPillar } from "./beev-pillars";
 import type { EnergyParams } from "./store";
 
 export type ClientInfo = {
@@ -149,6 +150,10 @@ const TCO_TTL_MS = 2 * 60 * 1000; // 2 min
 
 let FONT_CACHE: { regularB64: string; semiBoldB64: string } | null = null;
 
+let PILLARS_CACHE: { data: BeevPillar[]; expiresAt: number } | null = null;
+const PILLARS_TTL_MS = 5 * 60 * 1000;
+let PILLARS: BeevPillar[] = [];
+
 // Wrap une promesse avec un timeout court qui rejette si la requête traîne.
 // Utilisé pour chaque fetch réseau afin de retomber rapidement sur les valeurs
 // par défaut plutôt que de bloquer la génération entière.
@@ -234,6 +239,20 @@ async function loadBrandFont(doc: jsPDF): Promise<string> {
   }
 }
 
+// Cache + timeout pour les piliers d'engagement Beev (table beev_pillars).
+async function loadPillarsCached(): Promise<BeevPillar[]> {
+  const now = Date.now();
+  if (PILLARS_CACHE && PILLARS_CACHE.expiresAt > now) return PILLARS_CACHE.data;
+  try {
+    const data = await withTimeout(loadBeevPillars(), 8000, "beev_pillars");
+    PILLARS_CACHE = { data, expiresAt: now + PILLARS_TTL_MS };
+    return data;
+  } catch (err) {
+    console.warn("[pdf] beev_pillars fetch timed out, fallback hardcoded :", err);
+    return [];
+  }
+}
+
 // Wrap fetchTcoResultsForVehicles avec cache + timeout court.
 // La clé de cache est l'ensemble des IDs véhicules triés ; tant qu'on génère
 // des PDF pour la même sélection, on réutilise le résultat sans re-fetcher.
@@ -281,6 +300,7 @@ export async function generateProposalPdf(opts: {
     applyPdfSettings(projectType),
     loadBrandFont(doc).then((f) => { BRAND_FONT = f; }),
     fetchTcoResultsCached(vehiclesForTcoMatch).then((m) => { TCO_RESULTS = m; }),
+    loadPillarsCached().then((p) => { PILLARS = p; }),
   ]);
 
   // Offre potentiellement combinée : on inclut TOUS les véhicules et TOUTES
@@ -1448,7 +1468,14 @@ function drawGuarantees(doc: jsPDF, type: ProjectType) {
     ],
   };
 
-  const pillars = pillarsByType[type];
+  // Priorité : piliers chargés depuis la table beev_pillars (éditables admin).
+  // Fallback : valeurs hardcodées de pillarsByType si la table est vide ou
+  // si le fetch a échoué (cas avant migration 012 ou réseau coupé).
+  const fromDb = PILLARS
+    .filter((p) => p.projectType === type && p.active)
+    .sort((a, b) => a.position - b.position)
+    .map((p) => ({ title: p.title, metric: p.metric, details: p.details }));
+  const pillars = fromDb.length > 0 ? fromDb : pillarsByType[type];
   const colW = (PAGE_W - M * 2 - 16) / 3;
   pillars.forEach((p, i) => {
     const x = M + i * (colW + 8);

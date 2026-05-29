@@ -147,11 +147,15 @@ function App() {
     if (loadedProposal.energyParams) setEnergy(loadedProposal.energyParams);
   }, [loadedProposal?.id]);
 
+  const [isSavingProposal, setIsSavingProposal] = useState(false);
   const handleSaveProposal = async () => {
+    if (isSavingProposal) return; // évite les double-clics
     if (!client.company.trim()) {
       toast.error("La société client est requise pour sauvegarder");
       return;
     }
+    setIsSavingProposal(true);
+    try {
     const result = await saveProposal({
       id: loadedProposalId,
       clientCompany: client.company,
@@ -176,6 +180,9 @@ function App() {
       if (!loadedProposalId && result.id) {
         navigate({ to: "/", search: { proposal: result.id } });
       }
+    }
+    } finally {
+      setIsSavingProposal(false);
     }
   };
 
@@ -383,8 +390,17 @@ function App() {
               </Button>
             )}
             {isAdmin && (
-              <Button variant="outline" onClick={handleSaveProposal} disabled={visibleCount === 0} className="gap-2">
-                <Save className="w-4 h-4" /> {loadedProposalId ? "Mettre à jour" : "Sauvegarder"}
+              <Button
+                variant="outline"
+                onClick={handleSaveProposal}
+                disabled={visibleCount === 0 || isSavingProposal}
+                className="gap-2"
+              >
+                {isSavingProposal ? (
+                  <><RotateCcw className="w-4 h-4 animate-spin" /> Enregistrement...</>
+                ) : (
+                  <><Save className="w-4 h-4" /> {loadedProposalId ? "Mettre à jour" : "Sauvegarder"}</>
+                )}
               </Button>
             )}
             <Button variant="outline" onClick={() => setPresenting(true)} disabled={visibleCount === 0} className="gap-2">

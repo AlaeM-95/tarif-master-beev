@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/lib/auth";
 import { usePdfSettings, type PdfSettings, type JourneyStep } from "@/lib/pdf-settings";
+import { useBeevPillars, useBeevPillarsMutations, type BeevPillar } from "@/lib/beev-pillars";
 import { ImageUpload } from "@/components/image-upload";
 import type { ProjectType } from "@/lib/catalog";
 
@@ -77,6 +78,7 @@ function AdminPdfPage() {
                   const res = await updateStep(id, patch);
                   if (res.error) toast.error(res.error); else toast.success("Étape mise à jour");
                 }} />
+                <PillarsEditor projectType={t} />
               </TabsContent>
             );
           })}
@@ -312,6 +314,104 @@ function StepEditor({ step, onSave }: { step: JourneyStep; onSave: (patch: Parti
             className="min-h-[80px]"
           />
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ============ ÉDITEUR DES PILIERS D'ENGAGEMENT ============
+// Lit/écrit la table beev_pillars (3 piliers par type de projet).
+// Auto-save 800ms debounced, comme les étapes du parcours.
+function PillarsEditor({ projectType }: { projectType: ProjectType }) {
+  const { data: pillars = [], isLoading } = useBeevPillars();
+  const { update } = useBeevPillarsMutations();
+
+  const pillarsForType = pillars
+    .filter((p) => p.projectType === projectType)
+    .sort((a, b) => a.position - b.position);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Engagements Beev (3 piliers — "Ce que Beev s'engage à tenir")</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading && <p className="text-sm text-muted-foreground">Chargement...</p>}
+        {!isLoading && pillarsForType.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            Aucun pilier configuré. Appliquez la migration 012_beev_pillars.sql sur Supabase.
+          </p>
+        )}
+        {pillarsForType.map((p) => (
+          <PillarEditor key={p.id} pillar={p} onSave={async (patch) => {
+            try {
+              await update.mutateAsync({ id: p.id, patch });
+            } catch (e) {
+              toast.error(e instanceof Error ? e.message : "Erreur sauvegarde pilier");
+            }
+          }} />
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function PillarEditor({ pillar, onSave }: { pillar: BeevPillar; onSave: (patch: Partial<{ title: string; metric: string; details: string[] }>) => Promise<void> }) {
+  const [draft, setDraft] = useState({ title: pillar.title, metric: pillar.metric, details: pillar.details });
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
+
+  // Sync depuis le serveur uniquement quand l'id du pilier change (jamais à
+  // chaque refetch). Évite d'écraser une frappe locale en cours.
+  useEffect(() => {
+    setDraft({ title: pillar.title, metric: pillar.metric, details: pillar.details });
+  }, [pillar.id]);
+
+  // Auto-save debounced 800ms après normalisation des détails (trim + filter).
+  useEffect(() => {
+    const normalized = {
+      title: draft.title.trim(),
+      metric: draft.metric.trim(),
+      details: draft.details.map((s) => s.trim()).filter(Boolean),
+    };
+    const same =
+      normalized.title === pillar.title &&
+      normalized.metric === pillar.metric &&
+      JSON.stringify(normalized.details) === JSON.stringify(pillar.details);
+    if (same) return;
+    const t = setTimeout(() => { onSaveRef.current(normalized); }, 800);
+    return () => clearTimeout(t);
+  }, [draft, pillar]);
+
+  return (
+    <div className="rounded-lg border border-border p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-[#3809EA] text-white flex items-center justify-center text-sm font-bold">
+            {pillar.position + 1}
+          </div>
+          <h4 className="font-semibold">Pilier {pillar.position + 1}</h4>
+        </div>
+        <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Auto-sauvegardé</span>
+      </div>
+      <div className="grid md:grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label className="text-xs">Titre</Label>
+          <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Ex : INTERLOCUTEUR UNIQUE" />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Métrique mise en avant</Label>
+          <Input value={draft.metric} onChange={(e) => setDraft({ ...draft, metric: e.target.value })} placeholder="Ex : Réponse J+1" />
+        </div>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">Détails (un par ligne, 4 idéalement)</Label>
+        <Textarea
+          value={draft.details.join("\n")}
+          onChange={(e) => setDraft({ ...draft, details: e.target.value.split("\n") })}
+          className="min-h-[100px]"
+          placeholder="Un commercial grand compte dédié&#10;Hotline gestion de flotte mutualisée&#10;..."
+        />
       </div>
     </div>
   );
