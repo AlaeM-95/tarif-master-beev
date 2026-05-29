@@ -857,18 +857,37 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   doc.text("(photo non contractuelle)", M + imgW / 2, imgY + imgH + 8, { align: "center" });
 
   const fx = M + imgW + 18;
+  const colMaxW = PAGE_W - M - fx - 4;
+  let fy = imgY + 14;
+
+  // Description longue (paragraphe) si renseignée par l'admin
+  if (sc.charger.description && sc.charger.description.trim().length > 0) {
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(...SUB);
+    doc.text("DESCRIPTION", fx, fy);
+    fy += 12;
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...INK);
+    const descLines = doc.splitTextToSize(sc.charger.description, colMaxW);
+    doc.text(descLines, fx, fy);
+    fy += descLines.length * 12 + 10;
+  }
+
+  // Caractéristiques techniques (bullets)
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
-  doc.text("CARACTÉRISTIQUES MATÉRIEL", fx, imgY + 14);
+  doc.text("CARACTÉRISTIQUES MATÉRIEL", fx, fy);
+  fy += 18;
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...INK);
-  let fy = imgY + 32;
   sc.charger.features.forEach((f) => {
     doc.setFillColor(...ACCENT);
     doc.circle(fx + 3, fy - 3, 2, "F");
-    const tt = doc.splitTextToSize(f, PAGE_W - M - fx - 14);
+    const tt = doc.splitTextToSize(f, colMaxW - 14);
     doc.text(tt, fx + 12, fy);
     fy += tt.length * 14;
   });

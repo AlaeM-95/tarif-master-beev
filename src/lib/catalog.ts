@@ -175,6 +175,8 @@ export type Charger = {
   installPriceHt: number;
   features: string[];
   image: string;
+  /** Description longue (paragraphe) — éditable par l'admin, affichée dans le PDF. */
+  description?: string;
   defaultLineItems?: LineItem[];
   custom?: boolean;
 };

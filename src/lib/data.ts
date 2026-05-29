@@ -65,6 +65,7 @@ function dbToCharger(row: ChargerRow): Charger {
     installPriceHt: row.install_price_ht,
     features: Array.isArray(row.features) ? (row.features as string[]) : [],
     image: row.image ?? "",
+    description: row.description ?? undefined,
     defaultLineItems: Array.isArray(row.default_line_items)
       ? (row.default_line_items as LineItem[])
       : undefined,
@@ -83,6 +84,7 @@ function chargerToDb(c: Charger): ChargerInsert {
     install_price_ht: c.installPriceHt,
     features: c.features,
     image: c.image,
+    description: c.description ?? null,
     default_line_items: c.defaultLineItems,
   };
 }

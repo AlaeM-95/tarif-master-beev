@@ -63,6 +63,7 @@ export type Database = {
           install_price_ht: number;
           features: Json | null;
           image: string | null;
+          description: string | null;
           default_line_items: Json | null;
           position: number | null;
           created_at: string;
@@ -79,6 +80,7 @@ export type Database = {
           install_price_ht?: number;
           features?: Json | null;
           image?: string | null;
+          description?: string | null;
           default_line_items?: Json | null;
           position?: number | null;
         };

@@ -214,19 +214,27 @@ function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const { config: pdfConfig, update: updatePdfConfig, reset: resetPdfConfig } = usePdfConfig();
 
-  // Génère le PDF avec try/catch pour ne jamais bloquer une re-génération.
+  // Génère le PDF avec try/catch + timeout pour ne jamais bloquer une re-génération.
   // En cas d'erreur (réseau Supabase, navigateur, etc.), affiche un toast
   // sans bloquer le bouton. Le commercial peut re-cliquer immédiatement.
   const doGeneratePdf = async () => {
     if (isGenerating) return; // évite les double-clics rapides
     setIsGenerating(true);
     try {
-      await generateProposalPdf({
-        projectType, client, energy,
-        vehicles: Object.values(selectedV),
-        chargers: Object.values(selectedC),
-        pdfConfig,
-      });
+      // Timeout de 30s : si une requête réseau hang (Supabase, fonts), on
+      // débloque le bouton plutôt que de spinner indéfiniment.
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Génération trop longue (30s). Vérifiez votre connexion.")), 30000),
+      );
+      await Promise.race([
+        generateProposalPdf({
+          projectType, client, energy,
+          vehicles: Object.values(selectedV),
+          chargers: Object.values(selectedC),
+          pdfConfig,
+        }),
+        timeout,
+      ]);
       toast.success("PDF généré avec succès");
     } catch (err) {
       console.error("[pdf] Erreur génération :", err);
@@ -904,12 +912,12 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { char
         {editing && onUpdate && (
           <div className="space-y-2 pt-2 border-t">
             <div className="grid grid-cols-2 gap-2">
-              <TxtField label="Marque" value={charger.brand} onChange={(s) => onUpdate({ brand: s })} />
-              <TxtField label="Modèle" value={charger.model} onChange={(s) => onUpdate({ model: s })} />
+              <TxtField label="Marque (titre)" value={charger.brand} onChange={(s) => onUpdate({ brand: s })} />
+              <TxtField label="Modèle (titre)" value={charger.model} onChange={(s) => onUpdate({ model: s })} />
               <NumField label="Prix borne HT" value={charger.priceHt} onChange={(n) => onUpdate({ priceHt: n })} />
               <NumField label="Pose HT (réf.)" value={charger.installPriceHt} onChange={(n) => onUpdate({ installPriceHt: n })} />
               <NumField label="Puissance kW" value={charger.powerKw} onChange={(n) => onUpdate({ powerKw: n })} step={0.1} />
-              <TxtField label="Type" value={charger.type} onChange={(s) => onUpdate({ type: s })} />
+              <TxtField label="Type (sous-titre)" value={charger.type} onChange={(s) => onUpdate({ type: s })} />
               <div className="space-y-1 col-span-2">
                 <Label className="text-[10px] text-muted-foreground uppercase">Déploiement</Label>
                 <select
@@ -921,6 +929,16 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { char
                   <option value="site">Site entreprise</option>
                 </select>
               </div>
+            </div>
+            {/* Description longue (paragraphe affiché dans le PDF) */}
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground uppercase">Description longue (PDF)</Label>
+              <Textarea
+                value={charger.description ?? ""}
+                onChange={(e) => onUpdate({ description: e.target.value })}
+                placeholder="Description complète de la borne, affichée dans le PDF client en plus du type. Ex: borne haute performance pour flotte d'entreprise..."
+                className="min-h-[60px] text-xs"
+              />
             </div>
             <ImageUpload
               currentUrl={charger.image}

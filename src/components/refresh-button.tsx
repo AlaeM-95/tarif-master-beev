@@ -15,20 +15,26 @@ export function RefreshButton() {
     if (refreshing) return;
     setRefreshing(true);
     try {
-      // Invalide toutes les queries Supabase + refetch
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["vehicles"] }),
-        queryClient.invalidateQueries({ queryKey: ["chargers"] }),
-        queryClient.invalidateQueries({ queryKey: ["proposals"] }),
-        queryClient.invalidateQueries({ queryKey: ["pdf_settings"] }),
-        queryClient.invalidateQueries({ queryKey: ["journey_steps"] }),
-        queryClient.invalidateQueries({ queryKey: ["tco_results"] }),
-      ]);
-      await queryClient.refetchQueries({ type: "active" });
+      // Reset les queries (force le state à 'idle') puis refetch.
+      // Timeout 8s : si Supabase est inaccessible, on débloque le bouton.
+      const refetchAll = async () => {
+        // resetQueries vide complètement le cache et force le refetch
+        await queryClient.resetQueries({ queryKey: ["vehicles"] });
+        await queryClient.resetQueries({ queryKey: ["chargers"] });
+        await queryClient.resetQueries({ queryKey: ["proposals"] });
+        await queryClient.resetQueries({ queryKey: ["pdf_settings"] });
+        await queryClient.resetQueries({ queryKey: ["journey_steps"] });
+        await queryClient.resetQueries({ queryKey: ["tco_results"] });
+      };
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout (8s). Vérifiez votre connexion Supabase.")), 8000),
+      );
+      await Promise.race([refetchAll(), timeout]);
       toast.success("Données rafraîchies");
     } catch (err) {
       console.error("[refresh] erreur :", err);
-      toast.error("Échec du rafraîchissement");
+      const msg = err instanceof Error ? err.message : "Erreur inconnue";
+      toast.error(`Échec rafraîchissement : ${msg}`);
     } finally {
       setRefreshing(false);
     }
