@@ -137,9 +137,40 @@ const TYPE_TITLE: Record<ProjectType, string> = {
 
 // Charge les paramètres PDF (couleurs, textes, étapes) depuis Supabase et les applique
 // aux variables module-level utilisées par les fonctions de dessin.
+// Cache module-level pour éviter de recharger settings/fonts/TCO à chaque PDF.
+// Sans cache, générer 3 PDF d'affilée déclenche 15 requêtes réseau, ce qui
+// faisait sauter le timeout global de 30s dès le 2e ou 3e document.
+type CachedSettings = { type: ProjectType; data: Awaited<ReturnType<typeof loadPdfSettings>>; expiresAt: number };
+const PDF_SETTINGS_CACHE = new Map<ProjectType, CachedSettings>();
+const SETTINGS_TTL_MS = 5 * 60 * 1000; // 5 min
+
+let TCO_CACHE: { key: string; data: Map<string, TcoResult>; expiresAt: number } | null = null;
+const TCO_TTL_MS = 2 * 60 * 1000; // 2 min
+
+let FONT_CACHE: { regularB64: string; semiBoldB64: string } | null = null;
+
+// Wrap une promesse avec un timeout court qui rejette si la requête traîne.
+// Utilisé pour chaque fetch réseau afin de retomber rapidement sur les valeurs
+// par défaut plutôt que de bloquer la génération entière.
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`Timeout ${label} (${ms}ms)`)), ms)),
+  ]);
+}
+
 async function applyPdfSettings(projectType: ProjectType) {
   try {
-    const { settings, steps } = await loadPdfSettings(projectType);
+    const now = Date.now();
+    const cached = PDF_SETTINGS_CACHE.get(projectType);
+    let result: Awaited<ReturnType<typeof loadPdfSettings>>;
+    if (cached && cached.expiresAt > now) {
+      result = cached.data;
+    } else {
+      result = await withTimeout(loadPdfSettings(projectType), 8000, "pdf_settings");
+      PDF_SETTINGS_CACHE.set(projectType, { type: projectType, data: result, expiresAt: now + SETTINGS_TTL_MS });
+    }
+    const { settings, steps } = result;
     if (settings) {
       INK = hexToRgb(settings.colorInk);
       BG = hexToRgb(settings.colorBg);
@@ -180,17 +211,48 @@ async function loadBrandFont(doc: jsPDF): Promise<string> {
     return btoa(binary);
   };
   try {
-    const [regBuf, sbBuf] = await Promise.all([
-      fetch("/fonts/Roobert-Regular.ttf").then((r) => (r.ok ? r.arrayBuffer() : Promise.reject())),
-      fetch("/fonts/Roobert-SemiBold.ttf").then((r) => (r.ok ? r.arrayBuffer() : Promise.reject())),
-    ]);
-    doc.addFileToVFS("Roobert-Regular.ttf", toBase64(regBuf));
+    // Si la police a déjà été chargée pendant la session, on réutilise les
+    // buffers en base64 mis en cache. Évite 2 requêtes réseau par PDF.
+    if (!FONT_CACHE) {
+      const [regBuf, sbBuf] = await withTimeout(
+        Promise.all([
+          fetch("/fonts/Roobert-Regular.ttf").then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error("font regular HTTP " + r.status)))),
+          fetch("/fonts/Roobert-SemiBold.ttf").then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error("font semibold HTTP " + r.status)))),
+        ]),
+        8000,
+        "fonts",
+      );
+      FONT_CACHE = { regularB64: toBase64(regBuf), semiBoldB64: toBase64(sbBuf) };
+    }
+    doc.addFileToVFS("Roobert-Regular.ttf", FONT_CACHE.regularB64);
     doc.addFont("Roobert-Regular.ttf", "Roobert", "normal");
-    doc.addFileToVFS("Roobert-SemiBold.ttf", toBase64(sbBuf));
+    doc.addFileToVFS("Roobert-SemiBold.ttf", FONT_CACHE.semiBoldB64);
     doc.addFont("Roobert-SemiBold.ttf", "Roobert", "bold");
     return "Roobert";
   } catch {
     return "helvetica";
+  }
+}
+
+// Wrap fetchTcoResultsForVehicles avec cache + timeout court.
+// La clé de cache est l'ensemble des IDs véhicules triés ; tant qu'on génère
+// des PDF pour la même sélection, on réutilise le résultat sans re-fetcher.
+async function fetchTcoResultsCached(
+  vehicles: Array<{ id: string; brand: string; model: string }>,
+): Promise<Map<string, TcoResult>> {
+  if (vehicles.length === 0) return new Map();
+  const key = vehicles.map((v) => v.id).sort().join("|");
+  const now = Date.now();
+  if (TCO_CACHE && TCO_CACHE.key === key && TCO_CACHE.expiresAt > now) {
+    return TCO_CACHE.data;
+  }
+  try {
+    const data = await withTimeout(fetchTcoResultsForVehicles(vehicles), 8000, "tco_results");
+    TCO_CACHE = { key, data, expiresAt: now + TCO_TTL_MS };
+    return data;
+  } catch (err) {
+    console.warn("[pdf] TCO fetch timed out, génération sans TCO :", err);
+    return new Map();
   }
 }
 
@@ -218,7 +280,7 @@ export async function generateProposalPdf(opts: {
   await Promise.all([
     applyPdfSettings(projectType),
     loadBrandFont(doc).then((f) => { BRAND_FONT = f; }),
-    fetchTcoResultsForVehicles(vehiclesForTcoMatch).then((m) => { TCO_RESULTS = m; }).catch(() => { TCO_RESULTS = new Map(); }),
+    fetchTcoResultsCached(vehiclesForTcoMatch).then((m) => { TCO_RESULTS = m; }),
   ]);
 
   // Offre potentiellement combinée : on inclut TOUS les véhicules et TOUTES
