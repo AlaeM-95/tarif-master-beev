@@ -199,25 +199,44 @@ function App() {
   const toggleC = (c: Charger) => {
     setSelectedC((s) => {
       if (s[c.id]) { const { [c.id]: _, ...rest } = s; return rest; }
-      // Ligne borne : si on connaît le prix d'achat (price_buy_ht), l'utiliser
-      // comme PU achat et calculer la marge nécessaire pour atteindre le prix
-      // catalogue. Arrondi au palier 5 % le plus proche pour matcher le barème
-      // commercial. Sans prix d'achat, on retombe sur l'ancien comportement
-      // (PU achat = prix catalogue, marge 0 — à corriger par le commercial).
-      const buy = c.priceBuyHt && c.priceBuyHt > 0 ? c.priceBuyHt : c.priceHt;
+      // Quand on connaît le prix d'achat (price_buy_ht > 0), on l'utilise comme
+      // PU achat de la ligne borne et on calcule la marge nécessaire pour
+      // atteindre le prix de vente catalogue (priceHt). Marge arrondie au palier
+      // 5 % conformément au barème commercial.
+      const hasBuyPrice = c.priceBuyHt !== undefined && c.priceBuyHt !== null && c.priceBuyHt > 0;
+      const buy = hasBuyPrice ? c.priceBuyHt! : c.priceHt;
       const computedMargin =
-        c.priceBuyHt && c.priceBuyHt > 0 && c.priceHt > 0
-          ? Math.max(0, Math.round(((c.priceHt / c.priceBuyHt - 1) * 100) / 5) * 5)
+        hasBuyPrice && c.priceHt > 0
+          ? Math.max(0, Math.round(((c.priceHt / c.priceBuyHt! - 1) * 100) / 5) * 5)
           : 0;
+
+      let lineItems;
+      if (c.defaultLineItems && c.defaultLineItems.length > 0) {
+        // Le borne a un chiffrage par défaut figé. Si l'admin a renseigné un
+        // prix d'achat, on écrase la PREMIÈRE ligne (présumée être la borne
+        // elle-même) avec ce prix et la marge calculée. Les autres lignes
+        // (pose, accessoires) sont conservées telles quelles, à la main du
+        // commercial. Sans price_buy_ht, on respecte intégralement le
+        // defaultLineItems pour ne pas casser les chiffrages historiques.
+        lineItems = c.defaultLineItems.map((li, idx) => {
+          if (idx === 0 && hasBuyPrice) {
+            return { ...li, unitHt: buy, marginPct: computedMargin };
+          }
+          return { ...li };
+        });
+      } else {
+        lineItems = [
+          { label: `${c.brand} ${c.model}`, qty: 1, unitHt: buy, marginPct: computedMargin },
+          { label: "Pose & raccordement IRVE", qty: 1, unitHt: c.installPriceHt, marginPct: 0 },
+        ];
+      }
+
       return {
         ...s,
         [c.id]: {
           charger: c, quantity: 1, discountPct: 0, installIncluded: true,
           siteName: "", siteAddress: "", siteContact: "",
-          lineItems: c.defaultLineItems ? c.defaultLineItems.map(x => ({ ...x })) : [
-            { label: `${c.brand} ${c.model}`, qty: 1, unitHt: buy, marginPct: computedMargin },
-            { label: "Pose & raccordement IRVE", qty: 1, unitHt: c.installPriceHt, marginPct: 0 },
-          ],
+          lineItems,
         },
       };
     });
