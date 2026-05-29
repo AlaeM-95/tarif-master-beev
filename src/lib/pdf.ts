@@ -922,42 +922,52 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   const colMaxW = PAGE_W - M - fx - 4;
   let fy = imgY + 14;
 
-  // Description longue (paragraphe) si renseignée par l'admin
+  // Description (paragraphe court, ton commercial) si renseignée par l'admin
   if (sc.charger.description && sc.charger.description.trim().length > 0) {
     doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(...SUB);
-    doc.text("DESCRIPTION", fx, fy);
-    fy += 12;
+    doc.setFontSize(8.5);
+    doc.setTextColor(...LAVENDER);
+    doc.text("PRÉSENTATION", fx, fy);
+    fy += 14;
     doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(9);
+    doc.setFontSize(10);
     doc.setTextColor(...INK);
     const descLines = doc.splitTextToSize(sc.charger.description, colMaxW);
     doc.text(descLines, fx, fy);
-    fy += descLines.length * 12 + 10;
+    fy += descLines.length * 13 + 14;
   }
 
-  // Caractéristiques techniques (bullets)
+  // Points forts du matériel (bullets avec check ACCENT)
   doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(10);
-  doc.setTextColor(...SUB);
-  doc.text("CARACTÉRISTIQUES MATÉRIEL", fx, fy);
-  fy += 18;
+  doc.setFontSize(8.5);
+  doc.setTextColor(...LAVENDER);
+  doc.text("POINTS FORTS", fx, fy);
+  fy += 14;
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...INK);
   sc.charger.features.forEach((f) => {
-    doc.setFillColor(...ACCENT);
-    doc.circle(fx + 3, fy - 3, 2, "F");
+    // Petit chevron ACCENT plutôt qu'un cercle plein, plus moderne
+    doc.setDrawColor(...ACCENT);
+    doc.setLineWidth(1.4);
+    doc.line(fx + 1, fy - 3.5, fx + 4, fy - 1);
+    doc.line(fx + 4, fy - 1, fx + 7, fy - 6);
+    doc.setLineWidth(0.2);
     const tt = doc.splitTextToSize(f, colMaxW - 14);
     doc.text(tt, fx + 12, fy);
     fy += tt.length * 14;
   });
   if (sc.siteContact) {
-    fy += 6;
-    doc.setFontSize(9);
-    doc.setTextColor(...SUB);
-    doc.text(`Contact ${isHome ? "collaborateur" : "site"} : ${sc.siteContact}`, fx, fy);
+    fy += 8;
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...LAVENDER);
+    doc.text(isHome ? "COLLABORATEUR" : "RÉFÉRENT SITE", fx, fy);
+    fy += 12;
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...INK);
+    doc.text(sc.siteContact, fx, fy);
   }
 
   let y = imgY + imgH + 20;
@@ -965,46 +975,106 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   // Le PDF client utilise les prix avec marge (lineItemClientUnit/Total).
   // Le prix d'achat (unitHt brut) et la marge restent invisibles côté client.
   const total_ = sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0);
-  y = ensureSpace(doc, y, 90, client, type);
+  const grandTotal = total_ * Math.max(1, sc.quantity);
+  y = ensureSpace(doc, y, 110, client, type);
   autoTable(doc, {
     startY: y,
-    theme: "grid",
-    head: [["Désignation", "Qté", "PU HT", "Total HT"]],
-    body: ([
-      ...sc.lineItems.map((li) => [li.label, String(li.qty), eur(lineItemClientUnit(li)), eur(lineItemClientTotal(li))]),
-      [
-        { content: isHome ? "Total HT par collaborateur" : "Total HT site", colSpan: 3, styles: { fontStyle: "bold", halign: "right", fillColor: BG } },
-        { content: eur(total_), styles: { fontStyle: "bold", halign: "right", fillColor: BG } },
-      ],
-      ...(sc.quantity > 1 ? [[
-        { content: `Total HT × ${sc.quantity}`, colSpan: 3, styles: { fontStyle: "bold", halign: "right", textColor: ACCENT } },
-        { content: eur(total_ * sc.quantity), styles: { fontStyle: "bold", halign: "right", textColor: ACCENT } },
-      ]] : []),
-    ] as any),
-    headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT },
-    bodyStyles: { fontSize: 9, cellPadding: 6, textColor: INK, lineColor: RULE, font: BRAND_FONT },
-    columnStyles: { 1: { halign: "center", cellWidth: 40 }, 2: { halign: "right", cellWidth: 80 }, 3: { halign: "right", cellWidth: 90, fontStyle: "bold" } },
+    theme: "plain",
+    head: [["Prestation", "Qté", "PU HT", "Total HT"]],
+    body: sc.lineItems.map((li) => [
+      li.label,
+      String(li.qty),
+      eur(lineItemClientUnit(li)),
+      eur(lineItemClientTotal(li)),
+    ]),
+    foot: [[
+      {
+        content: isHome ? "Total HT par collaborateur" : "Total HT par site",
+        colSpan: 3,
+        styles: { halign: "right", fontStyle: "bold", textColor: INK, fillColor: BG, cellPadding: 8 },
+      },
+      {
+        content: eur(total_),
+        styles: { halign: "right", fontStyle: "bold", textColor: LAVENDER, fillColor: BG, cellPadding: 8, fontSize: 11 },
+      },
+    ]],
+    headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT, cellPadding: 7, halign: "left" },
+    bodyStyles: { fontSize: 9.5, cellPadding: 7, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
+    alternateRowStyles: { fillColor: [252, 251, 248] as [number, number, number] },
+    columnStyles: {
+      0: { cellWidth: "auto" },
+      1: { halign: "center", cellWidth: 38 },
+      2: { halign: "right", cellWidth: 80 },
+      3: { halign: "right", cellWidth: 90, fontStyle: "bold" },
+    },
     margin: { left: M, right: M },
   });
-  y = (doc as any).lastAutoTable.finalY + 14;
+  y = (doc as any).lastAutoTable.finalY + 10;
 
-  const inclusionTxt = isHome
-    ? "Pose 0–10 m incluse · matériel · raccordement par technicien IRVE certifié partenaire Seris · supervision en marque blanche · remboursement automatisé de l'énergie consommée à titre professionnel · garantie matériel selon gamme."
-    : "Étude de site · pose & raccordement par technicien IRVE certifié · paramétrage OCPP & superviseur · formation utilisateurs · gestion des déchets de chantier · garantie constructeur 3 ans (extensible 6 ans).";
-  if (y < FOOTER_LIMIT - 70) {
-    doc.setFillColor(...BG);
-    doc.rect(M, y, PAGE_W - M * 2, 60, "F");
+  // Si quantité > 1 (plusieurs collaborateurs / plusieurs sites), encart
+  // récapitulatif final mis en valeur.
+  if (sc.quantity > 1) {
+    y = ensureSpace(doc, y, 44, client, type);
     doc.setFillColor(...LAVENDER);
-    doc.rect(M, y, 4, 60, "F");
+    doc.rect(M, y, PAGE_W - M * 2, 36, "F");
     doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(...SUB);
-    doc.text(isHome ? "INCLUS DANS LE KIT B2B2E" : "INCLUS DANS LA PRESTATION IRVE", M + 16, y + 18);
+    doc.setFontSize(10);
+    doc.setTextColor(255, 255, 255);
+    doc.text(
+      `${isHome ? "Pour" : "Pour"} ${sc.quantity} ${isHome ? "collaborateur" + (sc.quantity > 1 ? "s" : "") : "borne" + (sc.quantity > 1 ? "s" : "")}`,
+      M + 14,
+      y + 22,
+    );
+    doc.setFontSize(13);
+    doc.text(`Total HT : ${eur(grandTotal)}`, PAGE_W - M - 14, y + 22, { align: "right" });
+    y += 46;
+  }
+
+  // Encart "Inclus dans la prestation" en liste de bullets propres
+  const inclusions = isHome
+    ? [
+        "Matériel et accessoires de raccordement",
+        "Pose et raccordement par technicien IRVE certifié",
+        "Câblage standard jusqu'à 10 m du tableau électrique",
+        "Supervision Beev en marque blanche",
+        "Remboursement automatisé de l'énergie consommée à titre professionnel",
+        "Garantie constructeur selon la gamme",
+      ]
+    : [
+        "Étude de site et chiffrage par technicien IRVE certifié",
+        "Pose, raccordement et mise en service",
+        "Paramétrage OCPP et configuration du superviseur",
+        "Formation des utilisateurs sur site",
+        "Gestion des déchets de chantier",
+        "Garantie constructeur 3 ans, extensible 6 ans",
+      ];
+  const lineH = 13;
+  const padTop = 14;
+  const padBottom = 12;
+  const boxH = padTop + inclusions.length * lineH + padBottom;
+  if (y + boxH < FOOTER_LIMIT) {
+    doc.setFillColor(...BG);
+    doc.rect(M, y, PAGE_W - M * 2, boxH, "F");
+    doc.setFillColor(...LAVENDER);
+    doc.rect(M, y, 4, boxH, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...LAVENDER);
+    doc.text(
+      isHome ? "INCLUS DANS LE KIT INSTALLATION DOMICILE" : "INCLUS DANS LA PRESTATION CLÉ EN MAIN",
+      M + 16,
+      y + padTop,
+    );
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(9.5);
     doc.setTextColor(...INK);
-    const lines = doc.splitTextToSize(inclusionTxt, PAGE_W - M * 2 - 32);
-    doc.text(lines, M + 16, y + 36);
+    let by = y + padTop + 14;
+    inclusions.forEach((item) => {
+      doc.setFillColor(...ACCENT);
+      doc.circle(M + 20, by - 3, 1.6, "F");
+      doc.text(item, M + 28, by);
+      by += lineH;
+    });
   }
 }
 
