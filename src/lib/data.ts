@@ -73,7 +73,10 @@ function dbToCharger(row: ChargerRow): Charger {
 }
 
 function chargerToDb(c: Charger): ChargerInsert {
-  return {
+  // Construction conditionnelle : on n'envoie que les champs présents.
+  // Évite les erreurs Supabase si la colonne 'description' n'a pas encore
+  // été créée par la migration 007_chargers_description.sql.
+  const row: ChargerInsert = {
     id: c.id,
     brand: c.brand,
     model: c.model,
@@ -84,9 +87,14 @@ function chargerToDb(c: Charger): ChargerInsert {
     install_price_ht: c.installPriceHt,
     features: c.features,
     image: c.image,
-    description: c.description ?? null,
     default_line_items: c.defaultLineItems,
   };
+  // N'ajoute la description que si elle est non-vide pour ne pas
+  // tenter d'écrire dans une colonne potentiellement inexistante.
+  if (c.description !== undefined && c.description !== null && c.description !== "") {
+    row.description = c.description;
+  }
+  return row;
 }
 
 // ===== HOOK VÉHICULES =====
