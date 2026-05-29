@@ -199,14 +199,24 @@ function App() {
   const toggleC = (c: Charger) => {
     setSelectedC((s) => {
       if (s[c.id]) { const { [c.id]: _, ...rest } = s; return rest; }
+      // Ligne borne : si on connaît le prix d'achat (price_buy_ht), l'utiliser
+      // comme PU achat et calculer la marge nécessaire pour atteindre le prix
+      // catalogue. Arrondi au palier 5 % le plus proche pour matcher le barème
+      // commercial. Sans prix d'achat, on retombe sur l'ancien comportement
+      // (PU achat = prix catalogue, marge 0 — à corriger par le commercial).
+      const buy = c.priceBuyHt && c.priceBuyHt > 0 ? c.priceBuyHt : c.priceHt;
+      const computedMargin =
+        c.priceBuyHt && c.priceBuyHt > 0 && c.priceHt > 0
+          ? Math.max(0, Math.round(((c.priceHt / c.priceBuyHt - 1) * 100) / 5) * 5)
+          : 0;
       return {
         ...s,
         [c.id]: {
           charger: c, quantity: 1, discountPct: 0, installIncluded: true,
           siteName: "", siteAddress: "", siteContact: "",
           lineItems: c.defaultLineItems ? c.defaultLineItems.map(x => ({ ...x })) : [
-            { label: `${c.brand} ${c.model}`, qty: 1, unitHt: c.priceHt },
-            { label: "Pose & raccordement IRVE", qty: 1, unitHt: c.installPriceHt },
+            { label: `${c.brand} ${c.model}`, qty: 1, unitHt: buy, marginPct: computedMargin },
+            { label: "Pose & raccordement IRVE", qty: 1, unitHt: c.installPriceHt, marginPct: 0 },
           ],
         },
       };
@@ -917,7 +927,8 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { char
             <div className="grid grid-cols-2 gap-2">
               <TxtField label="Marque (titre)" value={charger.brand} onChange={(s) => onUpdate({ brand: s })} />
               <TxtField label="Modèle (titre)" value={charger.model} onChange={(s) => onUpdate({ model: s })} />
-              <NumField label="Prix borne HT" value={charger.priceHt} onChange={(n) => onUpdate({ priceHt: n })} />
+              <NumField label="Prix achat HT" value={charger.priceBuyHt ?? 0} onChange={(n) => onUpdate({ priceBuyHt: n })} />
+              <NumField label="Prix vente HT" value={charger.priceHt} onChange={(n) => onUpdate({ priceHt: n })} />
               <NumField label="Pose HT (réf.)" value={charger.installPriceHt} onChange={(n) => onUpdate({ installPriceHt: n })} />
               <NumField label="Puissance kW" value={charger.powerKw} onChange={(n) => onUpdate({ powerKw: n })} step={0.1} />
               <TxtField label="Type (sous-titre)" value={charger.type} onChange={(s) => onUpdate({ type: s })} />
@@ -1241,9 +1252,9 @@ function SelectedChargerRow({ sc, onChange, onRemove }: { sc: SelectedCharger; o
               </div>
             );
           })}
-          <div className="grid grid-cols-3 gap-1">
-            <Button variant="outline" size="sm" onClick={addLi} className="gap-1 h-7 text-xs">
-              <Plus className="w-3 h-3" /> Ligne vide
+          <div className="grid grid-cols-3 gap-1.5">
+            <Button variant="outline" size="sm" onClick={addLi} className="gap-1 h-7 text-xs min-w-0 truncate">
+              <Plus className="w-3 h-3 flex-shrink-0" /> <span className="truncate">Ligne</span>
             </Button>
             <MaterialPicker
               onPick={(m) => onChange({ lineItems: [...sc.lineItems, materialToLineItem(m)] })}
@@ -1295,8 +1306,8 @@ function MaterialPicker({ onPick }: { onPick: (m: Material) => void }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-1 h-7 text-xs">
-          <Plus className="w-3 h-3" /> Catalogue matériel
+        <Button variant="outline" size="sm" className="gap-1 h-7 text-xs min-w-0 truncate">
+          <Plus className="w-3 h-3 flex-shrink-0" /> <span className="truncate">Matériel</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
@@ -1398,8 +1409,8 @@ function BpuPicker({ onPick }: { onPick: (f: BpuForfait, zone: BpuZone) => void 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-1 h-7 text-xs">
-          <Plus className="w-3 h-3" /> Catalogue BPU
+        <Button variant="outline" size="sm" className="gap-1 h-7 text-xs min-w-0 truncate">
+          <Plus className="w-3 h-3 flex-shrink-0" /> <span className="truncate">BPU</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">

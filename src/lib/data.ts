@@ -62,6 +62,7 @@ function dbToCharger(row: ChargerRow): Charger {
     type: row.type ?? "",
     deployment: (row.deployment ?? "site") as ChargerDeployment,
     priceHt: row.price_ht,
+    priceBuyHt: row.price_buy_ht ?? 0,
     installPriceHt: row.install_price_ht,
     features: Array.isArray(row.features) ? (row.features as string[]) : [],
     image: row.image ?? "",
@@ -93,6 +94,12 @@ function chargerToDb(c: Charger): ChargerInsert {
   // tenter d'écrire dans une colonne potentiellement inexistante.
   if (c.description !== undefined && c.description !== null && c.description !== "") {
     row.description = c.description;
+  }
+  // price_buy_ht : envoyé seulement si la colonne a été créée par la migration
+  // 010_chargers_price_buy.sql ET qu'on a une valeur explicite (sinon on garde
+  // le défaut DB 0).
+  if (c.priceBuyHt !== undefined && c.priceBuyHt !== null) {
+    row.price_buy_ht = c.priceBuyHt;
   }
   return row;
 }

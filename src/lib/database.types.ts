@@ -60,6 +60,7 @@ export type Database = {
           type: string | null;
           deployment: "domicile" | "site" | null;
           price_ht: number;
+          price_buy_ht: number;
           install_price_ht: number;
           features: Json | null;
           image: string | null;
@@ -77,6 +78,7 @@ export type Database = {
           type?: string | null;
           deployment?: "domicile" | "site" | null;
           price_ht: number;
+          price_buy_ht?: number;
           install_price_ht?: number;
           features?: Json | null;
           image?: string | null;

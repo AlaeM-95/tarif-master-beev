@@ -1,9 +1,10 @@
 // Liste déroulante de marges avec barème fixe imposé.
 // Utilisée pour les lignes de chiffrage bornes uniquement.
 
-// Barème officiel : 0 % à 150 % par paliers de 10 %.
-// Le 0 % permet de "remettre à zéro" la marge si nécessaire.
-export const MARGIN_PRESETS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150];
+// Barème officiel : 0 % puis 5 % à 155 % par paliers de 5 %.
+// Le 0 % reste exposé pour "remettre à zéro" une ligne, mais le barème commence
+// volontairement à 5 % conformément à la politique commerciale Beev.
+export const MARGIN_PRESETS = [0, ...Array.from({ length: 31 }, (_, i) => (i + 1) * 5)];
 
 type Props = {
   value: number;

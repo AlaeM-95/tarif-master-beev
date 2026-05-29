@@ -172,6 +172,10 @@ export type Charger = {
   type: string;
   deployment: ChargerDeployment;
   priceHt: number;
+  /** Prix d'achat HT (cost) — utilisé comme PU achat sur la ligne borne du
+   *  chiffrage pour calculer la marge réelle. Distinct du prix vente catalogue
+   *  (priceHt) qui sert d'affichage et de base au prix client par défaut. */
+  priceBuyHt?: number;
   installPriceHt: number;
   features: string[];
   image: string;
