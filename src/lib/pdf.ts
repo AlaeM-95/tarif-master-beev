@@ -922,22 +922,9 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   const colMaxW = PAGE_W - M - fx - 4;
   let fy = imgY + 14;
 
-  // Description (paragraphe court, ton commercial) si renseignée par l'admin
-  if (sc.charger.description && sc.charger.description.trim().length > 0) {
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(8.5);
-    doc.setTextColor(...LAVENDER);
-    doc.text("PRÉSENTATION", fx, fy);
-    fy += 14;
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(...INK);
-    const descLines = doc.splitTextToSize(sc.charger.description, colMaxW);
-    doc.text(descLines, fx, fy);
-    fy += descLines.length * 13 + 14;
-  }
-
-  // Points forts du matériel (bullets avec check ACCENT)
+  // POINTS FORTS d'abord (compact, bullets courtes) — bloc principal à droite
+  // de l'image. La description longue passe en bas en pleine largeur si elle
+  // existe, pour éviter d'écraser le tableau de chiffrage.
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...LAVENDER);
@@ -947,7 +934,6 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   doc.setFontSize(10);
   doc.setTextColor(...INK);
   sc.charger.features.forEach((f) => {
-    // Petit chevron ACCENT plutôt qu'un cercle plein, plus moderne
     doc.setDrawColor(...ACCENT);
     doc.setLineWidth(1.4);
     doc.line(fx + 1, fy - 3.5, fx + 4, fy - 1);
@@ -968,9 +954,37 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
     doc.setFontSize(10);
     doc.setTextColor(...INK);
     doc.text(sc.siteContact, fx, fy);
+    fy += 14;
   }
 
-  let y = imgY + imgH + 20;
+  // Démarrage du bloc inférieur : après l'image ET la colonne droite
+  let y = Math.max(imgY + imgH, fy) + 18;
+
+  // PRÉSENTATION (description longue) en pleine largeur — placée APRÈS l'image
+  // et POINTS FORTS, AVANT le tableau de chiffrage. Sa hauteur s'adapte au
+  // contenu sans empiéter sur le tableau ni déborder hors page.
+  if (sc.charger.description && sc.charger.description.trim().length > 0) {
+    y = ensureSpace(doc, y, 60, client, type);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...LAVENDER);
+    doc.text("PRÉSENTATION", M, y);
+    y += 14;
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...INK);
+    const fullW = PAGE_W - M * 2;
+    const descLines = doc.splitTextToSize(sc.charger.description, fullW);
+    // Cap raisonnable pour ne pas pousser le tableau en page suivante : 18
+    // lignes max ≈ 234 pts. Au-delà, on tronque avec ellipsis. L'admin peut
+    // raccourcir la description si besoin.
+    const MAX_LINES = 18;
+    const displayed = descLines.length > MAX_LINES
+      ? [...descLines.slice(0, MAX_LINES - 1), descLines[MAX_LINES - 1] + " …"]
+      : descLines;
+    doc.text(displayed, M, y);
+    y += displayed.length * 13 + 16;
+  }
 
   // Le PDF client utilise les prix avec marge (lineItemClientUnit/Total).
   // Le prix d'achat (unitHt brut) et la marge restent invisibles côté client.
@@ -991,15 +1005,19 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
       {
         content: isHome ? "Total HT par collaborateur" : "Total HT par site",
         colSpan: 3,
-        styles: { halign: "right", fontStyle: "bold", textColor: INK, fillColor: BG, cellPadding: 8 },
+        // fontStyle 'normal' (et non 'bold') : la variante bold de Roobert n'a
+        // pas le glyphe €, ce qui faisait afficher "1 841 ¤" sur le total.
+        // L'emphase est portée par fontSize + textColor LAVENDER côté droit.
+        styles: { halign: "right", fontStyle: "normal", textColor: INK, fillColor: BG, cellPadding: 8, font: BRAND_FONT },
       },
       {
         content: eur(total_),
-        styles: { halign: "right", fontStyle: "bold", textColor: LAVENDER, fillColor: BG, cellPadding: 8, fontSize: 11 },
+        styles: { halign: "right", fontStyle: "normal", textColor: LAVENDER, fillColor: BG, cellPadding: 8, fontSize: 12, font: BRAND_FONT },
       },
     ]],
     headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT, cellPadding: 7, halign: "left" },
     bodyStyles: { fontSize: 9.5, cellPadding: 7, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
+    footStyles: { font: BRAND_FONT },
     alternateRowStyles: { fillColor: [252, 251, 248] as [number, number, number] },
     columnStyles: {
       0: { cellWidth: "auto" },
@@ -1017,15 +1035,14 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
     y = ensureSpace(doc, y, 44, client, type);
     doc.setFillColor(...LAVENDER);
     doc.rect(M, y, PAGE_W - M * 2, 36, "F");
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(10);
+    // Police normale (pas bold) car la variante bold de Roobert affiche le €
+    // en ¤. L'emphase visuelle vient de la taille et du fond lavender.
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(11);
     doc.setTextColor(255, 255, 255);
-    doc.text(
-      `${isHome ? "Pour" : "Pour"} ${sc.quantity} ${isHome ? "collaborateur" + (sc.quantity > 1 ? "s" : "") : "borne" + (sc.quantity > 1 ? "s" : "")}`,
-      M + 14,
-      y + 22,
-    );
-    doc.setFontSize(13);
+    const label = `Pour ${sc.quantity} ${isHome ? "collaborateur" + (sc.quantity > 1 ? "s" : "") : "borne" + (sc.quantity > 1 ? "s" : "")}`;
+    doc.text(label, M + 14, y + 22);
+    doc.setFontSize(14);
     doc.text(`Total HT : ${eur(grandTotal)}`, PAGE_W - M - 14, y + 22, { align: "right" });
     y += 46;
   }
