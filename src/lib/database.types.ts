@@ -86,6 +86,27 @@ export type Database = {
         };
         Update: Partial<Database["public"]["Tables"]["chargers"]["Insert"]>;
       };
+      bpu_forfaits: {
+        Row: {
+          id: string;
+          label: string;
+          category: string;
+          price_zone1_ht: number;
+          position: number;
+          active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          label: string;
+          category: string;
+          price_zone1_ht?: number;
+          position?: number;
+          active?: boolean;
+        };
+        Update: Partial<Database["public"]["Tables"]["bpu_forfaits"]["Insert"]>;
+      };
       materials: {
         Row: {
           id: string;
