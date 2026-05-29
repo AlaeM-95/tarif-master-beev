@@ -25,6 +25,7 @@ import { CategoryField } from "@/components/category-field";
 import { MarginSelect } from "@/components/margin-select";
 import { RefreshButton } from "@/components/refresh-button";
 import { SaveIndicator } from "@/components/save-indicator";
+import { useMaterials, materialToLineItem, MATERIAL_CATEGORIES, type Material } from "@/lib/materials";
 import { useAuth } from "@/lib/auth";
 import { useProposals, useProposal } from "@/lib/proposals";
 import { usePdfConfig } from "@/lib/pdf-config";
@@ -1239,9 +1240,14 @@ function SelectedChargerRow({ sc, onChange, onRemove }: { sc: SelectedCharger; o
               </div>
             );
           })}
-          <Button variant="outline" size="sm" onClick={addLi} className="w-full gap-1 h-7 text-xs">
-            <Plus className="w-3 h-3" /> Ajouter une ligne
-          </Button>
+          <div className="grid grid-cols-2 gap-1">
+            <Button variant="outline" size="sm" onClick={addLi} className="gap-1 h-7 text-xs">
+              <Plus className="w-3 h-3" /> Ligne vide
+            </Button>
+            <MaterialPicker
+              onPick={(m) => onChange({ lineItems: [...sc.lineItems, materialToLineItem(m)] })}
+            />
+          </div>
           <div className="rounded-md border border-[#35DA76]/30 bg-[#35DA76]/5 p-2 space-y-1 text-xs">
             <div className="flex justify-between"><span className="text-muted-foreground">Total achat</span><span className="font-semibold">{fmtEur(totalAchat)}</span></div>
             <div className="flex justify-between text-[#3809EA]"><span>Marge totale</span><span className="font-semibold">{fmtEur(margeAbs)} ({margePct.toFixed(1)} %)</span></div>
@@ -1250,6 +1256,112 @@ function SelectedChargerRow({ sc, onChange, onRemove }: { sc: SelectedCharger; o
         </div>
       )}
     </div>
+  );
+}
+
+// Bouton + dialogue : permet d'ajouter un matériel du catalogue (table materials)
+// comme ligne de chiffrage sur une borne. Le prix par défaut est le prix de vente
+// minimum du catalogue ; le commercial peut ensuite l'ajuster.
+function MaterialPicker({ onPick }: { onPick: (m: Material) => void }) {
+  const { data: materials = [], isLoading } = useMaterials();
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState<string>("all");
+  const [search, setSearch] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    return materials.filter((m) => {
+      if (filter !== "all" && m.category !== filter) return false;
+      if (!q) return true;
+      return (
+        m.label.toLowerCase().includes(q) ||
+        (m.brand ?? "").toLowerCase().includes(q) ||
+        (m.model ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [materials, filter, search]);
+
+  // Catégories réellement présentes dans le catalogue (pour ne pas afficher
+  // d'onglets vides).
+  const usedCategories = useMemo(() => {
+    const set = new Set(materials.map((m) => m.category));
+    return Array.from(set).sort();
+  }, [materials]);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="gap-1 h-7 text-xs">
+          <Plus className="w-3 h-3" /> Catalogue matériel
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Ajouter un matériel au chiffrage</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 overflow-hidden flex flex-col flex-1">
+          <Input
+            placeholder="Rechercher un matériel, marque, modèle..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-8"
+          />
+          <div className="flex flex-wrap gap-1">
+            <Button
+              size="sm"
+              variant={filter === "all" ? "default" : "outline"}
+              onClick={() => setFilter("all")}
+              className="h-6 text-[11px]"
+            >
+              Toutes ({materials.length})
+            </Button>
+            {usedCategories.map((cat) => {
+              const count = materials.filter((m) => m.category === cat).length;
+              return (
+                <Button
+                  key={cat}
+                  size="sm"
+                  variant={filter === cat ? "default" : "outline"}
+                  onClick={() => setFilter(cat)}
+                  className="h-6 text-[11px]"
+                >
+                  {MATERIAL_CATEGORIES[cat] ?? cat} ({count})
+                </Button>
+              );
+            })}
+          </div>
+          <div className="flex-1 overflow-y-auto rounded-md border">
+            {isLoading && <p className="p-4 text-xs text-muted-foreground">Chargement du catalogue...</p>}
+            {!isLoading && filtered.length === 0 && (
+              <p className="p-4 text-xs text-muted-foreground">Aucun matériel ne correspond à votre recherche.</p>
+            )}
+            {!isLoading && filtered.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => {
+                  onPick(m);
+                  setOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 border-b last:border-b-0 hover:bg-accent/40 flex items-center justify-between gap-3"
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-medium truncate">{m.label}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {MATERIAL_CATEGORIES[m.category] ?? m.category}
+                    {m.brand ? ` · ${m.brand}` : ""}
+                  </p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-xs font-semibold text-[#3809EA]">{fmtEur(m.priceSellMinHt)} HT</p>
+                  <p className="text-[10px] text-muted-foreground">Achat {fmtEur(m.priceBuyHt)}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

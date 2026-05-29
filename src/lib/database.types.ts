@@ -86,6 +86,33 @@ export type Database = {
         };
         Update: Partial<Database["public"]["Tables"]["chargers"]["Insert"]>;
       };
+      materials: {
+        Row: {
+          id: string;
+          label: string;
+          brand: string | null;
+          model: string | null;
+          category: string;
+          price_buy_ht: number;
+          price_sell_min_ht: number;
+          position: number;
+          active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          label: string;
+          brand?: string | null;
+          model?: string | null;
+          category: string;
+          price_buy_ht?: number;
+          price_sell_min_ht?: number;
+          position?: number;
+          active?: boolean;
+        };
+        Update: Partial<Database["public"]["Tables"]["materials"]["Insert"]>;
+      };
       profiles: {
         Row: {
           id: string;
