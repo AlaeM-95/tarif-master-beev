@@ -60,6 +60,10 @@ function App() {
 
   // Auto-save : restaure les sélections depuis localStorage au montage.
   // Le commercial peut ainsi recharger la page sans perdre son travail.
+  // ATTENTION : pas d'init via localStorage dans useState() ni de Date.now()
+  // dans le fallback — ça créerait un mismatch SSR/client (React error #418).
+  // On initialise avec un état vide stable, puis on hydrate depuis localStorage
+  // dans un useEffect côté client uniquement (après hydration).
   const SK_V = "beev_session_selected_v";
   const SK_C = "beev_session_selected_c";
   const SK_CLIENT = "beev_session_client";
@@ -72,28 +76,50 @@ function App() {
       return fallback;
     }
   };
-  const [selectedV, setSelectedV] = useState<Record<string, SelectedVehicle>>(() => loadFromStorage(SK_V, {}));
-  const [selectedC, setSelectedC] = useState<Record<string, SelectedCharger>>(() => loadFromStorage(SK_C, {}));
-  const [presenting, setPresenting] = useState(false);
 
-  const [client, setClient] = useState(() => loadFromStorage(SK_CLIENT, {
+  const [selectedV, setSelectedV] = useState<Record<string, SelectedVehicle>>({});
+  const [selectedC, setSelectedC] = useState<Record<string, SelectedCharger>>({});
+  const [presenting, setPresenting] = useState(false);
+  const [client, setClient] = useState({
     company: "", contact: "", email: "",
     salesRep: "", salesRepEmail: "", salesRepPhone: "",
-    date: new Date().toLocaleDateString("fr-FR"),
+    date: "",
     notes: "",
-  }));
+  });
 
-  // Persiste automatiquement chaque changement en localStorage
+  // Garde-fou : ne persiste pas tant que la première hydration depuis localStorage
+  // n'a pas eu lieu, sinon on écraserait les données sauvegardées avec l'état vide
+  // initial juste après mount.
+  const hydratedRef = useRef(false);
+
+  // Hydratation depuis localStorage : exclusivement côté client, après mount.
+  // Garantit un rendu SSR/client identique au premier passage.
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    setSelectedV(loadFromStorage(SK_V, {}));
+    setSelectedC(loadFromStorage(SK_C, {}));
+    setClient(
+      loadFromStorage(SK_CLIENT, {
+        company: "", contact: "", email: "",
+        salesRep: "", salesRepEmail: "", salesRepPhone: "",
+        date: new Date().toLocaleDateString("fr-FR"),
+        notes: "",
+      }),
+    );
+    hydratedRef.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persistance automatique de chaque changement en localStorage (post-hydration).
+  useEffect(() => {
+    if (!hydratedRef.current || typeof window === "undefined") return;
     try { localStorage.setItem(SK_V, JSON.stringify(selectedV)); } catch { /* ignore */ }
   }, [selectedV]);
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!hydratedRef.current || typeof window === "undefined") return;
     try { localStorage.setItem(SK_C, JSON.stringify(selectedC)); } catch { /* ignore */ }
   }, [selectedC]);
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!hydratedRef.current || typeof window === "undefined") return;
     try { localStorage.setItem(SK_CLIENT, JSON.stringify(client)); } catch { /* ignore */ }
   }, [client]);
 
