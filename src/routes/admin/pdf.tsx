@@ -141,6 +141,16 @@ function SettingsForm({ settings, onSave }: { settings: PdfSettings; onSave: (pa
           </div>
 
           <div className="space-y-1">
+            <Label className="text-xs">Sous-titre du catalogue (page de sélection commerciale)</Label>
+            <Input
+              value={draft.catalogSubtitle ?? ""}
+              onChange={(e) => setDraft({ ...draft, catalogSubtitle: e.target.value })}
+              onBlur={() => save({ catalogSubtitle: draft.catalogSubtitle })}
+              placeholder="Ex : Kit clé en main, supervision et remboursement automatisé."
+            />
+          </div>
+
+          <div className="space-y-1">
             <Label className="text-xs">"Pourquoi Beev" — paragraphe d'intro</Label>
             <Textarea
               value={draft.whyBeevIntro ?? ""}

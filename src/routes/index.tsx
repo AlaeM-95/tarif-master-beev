@@ -30,6 +30,7 @@ import { useBpuForfaits, bpuForfaitToLineItem, BPU_CATEGORIES, BPU_ZONE_COEFFICI
 import { useAuth } from "@/lib/auth";
 import { useProposals, useProposal } from "@/lib/proposals";
 import { usePdfConfig } from "@/lib/pdf-config";
+import { usePdfSettings } from "@/lib/pdf-settings";
 
 type IndexSearch = { proposal?: string };
 
@@ -271,6 +272,16 @@ function App() {
   const [marginDialog, setMarginDialog] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const { config: pdfConfig, update: updatePdfConfig, reset: resetPdfConfig } = usePdfConfig();
+  // Sous-titres de catalogue éditables par type de projet (depuis /admin/pdf).
+  const { getSettings: getPdfSettings } = usePdfSettings();
+  const catalogSubtitleFor = (type: "vehicles" | "home" | "site"): string => {
+    const s = getPdfSettings(type);
+    if (s?.catalogSubtitle && s.catalogSubtitle.trim().length > 0) return s.catalogSubtitle;
+    // Fallback si la migration 011 n'est pas encore appliquée
+    if (type === "vehicles") return "Catalogue synchronisé avec le calculateur TCO Beev. Loyers exprimés en TTC.";
+    if (type === "home") return "Kit B2B2E clé en main · pose jusqu'à 10 m incluse · supervision et remboursement automatisé.";
+    return "Devis détaillé site par site (matériel + IRVE + génie civil).";
+  };
 
   // Génère le PDF avec try/catch + timeout pour ne jamais bloquer une re-génération.
   // En cas d'erreur (réseau Supabase, navigateur, etc.), affiche un toast
@@ -401,7 +412,7 @@ function App() {
           {projectType === "vehicles" && (
             <CatalogSection
               title={`Véhicules (${filteredVehicles.length}${filteredVehicles.length !== vehicles.length ? ` / ${vehicles.length}` : ""})`}
-              subtitle="Catalogue synchronisé avec le calculateur TCO Beev. Loyers exprimés en TTC."
+              subtitle={catalogSubtitleFor("vehicles")}
               isAdmin={isAdmin}
               itemCount={vehicles.length}
               onDeleteAll={isAdmin ? () => { setSelectedV({}); removeAllVehicles(); } : undefined}
@@ -483,7 +494,7 @@ function App() {
           {projectType === "home" && (
             <CatalogSection
               title={`Bornes domicile collaborateurs (${chargersHome.length})`}
-              subtitle="Kit B2B2E clé en main · pose 0–10 m incluse · supervision & remboursement automatisé."
+              subtitle={catalogSubtitleFor("home")}
               isAdmin={isAdmin}
               itemCount={chargersHome.length}
               onDeleteAll={isAdmin ? () => { setSelectedC({}); removeAllByDeployment("domicile"); } : undefined}
@@ -511,7 +522,7 @@ function App() {
           {projectType === "site" && (
             <CatalogSection
               title={`Bornes site entreprise (${chargersSite.length})`}
-              subtitle="Devis détaillé site par site (matériel + IRVE + génie civil)."
+              subtitle={catalogSubtitleFor("site")}
               isAdmin={isAdmin}
               itemCount={chargersSite.length}
               onDeleteAll={isAdmin ? () => { setSelectedC({}); removeAllByDeployment("site"); } : undefined}

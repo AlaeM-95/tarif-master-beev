@@ -20,6 +20,7 @@ export type PdfSettings = {
   validationConditions: string | null;
   validationBpaText: string | null;
   validationBpaTitle: string | null;
+  catalogSubtitle: string | null;
 };
 
 export type JourneyStep = {
@@ -49,6 +50,7 @@ function dbToSettings(row: PdfSettingsRow): PdfSettings {
     validationConditions: row.validation_conditions,
     validationBpaText: row.validation_bpa_text,
     validationBpaTitle: row.validation_bpa_title,
+    catalogSubtitle: row.catalog_subtitle,
   };
 }
 
@@ -119,6 +121,7 @@ export function usePdfSettings() {
     if (patch.validationConditions !== undefined) dbPatch.validation_conditions = patch.validationConditions;
     if (patch.validationBpaText !== undefined) dbPatch.validation_bpa_text = patch.validationBpaText;
     if (patch.validationBpaTitle !== undefined) dbPatch.validation_bpa_title = patch.validationBpaTitle;
+    if (patch.catalogSubtitle !== undefined) dbPatch.catalog_subtitle = patch.catalogSubtitle;
 
     const { error } = await supabase
       .from("pdf_settings")

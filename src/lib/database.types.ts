@@ -165,6 +165,7 @@ export type Database = {
           validation_conditions: string | null;
           validation_bpa_text: string | null;
           validation_bpa_title: string | null;
+          catalog_subtitle: string | null;
           updated_at: string;
         };
         Insert: {
@@ -181,6 +182,7 @@ export type Database = {
           validation_conditions?: string | null;
           validation_bpa_text?: string | null;
           validation_bpa_title?: string | null;
+          catalog_subtitle?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["pdf_settings"]["Insert"]>;
       };
