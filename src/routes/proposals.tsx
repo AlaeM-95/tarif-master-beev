@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Search, FileText, Car, Home as HomeIcon, Building2, Calendar, Trash2 } from "lucide-react";
+import { ArrowLeft, Search, FileText, Car, Home as HomeIcon, Building2, Calendar, Trash2, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,7 +29,8 @@ const STATUS_FILTERS: Array<{ key: ProposalStatus | "all"; label: string }> = [
 function ProposalsPage() {
   const { isAdmin, loading } = useAuth();
   const navigate = useNavigate();
-  const { proposals, isLoading, remove } = useProposals();
+  const { proposals, isLoading, remove, duplicate } = useProposals();
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<ProposalStatus | "all">("all");
 
@@ -147,9 +148,31 @@ function ProposalsPage() {
                         </p>
                       </div>
                     </Link>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-[#3809EA]"
+                      disabled={duplicatingId === p.id}
+                      title="Dupliquer cette proposition"
+                      onClick={async () => {
+                        setDuplicatingId(p.id);
+                        const res = await duplicate(p.id);
+                        setDuplicatingId(null);
+                        if (res.error) {
+                          toast.error(`Échec duplication : ${res.error}`);
+                          return;
+                        }
+                        if (res.id) {
+                          toast.success("Proposition dupliquée");
+                          navigate({ to: "/", search: { proposal: res.id } });
+                        }
+                      }}
+                    >
+                      <Copy className="w-4 h-4" />
+                    </Button>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="text-destructive h-8 w-8">
+                        <Button variant="ghost" size="icon" className="text-destructive h-8 w-8" title="Supprimer">
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </AlertDialogTrigger>

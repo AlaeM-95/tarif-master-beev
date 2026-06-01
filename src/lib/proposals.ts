@@ -210,7 +210,46 @@ export function useProposals() {
     return { error: null };
   };
 
-  return { proposals, isLoading, save, updateStatus, updateFollowUp, updateInternalNotes, remove };
+  // Crée une copie d'une proposition existante avec un nouvel id et un statut
+  // 'draft'. Le nom de société est suffixé '(copie)' pour différencier visuel-
+  // lement et désamorcer la détection de doublon à la prochaine sauvegarde.
+  const duplicate = async (id: string): Promise<{ id: string | null; error: string | null }> => {
+    const original = await fetchProposal(id);
+    if (!original) return { id: null, error: "Proposition source introuvable" };
+    const total = computeTotal(original.selectedVehicles, original.selectedChargers);
+    const { data: { user } } = await supabase.auth.getUser();
+    const row: ProposalInsert = {
+      client_company: `${original.clientCompany} (copie)`,
+      client_contact: original.clientContact || null,
+      client_email: original.clientEmail || null,
+      client_notes: original.clientNotes || null,
+      proposal_date: original.proposalDate || null,
+      sales_rep_name: original.salesRepName || null,
+      sales_rep_email: original.salesRepEmail || null,
+      sales_rep_phone: original.salesRepPhone || null,
+      project_type: original.projectType,
+      selected_vehicles: original.selectedVehicles as unknown as Database["public"]["Tables"]["proposals"]["Insert"]["selected_vehicles"],
+      selected_chargers: original.selectedChargers as unknown as Database["public"]["Tables"]["proposals"]["Insert"]["selected_chargers"],
+      energy_params: original.energyParams as unknown as Database["public"]["Tables"]["proposals"]["Insert"]["energy_params"],
+      total_amount: total,
+      vehicle_count: original.selectedVehicles.length,
+      charger_count: original.selectedChargers.length,
+      status: "draft",
+      follow_up_date: null,
+      internal_notes: original.internalNotes || null,
+      created_by: user?.id ?? null,
+    };
+    const { data, error } = await supabase
+      .from("proposals")
+      .insert(row)
+      .select("id")
+      .single();
+    if (error || !data) return { id: null, error: error?.message ?? "Duplication échouée" };
+    await qc.invalidateQueries({ queryKey: ["proposals"] });
+    return { id: data.id, error: null };
+  };
+
+  return { proposals, isLoading, save, updateStatus, updateFollowUp, updateInternalNotes, remove, duplicate };
 }
 
 export function useProposal(id: string | undefined) {
