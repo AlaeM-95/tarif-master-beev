@@ -396,10 +396,21 @@ function App() {
   };
 
   if (presenting) {
+    // Mode présentation : on rebranche les sélections sur la version actuelle
+    // du catalogue (image, prix, description, etc.) pour que les modifs admin
+    // soient visibles côté client sans avoir à décocher/recocher.
+    const freshV = Object.values(selectedV).map((sv) => {
+      const fresh = vehicles.find((v) => v.id === sv.vehicle.id);
+      return fresh ? { ...sv, vehicle: fresh } : sv;
+    });
+    const freshC = Object.values(selectedC).map((sc) => {
+      const fresh = chargers.find((c) => c.id === sc.charger.id);
+      return fresh ? { ...sc, charger: fresh } : sc;
+    });
     return <PresentationMode
       projectType={projectType} client={client} energy={energy}
-      vehicles={Object.values(selectedV)}
-      chargers={Object.values(selectedC)}
+      vehicles={freshV}
+      chargers={freshC}
       onClose={() => setPresenting(false)}
       onExport={exportPdf}
     />;
