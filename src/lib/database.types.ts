@@ -88,6 +88,33 @@ export type Database = {
         };
         Update: Partial<Database["public"]["Tables"]["chargers"]["Insert"]>;
       };
+      proposal_templates: {
+        Row: {
+          id: string;
+          name: string;
+          description: string | null;
+          project_type: "vehicles" | "home" | "site";
+          selected_vehicles: Json;
+          selected_chargers: Json;
+          energy_params: Json | null;
+          position: number;
+          active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          description?: string | null;
+          project_type: "vehicles" | "home" | "site";
+          selected_vehicles?: Json;
+          selected_chargers?: Json;
+          energy_params?: Json | null;
+          position?: number;
+          active?: boolean;
+        };
+        Update: Partial<Database["public"]["Tables"]["proposal_templates"]["Insert"]>;
+      };
       pdf_texts: {
         Row: {
           id: string;

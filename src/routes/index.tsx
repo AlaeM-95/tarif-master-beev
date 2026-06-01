@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen } from "lucide-react";
+import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type EnergyParams } from "@/lib/store";
 import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, type SelectedCharger, type SelectedVehicle } from "@/lib/pdf";
@@ -31,6 +31,7 @@ import { useAuth } from "@/lib/auth";
 import { useProposals, useProposal } from "@/lib/proposals";
 import { usePdfConfig } from "@/lib/pdf-config";
 import { usePdfSettings } from "@/lib/pdf-settings";
+import { useProposalTemplates } from "@/lib/proposal-templates";
 
 type IndexSearch = { proposal?: string };
 
@@ -153,6 +154,12 @@ function App() {
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   // Dialogue de confirmation si une proposition pour le même client existe déjà.
   const [duplicateDialog, setDuplicateDialog] = useState<{ open: boolean; existing: string | null }>({ open: false, existing: null });
+  // Templates de propositions : permet de sauvegarder l'état courant comme
+  // modèle réutilisable, ou de démarrer une nouvelle proposition depuis un
+  // modèle existant. Les infos client ne sont jamais incluses dans le template.
+  const { templates, create: createTemplate, remove: removeTemplate } = useProposalTemplates();
+  const [saveTplDialog, setSaveTplDialog] = useState<{ open: boolean; name: string; description: string }>({ open: false, name: "", description: "" });
+  const [pickTplDialog, setPickTplDialog] = useState(false);
   // Détecte si une proposition pour le même client existe déjà (cas "create"
   // uniquement — quand on met à jour, on travaille sur une proposition connue).
   const findDuplicateProposal = (companyName: string): string | null => {
@@ -204,6 +211,41 @@ function App() {
       }
     } finally {
       setIsSavingProposal(false);
+    }
+  };
+
+  // Charge un template dans l'état courant. Les infos client/commercial sont
+  // préservées (jamais incluses dans le template). Bascule le type de projet
+  // sur celui du template pour cohérence d'affichage.
+  const applyTemplate = (t: { projectType: ProjectType; selectedVehicles: SelectedVehicle[]; selectedChargers: SelectedCharger[]; energyParams: EnergyParams | null }) => {
+    setProjectType(t.projectType);
+    const sv: Record<string, SelectedVehicle> = {};
+    t.selectedVehicles.forEach((v) => { sv[v.vehicle.id] = v; });
+    setSelectedV(sv);
+    const sc: Record<string, SelectedCharger> = {};
+    t.selectedChargers.forEach((c) => { sc[c.charger.id] = c; });
+    setSelectedC(sc);
+    if (t.energyParams) setEnergy(t.energyParams);
+  };
+
+  const handleSaveAsTemplate = async () => {
+    if (!saveTplDialog.name.trim()) {
+      toast.error("Le nom du template est requis");
+      return;
+    }
+    try {
+      await createTemplate.mutateAsync({
+        name: saveTplDialog.name.trim(),
+        description: saveTplDialog.description.trim() || null,
+        projectType,
+        selectedVehicles: Object.values(selectedV),
+        selectedChargers: Object.values(selectedC),
+        energyParams: energy,
+      });
+      toast.success(`Template "${saveTplDialog.name.trim()}" enregistré`);
+      setSaveTplDialog({ open: false, name: "", description: "" });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erreur sauvegarde template");
     }
   };
 
@@ -453,6 +495,109 @@ function App() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {/* Dialogue : sauver la sélection actuelle comme template réutilisable */}
+      <Dialog open={saveTplDialog.open} onOpenChange={(o) => setSaveTplDialog({ ...saveTplDialog, open: o })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Enregistrer comme template</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Nom du template *</Label>
+              <Input
+                value={saveTplDialog.name}
+                onChange={(e) => setSaveTplDialog({ ...saveTplDialog, name: e.target.value })}
+                placeholder="Ex : Starter PME 10 VE, Flotte 50 véhicules, Audit IRVE multi-sites"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Description (optionnelle)</Label>
+              <Textarea
+                value={saveTplDialog.description}
+                onChange={(e) => setSaveTplDialog({ ...saveTplDialog, description: e.target.value })}
+                placeholder="Quand utiliser ce template, à qui s'adresse-t-il, particularités..."
+                className="min-h-[80px]"
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {Object.keys(selectedV).length} véhicule(s) et {Object.keys(selectedC).length} borne(s)
+              seront enregistrés. Les informations client ne sont jamais incluses.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSaveTplDialog({ open: false, name: "", description: "" })}>
+              Annuler
+            </Button>
+            <Button onClick={handleSaveAsTemplate} disabled={!saveTplDialog.name.trim() || createTemplate.isPending}>
+              {createTemplate.isPending ? "Enregistrement..." : "Enregistrer le template"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialogue : démarrer une nouvelle proposition depuis un template */}
+      <Dialog open={pickTplDialog} onOpenChange={setPickTplDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Démarrer depuis un template</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto space-y-2 py-2">
+            {templates.length === 0 && (
+              <p className="text-sm text-muted-foreground py-8 text-center">
+                Aucun template enregistré pour l'instant. Construisez une sélection et
+                cliquez sur "Sauver comme template" pour en créer un.
+              </p>
+            )}
+            {templates.map((t) => (
+              <div key={t.id} className="rounded-md border border-border p-3 flex items-start justify-between gap-3 hover:bg-accent/30">
+                <button
+                  type="button"
+                  className="flex-1 text-left min-w-0"
+                  onClick={() => {
+                    applyTemplate(t);
+                    setPickTplDialog(false);
+                    toast.success(`Template "${t.name}" chargé`);
+                  }}
+                >
+                  <p className="text-sm font-semibold">{t.name}</p>
+                  {t.description && <p className="text-xs text-muted-foreground mt-0.5">{t.description}</p>}
+                  <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wide">
+                    {t.projectType === "vehicles" ? "Véhicules" : t.projectType === "home" ? "Bornes domicile" : "Bornes site"}
+                    {" · "}
+                    {t.selectedVehicles.length} véhicule(s)
+                    {" · "}
+                    {t.selectedChargers.length} borne(s)
+                  </p>
+                </button>
+                {isAdmin && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-destructive flex-shrink-0"
+                    title="Supprimer ce template"
+                    onClick={async () => {
+                      if (!confirm(`Supprimer définitivement le template "${t.name}" ?`)) return;
+                      try {
+                        await removeTemplate.mutateAsync(t.id);
+                        toast.success("Template supprimé");
+                      } catch (e) {
+                        toast.error(e instanceof Error ? e.message : "Erreur");
+                      }
+                    }}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPickTplDialog(false)}>Fermer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <MarginReviewDialog
         open={marginDialog}
         onClose={() => setMarginDialog(false)}
@@ -483,6 +628,27 @@ function App() {
             {isAdmin && (
               <Button asChild variant="ghost" size="sm" className="gap-2">
                 <a href="/proposals"><FolderOpen className="w-4 h-4" /> Mes propositions</a>
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPickTplDialog(true)}
+              className="gap-2"
+              title="Démarrer une nouvelle proposition depuis un template existant"
+            >
+              <FileText className="w-4 h-4" /> Templates
+            </Button>
+            {isAdmin && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSaveTplDialog({ open: true, name: "", description: "" })}
+                disabled={visibleCount === 0}
+                className="gap-2"
+                title="Enregistrer la sélection actuelle comme template réutilisable"
+              >
+                <Save className="w-4 h-4" /> Sauver comme template
               </Button>
             )}
             {isAdmin && (
