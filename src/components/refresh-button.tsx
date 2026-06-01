@@ -15,8 +15,8 @@ export function RefreshButton() {
     if (refreshing) return;
     setRefreshing(true);
     try {
-      // Liste exhaustive des queryKeys à invalider. Inclut les nouvelles tables
-      // (materials, bpu_forfaits, beev_pillars, pdf_texts) qui ne l'étaient pas.
+      // Liste exhaustive des queryKeys à rafraîchir. Inclut les nouvelles
+      // tables (materials, bpu_forfaits, beev_pillars, pdf_texts, templates).
       const keys: Array<readonly unknown[]> = [
         ["vehicles"],
         ["chargers"],
@@ -28,26 +28,34 @@ export function RefreshButton() {
         ["bpu_forfaits"],
         ["beev_pillars"],
         ["pdf_texts"],
+        ["proposal_templates"],
       ];
 
-      // Parallélisation : avant les resetQueries étaient await en série, ce
-      // qui dépassait facilement les 8s du timeout dès qu'une requête traînait.
-      // Maintenant tout part en parallèle et on attend l'ensemble. Chaque
-      // queryKey absent du QueryProvider est silencieusement no-op.
-      const refetchAll = Promise.all(
-        keys.map((k) =>
-          queryClient.resetQueries({ queryKey: k as readonly any[] }).catch((e) => {
-            console.warn(`[refresh] reset ${k.join("/")} a échoué :`, e);
-          }),
-        ),
-      );
+      // refetchQueries plutôt que resetQueries : on garde le cache (données
+      // visibles pendant le refresh) et on déclenche juste un refetch en
+      // arrière-plan. Plus rapide perçu, moins de risque que des composants
+      // suspendent. Batché par groupes de 4 pour éviter de saturer Supabase
+      // (qui peut rate-limit au-delà de 5-6 connexions parallèles).
+      const refetchBatched = async () => {
+        const batchSize = 4;
+        for (let i = 0; i < keys.length; i += batchSize) {
+          const batch = keys.slice(i, i + batchSize);
+          await Promise.all(
+            batch.map((k) =>
+              queryClient.refetchQueries({ queryKey: k as readonly any[] }).catch((e) => {
+                console.warn(`[refresh] refetch ${k.join("/")} a échoué :`, e);
+              }),
+            ),
+          );
+        }
+      };
 
-      // Timeout plus généreux (20s) car on attend TOUS les fetches en parallèle.
-      // Si ça dépasse 20s c'est vraiment que Supabase est down.
+      // Timeout 45s : généreux car le total est ~3 vagues. Si ça dépasse,
+      // c'est vraiment que Supabase rame ou est down.
       const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Timeout (20s). Vérifiez votre connexion Supabase.")), 20000),
+        setTimeout(() => reject(new Error("Timeout (45s). Supabase semble très lent — réessayez dans quelques secondes.")), 45000),
       );
-      await Promise.race([refetchAll, timeout]);
+      await Promise.race([refetchBatched(), timeout]);
       toast.success("Données rafraîchies");
     } catch (err) {
       console.error("[refresh] erreur :", err);

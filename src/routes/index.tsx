@@ -1155,19 +1155,21 @@ function TcoCalculator({
   }, [vehicles, search]);
 
   // Calcul TCO complet (porté de beev-tco-2026 — fiscalCalculations.ts) :
-  // inclut TVS, malus CO2, malus poids, AND, AEN. Le résultat brut est riche ;
-  // on en extrait les KPIs principaux pour le tableau et un détail fiscal.
-  // CRUCIAL : on utilise sv.negotiatedMonthly (loyer négocié côté droit) plutôt
-  // que v.monthlyLld pour rester cohérent avec ce que voit le commercial.
+  // inclut TVS, malus CO2, malus poids, AND, AEN.
+  // En mode TCO, on utilise les paramètres ÉNERGIE GLOBAUX (carte du haut)
+  // pour TOUS les véhicules : durée et km/an de la carte plutôt que les
+  // valeurs capturées à la sélection. Ainsi modifier les paramètres énergie
+  // recalcule instantanément toutes les fiches sans avoir à re-cocher.
+  // Le loyer reste celui négocié dans le panneau droit (sv.negotiatedMonthly).
   const tcoRows = useMemo(() => {
+    const contractParams: TcoContractParams = {
+      dureeAnnees: energy.durationYears,
+      kmContrat: energy.kmPerYear * energy.durationYears,
+      prixEssenceLitre: energy.fuelPriceL,
+      prixKwhDomicile: energy.kWhHome,
+      prixKwhPublic: energy.kWhPublic,
+    };
     return Object.values(selectedV).map((sv) => {
-      const contractParams: TcoContractParams = {
-        dureeAnnees: sv.durationMonths / 12,
-        kmContrat: (sv.kmPerYear * sv.durationMonths) / 12,
-        prixEssenceLitre: energy.fuelPriceL,
-        prixKwhDomicile: energy.kWhHome,
-        prixKwhPublic: energy.kWhPublic,
-      };
       const r = calculateTcoFull(sv.vehicle, contractParams, sv.negotiatedMonthly);
       const tco100 = r.tcoParKm * 100;
       const lease100 = (r.loyerTotal / contractParams.kmContrat) * 100;
