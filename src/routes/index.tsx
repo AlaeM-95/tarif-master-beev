@@ -398,12 +398,33 @@ function App() {
       const timeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("Génération trop longue (30s). Vérifiez votre connexion.")), 30000),
       );
+      // En mode TCO, on force une config focalisée : pas de page Pourquoi
+      // Beev, ni Garanties, ni Parcours, ni Synthèse exec. La page TCO
+      // comparative + les blocs TCO par véhicule sont le seul contenu utile.
+      // Les véhicules sélectionnés ont automatiquement includeTco=true pour
+      // que le bloc TCO s'affiche sur chaque fiche.
+      const tcoFocusedConfig = tcoView ? {
+        ...pdfConfig,
+        showWhyBeev: false,
+        showSocialProof: false,
+        showTcoComparison: true,
+        showFinancialSummary: false,
+        showGuarantees: false,
+        showJourney: false,
+        showExecutiveSummary: false,
+        showVehicleTcoBlock: true,
+        showVehicleServices: false,
+        showVehicleOptions: false,
+      } : pdfConfig;
+      const vehiclesForPdf = tcoView
+        ? freshVehicles.map((sv) => ({ ...sv, includeTco: true }))
+        : freshVehicles;
       await Promise.race([
         generateProposalPdf({
           projectType, client, energy,
-          vehicles: freshVehicles,
+          vehicles: vehiclesForPdf,
           chargers: freshChargers,
-          pdfConfig,
+          pdfConfig: tcoFocusedConfig,
         }),
         timeout,
       ]);
@@ -691,7 +712,7 @@ function App() {
               {isGenerating ? (
                 <><RotateCcw className="w-4 h-4 animate-spin" /> Génération...</>
               ) : (
-                <><FileDown className="w-4 h-4" /> Générer le PDF</>
+                <><FileDown className="w-4 h-4" /> {tcoView ? "Générer PDF TCO" : "Générer le PDF"}</>
               )}
             </Button>
           </div>
