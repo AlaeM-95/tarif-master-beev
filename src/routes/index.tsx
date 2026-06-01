@@ -33,6 +33,10 @@ import { usePdfConfig } from "@/lib/pdf-config";
 import { usePdfSettings } from "@/lib/pdf-settings";
 import { useProposalTemplates } from "@/lib/proposal-templates";
 import { calculateTcoFull, type TcoContractParams } from "@/lib/tco-calculator";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  PieChart, Pie, Cell, LabelList,
+} from "recharts";
 
 type IndexSearch = { proposal?: string };
 
@@ -1151,9 +1155,10 @@ function TcoCalculator({
   }, [vehicles, search]);
 
   // Calcul TCO complet (porté de beev-tco-2026 — fiscalCalculations.ts) :
-  // inclut TVS, malus CO2, malus poids, AND, AEN. Le résultat brut est
-  // riche ; on en extrait les KPIs principaux pour le tableau, le détail
-  // fiscal est affiché dans une seconde carte.
+  // inclut TVS, malus CO2, malus poids, AND, AEN. Le résultat brut est riche ;
+  // on en extrait les KPIs principaux pour le tableau et un détail fiscal.
+  // CRUCIAL : on utilise sv.negotiatedMonthly (loyer négocié côté droit) plutôt
+  // que v.monthlyLld pour rester cohérent avec ce que voit le commercial.
   const tcoRows = useMemo(() => {
     return Object.values(selectedV).map((sv) => {
       const contractParams: TcoContractParams = {
@@ -1163,7 +1168,7 @@ function TcoCalculator({
         prixKwhDomicile: energy.kWhHome,
         prixKwhPublic: energy.kWhPublic,
       };
-      const r = calculateTcoFull(sv.vehicle, contractParams);
+      const r = calculateTcoFull(sv.vehicle, contractParams, sv.negotiatedMonthly);
       const tco100 = r.tcoParKm * 100;
       const lease100 = (r.loyerTotal / contractParams.kmContrat) * 100;
       const energy100 = (r.coutEnergie / contractParams.kmContrat) * 100;
@@ -1223,8 +1228,8 @@ function TcoCalculator({
                     <p className="text-[11px] text-muted-foreground truncate">{v.version} · {v.energy}</p>
                   </div>
                   <div className="text-right text-xs flex-shrink-0">
-                    <p className="font-semibold">{fmtEur(v.monthlyLld)}</p>
-                    <p className="text-[10px] text-muted-foreground">/mois TTC</p>
+                    <p className="font-semibold">{fmtEur(selectedV[v.id]?.negotiatedMonthly ?? v.monthlyLld)}</p>
+                    <p className="text-[10px] text-muted-foreground">/mois TTC{selectedV[v.id] && selectedV[v.id].negotiatedMonthly !== v.monthlyLld ? " (négocié)" : ""}</p>
                   </div>
                 </button>
               );
@@ -1288,6 +1293,10 @@ function TcoCalculator({
         </Card>
       )}
 
+      {/* Graphiques TCO : bar chart empilé annuel + pie chart répartition.
+          Identique aux visuels de beev-tco-2026 pour cohérence d'expérience. */}
+      {tcoRows.length > 0 && <TcoCharts rows={tcoRows} />}
+
       {/* Détail fiscal complet : TVS, malus, AEN, AND par véhicule */}
       {tcoRows.length > 0 && (
         <Card>
@@ -1341,6 +1350,142 @@ function TcoCalculator({
         </Card>
       )}
     </div>
+  );
+}
+
+// ============ GRAPHIQUES TCO ============
+// Bar chart empilé annuel (loyer + énergie + TVS + malus) avec total au-dessus
+// de chaque barre, et pie chart de répartition pour le premier véhicule.
+// Inspiré directement de beev-tco-2026/src/components/TCOCharts.tsx pour
+// cohérence de présentation client.
+const TCO_CHART_COLORS = {
+  loyer: "#3809EA",   // bleu Beev (LAVENDER)
+  energie: "#35DA76", // vert Beev (ACCENT)
+  tvs: "#F5A623",     // orange
+  malus: "#E54B4B",   // rouge
+};
+
+const PIE_COLORS = ["#3809EA", "#35DA76", "#F5A623", "#E54B4B", "#A78BFA"];
+
+function fmt0(n: number): string {
+  return n.toLocaleString("fr-FR", { maximumFractionDigits: 0 });
+}
+
+function TcoCharts({ rows }: { rows: Array<{ sv: SelectedVehicle; full: ReturnType<typeof calculateTcoFull> }> }) {
+  // Données pour le bar chart : valeurs annuelles
+  const barData = useMemo(() => {
+    return rows.map((r) => {
+      const annees = r.sv.durationMonths / 12;
+      return {
+        name: `${r.sv.vehicle.brand} ${r.sv.vehicle.model}`,
+        loyer: r.full.loyerTotal / annees,
+        energie: r.full.coutEnergie / annees,
+        tvs: r.full.tvsTotal / annees,
+        malus: (r.full.malusCO2 + r.full.malusPoids) / annees,
+        tcoAnnuel: r.full.tcoAnnuel,
+      };
+    });
+  }, [rows]);
+
+  // Données pour le pie chart : répartition TCO du premier véhicule
+  const pieData = useMemo(() => {
+    if (rows.length === 0) return [];
+    const r = rows[0].full;
+    return [
+      { name: "Loyer", value: r.loyerTotal },
+      { name: "Énergie", value: r.coutEnergie },
+      { name: "TVS", value: r.tvsTotal },
+      { name: "Malus CO₂", value: r.malusCO2 },
+      { name: "Malus poids", value: r.malusPoids },
+    ].filter((d) => d.value > 0);
+  }, [rows]);
+
+  // Label personnalisé sur le sommet de chaque barre empilée pour le total annuel
+  const TotalLabel = (props: any) => {
+    const { x, y, width, index } = props;
+    if (index === undefined || !barData[index]) return null;
+    const total = barData[index].tcoAnnuel;
+    return (
+      <text x={x + width / 2} y={y - 6} textAnchor="middle" fill="#111111" fontSize={11} fontWeight={600}>
+        {fmt0(total)} €
+      </text>
+    );
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Graphiques comparaison TCO</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Décomposition annuelle du coût total de possession (gauche) et répartition détaillée pour
+          le premier véhicule sélectionné (droite). Cliquez sur les légendes pour masquer une
+          composante.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Bar chart empilé */}
+          <div className="space-y-2">
+            <h4 className="font-semibold text-xs uppercase text-muted-foreground tracking-wide">
+              TCO annuel par véhicule
+            </h4>
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={barData} margin={{ top: 25, right: 10, left: 10, bottom: 60 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#5F5F64" }} angle={-30} textAnchor="end" height={80} />
+                  <YAxis tick={{ fontSize: 11, fill: "#5F5F64" }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip
+                    formatter={(value: number, name: string) => [`${fmt0(value)} €`, name]}
+                    contentStyle={{ backgroundColor: "#FFFFFF", border: "1px solid #DCDAD4", borderRadius: 8, fontSize: 12 }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Bar dataKey="loyer" name="Loyer" stackId="a" fill={TCO_CHART_COLORS.loyer} />
+                  <Bar dataKey="energie" name="Énergie" stackId="a" fill={TCO_CHART_COLORS.energie} />
+                  <Bar dataKey="tvs" name="TVS" stackId="a" fill={TCO_CHART_COLORS.tvs} />
+                  <Bar dataKey="malus" name="Malus" stackId="a" fill={TCO_CHART_COLORS.malus} radius={[4, 4, 0, 0]}>
+                    <LabelList content={<TotalLabel />} position="top" />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Pie chart répartition */}
+          {rows.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="font-semibold text-xs uppercase text-muted-foreground tracking-wide">
+                Répartition TCO — {rows[0].sv.vehicle.brand} {rows[0].sv.vehicle.model}
+              </h4>
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={100}
+                      innerRadius={50}
+                      dataKey="value"
+                      label={({ name, percent, value }) => `${name} ${fmt0(value as number)} € (${((percent as number) * 100).toFixed(0)}%)`}
+                      labelLine={true}
+                    >
+                      {pieData.map((_, i) => (
+                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: number) => [`${fmt0(value)} €`, ""]}
+                      contentStyle={{ backgroundColor: "#FFFFFF", border: "1px solid #DCDAD4", borderRadius: 8, fontSize: 12 }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

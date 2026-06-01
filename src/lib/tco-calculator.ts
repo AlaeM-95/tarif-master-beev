@@ -158,10 +158,14 @@ function calculateCoutEnergie(
   return coutThermique;
 }
 
-// Fonction principale de calcul TCO
-export function calculateTcoFull(v: Vehicle, contract: TcoContractParams): TcoFullResult {
+// Fonction principale de calcul TCO. Le paramètre optionnel monthlyOverride
+// permet d'utiliser le loyer NÉGOCIÉ par le commercial (sv.negotiatedMonthly)
+// plutôt que le tarif catalogue (v.monthlyLld). Utilisé par le calculateur
+// TCO interactif pour rester cohérent avec la valeur affichée à droite.
+export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthlyOverride?: number): TcoFullResult {
   const dureeMois = contract.dureeAnnees * 12;
-  const loyerTotal = v.monthlyLld * dureeMois;
+  const monthly = monthlyOverride !== undefined && monthlyOverride > 0 ? monthlyOverride : v.monthlyLld;
+  const loyerTotal = monthly * dureeMois;
   const prixEssence = contract.prixEssenceLitre ?? DEFAULT_COUT_ESSENCE_LITRE;
   const prixKwhDom = contract.prixKwhDomicile ?? DEFAULT_COUT_KWH_DOMICILE;
   const prixKwhPub = contract.prixKwhPublic ?? DEFAULT_COUT_KWH_PUBLIC;
@@ -181,7 +185,7 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams): TcoFu
 
   // AEN — Avantage en Nature (méthode forfaitaire basée sur le loyer)
   // Taux forfaitaire 50% ; abattement 70% si EL avec éco-score, sinon 0%.
-  const baseAEN = v.monthlyLld * 12;
+  const baseAEN = monthly * 12;
   const tauxForfaitaire = 0.5;
   const aenBrut = baseAEN * tauxForfaitaire;
   const tauxAbattement = v.energy === "Électrique" && v.ecoScoreBool ? 0.7 : 0;
