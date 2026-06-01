@@ -334,6 +334,19 @@ function App() {
     if (isGenerating) return; // évite les double-clics rapides
     setIsGenerating(true);
     try {
+      // Avant génération : on rafraîchit les données catalogue (image, prix,
+      // description, etc.) des éléments sélectionnés en allant chercher la
+      // version actuelle dans le catalogue. Sans ça, une modif admin sur
+      // l'image d'une borne ne se voyait pas dans le PDF parce que selectedC
+      // gardait le snapshot pris au moment de la sélection.
+      const freshVehicles = Object.values(selectedV).map((sv) => {
+        const fresh = vehicles.find((v) => v.id === sv.vehicle.id);
+        return fresh ? { ...sv, vehicle: fresh } : sv;
+      });
+      const freshChargers = Object.values(selectedC).map((sc) => {
+        const fresh = chargers.find((c) => c.id === sc.charger.id);
+        return fresh ? { ...sc, charger: fresh } : sc;
+      });
       // Timeout de 30s : si une requête réseau hang (Supabase, fonts), on
       // débloque le bouton plutôt que de spinner indéfiniment.
       const timeout = new Promise<never>((_, reject) =>
@@ -342,8 +355,8 @@ function App() {
       await Promise.race([
         generateProposalPdf({
           projectType, client, energy,
-          vehicles: Object.values(selectedV),
-          chargers: Object.values(selectedC),
+          vehicles: freshVehicles,
+          chargers: freshChargers,
           pdfConfig,
         }),
         timeout,

@@ -805,9 +805,12 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       ["Autonomie / distance WLTP", v.energy === "Électrique" || v.energy === "Hybride Rechargeable" ? `${v.rangeWltp} km` : "—"],
       ["Capacité batterie", v.batteryKwh > 0 ? `${v.batteryKwh} kWh` : "—"],
       ["Puissance", `${v.powerHp} ch`],
-      [v.energy === "Électrique" || v.energy === "Hybride Rechargeable" ? "Consommation" : "Consommation moyenne", v.energy === "Électrique" ? `${v.consumption} kWh/100 km` : `${v.consumption} L/100 km`],
-      ["CO₂", `${v.co2} g/km`],
-      ["Puissance fiscale", `${v.fiscalHp} CV`],
+      ...(PDF_CFG.showVehicleConsumption
+        ? [[v.energy === "Électrique" || v.energy === "Hybride Rechargeable" ? "Consommation" : "Consommation moyenne", v.energy === "Électrique" ? `${v.consumption} kWh/100 km` : `${v.consumption} L/100 km`]]
+        : []),
+      ...(PDF_CFG.showVehicleCo2 ? [["CO₂", `${v.co2} g/km`]] : []),
+      ...(PDF_CFG.showVehicleFiscalHp ? [["Puissance fiscale", `${v.fiscalHp} CV`]] : []),
+      ...(PDF_CFG.showVehicleEnvScore && v.envScore !== undefined ? [["Score environnemental", `${v.envScore} / 100`]] : []),
     ],
     headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT },
     bodyStyles: { fontSize: 9.5, cellPadding: 6, textColor: INK, lineColor: RULE, font: BRAND_FONT },
@@ -910,16 +913,19 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     y += cardH + 12;
   }
 
-  const allServices = [...MANDATORY_SERVICES, ...sv.services.filter((s) => !MANDATORY_SERVICES.includes(s as any))];
-  const servicesText = allServices.map((s) => `· ${s}`).join("\n");
-  const body: any[] = [
-    [{ content: "Prestations & services compris dans le loyer", colSpan: 4, styles: { fillColor: BG, fontStyle: "bold", textColor: INK } }],
-    [{ content: servicesText, colSpan: 4, styles: { fontSize: 9.5, textColor: INK } }],
-  ];
-  if (sv.options.length) {
+  const body: any[] = [];
+  if (PDF_CFG.showVehicleServices) {
+    const allServices = [...MANDATORY_SERVICES, ...sv.services.filter((s) => !MANDATORY_SERVICES.includes(s as any))];
+    const servicesText = allServices.map((s) => `· ${s}`).join("\n");
+    body.push([{ content: "Prestations & services compris dans le loyer", colSpan: 4, styles: { fillColor: BG, fontStyle: "bold", textColor: INK } }]);
+    body.push([{ content: servicesText, colSpan: 4, styles: { fontSize: 9.5, textColor: INK } }]);
+  }
+  if (PDF_CFG.showVehicleOptions && sv.options.length) {
     body.push([{ content: "Options & accessoires inclus", colSpan: 4, styles: { fillColor: BG, fontStyle: "bold", textColor: INK } }]);
     sv.options.forEach((li) => body.push([li.label, String(li.qty), eur(li.unitHt), eur(li.qty * li.unitHt)]));
   }
+  // Si tout est masqué, on saute le tableau pour ne pas avoir un cadre vide.
+  if (body.length === 0) return;
   y = ensureSpace(doc, y, 80, client, type);
   autoTable(doc, {
     startY: y,
@@ -970,24 +976,26 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   // POINTS FORTS d'abord (compact, bullets courtes) — bloc principal à droite
   // de l'image. La description longue passe en bas en pleine largeur si elle
   // existe, pour éviter d'écraser le tableau de chiffrage.
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(8.5);
-  doc.setTextColor(...LAVENDER);
-  doc.text("POINTS FORTS", fx, fy);
-  fy += 14;
-  doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(10);
-  doc.setTextColor(...INK);
-  sc.charger.features.forEach((f) => {
-    doc.setDrawColor(...ACCENT);
-    doc.setLineWidth(1.4);
-    doc.line(fx + 1, fy - 3.5, fx + 4, fy - 1);
-    doc.line(fx + 4, fy - 1, fx + 7, fy - 6);
-    doc.setLineWidth(0.2);
-    const tt = doc.splitTextToSize(f, colMaxW - 14);
-    doc.text(tt, fx + 12, fy);
-    fy += tt.length * 14;
-  });
+  if (PDF_CFG.showChargerFeatures) {
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...LAVENDER);
+    doc.text("POINTS FORTS", fx, fy);
+    fy += 14;
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...INK);
+    sc.charger.features.forEach((f) => {
+      doc.setDrawColor(...ACCENT);
+      doc.setLineWidth(1.4);
+      doc.line(fx + 1, fy - 3.5, fx + 4, fy - 1);
+      doc.line(fx + 4, fy - 1, fx + 7, fy - 6);
+      doc.setLineWidth(0.2);
+      const tt = doc.splitTextToSize(f, colMaxW - 14);
+      doc.text(tt, fx + 12, fy);
+      fy += tt.length * 14;
+    });
+  }
   if (sc.siteContact) {
     fy += 8;
     doc.setFont(BRAND_FONT, "bold");
@@ -1035,6 +1043,9 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   // Le prix d'achat (unitHt brut) et la marge restent invisibles côté client.
   const total_ = sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0);
   const grandTotal = total_ * Math.max(1, sc.quantity);
+  // Le tableau de chiffrage et l'encart 'Pour N collaborateurs' sont gated
+  // par showChargerLineItems. Si l'admin a décoché la case, on saute tout.
+  if (PDF_CFG.showChargerLineItems) {
   y = ensureSpace(doc, y, 110, client, type);
   autoTable(doc, {
     startY: y,
@@ -1100,7 +1111,9 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
     doc.text(`Total HT : ${eur(grandTotal)}`, PAGE_W - M - 14, y + 22, { align: "right" });
     y += 46;
   }
+  } // fin du gating showChargerLineItems
 
+  if (!PDF_CFG.showChargerInclusionNote) return;
   // Encart "Inclus dans la prestation" en liste de bullets propres
   const fallbackInclusions = isHome
     ? [
