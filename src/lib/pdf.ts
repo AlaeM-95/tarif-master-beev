@@ -5,6 +5,7 @@ import { loadPdfSettings, hexToRgb } from "./pdf-settings";
 import { DEFAULT_PDF_CONFIG, type PdfDisplayConfig } from "./pdf-config";
 import { fetchTcoResultsForVehicles, type TcoResult } from "./tco-results";
 import { loadBeevPillars, type BeevPillar } from "./beev-pillars";
+import { loadPdfTexts, buildPdfTextMap, lookupText, lookupList, type PdfTextMap } from "./pdf-texts";
 import type { EnergyParams } from "./store";
 
 export type ClientInfo = {
@@ -154,6 +155,10 @@ let PILLARS_CACHE: { data: BeevPillar[]; expiresAt: number } | null = null;
 const PILLARS_TTL_MS = 5 * 60 * 1000;
 let PILLARS: BeevPillar[] = [];
 
+let TEXTS_CACHE: { data: PdfTextMap; expiresAt: number } | null = null;
+const TEXTS_TTL_MS = 5 * 60 * 1000;
+let TEXTS: PdfTextMap = new Map();
+
 // Wrap une promesse avec un timeout court qui rejette si la requête traîne.
 // Utilisé pour chaque fetch réseau afin de retomber rapidement sur les valeurs
 // par défaut plutôt que de bloquer la génération entière.
@@ -239,6 +244,21 @@ async function loadBrandFont(doc: jsPDF): Promise<string> {
   }
 }
 
+// Cache + timeout pour les textes éditables (table pdf_texts).
+async function loadTextsCached(): Promise<PdfTextMap> {
+  const now = Date.now();
+  if (TEXTS_CACHE && TEXTS_CACHE.expiresAt > now) return TEXTS_CACHE.data;
+  try {
+    const list = await withTimeout(loadPdfTexts(), 8000, "pdf_texts");
+    const map = buildPdfTextMap(list);
+    TEXTS_CACHE = { data: map, expiresAt: now + TEXTS_TTL_MS };
+    return map;
+  } catch (err) {
+    console.warn("[pdf] pdf_texts fetch timed out, fallback hardcoded :", err);
+    return new Map();
+  }
+}
+
 // Cache + timeout pour les piliers d'engagement Beev (table beev_pillars).
 async function loadPillarsCached(): Promise<BeevPillar[]> {
   const now = Date.now();
@@ -301,6 +321,7 @@ export async function generateProposalPdf(opts: {
     loadBrandFont(doc).then((f) => { BRAND_FONT = f; }),
     fetchTcoResultsCached(vehiclesForTcoMatch).then((m) => { TCO_RESULTS = m; }),
     loadPillarsCached().then((p) => { PILLARS = p; }),
+    loadTextsCached().then((t) => { TEXTS = t; }),
   ]);
 
   // Offre potentiellement combinée : on inclut TOUS les véhicules et TOUTES
@@ -425,7 +446,7 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
   doc.setTextColor(180, 180, 185);
-  doc.text("Le copilote de l'électrification des flottes · beev.co", M, 94);
+  doc.text(lookupText(TEXTS, "common", "cover_tagline", "Le copilote de l'électrification des flottes · beev.co"), M, 94);
 
   // Accent vert
   doc.setFillColor(...ACCENT);
@@ -447,7 +468,7 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
   doc.setTextColor(180, 180, 185);
-  doc.text("Validité 30 jours · à compter de la date d'émission", M, 264);
+  doc.text(lookupText(TEXTS, "common", "cover_validity", "Validité 30 jours · à compter de la date d'émission"), M, 264);
 
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(32);
@@ -469,7 +490,7 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
   doc.line(M, 470, PAGE_W - M, 470);
   doc.setFontSize(9);
   doc.setTextColor(170, 170, 175);
-  doc.text("PRÉPARÉE POUR", M, 495);
+  doc.text(lookupText(TEXTS, "common", "cover_prepared_for_label", "PRÉPARÉE POUR"), M, 495);
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(20);
   doc.setTextColor(255, 255, 255);
@@ -482,7 +503,7 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
 
   doc.setFontSize(9);
   doc.setTextColor(170, 170, 175);
-  doc.text("PRÉPARÉE PAR", PAGE_W - M, 495, { align: "right" });
+  doc.text(lookupText(TEXTS, "common", "cover_prepared_by_label", "PRÉPARÉE PAR"), PAGE_W - M, 495, { align: "right" });
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(13);
   doc.setTextColor(255, 255, 255);
@@ -499,7 +520,7 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
 
   doc.setFontSize(9);
   doc.setTextColor(170, 170, 175);
-  doc.text("PÉRIMÈTRE", M, 665);
+  doc.text(lookupText(TEXTS, "common", "cover_perimeter_label", "PÉRIMÈTRE"), M, 665);
 
   const isCombined = nbV > 0 && nbC > 0;
 
@@ -559,7 +580,7 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
   doc.line(M, PAGE_H - 60, PAGE_W - M, PAGE_H - 60);
   doc.setFontSize(8);
   doc.setTextColor(150, 150, 155);
-  doc.text("DOCUMENT CONFIDENTIEL · USAGE INTERNE CLIENT", M, PAGE_H - 42);
+  doc.text(lookupText(TEXTS, "common", "footer_confidential", "DOCUMENT CONFIDENTIEL · USAGE INTERNE CLIENT"), M, PAGE_H - 42);
   doc.setFont(BRAND_FONT, "bold");
   doc.setTextColor(...ACCENT);
   doc.text("beev.co", PAGE_W - M, PAGE_H - 42, { align: "right" });
@@ -575,9 +596,10 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
   let y = 130;
   eyebrow(doc, "NOTRE APPROCHE", y);
   y += 32;
-  title(doc, type === "vehicles" ? "Pourquoi confier vos véhicules à Beev." :
+  const whyBeevTitleFallback = type === "vehicles" ? "Pourquoi confier vos véhicules à Beev." :
               type === "home" ? "Le kit B2B2E clé en main pour vos collaborateurs." :
-              "Un déploiement IRVE site entreprise sans friction.", y);
+              "Un déploiement IRVE site entreprise sans friction.";
+  title(doc, lookupText(TEXTS, type, "why_beev_title", whyBeevTitleFallback), y);
   y += 36;
 
   doc.setFont(BRAND_FONT, "normal");
@@ -595,7 +617,7 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
   y += l1.length * 14 + 16;
 
   doc.setFont(BRAND_FONT, "bold");
-  doc.text("Concrètement, ce qui change pour vous :", M, y);
+  doc.text(lookupText(TEXTS, type, "why_beev_changes_header", "Concrètement, ce qui change pour vous :"), M, y);
   y += 18;
   doc.setFont(BRAND_FONT, "normal");
 
@@ -1023,7 +1045,12 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
     ]),
     foot: [[
       {
-        content: isHome ? "Total HT par collaborateur" : "Total HT par site",
+        content: lookupText(
+          TEXTS,
+          isHome ? "home" : "site",
+          "charger_total_label",
+          isHome ? "Total HT par collaborateur" : "Total HT par site",
+        ),
         colSpan: 3,
         // fontStyle 'normal' (et non 'bold') : la variante bold de Roobert n'a
         // pas le glyphe €, ce qui faisait afficher "1 841 ¤" sur le total.
@@ -1060,7 +1087,11 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(11);
     doc.setTextColor(255, 255, 255);
-    const label = `Pour ${sc.quantity} ${isHome ? "collaborateur" + (sc.quantity > 1 ? "s" : "") : "borne" + (sc.quantity > 1 ? "s" : "")}`;
+    const scopeKey = isHome ? "home" : "site";
+    const unitSingular = lookupText(TEXTS, scopeKey, "charger_grand_total_unit_singular", isHome ? "collaborateur" : "borne");
+    const unitPlural = lookupText(TEXTS, scopeKey, "charger_grand_total_unit_plural", isHome ? "collaborateurs" : "bornes");
+    const unitLabel = sc.quantity > 1 ? unitPlural : unitSingular;
+    const label = `Pour ${sc.quantity} ${unitLabel}`;
     doc.text(label, M + 14, y + 22);
     doc.setFontSize(14);
     doc.text(`Total HT : ${eur(grandTotal)}`, PAGE_W - M - 14, y + 22, { align: "right" });
@@ -1068,7 +1099,7 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   }
 
   // Encart "Inclus dans la prestation" en liste de bullets propres
-  const inclusions = isHome
+  const fallbackInclusions = isHome
     ? [
         "Matériel et accessoires de raccordement",
         "Pose et raccordement par technicien IRVE certifié",
@@ -1085,6 +1116,7 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
         "Gestion des déchets de chantier",
         "Garantie constructeur 3 ans, extensible 6 ans",
       ];
+  const inclusions = lookupList(TEXTS, isHome ? "home" : "site", "charger_inclusion_items", fallbackInclusions);
   const lineH = 13;
   const padTop = 14;
   const padBottom = 12;
@@ -1098,7 +1130,12 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
     doc.setFontSize(8.5);
     doc.setTextColor(...LAVENDER);
     doc.text(
-      isHome ? "INCLUS DANS LE KIT INSTALLATION DOMICILE" : "INCLUS DANS LA PRESTATION CLÉ EN MAIN",
+      lookupText(
+        TEXTS,
+        isHome ? "home" : "site",
+        "charger_inclusion_title",
+        isHome ? "INCLUS DANS LE KIT INSTALLATION DOMICILE" : "INCLUS DANS LA PRESTATION CLÉ EN MAIN",
+      ),
       M + 16,
       y + padTop,
     );

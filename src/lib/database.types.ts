@@ -88,6 +88,35 @@ export type Database = {
         };
         Update: Partial<Database["public"]["Tables"]["chargers"]["Insert"]>;
       };
+      pdf_texts: {
+        Row: {
+          id: string;
+          scope: "common" | "vehicles" | "home" | "site";
+          slug: string;
+          category: string;
+          label: string;
+          kind: "text" | "multiline" | "list";
+          content_text: string | null;
+          content_list: Json | null;
+          position: number;
+          active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          scope: "common" | "vehicles" | "home" | "site";
+          slug: string;
+          category: string;
+          label: string;
+          kind: "text" | "multiline" | "list";
+          content_text?: string | null;
+          content_list?: Json | null;
+          position?: number;
+          active?: boolean;
+        };
+        Update: Partial<Database["public"]["Tables"]["pdf_texts"]["Insert"]>;
+      };
       beev_pillars: {
         Row: {
           id: string;

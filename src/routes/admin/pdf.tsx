@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/lib/auth";
 import { usePdfSettings, type PdfSettings, type JourneyStep } from "@/lib/pdf-settings";
 import { useBeevPillars, useBeevPillarsMutations, type BeevPillar } from "@/lib/beev-pillars";
+import { usePdfTexts, usePdfTextsMutations, type PdfText } from "@/lib/pdf-texts";
 import { ImageUpload } from "@/components/image-upload";
 import type { ProjectType } from "@/lib/catalog";
 
@@ -56,7 +57,10 @@ function AdminPdfPage() {
         </div>
       </header>
 
-      <main className="container mx-auto px-6 py-8">
+      <main className="container mx-auto px-6 py-8 space-y-6">
+        {/* Section "communs" affichée hors tabs car partagée entre tous les types */}
+        <PdfTextsEditor scope="common" />
+
         <Tabs value={activeType} onValueChange={(v) => setActiveType(v as ProjectType)}>
           <TabsList className="mb-6">
             {(Object.keys(PROJECT_LABELS) as ProjectType[]).map((t) => (
@@ -79,6 +83,7 @@ function AdminPdfPage() {
                   if (res.error) toast.error(res.error); else toast.success("Étape mise à jour");
                 }} />
                 <PillarsEditor projectType={t} />
+                <PdfTextsEditor scope={t} />
               </TabsContent>
             );
           })}
@@ -413,6 +418,129 @@ function PillarEditor({ pillar, onSave }: { pillar: BeevPillar; onSave: (patch: 
           placeholder="Un commercial grand compte dédié&#10;Hotline gestion de flotte mutualisée&#10;..."
         />
       </div>
+    </div>
+  );
+}
+
+// ============ ÉDITEUR GÉNÉRIQUE DES TEXTES PDF ============
+// Lit/écrit la table pdf_texts. Affiche tous les textes du scope donné,
+// groupés par catégorie. Auto-save 800ms debounced par texte.
+function PdfTextsEditor({ scope }: { scope: "common" | ProjectType }) {
+  const { data: all = [], isLoading } = usePdfTexts();
+  const { update } = usePdfTextsMutations();
+  const texts = all.filter((t) => t.scope === scope);
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader><CardTitle>Textes du PDF</CardTitle></CardHeader>
+        <CardContent><p className="text-sm text-muted-foreground">Chargement...</p></CardContent>
+      </Card>
+    );
+  }
+
+  if (texts.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Textes du PDF {scope === "common" ? "(partagés)" : `(spécifiques ${scope})`}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            Aucun texte configuré pour ce scope. Appliquez la migration
+            013_pdf_texts.sql sur Supabase.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Regroupement par catégorie pour l'affichage
+  const byCategory = new Map<string, PdfText[]>();
+  for (const t of texts) {
+    if (!byCategory.has(t.category)) byCategory.set(t.category, []);
+    byCategory.get(t.category)!.push(t);
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          Textes du PDF {scope === "common" ? "— communs (partagés entre tous les types de projet)" : `— spécifiques`}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {Array.from(byCategory.entries()).map(([cat, items]) => (
+          <div key={cat} className="space-y-3">
+            <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">{cat}</h4>
+            <div className="space-y-3">
+              {items.map((t) => (
+                <PdfTextEditor key={t.id} text={t} onSave={async (patch) => {
+                  try { await update.mutateAsync({ id: t.id, patch }); }
+                  catch (e) { toast.error(e instanceof Error ? e.message : "Erreur"); }
+                }} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function PdfTextEditor({ text, onSave }: {
+  text: PdfText;
+  onSave: (patch: Partial<{ content_text: string | null; content_list: string[] | null }>) => Promise<void>;
+}) {
+  const [draftText, setDraftText] = useState(text.contentText ?? "");
+  const [draftList, setDraftList] = useState<string[]>(text.contentList ?? []);
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
+
+  useEffect(() => {
+    setDraftText(text.contentText ?? "");
+    setDraftList(text.contentList ?? []);
+  }, [text.id]);
+
+  // Auto-save 800ms
+  useEffect(() => {
+    if (text.kind === "list") {
+      const normalized = draftList.map((s) => s.trim()).filter(Boolean);
+      if (JSON.stringify(normalized) === JSON.stringify(text.contentList ?? [])) return;
+      const t = setTimeout(() => { onSaveRef.current({ content_list: normalized }); }, 800);
+      return () => clearTimeout(t);
+    } else {
+      const normalized = draftText;
+      if (normalized === (text.contentText ?? "")) return;
+      const t = setTimeout(() => { onSaveRef.current({ content_text: normalized }); }, 800);
+      return () => clearTimeout(t);
+    }
+  }, [draftText, draftList, text]);
+
+  return (
+    <div className="rounded-md border border-border p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <Label className="text-xs font-medium">{text.label}</Label>
+        <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Auto-sauvegardé</span>
+      </div>
+      {text.kind === "text" && (
+        <Input value={draftText} onChange={(e) => setDraftText(e.target.value)} className="text-sm" />
+      )}
+      {text.kind === "multiline" && (
+        <Textarea
+          value={draftText}
+          onChange={(e) => setDraftText(e.target.value)}
+          className="min-h-[80px] text-sm"
+        />
+      )}
+      {text.kind === "list" && (
+        <Textarea
+          value={draftList.join("\n")}
+          onChange={(e) => setDraftList(e.target.value.split("\n"))}
+          className="min-h-[120px] text-sm"
+          placeholder="Une entrée par ligne"
+        />
+      )}
     </div>
   );
 }
