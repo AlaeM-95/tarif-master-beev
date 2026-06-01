@@ -51,6 +51,11 @@ export type Database = {
         };
         Update: Partial<Database["public"]["Tables"]["vehicles"]["Insert"]>;
       };
+      // Note : les colonnes prix_batterie, poids_vide, eco_score_bool, remise,
+      // carburant_inclus, conso_min/max_thermique, conso_min/max_elec sont
+      // gérées via casts (row as any) car la définition ci-dessous n'est
+      // pas mise à jour pour rester simple. Elles existent en DB après la
+      // migration 016_vehicles_fiscal_fields.sql.
       chargers: {
         Row: {
           id: string;

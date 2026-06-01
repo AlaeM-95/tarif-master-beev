@@ -32,6 +32,7 @@ import { useProposals, useProposal } from "@/lib/proposals";
 import { usePdfConfig } from "@/lib/pdf-config";
 import { usePdfSettings } from "@/lib/pdf-settings";
 import { useProposalTemplates } from "@/lib/proposal-templates";
+import { calculateTcoFull, type TcoContractParams } from "@/lib/tco-calculator";
 
 type IndexSearch = { proposal?: string };
 
@@ -1149,13 +1150,24 @@ function TcoCalculator({
     return vehicles.filter((v) => `${v.brand} ${v.model} ${v.version} ${v.category}`.toLowerCase().includes(q));
   }, [vehicles, search]);
 
-  // Calcule le TCO pour chaque véhicule sélectionné
+  // Calcul TCO complet (porté de beev-tco-2026 — fiscalCalculations.ts) :
+  // inclut TVS, malus CO2, malus poids, AND, AEN. Le résultat brut est
+  // riche ; on en extrait les KPIs principaux pour le tableau, le détail
+  // fiscal est affiché dans une seconde carte.
   const tcoRows = useMemo(() => {
     return Object.values(selectedV).map((sv) => {
-      const t = computeTco(sv, energy);
-      const monthlyTco = (t.tco100 * sv.kmPerYear) / 100 / 12;
-      const totalContract = (t.tco100 * sv.kmPerYear / 100) * (sv.durationMonths / 12);
-      return { sv, tco100: t.tco100, lease100: t.lease100, energy100: t.energy100, monthlyTco, totalContract };
+      const contractParams: TcoContractParams = {
+        dureeAnnees: sv.durationMonths / 12,
+        kmContrat: (sv.kmPerYear * sv.durationMonths) / 12,
+        prixEssenceLitre: energy.fuelPriceL,
+        prixKwhDomicile: energy.kWhHome,
+        prixKwhPublic: energy.kWhPublic,
+      };
+      const r = calculateTcoFull(sv.vehicle, contractParams);
+      const tco100 = r.tcoParKm * 100;
+      const lease100 = (r.loyerTotal / contractParams.kmContrat) * 100;
+      const energy100 = (r.coutEnergie / contractParams.kmContrat) * 100;
+      return { sv, tco100, lease100, energy100, monthlyTco: r.tcoMensuel, totalContract: r.tcoTotal, full: r };
     });
   }, [selectedV, energy]);
 
@@ -1275,6 +1287,59 @@ function TcoCalculator({
           </CardContent>
         </Card>
       )}
+
+      {/* Détail fiscal complet : TVS, malus, AEN, AND par véhicule */}
+      {tcoRows.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Détail fiscal et social</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              TVS (taxe CO₂ + pollution), malus CO₂ et poids appliqués à l'achat (intégrés au TCO),
+              AND annualisé (Avantage Non Déductible IS), AEN (Avantage en Nature) avec part
+              salariale (25%) et part employeur (42%).
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground uppercase text-[10px]">
+                    <th className="py-2 px-2">Véhicule</th>
+                    <th className="py-2 px-2 text-right">TVS / an</th>
+                    <th className="py-2 px-2 text-right">Malus CO₂</th>
+                    <th className="py-2 px-2 text-right">Malus poids</th>
+                    <th className="py-2 px-2 text-right">AND / an</th>
+                    <th className="py-2 px-2 text-right">AEN / mois</th>
+                    <th className="py-2 px-2 text-right">Part salariale</th>
+                    <th className="py-2 px-2 text-right">Part employeur</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tcoRows.map((r) => (
+                    <tr key={r.sv.vehicle.id} className="border-b">
+                      <td className="py-2 px-2">
+                        <p className="font-medium">{r.sv.vehicle.brand} {r.sv.vehicle.model}</p>
+                        <p className="text-[10px] text-muted-foreground">{r.sv.vehicle.version}</p>
+                      </td>
+                      <td className="py-2 px-2 text-right">{fmtEur(r.full.taxeCO2 + r.full.taxePollution)}</td>
+                      <td className="py-2 px-2 text-right">{fmtEur(r.full.malusCO2)}</td>
+                      <td className="py-2 px-2 text-right">{fmtEur(r.full.malusPoids)}</td>
+                      <td className="py-2 px-2 text-right">{fmtEur(r.full.andAnnuel)}</td>
+                      <td className="py-2 px-2 text-right">{fmtEur(r.full.aenMensuel)}</td>
+                      <td className="py-2 px-2 text-right">{fmtEur(r.full.partSalarialeMensuelle)} <span className="text-muted-foreground">/mois</span></td>
+                      <td className="py-2 px-2 text-right">{fmtEur(r.full.partEmployeurMensuelle)} <span className="text-muted-foreground">/mois</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-2">
+              Données fiscales 2026. Pour activer les calculs : renseignez prix batterie, poids à
+              vide, éco-score et remise sur chaque fiche véhicule dans l'admin.
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
@@ -1382,6 +1447,20 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
               <NumField label="CO₂ g/km" value={vehicle.co2} onChange={(n) => onUpdate({ co2: n })} />
               <NumField label="CV fiscaux" value={vehicle.fiscalHp} onChange={(n) => onUpdate({ fiscalHp: n })} />
               <NumField label="Score env. (0-100)" value={vehicle.envScore ?? 0} onChange={(n) => onUpdate({ envScore: n })} />
+              <NumField label="Prix batterie HT" value={vehicle.prixBatterie ?? 0} onChange={(n) => onUpdate({ prixBatterie: n })} />
+              <NumField label="Poids vide (kg)" value={vehicle.poidsVide ?? 0} onChange={(n) => onUpdate({ poidsVide: n })} />
+              <NumField label="Remise %" value={vehicle.remise ?? 0} onChange={(n) => onUpdate({ remise: n })} step={0.5} />
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground uppercase">Éco-score (AEN -70%)</Label>
+                <select
+                  value={vehicle.ecoScoreBool ? "yes" : "no"}
+                  onChange={(e) => onUpdate({ ecoScoreBool: e.target.value === "yes" })}
+                  className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+                >
+                  <option value="no">Non</option>
+                  <option value="yes">Oui</option>
+                </select>
+              </div>
               <div className="space-y-1">
                 <Label className="text-[10px] text-muted-foreground uppercase">Énergie</Label>
                 <select

@@ -26,13 +26,22 @@ function dbToVehicle(row: VehicleRow): Vehicle {
     envScore: row.env_score ?? undefined,
     priceTtc: row.price_ttc,
     monthlyLld: row.monthly_lld,
+    prixBatterie: (row as any).prix_batterie ?? 0,
+    poidsVide: (row as any).poids_vide ?? 0,
+    ecoScoreBool: (row as any).eco_score_bool ?? false,
+    remise: (row as any).remise ?? 0,
+    carburantInclus: (row as any).carburant_inclus ?? false,
+    consoMinThermique: (row as any).conso_min_thermique ?? 0,
+    consoMaxThermique: (row as any).conso_max_thermique ?? 0,
+    consoMinElec: (row as any).conso_min_elec ?? 0,
+    consoMaxElec: (row as any).conso_max_elec ?? 0,
     image: row.image ?? "",
     services: Array.isArray(row.services) ? (row.services as string[]) : undefined,
   };
 }
 
 function vehicleToDb(v: Vehicle): VehicleInsert {
-  return {
+  const row: VehicleInsert = {
     id: v.id,
     brand: v.brand,
     model: v.model,
@@ -51,6 +60,19 @@ function vehicleToDb(v: Vehicle): VehicleInsert {
     image: v.image,
     services: v.services,
   };
+  // Champs fiscaux ajoutés via migration 016. Envoyés en best-effort —
+  // les any silencieux permettent de fonctionner avant que la migration soit
+  // appliquée (la colonne sera ignorée par Supabase et l'app ne crashe pas).
+  if (v.prixBatterie !== undefined) (row as any).prix_batterie = v.prixBatterie;
+  if (v.poidsVide !== undefined) (row as any).poids_vide = v.poidsVide;
+  if (v.ecoScoreBool !== undefined) (row as any).eco_score_bool = v.ecoScoreBool;
+  if (v.remise !== undefined) (row as any).remise = v.remise;
+  if (v.carburantInclus !== undefined) (row as any).carburant_inclus = v.carburantInclus;
+  if (v.consoMinThermique !== undefined) (row as any).conso_min_thermique = v.consoMinThermique;
+  if (v.consoMaxThermique !== undefined) (row as any).conso_max_thermique = v.consoMaxThermique;
+  if (v.consoMinElec !== undefined) (row as any).conso_min_elec = v.consoMinElec;
+  if (v.consoMaxElec !== undefined) (row as any).conso_max_elec = v.consoMaxElec;
+  return row;
 }
 
 function dbToCharger(row: ChargerRow): Charger {

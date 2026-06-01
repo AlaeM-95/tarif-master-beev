@@ -145,6 +145,16 @@ export type Vehicle = {
   envScore?: number;
   priceTtc: number;
   monthlyLld: number;
+  // Champs fiscaux (calcul TCO complet — voir src/lib/tco-calculator.ts)
+  prixBatterie?: number; // pour le calcul AND
+  poidsVide?: number; // pour le malus poids (kg)
+  ecoScoreBool?: boolean; // éco-score officiel ouvrant abattement AEN
+  remise?: number; // remise commerciale en % sur prix catalogue (base AND)
+  carburantInclus?: boolean;
+  consoMinThermique?: number; // L/100km min (carburant si thermique/hybride)
+  consoMaxThermique?: number;
+  consoMinElec?: number; // kWh/100km min
+  consoMaxElec?: number;
   image: string;
   services?: string[];
   custom?: boolean;
