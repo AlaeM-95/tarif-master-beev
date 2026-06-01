@@ -53,7 +53,7 @@ function App() {
   const search = Route.useSearch();
   const loadedProposalId = search.proposal;
   const { data: loadedProposal } = useProposal(loadedProposalId);
-  const { save: saveProposal } = useProposals();
+  const { save: saveProposal, proposals: allProposals, remove: removeProposal } = useProposals();
   const { vehicles, update: updateVehicle, add: addVehicle, remove: removeVehicle, removeAll: removeAllVehicles, importMany: importVehicles } = useVehicles();
   const { chargers, update: updateCharger, add: addCharger, remove: removeCharger, removeAllByDeployment } = useChargers();
   const { energy, set: setEnergy, reset: resetEnergy } = useEnergy();
@@ -148,42 +148,79 @@ function App() {
   }, [loadedProposal?.id]);
 
   const [isSavingProposal, setIsSavingProposal] = useState(false);
+  // Timestamp du dernier enregistrement réussi — affiché à côté du bouton
+  // pour rassurer l'utilisateur que chaque clic produit bien un save côté DB.
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  // Dialogue de confirmation si une proposition pour le même client existe déjà.
+  const [duplicateDialog, setDuplicateDialog] = useState<{ open: boolean; existing: string | null }>({ open: false, existing: null });
+  // Détecte si une proposition pour le même client existe déjà (cas "create"
+  // uniquement — quand on met à jour, on travaille sur une proposition connue).
+  const findDuplicateProposal = (companyName: string): string | null => {
+    if (loadedProposalId) return null; // édition d'une proposition existante : pas un doublon
+    const target = companyName.trim().toLowerCase();
+    if (!target) return null;
+    const match = allProposals.find((p) => p.clientCompany.trim().toLowerCase() === target);
+    return match ? match.id : null;
+  };
+
+  // Exécute la sauvegarde proprement dite. Séparé de handleSaveProposal pour
+  // pouvoir être appelé soit directement, soit après le choix dans le dialogue
+  // doublon (avec ou sans suppression de l'ancienne proposition).
+  const doSaveProposal = async (deleteExistingId: string | null) => {
+    setIsSavingProposal(true);
+    try {
+      if (deleteExistingId) {
+        const delRes = await removeProposal(deleteExistingId);
+        if (delRes.error) {
+          toast.error(`Échec suppression ancienne proposition : ${delRes.error}`);
+          return;
+        }
+      }
+      const result = await saveProposal({
+        id: loadedProposalId,
+        clientCompany: client.company,
+        clientContact: client.contact,
+        clientEmail: client.email,
+        clientNotes: client.notes,
+        proposalDate: client.date,
+        salesRepName: client.salesRep,
+        salesRepEmail: client.salesRepEmail,
+        salesRepPhone: client.salesRepPhone,
+        projectType,
+        selectedVehicles: Object.values(selectedV),
+        selectedChargers: Object.values(selectedC),
+        energyParams: energy,
+      });
+      if (result.error) {
+        toast.error(`Échec sauvegarde : ${result.error}`);
+        return;
+      }
+      if (result.id) {
+        setLastSavedAt(new Date());
+        toast.success(loadedProposalId ? "Proposition mise à jour" : "Proposition créée");
+        if (!loadedProposalId && result.id) {
+          navigate({ to: "/", search: { proposal: result.id } });
+        }
+      }
+    } finally {
+      setIsSavingProposal(false);
+    }
+  };
+
   const handleSaveProposal = async () => {
     if (isSavingProposal) return; // évite les double-clics
     if (!client.company.trim()) {
       toast.error("La société client est requise pour sauvegarder");
       return;
     }
-    setIsSavingProposal(true);
-    try {
-    const result = await saveProposal({
-      id: loadedProposalId,
-      clientCompany: client.company,
-      clientContact: client.contact,
-      clientEmail: client.email,
-      clientNotes: client.notes,
-      proposalDate: client.date,
-      salesRepName: client.salesRep,
-      salesRepEmail: client.salesRepEmail,
-      salesRepPhone: client.salesRepPhone,
-      projectType,
-      selectedVehicles: Object.values(selectedV),
-      selectedChargers: Object.values(selectedC),
-      energyParams: energy,
-    });
-    if (result.error) {
-      toast.error(`Échec sauvegarde : ${result.error}`);
+    // Détection doublon (uniquement à la création). Si trouvé, on ouvre le
+    // dialogue de confirmation qui décide du destin de l'ancienne proposition.
+    const existingId = findDuplicateProposal(client.company);
+    if (existingId) {
+      setDuplicateDialog({ open: true, existing: existingId });
       return;
     }
-    if (result.id) {
-      toast.success(loadedProposalId ? "Proposition mise à jour" : "Proposition créée");
-      if (!loadedProposalId && result.id) {
-        navigate({ to: "/", search: { proposal: result.id } });
-      }
-    }
-    } finally {
-      setIsSavingProposal(false);
-    }
+    await doSaveProposal(null);
   };
 
   const counts = useMemo(() => ({
@@ -357,6 +394,41 @@ function App() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Dialogue de confirmation : une proposition existe déjà pour ce client */}
+      <AlertDialog open={duplicateDialog.open} onOpenChange={(o) => setDuplicateDialog({ ...duplicateDialog, open: o })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Une proposition existe déjà pour {client.company}</AlertDialogTitle>
+            <AlertDialogDescription>
+              Une proposition au même nom de société a déjà été enregistrée. Souhaitez-vous remplacer
+              l'ancienne (elle sera supprimée définitivement) ou conserver les deux propositions ?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                const existing = duplicateDialog.existing;
+                setDuplicateDialog({ open: false, existing: null });
+                await doSaveProposal(null);
+                if (existing) toast.success("Les deux propositions sont conservées");
+              }}
+            >
+              Conserver les deux
+            </Button>
+            <AlertDialogAction
+              onClick={async () => {
+                const existing = duplicateDialog.existing;
+                setDuplicateDialog({ open: false, existing: null });
+                await doSaveProposal(existing);
+              }}
+            >
+              Remplacer l'ancienne
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <MarginReviewDialog
         open={marginDialog}
         onClose={() => setMarginDialog(false)}
@@ -390,18 +462,25 @@ function App() {
               </Button>
             )}
             {isAdmin && (
-              <Button
-                variant="outline"
-                onClick={handleSaveProposal}
-                disabled={visibleCount === 0 || isSavingProposal}
-                className="gap-2"
-              >
-                {isSavingProposal ? (
-                  <><RotateCcw className="w-4 h-4 animate-spin" /> Enregistrement...</>
-                ) : (
-                  <><Save className="w-4 h-4" /> {loadedProposalId ? "Mettre à jour" : "Sauvegarder"}</>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handleSaveProposal}
+                  disabled={visibleCount === 0 || isSavingProposal}
+                  className="gap-2"
+                >
+                  {isSavingProposal ? (
+                    <><RotateCcw className="w-4 h-4 animate-spin" /> Enregistrement...</>
+                  ) : (
+                    <><Save className="w-4 h-4" /> {loadedProposalId ? "Mettre à jour" : "Sauvegarder"}</>
+                  )}
+                </Button>
+                {lastSavedAt && (
+                  <span className="text-[10px] text-muted-foreground hidden md:inline" title={lastSavedAt.toISOString()}>
+                    Enregistré à {lastSavedAt.toLocaleTimeString("fr-FR")}
+                  </span>
                 )}
-              </Button>
+              </div>
             )}
             <Button variant="outline" onClick={() => setPresenting(true)} disabled={visibleCount === 0} className="gap-2">
               <Presentation className="w-4 h-4" /> Présenter au client
@@ -910,7 +989,6 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
               <TxtField label="Marque" value={vehicle.brand} onChange={(s) => onUpdate({ brand: s })} />
               <TxtField label="Modèle" value={vehicle.model} onChange={(s) => onUpdate({ model: s })} />
               <NumField label="Prix TTC" value={vehicle.priceTtc} onChange={(n) => onUpdate({ priceTtc: n })} />
-              <NumField label="LLD €/mois TTC" value={vehicle.monthlyLld} onChange={(n) => onUpdate({ monthlyLld: n })} />
               <NumField label="Autonomie km" value={vehicle.rangeWltp} onChange={(n) => onUpdate({ rangeWltp: n })} />
               <NumField label="Batterie kWh" value={vehicle.batteryKwh} onChange={(n) => onUpdate({ batteryKwh: n })} />
               <NumField label="Puissance ch" value={vehicle.powerHp} onChange={(n) => onUpdate({ powerHp: n })} />

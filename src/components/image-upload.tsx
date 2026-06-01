@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Upload, X, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,31 @@ export function ImageUpload({ currentUrl, onChange, folder, label = "Image" }: I
   const [uploading, setUploading] = useState(false);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Buffer local pour le champ URL : la preview reflète immédiatement ce que
+  // l'utilisateur tape, sans attendre le round-trip Supabase. La valeur est
+  // remontée au parent via onChange après 500ms d'inactivité.
+  const [urlDraft, setUrlDraft] = useState(currentUrl ?? "");
+  const lastCommittedRef = useRef(currentUrl ?? "");
+  useEffect(() => {
+    // Sync depuis l'extérieur uniquement quand la valeur externe diverge de
+    // notre dernier commit (refetch d'une autre source, reset, etc.).
+    const ext = currentUrl ?? "";
+    if (ext !== lastCommittedRef.current) {
+      lastCommittedRef.current = ext;
+      setUrlDraft(ext);
+    }
+  }, [currentUrl]);
+  useEffect(() => {
+    if (urlDraft === lastCommittedRef.current) return;
+    const t = setTimeout(() => {
+      lastCommittedRef.current = urlDraft;
+      onChange(urlDraft);
+    }, 500);
+    return () => clearTimeout(t);
+  }, [urlDraft, onChange]);
+  // Preview affichée : on privilégie le draft (réactif) au currentUrl (latence DB).
+  const displayUrl = urlDraft || currentUrl;
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -72,6 +97,8 @@ export function ImageUpload({ currentUrl, onChange, folder, label = "Image" }: I
     }
 
     const { data: urlData } = supabase.storage.from(bucketUsed).getPublicUrl(result.data.path);
+    lastCommittedRef.current = urlData.publicUrl;
+    setUrlDraft(urlData.publicUrl);
     onChange(urlData.publicUrl);
     toast.success(`Image uploadée (${bucketUsed})`);
     setUploading(false);
@@ -82,10 +109,10 @@ export function ImageUpload({ currentUrl, onChange, folder, label = "Image" }: I
     <div className="space-y-2">
       <Label className="text-[10px] text-muted-foreground uppercase">{label}</Label>
 
-      {currentUrl && (
+      {displayUrl && (
         <div className="relative inline-block">
           <img
-            src={currentUrl}
+            src={displayUrl}
             alt="Aperçu"
             className="h-24 w-32 object-contain rounded-md border border-border bg-muted"
             onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.3"; }}
@@ -95,7 +122,7 @@ export function ImageUpload({ currentUrl, onChange, folder, label = "Image" }: I
             variant="ghost"
             size="icon"
             className="absolute -top-2 -right-2 h-5 w-5 bg-background border border-border rounded-full"
-            onClick={() => onChange("")}
+            onClick={() => { lastCommittedRef.current = ""; setUrlDraft(""); onChange(""); }}
             title="Retirer l'image"
           >
             <X className="w-3 h-3" />
@@ -137,8 +164,8 @@ export function ImageUpload({ currentUrl, onChange, folder, label = "Image" }: I
       {showUrlInput && (
         <Input
           type="text"
-          value={currentUrl ?? ""}
-          onChange={(e) => onChange(e.target.value)}
+          value={urlDraft}
+          onChange={(e) => setUrlDraft(e.target.value)}
           placeholder="https://... ou /images/..."
           className="h-8 text-xs"
         />
