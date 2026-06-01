@@ -137,6 +137,17 @@ export function useProposals() {
     staleTime: 15_000,
   });
 
+  // Wrapper avec timeout pour ne jamais laisser le bouton 'Mettre à jour'
+  // tourner indéfiniment si Supabase hang sur la requête (RLS bizarre,
+  // connectivité, etc.).
+  const withTimeout = <T,>(p: Promise<T>, ms: number, label: string): Promise<T> =>
+    Promise.race<T>([
+      p,
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error(`Timeout ${label} (${ms / 1000}s). Réessayez.`)), ms),
+      ),
+    ]);
+
   const save = async (input: SaveProposalInput): Promise<{ id: string | null; error: string | null }> => {
     const total = computeTotal(input.selectedVehicles, input.selectedChargers);
     const row: ProposalInsert = {
@@ -160,22 +171,34 @@ export function useProposals() {
       internal_notes: input.internalNotes ?? null,
     };
 
-    if (input.id) {
-      const { error } = await supabase.from("proposals").update(row).eq("id", input.id);
-      if (error) return { id: null, error: error.message };
-      await qc.invalidateQueries({ queryKey: ["proposals"] });
-      await qc.invalidateQueries({ queryKey: ["proposal", input.id] });
-      return { id: input.id, error: null };
-    } else {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data, error } = await supabase
-        .from("proposals")
-        .insert({ ...row, created_by: user?.id ?? null })
-        .select("id")
-        .single();
-      if (error || !data) return { id: null, error: error?.message ?? "Création échouée" };
-      await qc.invalidateQueries({ queryKey: ["proposals"] });
-      return { id: data.id, error: null };
+    try {
+      if (input.id) {
+        const { error } = await withTimeout(
+          supabase.from("proposals").update(row).eq("id", input.id),
+          12_000,
+          "mise à jour",
+        );
+        if (error) return { id: null, error: error.message };
+        await qc.invalidateQueries({ queryKey: ["proposals"] });
+        await qc.invalidateQueries({ queryKey: ["proposal", input.id] });
+        return { id: input.id, error: null };
+      } else {
+        const { data: { user } } = await supabase.auth.getUser();
+        const { data, error } = await withTimeout(
+          supabase
+            .from("proposals")
+            .insert({ ...row, created_by: user?.id ?? null })
+            .select("id")
+            .single(),
+          12_000,
+          "création",
+        );
+        if (error || !data) return { id: null, error: error?.message ?? "Création échouée" };
+        await qc.invalidateQueries({ queryKey: ["proposals"] });
+        return { id: data.id, error: null };
+      }
+    } catch (e) {
+      return { id: null, error: e instanceof Error ? e.message : "Erreur inconnue" };
     }
   };
 

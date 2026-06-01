@@ -691,10 +691,6 @@ function App() {
           <ProjectTypeSelector value={projectType} onChange={switchProject} />
           <ClientCard client={client} setClient={setClient} />
           {projectType === "vehicles" && (
-            <EnergyCard energy={energy} setEnergy={setEnergy} reset={resetEnergy} />
-          )}
-
-          {projectType === "vehicles" && (
             <CatalogSection
               title={`Véhicules (${filteredVehicles.length}${filteredVehicles.length !== vehicles.length ? ` / ${vehicles.length}` : ""})`}
               subtitle={catalogSubtitleFor("vehicles")}
