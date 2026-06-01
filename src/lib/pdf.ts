@@ -142,21 +142,24 @@ const TYPE_TITLE: Record<ProjectType, string> = {
 // Cache module-level pour éviter de recharger settings/fonts/TCO à chaque PDF.
 // Sans cache, générer 3 PDF d'affilée déclenche 15 requêtes réseau, ce qui
 // faisait sauter le timeout global de 30s dès le 2e ou 3e document.
+// Cache TTL court (5 s) sur tous les contenus éditables admin : assez pour
+// dédupliquer les fetches dans une génération chaînée (clic → clic en < 5 s)
+// mais imperceptible côté admin (toute modif est visible au PDF suivant).
 type CachedSettings = { type: ProjectType; data: Awaited<ReturnType<typeof loadPdfSettings>>; expiresAt: number };
 const PDF_SETTINGS_CACHE = new Map<ProjectType, CachedSettings>();
-const SETTINGS_TTL_MS = 5 * 60 * 1000; // 5 min
+const SETTINGS_TTL_MS = 5 * 1000;
 
 let TCO_CACHE: { key: string; data: Map<string, TcoResult>; expiresAt: number } | null = null;
-const TCO_TTL_MS = 2 * 60 * 1000; // 2 min
+const TCO_TTL_MS = 30 * 1000; // 30 s : les TCO changent rarement, peu de risque admin
 
 let FONT_CACHE: { regularB64: string; semiBoldB64: string } | null = null;
 
 let PILLARS_CACHE: { data: BeevPillar[]; expiresAt: number } | null = null;
-const PILLARS_TTL_MS = 5 * 60 * 1000;
+const PILLARS_TTL_MS = 5 * 1000;
 let PILLARS: BeevPillar[] = [];
 
 let TEXTS_CACHE: { data: PdfTextMap; expiresAt: number } | null = null;
-const TEXTS_TTL_MS = 5 * 60 * 1000;
+const TEXTS_TTL_MS = 5 * 1000;
 let TEXTS: PdfTextMap = new Map();
 
 // Wrap une promesse avec un timeout court qui rejette si la requête traîne.
