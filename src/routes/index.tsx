@@ -59,6 +59,10 @@ function App() {
   const { chargers, update: updateCharger, add: addCharger, remove: removeCharger, removeAllByDeployment } = useChargers();
   const { energy, set: setEnergy, reset: resetEnergy } = useEnergy();
   const { projectType, setProjectType } = useProjectType();
+  // Mode TCO : 4e onglet du sélecteur. UI uniquement, projectType en DB
+  // reste 'vehicles' (la 4e valeur 'tco' n'est jamais persistée côté Supabase).
+  const [tcoView, setTcoView] = useState(false);
+  const activeTab: "vehicles" | "home" | "site" | "tco" = tcoView ? "tco" : projectType;
 
   // Auto-save : restaure les sélections depuis localStorage au montage.
   // Le commercial peut ainsi recharger la page sans perdre son travail.
@@ -433,8 +437,16 @@ function App() {
   // Permet de passer d'un type de projet à l'autre SANS réinitialiser les sélections.
   // Le commercial peut donc construire une offre combinée (véhicules + bornes domicile
   // + bornes site dans le même PDF).
-  const switchProject = (t: ProjectType) => {
-    setProjectType(t);
+  const switchProject = (t: "vehicles" | "home" | "site" | "tco") => {
+    if (t === "tco") {
+      setTcoView(true);
+      // En mode TCO on travaille sur des véhicules, on bascule le projectType
+      // sous-jacent à 'vehicles' pour que les sélections soient cohérentes.
+      if (projectType !== "vehicles") setProjectType("vehicles");
+    } else {
+      setTcoView(false);
+      setProjectType(t);
+    }
   };
 
   if (presenting) {
@@ -688,9 +700,21 @@ function App() {
 
       <main className="container mx-auto px-6 py-8 grid gap-8 lg:grid-cols-[1fr_400px]">
         <div className="space-y-8">
-          <ProjectTypeSelector value={projectType} onChange={switchProject} />
+          <ProjectTypeSelector value={activeTab} onChange={switchProject} />
           <ClientCard client={client} setClient={setClient} />
-          {projectType === "vehicles" && (
+
+          {tcoView && (
+            <TcoCalculator
+              vehicles={vehicles}
+              selectedV={selectedV}
+              onToggle={toggleV}
+              energy={energy}
+              setEnergy={setEnergy}
+              resetEnergy={resetEnergy}
+            />
+          )}
+
+          {!tcoView && projectType === "vehicles" && (
             <CatalogSection
               title={`Véhicules (${filteredVehicles.length}${filteredVehicles.length !== vehicles.length ? ` / ${vehicles.length}` : ""})`}
               subtitle={catalogSubtitleFor("vehicles")}
@@ -895,16 +919,19 @@ function App() {
   );
 }
 
-function ProjectTypeSelector({ value, onChange }: { value: ProjectType; onChange: (t: ProjectType) => void }) {
-  const opts: { id: ProjectType; icon: React.ReactNode; title: string; desc: string }[] = [
-    { id: "vehicles", icon: <Car className="w-5 h-5" />, title: "Projet Véhicules", desc: "Flotte LLD, TCO, prestations véhicule." },
+type ProjectTab = ProjectType | "tco";
+
+function ProjectTypeSelector({ value, onChange }: { value: ProjectTab; onChange: (t: ProjectTab) => void }) {
+  const opts: { id: ProjectTab; icon: React.ReactNode; title: string; desc: string }[] = [
+    { id: "vehicles", icon: <Car className="w-5 h-5" />, title: "Projet Véhicules", desc: "Flotte LLD, prestations véhicule." },
     { id: "home", icon: <Home className="w-5 h-5" />, title: "Bornes domicile", desc: "Kit B2B2E par collaborateur." },
     { id: "site", icon: <Building2 className="w-5 h-5" />, title: "Bornes site entreprise", desc: "Déploiement IRVE site par site." },
+    { id: "tco", icon: <Gauge className="w-5 h-5" />, title: "Analyse TCO", desc: "Comparatif coût total de possession." },
   ];
   return (
     <Card>
       <CardHeader className="pb-3"><CardTitle className="text-base">Type de projet</CardTitle></CardHeader>
-      <CardContent className="grid gap-3 sm:grid-cols-3">
+      <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {opts.map((o) => {
           const active = value === o.id;
           return (
@@ -1076,6 +1103,158 @@ function ClientCard({ client, setClient }: { client: any; setClient: (c: any) =>
         </Field>
       </CardContent>
     </Card>
+  );
+}
+
+// ============ CALCULATEUR TCO ============
+// 4e onglet du sélecteur projet : permet au commercial de présenter une
+// analyse comparative TCO sur plusieurs véhicules du catalogue sans construire
+// une offre commerciale complète. Réutilise computeTco de pdf.ts pour avoir
+// la même base de calcul partout dans l'app.
+function TcoCalculator({
+  vehicles, selectedV, onToggle, energy, setEnergy, resetEnergy,
+}: {
+  vehicles: Vehicle[];
+  selectedV: Record<string, SelectedVehicle>;
+  onToggle: (v: Vehicle) => void;
+  energy: EnergyParams;
+  setEnergy: (e: EnergyParams) => void;
+  resetEnergy: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return vehicles;
+    return vehicles.filter((v) => `${v.brand} ${v.model} ${v.version} ${v.category}`.toLowerCase().includes(q));
+  }, [vehicles, search]);
+
+  // Calcule le TCO pour chaque véhicule sélectionné
+  const tcoRows = useMemo(() => {
+    return Object.values(selectedV).map((sv) => {
+      const t = computeTco(sv, energy);
+      const monthlyTco = (t.tco100 * sv.kmPerYear) / 100 / 12;
+      const totalContract = (t.tco100 * sv.kmPerYear / 100) * (sv.durationMonths / 12);
+      return { sv, tco100: t.tco100, lease100: t.lease100, energy100: t.energy100, monthlyTco, totalContract };
+    });
+  }, [selectedV, energy]);
+
+  // Identifie le véhicule au TCO le plus bas pour le mettre en valeur
+  const cheapestId = useMemo(() => {
+    if (tcoRows.length === 0) return null;
+    return tcoRows.reduce((min, r) => r.tco100 < min.tco100 ? r : min, tcoRows[0]).sv.vehicle.id;
+  }, [tcoRows]);
+
+  return (
+    <div className="space-y-6">
+      {/* Paramètres énergie */}
+      <Card>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <div className="flex items-center gap-2">
+            <Settings2 className="w-4 h-4 text-primary" />
+            <CardTitle className="text-base">Paramètres TCO et énergie</CardTitle>
+          </div>
+          <Button variant="ghost" size="sm" onClick={resetEnergy} className="gap-2"><RotateCcw className="w-3 h-3" /> Reset</Button>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
+          <NumField label="Durée (années)" value={energy.durationYears} onChange={(n) => setEnergy({ ...energy, durationYears: n })} />
+          <NumField label="Km / an" value={energy.kmPerYear} onChange={(n) => setEnergy({ ...energy, kmPerYear: n })} />
+          <NumField label="Essence €/L" value={energy.fuelPriceL} onChange={(n) => setEnergy({ ...energy, fuelPriceL: n })} step={0.01} />
+          <NumField label="kWh domicile €" value={energy.kWhHome} onChange={(n) => setEnergy({ ...energy, kWhHome: n })} step={0.01} />
+          <NumField label="kWh public €" value={energy.kWhPublic} onChange={(n) => setEnergy({ ...energy, kWhPublic: n })} step={0.01} />
+          <NumField label="Mix domicile %" value={energy.mixHomePct} onChange={(n) => setEnergy({ ...energy, mixHomePct: n })} />
+        </CardContent>
+      </Card>
+
+      {/* Sélection des véhicules à analyser */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Véhicules à analyser ({Object.keys(selectedV).length} sélectionné{Object.keys(selectedV).length > 1 ? "s" : ""})</CardTitle>
+          <p className="text-xs text-muted-foreground">Cochez les véhicules à comparer côté TCO. Le tableau ci-dessous se met à jour en temps réel.</p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Input placeholder="Rechercher un véhicule..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-8" />
+          <div className="grid gap-2 max-h-[400px] overflow-y-auto pr-1">
+            {filtered.map((v) => {
+              const isSelected = !!selectedV[v.id];
+              return (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => onToggle(v)}
+                  className={`flex items-center gap-3 rounded-md border p-2 text-left transition-colors ${isSelected ? "border-primary ring-1 ring-primary bg-primary/5" : "hover:bg-accent/40"}`}
+                >
+                  <Checkbox checked={isSelected} className="pointer-events-none" />
+                  {v.image && <img src={v.image} alt="" className="w-12 h-9 object-contain bg-muted rounded" />}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{v.brand} {v.model}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">{v.version} · {v.energy}</p>
+                  </div>
+                  <div className="text-right text-xs flex-shrink-0">
+                    <p className="font-semibold">{fmtEur(v.monthlyLld)}</p>
+                    <p className="text-[10px] text-muted-foreground">/mois TTC</p>
+                  </div>
+                </button>
+              );
+            })}
+            {filtered.length === 0 && <p className="text-xs text-muted-foreground py-4 text-center">Aucun véhicule ne correspond à la recherche.</p>}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Tableau comparatif TCO */}
+      {tcoRows.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Comparaison TCO temps réel</CardTitle>
+            <p className="text-xs text-muted-foreground">Calcul basé sur les paramètres énergie ci-dessus. Le véhicule au TCO le plus bas est mis en avant en vert.</p>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground uppercase text-[10px]">
+                    <th className="py-2 px-2">Véhicule</th>
+                    <th className="py-2 px-2 text-right">Loyer / 100 km</th>
+                    <th className="py-2 px-2 text-right">Énergie / 100 km</th>
+                    <th className="py-2 px-2 text-right">TCO / 100 km</th>
+                    <th className="py-2 px-2 text-right">TCO mensuel</th>
+                    <th className="py-2 px-2 text-right">TCO total contrat</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tcoRows.sort((a, b) => a.tco100 - b.tco100).map((r) => {
+                    const isCheapest = r.sv.vehicle.id === cheapestId;
+                    return (
+                      <tr key={r.sv.vehicle.id} className={`border-b ${isCheapest ? "bg-[#35DA76]/10" : ""}`}>
+                        <td className="py-2 px-2">
+                          <p className="font-medium">{r.sv.vehicle.brand} {r.sv.vehicle.model}</p>
+                          <p className="text-[10px] text-muted-foreground">{r.sv.vehicle.version}</p>
+                        </td>
+                        <td className="py-2 px-2 text-right">{r.lease100.toFixed(2)} €</td>
+                        <td className="py-2 px-2 text-right">{r.energy100.toFixed(2)} €</td>
+                        <td className={`py-2 px-2 text-right font-semibold ${isCheapest ? "text-[#35DA76]" : ""}`}>{r.tco100.toFixed(2)} €</td>
+                        <td className="py-2 px-2 text-right">{fmtEur(r.monthlyTco)}</td>
+                        <td className="py-2 px-2 text-right font-semibold">{fmtEur(r.totalContract)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {cheapestId && (
+              <div className="mt-3 rounded-md bg-[#35DA76]/10 border border-[#35DA76]/30 p-3 text-xs">
+                <strong className="text-[#35DA76]">Recommandation Beev :</strong>
+                {" "}
+                {tcoRows.find((r) => r.sv.vehicle.id === cheapestId)?.sv.vehicle.brand}{" "}
+                {tcoRows.find((r) => r.sv.vehicle.id === cheapestId)?.sv.vehicle.model}
+                {" "}offre le meilleur coût total de possession sur cette sélection, soit{" "}
+                <strong>{tcoRows.find((r) => r.sv.vehicle.id === cheapestId)?.tco100.toFixed(2)} € / 100 km</strong>.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }
 
