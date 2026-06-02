@@ -464,7 +464,7 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8);
   doc.setTextColor(...GREY_LABEL);
-  doc.text("OFFRE COMMERCIALE", PAGE_W - M, 55, { align: "right" });
+  doc.text(lookupText(TEXTS, "common", "cover_offer_label", "OFFRE COMMERCIALE"), PAGE_W - M, 55, { align: "right" });
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(10);
   doc.setTextColor(...BEIGE);
@@ -627,7 +627,7 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
 // ============ POURQUOI BEEV (varie par type) ============
 function drawWhyBeev(doc: jsPDF, type: ProjectType) {
   let y = 130;
-  eyebrow(doc, "NOTRE APPROCHE", y);
+  eyebrow(doc, lookupText(TEXTS, "common", "why_beev_eyebrow", "NOTRE APPROCHE"), y);
   y += 32;
   const whyBeevTitleFallback = type === "vehicles" ? "Pourquoi confier vos véhicules à Beev." :
               type === "home" ? "Le kit B2B2E clé en main pour vos collaborateurs." :
@@ -695,7 +695,7 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(9);
     doc.setTextColor(...ACCENT);
-    doc.text("BEEV EN CHIFFRES", M + 16, y + 18);
+    doc.text(lookupText(TEXTS, "common", "why_beev_chiffres_title", "BEEV EN CHIFFRES"), M + 16, y + 18);
 
     const stats: Array<{ value: string; label: string }> = [
       { value: "200+", label: "entreprises\naccompagnées" },
@@ -784,7 +784,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(9);
   doc.setTextColor(255, 255, 255);
-  doc.text("TARIFICATION LLD", px + 12, imgY + 17);
+  doc.text(lookupText(TEXTS, "vehicles", "vehicle_tariff_chip", "TARIFICATION LLD"), px + 12, imgY + 17);
 
   doc.setFillColor(...BG);
   doc.rect(px, imgY + 26, pw, imgH - 26, "F");
@@ -792,7 +792,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   const discounted = v.priceTtc * (1 - sv.discountPct / 100);
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text("PRIX CATALOGUE TTC", px + 12, py);
+  doc.text(lookupText(TEXTS, "vehicles", "vehicle_catalog_label", "PRIX CATALOGUE TTC"), px + 12, py);
   doc.setFontSize(11);
   doc.setTextColor(...INK);
   doc.text(eur(v.priceTtc), px + 12, py + 14);
@@ -800,7 +800,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   py += 32;
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text(`REMISE COMMERCIALE -${sv.discountPct.toFixed(1)} %`, px + 12, py);
+  doc.text(`${lookupText(TEXTS, "vehicles", "vehicle_discount_label", "REMISE COMMERCIALE")} -${sv.discountPct.toFixed(1)} %`, px + 12, py);
   doc.setFontSize(11);
   doc.setTextColor(...INK);
   doc.text(eur(discounted), px + 12, py + 14);
@@ -814,7 +814,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   py += 14;
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text(`LOYER MENSUEL TTC · ${sv.durationMonths} mois`, px + 12, py);
+  doc.text(`${lookupText(TEXTS, "vehicles", "vehicle_monthly_label", "LOYER MENSUEL TTC")} · ${sv.durationMonths} mois`, px + 12, py);
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(18);
   doc.setTextColor(...INK);
@@ -870,7 +870,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(9.5);
     doc.setTextColor(...SUB);
-    doc.text("COÛT TOTAL DE POSSESSION (TCO)", M + 16, y + 16);
+    doc.text(lookupText(TEXTS, "vehicles", "vehicle_tco_block_title", "COÛT TOTAL DE POSSESSION (TCO)"), M + 16, y + 16);
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(7.5);
     doc.text(`${sv.durationMonths} mois · ${fmt(sv.kmPerYear)} km/an · estimation non contractuelle`, M + 16, y + 27);
@@ -918,7 +918,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(7);
       doc.setTextColor(...LAVENDER);
-      doc.text("DÉTAILS FISCAUX (CALCUL BEEV 2026)", M + 16, fiscalY + 12);
+      doc.text(lookupText(TEXTS, "vehicles", "vehicle_tco_fiscal_title", "DÉTAILS FISCAUX (CALCUL BEEV 2026)"), M + 16, fiscalY + 12);
 
       // 3 colonnes de stats fiscales (sans TCO mensuel car déjà dans les KPIs du haut)
       const fiscalCols = [
@@ -1205,7 +1205,7 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
 // Le véhicule le moins cher est mis en valeur en vert Beev.
 function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams) {
   let y = 130;
-  eyebrow(doc, "COMPARAISON TCO ENTRE VÉHICULES", y);
+  eyebrow(doc, lookupText(TEXTS, "vehicles", "tco_compare_eyebrow", "COMPARAISON TCO ENTRE VÉHICULES"), y);
   y += 32;
   title(doc, "Quel véhicule offre le meilleur coût total ?", y);
   y += 36;
@@ -1434,9 +1434,9 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
 // ============ GARANTIES & ENGAGEMENTS BEEV ============
 function drawGuarantees(doc: jsPDF, type: ProjectType) {
   let y = 130;
-  eyebrow(doc, "GARANTIES & ENGAGEMENTS BEEV", y);
+  eyebrow(doc, lookupText(TEXTS, "common", "pillars_eyebrow", "GARANTIES & ENGAGEMENTS BEEV"), y);
   y += 32;
-  title(doc, "Ce que Beev s'engage à tenir.", y);
+  title(doc, lookupText(TEXTS, "common", "pillars_title", "Ce que Beev s'engage à tenir."), y);
   y += 36;
 
   doc.setFont(BRAND_FONT, "normal");
@@ -1618,11 +1618,12 @@ function drawExecutiveSummary(
   e: EnergyParams,
 ) {
   let y = 116;
-  eyebrow(doc, "EN BREF · POUR LE COMITÉ DE DIRECTION", y);
+  eyebrow(doc, lookupText(TEXTS, "common", "executive_eyebrow", "EN BREF · POUR LE COMITÉ DE DIRECTION"), y);
   y += 32;
-  title(doc, type === "vehicles" ? "Votre flotte électrique en synthèse." :
+  const execTitleFallback = type === "vehicles" ? "Votre flotte électrique en synthèse." :
             type === "home" ? "Votre déploiement domicile en synthèse." :
-            "Votre projet IRVE site en synthèse.", y);
+            "Votre projet IRVE site en synthèse.";
+  title(doc, lookupText(TEXTS, type, "executive_title", execTitleFallback), y);
   y += 30;
 
   doc.setFont(BRAND_FONT, "normal");
@@ -1774,7 +1775,7 @@ function drawFinancialSummary(
   const isCombined = hasVehicles && hasChargers;
 
   let y = 130;
-  eyebrow(doc, "SYNTHÈSE FINANCIÈRE", y);
+  eyebrow(doc, lookupText(TEXTS, "common", "financial_eyebrow", "SYNTHÈSE FINANCIÈRE"), y);
   y += 32;
   const titleText = isCombined
     ? "Récapitulatif loyers LLD + bornes HT/TTC."
@@ -1929,7 +1930,7 @@ function drawJourney(doc: jsPDF, type: ProjectType, _client: ClientInfo) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text("PARCOURS CLIENT BEEV — DE A À Z", M + 30, y - 4);
+  doc.text(lookupText(TEXTS, "common", "journey_eyebrow", "PARCOURS CLIENT BEEV — DE A À Z"), M + 30, y - 4);
   y += 14;
 
   // Title (.ptitle 33px ≈ 25pt)
@@ -2048,9 +2049,9 @@ function drawJourney(doc: jsPDF, type: ProjectType, _client: ClientInfo) {
 // ============ VALIDATION (varie par type) ============
 function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   let y = 130;
-  eyebrow(doc, "PROCHAINES ÉTAPES", y);
+  eyebrow(doc, lookupText(TEXTS, "common", "next_steps_eyebrow", "PROCHAINES ÉTAPES"), y);
   y += 32;
-  title(doc, "Validation et lancement du projet.", y);
+  title(doc, lookupText(TEXTS, "common", "next_steps_title", "Validation et lancement du projet."), y);
   y += 36;
 
   const stepsByType: Record<ProjectType, [string, string, string][]> = {
