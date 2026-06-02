@@ -427,171 +427,201 @@ export async function generateProposalPdf(opts: {
 }
 
 // ============ COVER ============
+// Refonte selon design Claude/Beev :
+// - Fond noir #1D1D1D, beige #FCF9F2 pour les textes
+// - Top : logo (placeholder texte "Beev") + meta "OFFRE COMMERCIALE / date" à droite
+// - Centre : kicker tagline, H1 58px "Beev × Client" avec × en rose F4B8AA,
+//   sous-titre, chip pill "Devis ... · Validité 30 jours"
+// - Bottom : 3 colonnes "Préparée pour / par / Périmètre" séparées par bordure top
+// - Footer : "Document confidentiel" / "Réf devis · contact"
 function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nbC: number) {
-  // Fond noir
-  doc.setFillColor(...INK);
+  // Charte de couleurs Beev (CSS vars du design)
+  const BLACK: [number, number, number] = [29, 29, 29];
+  const BEIGE: [number, number, number] = [252, 249, 242];
+  const ROSE: [number, number, number] = [244, 184, 170];
+  const GREY_LABEL: [number, number, number] = [154, 150, 142]; // #9A968E meta + kicker
+  const GREY_SUB: [number, number, number] = [201, 198, 190]; // #C9C6BE sub-titre
+  const GREY_LINE: [number, number, number] = [183, 180, 172]; // #B7B4AC cc-line
+  const GREY_CC_LABEL: [number, number, number] = [140, 137, 128]; // #8C8980 cc-label
+  const GREY_FOOT: [number, number, number] = [118, 115, 108]; // #76736C cover-foot
+
+  // Fond noir pleine page
+  doc.setFillColor(...BLACK);
   doc.rect(0, 0, PAGE_W, PAGE_H, "F");
-
-  // Motif décoratif subtil : cercles concentriques en haut à droite
-  // (couleur très proche du noir pour rester discret, donne profondeur visuelle)
-  doc.setDrawColor(35, 50, 35);
-  doc.setLineWidth(0.4);
-  for (let r = 80; r <= 220; r += 28) {
-    doc.circle(PAGE_W - 50, 90, r, "S");
-  }
-  doc.setLineWidth(0.5);
-
-  // Logo "BEEV"
-  doc.setTextColor(255, 255, 255);
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(14);
-  doc.text("BEEV", M, 80);
-  doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(9);
-  doc.setTextColor(180, 180, 185);
-  doc.text(lookupText(TEXTS, "common", "cover_tagline", "Le copilote de l'électrification des flottes · beev.co"), M, 94);
-
-  // Accent vert
-  doc.setFillColor(...ACCENT);
-  doc.rect(M, 110, 60, 4, "F");
 
   // Référence devis générée automatiquement : BEEV-AAAA-MMJJ-HHMM
   const now = new Date();
   const ref = `BEEV-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
 
-  doc.setFontSize(9);
-  doc.setTextColor(180, 180, 185);
-  doc.text(`OFFRE COMMERCIALE · ${c.date.toUpperCase()}`, M, 230);
-
-  // Encart référence devis (gros + visible)
+  // ─── TOP : logo Beev + meta date à droite ───
+  // Logo texte (faute d'asset SVG embarqué)
+  doc.setTextColor(...BEIGE);
   doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(13);
-  doc.setTextColor(...ACCENT);
-  doc.text(`DEVIS ${ref}`, M, 250);
+  doc.setFontSize(18);
+  doc.text("Beev", M, 65);
+
+  // Meta droite : "OFFRE COMMERCIALE" + date
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...GREY_LABEL);
+  doc.text("OFFRE COMMERCIALE", PAGE_W - M, 55, { align: "right" });
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...BEIGE);
+  doc.text(c.date || now.toLocaleDateString("fr-FR"), PAGE_W - M, 70, { align: "right" });
+
+  // ─── CENTER : kicker + H1 + sous-titre + chip devis (~y=215) ───
+  // Kicker tagline (12px ≈ 9pt)
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
-  doc.setTextColor(180, 180, 185);
-  doc.text(lookupText(TEXTS, "common", "cover_validity", "Validité 30 jours · à compter de la date d'émission"), M, 264);
+  doc.setTextColor(...GREY_LABEL);
+  doc.text(
+    lookupText(TEXTS, "common", "cover_tagline", "Le copilote de l'électrification des flottes · beev.co"),
+    M,
+    220,
+  );
 
+  // H1 : "Beev × HOLDING LOPES" — 58px ≈ 43.5pt, weight 600
+  // Pour mettre × en rose, on découpe en 3 segments avec widths calculées
   doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(32);
-  doc.setTextColor(255, 255, 255);
-  doc.text("Beev × " + (c.company || "Votre entreprise"), M, 295);
+  doc.setFontSize(43);
+  const h1Y = 260;
+  const part1 = "Beev ";
+  const partX = "×";
+  const partAfter = " " + (c.company || "Votre entreprise").toUpperCase();
+  doc.setTextColor(...BEIGE);
+  doc.text(part1, M, h1Y);
+  const w1 = doc.getTextWidth(part1);
+  doc.setTextColor(...ROSE);
+  doc.setFont(BRAND_FONT, "normal"); // × en weight 400 selon design
+  doc.text(partX, M + w1, h1Y);
+  const wX = doc.getTextWidth(partX);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setTextColor(...BEIGE);
+  // Le nom client peut être long : on autorise un retour à la ligne
+  const afterMaxW = PAGE_W - M - (M + w1 + wX);
+  const afterLines = doc.splitTextToSize(partAfter, afterMaxW);
+  doc.text(afterLines[0], M + w1 + wX, h1Y);
+  // Si débordement : ligne 2 alignée à gauche (sous Beev ×)
+  if (afterLines.length > 1) {
+    doc.text(afterLines.slice(1).join(" "), M, h1Y + 46);
+  }
+  const h1Bottom = h1Y + (afterLines.length > 1 ? 46 * 2 : 0);
 
+  // Sous-titre 21px ≈ 16pt (normal)
   doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(14);
-  doc.setTextColor(210, 210, 215);
-  // Offre combinée ? On adapte le sous-titre.
+  doc.setFontSize(15.75);
+  doc.setTextColor(...GREY_SUB);
   const isCombinedOffer = nbV > 0 && nbC > 0;
   const sub = isCombinedOffer
     ? "Offre combinée : véhicules électriques et bornes de recharge"
     : (PDF_CONTENT.coverSubtitle ?? TYPE_TITLE[type]);
   const subL = doc.splitTextToSize(sub, PAGE_W - M * 2);
-  doc.text(subL, M, 325);
+  const subY = h1Bottom + 30;
+  doc.text(subL, M, subY);
+  const subEnd = subY + subL.length * 18;
 
-  doc.setDrawColor(80, 80, 90);
-  doc.line(M, 470, PAGE_W - M, 470);
-  doc.setFontSize(9);
-  doc.setTextColor(170, 170, 175);
-  doc.text(lookupText(TEXTS, "common", "cover_prepared_for_label", "PRÉPARÉE POUR"), M, 495);
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(20);
-  doc.setTextColor(255, 255, 255);
-  doc.text(c.company || "—", M, 522);
+  // Chip pill "Devis BEEV-... · Validité 30 jours"
+  // Pas d'alpha en jsPDF — on simule beige@22% par un gris très foncé
+  const chipText = `Devis ${ref}    •    ${lookupText(TEXTS, "common", "cover_validity", "Validité 30 jours à compter de l'émission")}`;
   doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(11);
-  doc.setTextColor(200, 200, 205);
-  if (c.contact) doc.text(c.contact, M, 542);
-  if (c.email) doc.text(c.email, M, 558);
-
   doc.setFontSize(9);
-  doc.setTextColor(170, 170, 175);
-  doc.text(lookupText(TEXTS, "common", "cover_prepared_by_label", "PRÉPARÉE PAR"), PAGE_W - M, 495, { align: "right" });
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(13);
-  doc.setTextColor(255, 255, 255);
-  doc.text(c.salesRep || "Beev", PAGE_W - M, 522, { align: "right" });
-  doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(10);
-  doc.setTextColor(200, 200, 205);
-  if (c.salesRepEmail) doc.text(c.salesRepEmail, PAGE_W - M, 540, { align: "right" });
-  if (c.salesRepPhone) doc.text(c.salesRepPhone, PAGE_W - M, 555, { align: "right" });
+  const chipW = doc.getTextWidth(chipText) + 28;
+  const chipH = 22;
+  const chipX = M;
+  const chipY = subEnd + 16;
+  doc.setDrawColor(70, 67, 62); // approximation beige@22% sur noir
+  doc.setLineWidth(0.7);
+  doc.roundedRect(chipX, chipY, chipW, chipH, 11, 11, "S");
+  doc.setTextColor(...BEIGE);
+  doc.text(chipText, chipX + 14, chipY + 14.5);
 
-  // Section "Périmètre" en bas — adapte selon offre simple ou combinée
-  doc.setDrawColor(80, 80, 90);
-  doc.line(M, 640, PAGE_W - M, 640);
+  // ─── BOTTOM : 3 colonnes Préparée pour / par / Périmètre ───
+  // Position fixée en bas (séparation top à y = PAGE_H - ~160)
+  const cardsY = PAGE_H - 180;
+  doc.setDrawColor(70, 67, 62); // beige@16%
+  doc.setLineWidth(0.5);
+  doc.line(M, cardsY, PAGE_W - M, cardsY);
 
-  doc.setFontSize(9);
-  doc.setTextColor(170, 170, 175);
-  doc.text(lookupText(TEXTS, "common", "cover_perimeter_label", "PÉRIMÈTRE"), M, 665);
+  const colWidth = (PAGE_W - M * 2) / 3;
+  const labelY = cardsY + 22;
+  const nameY = cardsY + 42;
+  const lineY = cardsY + 60;
 
-  const isCombined = nbV > 0 && nbC > 0;
-
-  if (isCombined) {
-    // Offre combinée : 2 blocs côte à côte
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(42);
-    doc.setTextColor(...ACCENT);
-    doc.text(String(nbV), M, 720);
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(255, 255, 255);
-    doc.text(`VÉHICULE${nbV > 1 ? "S" : ""}`, M + 70, 710);
-    doc.setFontSize(8);
-    doc.setTextColor(180, 180, 185);
-    doc.text("électrique" + (nbV > 1 ? "s" : ""), M + 70, 722);
-
-    // Séparateur vertical
-    doc.setDrawColor(80, 80, 90);
-    doc.line(M + 200, 685, M + 200, 745);
-
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(42);
-    doc.setTextColor(...ACCENT);
-    doc.text(String(nbC), M + 230, 720);
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(255, 255, 255);
-    doc.text(`BORNE${nbC > 1 ? "S" : ""}`, M + 300, 710);
-    doc.setFontSize(8);
-    doc.setTextColor(180, 180, 185);
-    doc.text("de recharge", M + 300, 722);
-  } else {
-    // Offre simple : 1 seul bloc
-    const total = type === "vehicles" ? nbV : nbC;
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(56);
-    doc.setTextColor(...ACCENT);
-    doc.text(String(total), M, 720);
-
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(11);
-    doc.setTextColor(255, 255, 255);
-    let label: string;
-    if (type === "vehicles") label = `véhicule${nbV > 1 ? "s" : ""} électrique${nbV > 1 ? "s" : ""}`;
-    else if (type === "home") label = `collaborateur${nbC > 1 ? "s" : ""} équipé${nbC > 1 ? "s" : ""}`;
-    else label = `site${nbC > 1 ? "s" : ""} entreprise équipé${nbC > 1 ? "s" : ""}`;
-    doc.text(label.toUpperCase(), M + 90, 720);
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(180, 180, 185);
-    doc.text("dans cette proposition", M + 90, 735);
-  }
-
-  // Coordonnées Beev en bas — pied de couverture sobre
-  doc.setDrawColor(60, 60, 70);
-  doc.line(M, PAGE_H - 60, PAGE_W - M, PAGE_H - 60);
-  doc.setFontSize(8);
-  doc.setTextColor(150, 150, 155);
-  doc.text(lookupText(TEXTS, "common", "footer_confidential", "DOCUMENT CONFIDENTIEL · USAGE INTERNE CLIENT"), M, PAGE_H - 42);
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setTextColor(...ACCENT);
-  doc.text("beev.co", PAGE_W - M, PAGE_H - 42, { align: "right" });
+  // Col 1 : Préparée pour
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(7.5);
-  doc.setTextColor(120, 120, 125);
-  doc.text(`Référence devis : ${ref}`, M, PAGE_H - 28);
-  doc.text("contact@beev.co", PAGE_W - M, PAGE_H - 28, { align: "right" });
+  doc.setTextColor(...GREY_CC_LABEL);
+  doc.text(lookupText(TEXTS, "common", "cover_prepared_for_label", "PRÉPARÉE POUR"), M, labelY);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(11.25);
+  doc.setTextColor(...BEIGE);
+  doc.text(c.company || "—", M, nameY);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...GREY_LINE);
+  if (c.contact) doc.text(c.contact, M, lineY);
+  if (c.email) doc.text(c.email, M, lineY + 13);
+
+  // Col 2 : Préparée par
+  const col2X = M + colWidth + 15;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...GREY_CC_LABEL);
+  doc.text(lookupText(TEXTS, "common", "cover_prepared_by_label", "PRÉPARÉE PAR"), col2X, labelY);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(11.25);
+  doc.setTextColor(...BEIGE);
+  doc.text(c.salesRep || "Beev", col2X, nameY);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...GREY_LINE);
+  if (c.salesRepEmail) doc.text(c.salesRepEmail, col2X, lineY);
+  if (c.salesRepPhone) doc.text(c.salesRepPhone, col2X, lineY + 13);
+
+  // Col 3 : Périmètre — accent rose
+  const col3X = M + colWidth * 2 + 30;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...GREY_CC_LABEL);
+  doc.text(lookupText(TEXTS, "common", "cover_perimeter_label", "PÉRIMÈTRE"), col3X, labelY);
+  // Gros chiffre + unité, en rose
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(22.5);
+  doc.setTextColor(...BEIGE);
+  const total = isCombinedOffer ? nbV + nbC : (type === "vehicles" ? nbV : nbC);
+  const numStr = String(total);
+  doc.text(numStr, col3X, nameY + 10);
+  const numW = doc.getTextWidth(numStr);
+  doc.setFontSize(9);
+  doc.setFont(BRAND_FONT, "normal");
+  let perimLabel: string;
+  if (isCombinedOffer) perimLabel = "élément" + (total > 1 ? "s" : "");
+  else if (type === "vehicles") perimLabel = "véhicule" + (total > 1 ? "s" : "");
+  else if (type === "home") perimLabel = "collaborateur" + (total > 1 ? "s" : "");
+  else perimLabel = "site" + (total > 1 ? "s" : "");
+  doc.text(perimLabel, col3X + numW + 6, nameY + 10);
+  doc.setFontSize(8.5);
+  doc.setTextColor(...GREY_LINE);
+  const peri2 = isCombinedOffer
+    ? "véhicules et bornes dans cette proposition"
+    : type === "vehicles"
+    ? "véhicule" + (total > 1 ? "s électriques" : " électrique") + " dans cette proposition"
+    : type === "home"
+    ? "équipement" + (total > 1 ? "s" : "") + " domicile dans cette proposition"
+    : "déploiement" + (total > 1 ? "s" : "") + " IRVE dans cette proposition";
+  doc.text(doc.splitTextToSize(peri2, colWidth - 10), col3X, lineY + 5);
+
+  // ─── FOOTER (cover-foot) ───
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(6.5);
+  doc.setTextColor(...GREY_FOOT);
+  doc.text(
+    lookupText(TEXTS, "common", "footer_confidential", "DOCUMENT CONFIDENTIEL · USAGE INTERNE CLIENT"),
+    M,
+    PAGE_H - 30,
+  );
+  doc.text(`Réf. ${ref} · contact@beev.co`, PAGE_W - M, PAGE_H - 30, { align: "right" });
 }
 
 // ============ POURQUOI BEEV (varie par type) ============
