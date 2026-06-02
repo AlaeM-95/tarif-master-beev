@@ -754,77 +754,152 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
 
 // ============ FICHE VÉHICULE ============
 async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams, idx: number, total: number, client: ClientInfo, type: ProjectType) {
+  // Refonte design Claude/Beev — étape 3/5 :
+  // - Accent bleu Beev A5D2FF (pill "Tarification LLD")
+  // - Photo sur fond bleu très clair EDF6FF (radius)
+  // - Price card NOIRE à droite avec rows séparées + bloc loyer mis en valeur
+  //   (label bleu, gros chiffre 36pt, note multi-véhicules / km)
+  const BLEU_LIGHT: [number, number, number] = [237, 246, 255]; // #EDF6FF fond photo
+  const BLEU_ACCENT: [number, number, number] = [165, 210, 255]; // #A5D2FF pill + label loyer
+  const BLACK: [number, number, number] = [29, 29, 29];
+  const BEIGE: [number, number, number] = [252, 249, 242];
+  const GREY_ON_DARK: [number, number, number] = [201, 198, 190]; // #C9C6BE
+  const GREY_LABEL_DARK: [number, number, number] = [140, 137, 128]; // #8C8980
   const v = sv.vehicle;
-  eyebrow(doc, `VÉHICULE ${idx} / ${total}`, 116);
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(22);
-  doc.setTextColor(...INK);
-  doc.text(`${v.brand} ${v.model}`, M, 148);
-  doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(11);
-  doc.setTextColor(...SUB);
-  doc.text(`${v.version} · ${v.category} · ${v.energy}`, M, 166);
 
-  const imgY = 182;
-  const imgW = (PAGE_W - M * 2) * 0.55;
-  const imgH = 170;
-  doc.setFillColor(...BG);
-  doc.rect(M, imgY, imgW, imgH, "F");
-  await drawImageContain(doc, v.image, M + 6, imgY + 6, imgW - 12, imgH - 12);
-  // Mention "(photo non contractuelle)" sous l'image
+  // ─── Header : eyebrow + titre + sous-titre + pill "Tarification LLD" droite ───
+  // Eyebrow barre bleue + label
+  doc.setFillColor(...BLEU_ACCENT);
+  doc.rect(M, 105, 22, 2, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text(`VÉHICULE ${idx} / ${total}`, M + 30, 109);
+
+  // Titre 38px ≈ 28.5pt
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(28);
+  doc.setTextColor(...INK);
+  doc.text(`${v.brand} ${v.model}`, M, 140);
+
+  // Sous-titre 13px ≈ 10pt
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...SUB);
+  doc.text(`${v.version} · ${v.category} · ${v.energy}`, M, 158);
+
+  // Pill "Tarification LLD" à droite (radius pill, fond bleu A5D2FF)
+  const pillText = lookupText(TEXTS, "vehicles", "vehicle_tariff_chip", "TARIFICATION LLD");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(7.5);
+  const pillW = doc.getTextWidth(pillText) + 22;
+  const pillH = 18;
+  const pillX = PAGE_W - M - pillW;
+  const pillY = 130;
+  doc.setFillColor(...BLEU_ACCENT);
+  doc.roundedRect(pillX, pillY, pillW, pillH, 9, 9, "F");
+  doc.setTextColor(...INK);
+  doc.text(pillText, pillX + pillW / 2, pillY + 12, { align: "center" });
+
+  // ─── Photo + price card côte à côte ───
+  const mainY = 175;
+  const mainH = 190;
+  const photoW = (PAGE_W - M * 2 - 16) * 0.54;
+  const cardX = M + photoW + 16;
+  const cardW = PAGE_W - M - cardX;
+
+  // Photo : fond bleu light, radius 16, image contain centrée
+  doc.setFillColor(...BLEU_LIGHT);
+  doc.roundedRect(M, mainY, photoW, mainH, 12, 12, "F");
+  await drawImageContain(doc, v.image, M + 12, mainY + 12, photoW - 24, mainH - 36);
+  // Caption "Photo non contractuelle"
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(6.5);
   doc.setTextColor(150, 150, 155);
-  doc.text("(photo non contractuelle)", M + imgW / 2, imgY + imgH + 8, { align: "center" });
+  doc.text("Photo non contractuelle", M + photoW / 2, mainY + mainH - 8, { align: "center" });
 
-  const px = M + imgW + 14;
-  const pw = PAGE_W - M - px;
-  doc.setFillColor(...INK);
-  doc.rect(px, imgY, pw, 26, "F");
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(9);
-  doc.setTextColor(255, 255, 255);
-  doc.text(lookupText(TEXTS, "vehicles", "vehicle_tariff_chip", "TARIFICATION LLD"), px + 12, imgY + 17);
+  // Price card NOIRE, radius 16
+  doc.setFillColor(...BLACK);
+  doc.roundedRect(cardX, mainY, cardW, mainH, 12, 12, "F");
 
-  doc.setFillColor(...BG);
-  doc.rect(px, imgY + 26, pw, imgH - 26, "F");
-  let py = imgY + 46;
   const discounted = v.priceTtc * (1 - sv.discountPct / 100);
-  doc.setFontSize(8.5);
-  doc.setTextColor(...SUB);
-  doc.text(lookupText(TEXTS, "vehicles", "vehicle_catalog_label", "PRIX CATALOGUE TTC"), px + 12, py);
-  doc.setFontSize(11);
-  doc.setTextColor(...INK);
-  doc.text(eur(v.priceTtc), px + 12, py + 14);
+  let py = mainY + 22;
+  const rowPad = 14;
+  const innerX = cardX + rowPad;
+  const innerR = cardX + cardW - rowPad;
 
-  py += 32;
-  doc.setFontSize(8.5);
-  doc.setTextColor(...SUB);
-  doc.text(`${lookupText(TEXTS, "vehicles", "vehicle_discount_label", "REMISE COMMERCIALE")} -${sv.discountPct.toFixed(1)} %`, px + 12, py);
-  doc.setFontSize(11);
-  doc.setTextColor(...INK);
-  doc.text(eur(discounted), px + 12, py + 14);
-
-  py += 28;
-  doc.setDrawColor(...ACCENT);
-  doc.setLineWidth(1.5);
-  doc.line(px + 12, py, px + 50, py);
-  doc.setLineWidth(0.5);
-
-  py += 14;
-  doc.setFontSize(8.5);
-  doc.setTextColor(...SUB);
-  doc.text(`${lookupText(TEXTS, "vehicles", "vehicle_monthly_label", "LOYER MENSUEL TTC")} · ${sv.durationMonths} mois`, px + 12, py);
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(18);
-  doc.setTextColor(...INK);
-  doc.text(eur(sv.negotiatedMonthly), px + 12, py + 22);
+  // Row 1 : Prix catalogue TTC
   doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(8.5);
-  doc.setTextColor(...SUB);
-  doc.text(`× ${sv.quantity} véhicule${sv.quantity > 1 ? "s" : ""} · ${fmt(sv.kmPerYear)} km/an`, px + 12, py + 38);
+  doc.setFontSize(9);
+  doc.setTextColor(...GREY_LABEL_DARK);
+  doc.text(lookupText(TEXTS, "vehicles", "vehicle_catalog_label", "PRIX CATALOGUE TTC"), innerX, py);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...BEIGE);
+  doc.text(eur(v.priceTtc), innerR, py, { align: "right" });
+  py += 9;
+  doc.setDrawColor(70, 67, 62); // séparateur beige@14%
+  doc.setLineWidth(0.4);
+  doc.line(innerX, py, innerR, py);
+  py += 12;
 
-  let y = imgY + imgH + 20;
+  // Row 2 : Remise commerciale
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...GREY_LABEL_DARK);
+  doc.text(lookupText(TEXTS, "vehicles", "vehicle_discount_label", "REMISE COMMERCIALE"), innerX, py);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...BEIGE);
+  doc.text(`−${sv.discountPct.toFixed(1)} %`, innerR, py, { align: "right" });
+  py += 9;
+  doc.line(innerX, py, innerR, py);
+  py += 12;
+
+  // Row 3 : Prix remisé
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...GREY_LABEL_DARK);
+  doc.text("PRIX REMISÉ TTC", innerX, py);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...BEIGE);
+  doc.text(eur(discounted), innerR, py, { align: "right" });
+  py += 16;
+
+  // Séparateur épais avant le bloc loyer
+  doc.setDrawColor(70, 67, 62);
+  doc.setLineWidth(0.6);
+  doc.line(innerX, py, innerR, py);
+  py += 16;
+
+  // Bloc pc-loyer : label bleu + gros chiffre + note
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...BLEU_ACCENT);
+  doc.text(`${lookupText(TEXTS, "vehicles", "vehicle_monthly_label", "LOYER MENSUEL TTC")} · ${sv.durationMonths} MOIS`, innerX, py);
+  py += 26;
+  // Gros chiffre 36pt + "/ mois" 12pt à côté
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(34);
+  doc.setTextColor(...BEIGE);
+  const monthlyText = eur(sv.negotiatedMonthly);
+  doc.text(monthlyText, innerX, py);
+  const monthlyW = doc.getTextWidth(monthlyText);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(11);
+  doc.setTextColor(...GREY_ON_DARK);
+  doc.text(" / mois", innerX + monthlyW + 2, py - 2);
+  py += 14;
+  // Note multi-véhicules
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...GREY_LABEL_DARK);
+  const noteText = `× ${sv.quantity} véhicule${sv.quantity > 1 ? "s" : ""} · ${fmt(sv.kmPerYear)} km/an · prestations incluses`;
+  const noteLines = doc.splitTextToSize(noteText, cardW - rowPad * 2);
+  doc.text(noteLines, innerX, py);
+
+  let y = mainY + mainH + 18;
 
   autoTable(doc, {
     startY: y,
