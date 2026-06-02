@@ -27,7 +27,7 @@ const STATUS_FILTERS: Array<{ key: ProposalStatus | "all"; label: string }> = [
 ];
 
 function ProposalsPage() {
-  const { isAdmin, loading } = useAuth();
+  const { isSales, loading } = useAuth();
   const navigate = useNavigate();
   const { proposals, isLoading, remove, duplicate } = useProposals();
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
@@ -35,8 +35,8 @@ function ProposalsPage() {
   const [statusFilter, setStatusFilter] = useState<ProposalStatus | "all">("all");
 
   useEffect(() => {
-    if (!loading && !isAdmin) navigate({ to: "/login" });
-  }, [loading, isAdmin, navigate]);
+    if (!loading && !isSales) navigate({ to: "/login" });
+  }, [loading, isSales, navigate]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -50,7 +50,7 @@ function ProposalsPage() {
   if (loading || isLoading) {
     return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Chargement...</div>;
   }
-  if (!isAdmin) return null;
+  if (!isSales) return null;
 
   return (
     <div className="min-h-screen bg-[#FAF8F4]">

@@ -29,12 +29,12 @@ const PROJECT_LABELS: Record<ProjectType, string> = {
 type TopTab = "apparence" | "communs" | ProjectType;
 
 function AdminPdfPage() {
-  const { isAdmin, loading } = useAuth();
+  const { isOps, loading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!loading && !isAdmin) navigate({ to: "/login" });
-  }, [loading, isAdmin, navigate]);
+    if (!loading && !isOps) navigate({ to: "/login" });
+  }, [loading, isOps, navigate]);
 
   const { settings, steps, isLoading, getSettings, getSteps, updateSettings, updateStep } = usePdfSettings();
   const [activeTab, setActiveTab] = useState<TopTab>("apparence");
@@ -43,7 +43,7 @@ function AdminPdfPage() {
   if (loading || isLoading) {
     return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Chargement...</div>;
   }
-  if (!isAdmin) return null;
+  if (!isOps) return null;
 
   const tabIcon = (t: TopTab) => {
     if (t === "apparence") return <Palette className="w-4 h-4" />;

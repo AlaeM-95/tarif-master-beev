@@ -22,7 +22,7 @@ const fmtEur = (n: number) =>
 const STATUS_OPTIONS: ProposalStatus[] = ["draft", "sent", "signed", "refused", "expired"];
 
 function ProposalDetailPage() {
-  const { isAdmin, loading } = useAuth();
+  const { isSales, loading } = useAuth();
   const navigate = useNavigate();
   const { id } = Route.useParams();
   const { data: proposal, isLoading } = useProposal(id);
@@ -31,8 +31,8 @@ function ProposalDetailPage() {
   const [draftNotes, setDraftNotes] = useState("");
 
   useEffect(() => {
-    if (!loading && !isAdmin) navigate({ to: "/login" });
-  }, [loading, isAdmin, navigate]);
+    if (!loading && !isSales) navigate({ to: "/login" });
+  }, [loading, isSales, navigate]);
 
   useEffect(() => {
     if (proposal) setDraftNotes(proposal.internalNotes);
@@ -41,7 +41,7 @@ function ProposalDetailPage() {
   if (loading || isLoading) {
     return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Chargement...</div>;
   }
-  if (!isAdmin) return null;
+  if (!isSales) return null;
   if (!proposal) {
     return (
       <div className="min-h-screen flex items-center justify-center">

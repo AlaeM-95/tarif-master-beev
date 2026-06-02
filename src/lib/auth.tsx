@@ -6,7 +6,13 @@ type AuthContextValue = {
   user: User | null;
   session: Session | null;
   role: UserRole | null;
+  /** Super-admin : tous les droits y compris gestion des rôles utilisateurs. */
   isAdmin: boolean;
+  /** Ops (ou admin) : droits d'écriture sur catalogue / pricing / PDF templates. */
+  isOps: boolean;
+  /** Sales (ou ops/admin) : peut construire et sauvegarder des propositions,
+   *  générer des PDF. Tous les utilisateurs connectés avec un rôle reconnu. */
+  isSales: boolean;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
@@ -95,6 +101,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session,
         role,
         isAdmin: role === "admin",
+        isOps: role === "admin" || role === "ops",
+        isSales: role === "admin" || role === "ops" || role === "sales",
         loading,
         signIn,
         signOut,

@@ -55,7 +55,10 @@ export const Route = createFileRoute("/")({
 });
 
 function App() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isOps } = useAuth();
+  // Pour la majorité des gates d'écriture (catalogue, pricing, templates PDF)
+  // on utilise isOps (admin OU ops). isAdmin reste réservé aux actions
+  // super-admin (gestion utilisateurs, etc. — pas exposées dans cette page).
   const navigate = useNavigate();
   const search = Route.useSearch();
   const loadedProposalId = search.proposal;
@@ -619,7 +622,7 @@ function App() {
                     {t.selectedChargers.length} borne(s)
                   </p>
                 </button>
-                {isAdmin && (
+                {isOps && (
                   <Button
                     variant="ghost"
                     size="icon"
@@ -674,17 +677,17 @@ function App() {
             <RefreshButton />
             <AdminBadge />
             <Badge variant="secondary" className="hidden sm:inline-flex">{visibleCount} sélection(s)</Badge>
-            {isAdmin && (
-              <Button asChild variant="ghost" size="sm" className="gap-2">
-                <a href="/proposals"><FolderOpen className="w-4 h-4" /> Mes propositions</a>
-              </Button>
-            )}
-            {isAdmin && (
+            {/* Mes propositions : tout commercial connecté */}
+            <Button asChild variant="ghost" size="sm" className="gap-2">
+              <a href="/proposals"><FolderOpen className="w-4 h-4" /> Mes propositions</a>
+            </Button>
+            {/* Pages admin (catalogue / PDF) : ops + admin uniquement */}
+            {isOps && (
               <Button asChild variant="ghost" size="sm" className="gap-2" title="Éditer véhicules + offres loueurs">
                 <a href="/admin/vehicles"><Car className="w-4 h-4" /> Éditer véhicules</a>
               </Button>
             )}
-            {isAdmin && (
+            {isOps && (
               <Button asChild variant="ghost" size="sm" className="gap-2" title="Personnaliser le PDF généré">
                 <a href="/admin/pdf"><Settings2 className="w-4 h-4" /> Éditer PDF</a>
               </Button>
@@ -698,7 +701,8 @@ function App() {
             >
               <FileText className="w-4 h-4" /> Templates
             </Button>
-            {isAdmin && (
+            {/* Sauver comme template : ops uniquement (templates partagés équipe) */}
+            {isOps && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -710,8 +714,8 @@ function App() {
                 <Save className="w-4 h-4" /> Sauver comme template
               </Button>
             )}
-            {isAdmin && (
-              <div className="flex items-center gap-2">
+            {/* Sauvegarder proposition : tout commercial connecté (sales+) */}
+            <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   onClick={handleSaveProposal}
@@ -730,7 +734,6 @@ function App() {
                   </span>
                 )}
               </div>
-            )}
             <Button variant="outline" onClick={() => setPresenting(true)} disabled={visibleCount === 0} className="gap-2">
               <Presentation className="w-4 h-4" /> Présenter au client
             </Button>
@@ -775,13 +778,13 @@ function App() {
             <CatalogSection
               title={`Véhicules (${filteredVehicles.length}${filteredVehicles.length !== vehicles.length ? ` / ${vehicles.length}` : ""})`}
               subtitle={catalogSubtitleFor("vehicles")}
-              isAdmin={isAdmin}
+              isAdmin={isOps}
               itemCount={vehicles.length}
-              onDeleteAll={isAdmin ? () => { setSelectedV({}); removeAllVehicles(); } : undefined}
+              onDeleteAll={isOps ? () => { setSelectedV({}); removeAllVehicles(); } : undefined}
               deleteAllLabel="Supprimer tous les véhicules ?"
-              onAdd={isAdmin ? () => addVehicle(createBlankVehicle()) : undefined}
+              onAdd={isOps ? () => addVehicle(createBlankVehicle()) : undefined}
               addLabel="Ajouter un véhicule"
-              importTco={isAdmin ? (list) => importVehicles(list) : undefined}
+              importTco={isOps ? (list) => importVehicles(list) : undefined}
             >
               {/* Barre recherche + filtres */}
               <div className="flex flex-wrap items-center gap-2 mb-4 p-3 rounded-lg bg-card border">
@@ -834,8 +837,8 @@ function App() {
                 {filteredVehicles.map((v) => (
                   <VehicleCard key={v.id} vehicle={v} selected={!!selectedV[v.id]}
                     onToggle={() => toggleV(v)}
-                    onUpdate={isAdmin ? (p) => updateVehicle(v.id, p) : undefined}
-                    onDelete={isAdmin ? async () => {
+                    onUpdate={isOps ? (p) => updateVehicle(v.id, p) : undefined}
+                    onDelete={isOps ? async () => {
                       if (selectedV[v.id]) toggleV(v);
                       const result = await removeVehicle(v.id);
                       if (result?.error) toast.error(`Échec suppression : ${result.error}`);
@@ -858,19 +861,19 @@ function App() {
             <CatalogSection
               title={`Bornes domicile collaborateurs (${chargersHome.length})`}
               subtitle={catalogSubtitleFor("home")}
-              isAdmin={isAdmin}
+              isAdmin={isOps}
               itemCount={chargersHome.length}
-              onDeleteAll={isAdmin ? () => { setSelectedC({}); removeAllByDeployment("domicile"); } : undefined}
+              onDeleteAll={isOps ? () => { setSelectedC({}); removeAllByDeployment("domicile"); } : undefined}
               deleteAllLabel="Supprimer toutes les bornes domicile ?"
-              onAdd={isAdmin ? () => addCharger(createBlankCharger("domicile")) : undefined}
+              onAdd={isOps ? () => addCharger(createBlankCharger("domicile")) : undefined}
               addLabel="Ajouter une borne domicile"
             >
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {chargersHome.map((c) => (
                   <ChargerCard key={c.id} charger={c} selected={!!selectedC[c.id]}
                     onToggle={() => toggleC(c)}
-                    onUpdate={isAdmin ? (p) => updateCharger(c.id, p) : undefined}
-                    onDelete={isAdmin ? async () => {
+                    onUpdate={isOps ? (p) => updateCharger(c.id, p) : undefined}
+                    onDelete={isOps ? async () => {
                       if (selectedC[c.id]) toggleC(c);
                       const result = await removeCharger(c.id);
                       if (result?.error) toast.error(`Échec suppression : ${result.error}`);
@@ -886,19 +889,19 @@ function App() {
             <CatalogSection
               title={`Bornes site entreprise (${chargersSite.length})`}
               subtitle={catalogSubtitleFor("site")}
-              isAdmin={isAdmin}
+              isAdmin={isOps}
               itemCount={chargersSite.length}
-              onDeleteAll={isAdmin ? () => { setSelectedC({}); removeAllByDeployment("site"); } : undefined}
+              onDeleteAll={isOps ? () => { setSelectedC({}); removeAllByDeployment("site"); } : undefined}
               deleteAllLabel="Supprimer toutes les bornes site ?"
-              onAdd={isAdmin ? () => addCharger(createBlankCharger("site")) : undefined}
+              onAdd={isOps ? () => addCharger(createBlankCharger("site")) : undefined}
               addLabel="Ajouter une borne site"
             >
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {chargersSite.map((c) => (
                   <ChargerCard key={c.id} charger={c} selected={!!selectedC[c.id]}
                     onToggle={() => toggleC(c)}
-                    onUpdate={isAdmin ? (p) => updateCharger(c.id, p) : undefined}
-                    onDelete={isAdmin ? async () => {
+                    onUpdate={isOps ? (p) => updateCharger(c.id, p) : undefined}
+                    onDelete={isOps ? async () => {
                       if (selectedC[c.id]) toggleC(c);
                       const result = await removeCharger(c.id);
                       if (result?.error) toast.error(`Échec suppression : ${result.error}`);

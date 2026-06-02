@@ -22,12 +22,12 @@ export const Route = createFileRoute("/admin/vehicles")({
 type FilterKind = "all" | "shortlist" | "stock" | "no-offer";
 
 function AdminVehiclesPage() {
-  const { isAdmin, loading } = useAuth();
+  const { isOps, loading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!loading && !isAdmin) navigate({ to: "/login" });
-  }, [loading, isAdmin, navigate]);
+    if (!loading && !isOps) navigate({ to: "/login" });
+  }, [loading, isOps, navigate]);
 
   const { vehicles, update: updateVehicle, remove: removeVehicle } = useVehicles();
   const { offers } = useLeaserOffers();
@@ -74,7 +74,7 @@ function AdminVehiclesPage() {
   const editingVehicle = editingId ? vehicles.find((v) => v.id === editingId) : null;
 
   if (loading) return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Chargement...</div>;
-  if (!isAdmin) return null;
+  if (!isOps) return null;
 
   // Toggle shortlist avec feedback toast (la valeur précédente est gardée pour rollback en cas d'erreur)
   const toggleShortlist = async (v: Vehicle) => {

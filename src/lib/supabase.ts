@@ -15,4 +15,4 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, 
   },
 });
 
-export type UserRole = "admin" | "visitor";
+export type UserRole = "admin" | "ops" | "sales" | "visitor";
