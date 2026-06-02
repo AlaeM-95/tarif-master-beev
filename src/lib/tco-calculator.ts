@@ -135,7 +135,11 @@ export function calculateMalusPoids(poids: number, energy: Vehicle["energy"]): n
   return malus;
 }
 
-// Coût énergie sur la durée du contrat
+// Coût énergie sur la durée du contrat.
+// Fallbacks robustes : si conso_min/max_elec ou _thermique sont à 0 (cas
+// classique pour les véhicules créés avant la migration 016 ou jamais
+// re-saved), on retombe sur le champ legacy `consumption`. L'opérateur ??
+// ne suffit pas car la DB stocke 0 (pas null), donc on teste > 0 explicitement.
 function calculateCoutEnergie(
   v: Vehicle,
   kmContrat: number,
@@ -143,10 +147,11 @@ function calculateCoutEnergie(
   prixKwhDomicile: number,
   prixKwhPublic: number,
 ): number {
-  const consoMinThermique = v.consoMinThermique ?? v.consumption ?? 0;
-  const consoMaxThermique = v.consoMaxThermique ?? v.consumption ?? 0;
-  const consoMinElec = v.consoMinElec ?? v.consumption ?? 0;
-  const consoMaxElec = v.consoMaxElec ?? v.consumption ?? 0;
+  const baseConso = v.consumption ?? 0;
+  const consoMinThermique = v.consoMinThermique && v.consoMinThermique > 0 ? v.consoMinThermique : baseConso;
+  const consoMaxThermique = v.consoMaxThermique && v.consoMaxThermique > 0 ? v.consoMaxThermique : baseConso;
+  const consoMinElec = v.consoMinElec && v.consoMinElec > 0 ? v.consoMinElec : baseConso;
+  const consoMaxElec = v.consoMaxElec && v.consoMaxElec > 0 ? v.consoMaxElec : baseConso;
 
   const consoMoyTh = (consoMinThermique + consoMaxThermique) / 2;
   const consoMoyEl = (consoMinElec + consoMaxElec) / 2;
