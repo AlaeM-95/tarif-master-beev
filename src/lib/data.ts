@@ -43,6 +43,7 @@ function dbToVehicle(row: VehicleRow): Vehicle {
     availableStock: (row as any).available_stock ?? false,
     leadTime: (row as any).lead_time ?? undefined,
     tripartiteContract: (row as any).tripartite_contract ?? undefined,
+    tripartitePdfUrl: (row as any).tripartite_pdf_url ?? undefined,
     lastSyncAt: (row as any).last_sync_at ?? undefined,
     image: row.image ?? "",
     services: Array.isArray(row.services) ? (row.services as string[]) : undefined,
@@ -90,6 +91,7 @@ function vehicleToDb(v: Vehicle): VehicleInsert {
   if (v.availableStock !== undefined) (row as any).available_stock = v.availableStock;
   if (v.leadTime !== undefined) (row as any).lead_time = v.leadTime;
   if (v.tripartiteContract !== undefined) (row as any).tripartite_contract = v.tripartiteContract;
+  if (v.tripartitePdfUrl !== undefined) (row as any).tripartite_pdf_url = v.tripartitePdfUrl;
   return row;
 }
 

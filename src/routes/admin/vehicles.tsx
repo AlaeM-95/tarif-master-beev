@@ -7,11 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FileUpload } from "@/components/file-upload";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth";
 import { useVehicles } from "@/lib/store";
 import { useLeaserOffers, type LeaserOffer } from "@/lib/leaser-offers";
-import { LEASER_NAMES, getLeaserKind } from "@/lib/leasers";
+import { LEASER_NAMES, KNOWN_LEASERS, LEASER_KIND_LABELS, type LeaserKind } from "@/lib/leasers";
 import { fmtEur } from "@/lib/store";
 import type { Vehicle } from "@/lib/catalog";
 
@@ -331,9 +332,21 @@ function VehicleEditForm({ vehicle, offers, onSave, onClose, onDelete }: {
           <FieldRow>
             <TxtField label="Distributeur NORD" value={current.distributeurNord ?? ""} onChange={(v) => set("distributeurNord", v)} onBlur={() => commitField("distributeurNord")} />
             <TxtField label="Distributeur SUD" value={current.distributeurSud ?? ""} onChange={(v) => set("distributeurSud", v)} onBlur={() => commitField("distributeurSud")} />
-            <TxtField label="Contrat tripartite" value={current.tripartiteContract ?? ""} onChange={(v) => set("tripartiteContract", v)} onBlur={() => commitField("tripartiteContract")} placeholder="Nom du contrat / PDF" />
+            <TxtField label="Nom du contrat tripartite" value={current.tripartiteContract ?? ""} onChange={(v) => set("tripartiteContract", v)} onBlur={() => commitField("tripartiteContract")} placeholder="Ex : Accord Grand Comptes 2026" />
             <TxtField label="Délai commande" value={current.leadTime ?? ""} onChange={(v) => set("leadTime", v)} onBlur={() => commitField("leadTime")} placeholder="Ex : 4 mois" />
           </FieldRow>
+          {/* Upload du PDF tripartite (ops/admin uniquement) */}
+          <div className="mt-3 rounded-md border border-dashed border-[#3809EA]/30 bg-[#3809EA]/5 p-3">
+            <FileUpload
+              currentUrl={current.tripartitePdfUrl ?? undefined}
+              onChange={(url) => { set("tripartitePdfUrl", url || undefined); onSave({ tripartitePdfUrl: url || undefined }); }}
+              folder={vehicle.id}
+              bucket="tripartite-contracts"
+              label="PDF du contrat tripartite"
+              accept="application/pdf"
+              helper="Visible en lecture seule par les sales sur la fiche véhicule du catalogue. Téléchargement désactivé côté sales."
+            />
+          </div>
           <div className="flex items-center gap-4 mt-2">
             <label className="flex items-center gap-2 text-xs cursor-pointer">
               <input
@@ -399,6 +412,7 @@ function VehicleEditForm({ vehicle, offers, onSave, onClose, onDelete }: {
                   await createOffer.mutateAsync({
                     vehicleId: vehicle.id,
                     loueur: "Ayvens",
+                    kind: "loueur",
                     durationMonths: 48,
                     kmTotal: 60000,
                     monthlyPriceTtc: 0,
@@ -447,6 +461,7 @@ function OfferRow({ offer, onUpdate, onDelete }: {
 }) {
   const [draft, setDraft] = useState({
     loueur: offer.loueur,
+    kind: offer.kind,
     durationMonths: offer.durationMonths,
     kmTotal: offer.kmTotal,
     monthlyPriceTtc: offer.monthlyPriceTtc,
@@ -454,6 +469,7 @@ function OfferRow({ offer, onUpdate, onDelete }: {
   useEffect(() => {
     setDraft({
       loueur: offer.loueur,
+      kind: offer.kind,
       durationMonths: offer.durationMonths,
       kmTotal: offer.kmTotal,
       monthlyPriceTtc: offer.monthlyPriceTtc,
@@ -465,37 +481,73 @@ function OfferRow({ offer, onUpdate, onDelete }: {
     await onUpdate({ [key]: draft[key] } as Partial<LeaserOffer>);
   };
 
-  const kind = getLeaserKind(draft.loueur);
+  const isCustom = !LEASER_NAMES.includes(draft.loueur);
+
+  // Quand on choisit un loueur connu dans le dropdown, on auto-règle son kind.
+  const handleLoueurChange = async (value: string) => {
+    if (value === "__custom__") {
+      // L'ops bascule en mode saisie libre, on garde le nom courant ou vide.
+      setDraft({ ...draft, loueur: "" });
+      return;
+    }
+    const known = KNOWN_LEASERS.find((l) => l.name === value);
+    const newKind = known?.kind ?? "loueur";
+    setDraft({ ...draft, loueur: value, kind: newKind });
+    if (value !== offer.loueur) await onUpdate({ loueur: value, kind: newKind });
+  };
 
   return (
-    <div className="grid grid-cols-[1fr_80px_100px_100px_36px] gap-2 items-end p-2 rounded-md border bg-card">
+    <div className="grid grid-cols-[1.4fr_120px_60px_90px_90px_32px] gap-2 items-end p-2 rounded-md border bg-card">
       <div className="space-y-1">
-        <Label className="text-[10px] uppercase text-muted-foreground">
-          Loueur {kind && <span className={`ml-1 px-1.5 py-0.5 rounded text-[9px] ${kind === "captive" ? "bg-[#F4B8AA]/30 text-[#1D1D1D]" : "bg-[#A5D2FF]/30 text-[#1D1D1D]"}`}>{kind === "captive" ? "captive" : "loueur"}</span>}
-        </Label>
-        <Input
-          list="leasers-list"
-          value={draft.loueur}
-          onChange={(e) => setDraft({ ...draft, loueur: e.target.value })}
-          onBlur={() => commit("loueur")}
-          className="h-8 text-xs"
-        />
-        <datalist id="leasers-list">
-          {LEASER_NAMES.map((n) => <option key={n} value={n} />)}
-        </datalist>
+        <Label className="text-[10px] uppercase text-muted-foreground">Loueur / Captive</Label>
+        {!isCustom ? (
+          <select
+            value={draft.loueur}
+            onChange={(e) => handleLoueurChange(e.target.value)}
+            className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+          >
+            {KNOWN_LEASERS.map((l) => (
+              <option key={l.name} value={l.name}>{l.name}</option>
+            ))}
+            <option value="__custom__">+ Autre (saisie libre)</option>
+          </select>
+        ) : (
+          <Input
+            value={draft.loueur}
+            onChange={(e) => setDraft({ ...draft, loueur: e.target.value })}
+            onBlur={() => commit("loueur")}
+            placeholder="Nom du loueur ou captive"
+            className="h-8 text-xs"
+            autoFocus
+          />
+        )}
       </div>
       <div className="space-y-1">
-        <Label className="text-[10px] uppercase text-muted-foreground">Durée</Label>
-        <div className="flex items-center gap-1">
-          <Input
-            type="number"
-            value={draft.durationMonths}
-            onChange={(e) => setDraft({ ...draft, durationMonths: Number(e.target.value) })}
-            onBlur={() => commit("durationMonths")}
-            className="h-8 text-xs"
-          />
-          <span className="text-[10px] text-muted-foreground">m</span>
-        </div>
+        <Label className="text-[10px] uppercase text-muted-foreground">Type</Label>
+        <select
+          value={draft.kind}
+          onChange={(e) => {
+            const newKind = e.target.value as LeaserKind;
+            setDraft({ ...draft, kind: newKind });
+            if (newKind !== offer.kind) onUpdate({ kind: newKind });
+          }}
+          className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+          disabled={!isCustom && draft.loueur !== ""}
+          title={!isCustom ? "Auto-déterminé depuis le loueur connu" : ""}
+        >
+          <option value="loueur">{LEASER_KIND_LABELS.loueur}</option>
+          <option value="captive">{LEASER_KIND_LABELS.captive}</option>
+        </select>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-[10px] uppercase text-muted-foreground">Durée (m)</Label>
+        <Input
+          type="number"
+          value={draft.durationMonths}
+          onChange={(e) => setDraft({ ...draft, durationMonths: Number(e.target.value) })}
+          onBlur={() => commit("durationMonths")}
+          className="h-8 text-xs"
+        />
       </div>
       <div className="space-y-1">
         <Label className="text-[10px] uppercase text-muted-foreground">Km total</Label>
@@ -508,7 +560,7 @@ function OfferRow({ offer, onUpdate, onDelete }: {
         />
       </div>
       <div className="space-y-1">
-        <Label className="text-[10px] uppercase text-muted-foreground">Loyer /mois TTC</Label>
+        <Label className="text-[10px] uppercase text-muted-foreground">Loyer /m TTC</Label>
         <Input
           type="number"
           value={draft.monthlyPriceTtc}

@@ -164,6 +164,10 @@ export type Vehicle = {
   availableStock?: boolean;
   leadTime?: string;
   tripartiteContract?: string;
+  /** URL Supabase Storage du PDF de contrat tripartite. Uploadable par ops/admin
+   *  via /admin/vehicles, consultable en lecture seule par les sales sur la
+   *  fiche véhicule du catalogue. */
+  tripartitePdfUrl?: string;
   lastSyncAt?: string;
   image: string;
   services?: string[];

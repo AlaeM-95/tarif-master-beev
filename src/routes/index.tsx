@@ -1173,6 +1173,46 @@ function ClientCard({ client, setClient }: { client: any; setClient: (c: any) =>
   );
 }
 
+// ============ VIEWER PDF TRIPARTITE (lecture seule) ============
+// Bouton 'Voir conditions tripartite' affiché sur chaque VehicleCard si l'ops a
+// uploadé un PDF dans /admin/vehicles. Ouvre un Dialog plein écran avec iframe
+// PDF en mode 'toolbar=0' pour masquer la barre d'outils du navigateur (qui
+// inclut le bouton téléchargement). N'empêche pas un utilisateur déterminé de
+// récupérer le PDF (clic-droit / inspect) mais décourage l'usage standard.
+function TripartiteViewerButton({ url, vehicleLabel }: { url: string; vehicleLabel: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setOpen(true); }}
+        className="mt-1 text-[10px] text-[#3809EA] underline underline-offset-2 hover:opacity-80 self-start"
+      >
+        Voir conditions tripartite
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-5xl h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Conditions tripartite — {vehicleLabel}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 rounded-md border overflow-hidden bg-muted">
+            <iframe
+              src={`${url}#toolbar=0&navpanes=0&scrollbar=1`}
+              className="w-full h-full"
+              title="Conditions tripartite"
+              // CSP-like restrictions via sandbox : autorise script (PDF.js) et same-origin lecture, bloque downloads/popups
+              sandbox="allow-scripts allow-same-origin"
+            />
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            Document en lecture seule. Pour obtenir une copie, contactez votre ops Beev.
+          </p>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 // ============ TOP SHORTLIST DU MOIS ============
 // Section visible sur l'accueil mode 'projet véhicules' juste au-dessus du
 // catalogue. Affiche les véhicules marqués 'shortlist' dans /admin/vehicles
@@ -1693,8 +1733,8 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
             {leaserOffers.map((o) => (
               <span
                 key={o.id}
-                className="inline-flex items-center gap-1 rounded-full bg-[#3809EA]/10 text-[#3809EA] px-2 py-0.5 text-[10px] font-medium"
-                title={`Loueur ${o.loueur} · ${o.durationMonths} mois / ${o.kmTotal.toLocaleString("fr-FR")} km`}
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${o.kind === "captive" ? "bg-[#F4B8AA]/30 text-[#1D1D1D]" : "bg-[#3809EA]/10 text-[#3809EA]"}`}
+                title={`${o.kind === "captive" ? "Captive" : "Loueur"} ${o.loueur} · ${o.durationMonths} mois / ${o.kmTotal.toLocaleString("fr-FR")} km`}
               >
                 <strong>{o.loueur}</strong>
                 <span className="opacity-70">{o.durationMonths}m/{(o.kmTotal / 1000).toFixed(0)}k</span>
@@ -1702,6 +1742,10 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
               </span>
             ))}
           </div>
+        )}
+        {/* Bouton 'Voir conditions' si un PDF tripartite est uploadé */}
+        {vehicle.tripartitePdfUrl && (
+          <TripartiteViewerButton url={vehicle.tripartitePdfUrl} vehicleLabel={`${vehicle.brand} ${vehicle.model}`} />
         )}
         {editing && onUpdate && (
           <div className="space-y-2 pt-2 border-t">

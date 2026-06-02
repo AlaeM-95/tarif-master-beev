@@ -5,6 +5,7 @@ export type LeaserOffer = {
   id: string;
   vehicleId: string;
   loueur: string;
+  kind: "loueur" | "captive";
   durationMonths: number;
   kmTotal: number;
   monthlyPriceTtc: number;
@@ -16,6 +17,7 @@ function dbToOffer(row: any): LeaserOffer {
     id: row.id,
     vehicleId: row.vehicle_id,
     loueur: row.loueur,
+    kind: (row.kind as "loueur" | "captive") ?? "loueur",
     durationMonths: row.duration_months,
     kmTotal: row.km_total,
     monthlyPriceTtc: Number(row.monthly_price_ttc) || 0,
@@ -51,6 +53,7 @@ export function useLeaserOffers() {
       const { error } = await (supabase as any).from("leaser_offers").insert({
         vehicle_id: input.vehicleId,
         loueur: input.loueur,
+        kind: input.kind,
         duration_months: input.durationMonths,
         km_total: input.kmTotal,
         monthly_price_ttc: input.monthlyPriceTtc,
@@ -64,6 +67,7 @@ export function useLeaserOffers() {
     mutationFn: async ({ id, patch }: { id: string; patch: Partial<LeaserOffer> }) => {
       const row: any = {};
       if (patch.loueur !== undefined) row.loueur = patch.loueur;
+      if (patch.kind !== undefined) row.kind = patch.kind;
       if (patch.durationMonths !== undefined) row.duration_months = patch.durationMonths;
       if (patch.kmTotal !== undefined) row.km_total = patch.kmTotal;
       if (patch.monthlyPriceTtc !== undefined) row.monthly_price_ttc = patch.monthlyPriceTtc;

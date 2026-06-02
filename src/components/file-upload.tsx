@@ -13,12 +13,15 @@ type FileUploadProps = {
   accept?: string;
   maxSizeMb?: number;
   helper?: string;
+  /** Bucket Storage Supabase (par défaut 'documents'). Permet d'utiliser
+   *  d'autres buckets dédiés type 'tripartite-contracts'. */
+  bucket?: string;
 };
 
 const DEFAULT_ACCEPT = "application/pdf,image/png,image/jpeg";
 const DEFAULT_MAX = 10;
 
-export function FileUpload({ currentUrl, onChange, folder, label = "Document", accept = DEFAULT_ACCEPT, maxSizeMb = DEFAULT_MAX, helper }: FileUploadProps) {
+export function FileUpload({ currentUrl, onChange, folder, label = "Document", accept = DEFAULT_ACCEPT, maxSizeMb = DEFAULT_MAX, helper, bucket = "documents" }: FileUploadProps) {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -37,7 +40,7 @@ export function FileUpload({ currentUrl, onChange, folder, label = "Document", a
     const fileName = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 6)}-${safeName}`;
 
     const { data, error } = await supabase.storage
-      .from("documents")
+      .from(bucket)
       .upload(fileName, file, { upsert: false, contentType: file.type });
 
     if (error) {
@@ -46,7 +49,7 @@ export function FileUpload({ currentUrl, onChange, folder, label = "Document", a
       return;
     }
 
-    const { data: urlData } = supabase.storage.from("documents").getPublicUrl(data.path);
+    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(data.path);
     onChange(urlData.publicUrl);
     toast.success("Document uploadé");
     setUploading(false);
