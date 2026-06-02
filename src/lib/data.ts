@@ -172,7 +172,13 @@ export function useVehiclesData() {
     if (!current) return;
     const merged = { ...current, ...patch };
     const { error } = await supabase.from("vehicles").update(vehicleToDb(merged)).eq("id", id);
-    if (error) console.error("Erreur update vehicle:", error);
+    if (error) {
+      console.error("Erreur update vehicle:", error);
+      // Throw : les callers admin (v2) attendent un toast d'erreur visible.
+      // Les callers commerciaux (VehicleCard inline) doivent wrap leur appel
+      // dans un try/catch silencieux ou .catch() pour ne pas casser l'UI.
+      throw new Error(error.message);
+    }
     invalidate();
   };
 

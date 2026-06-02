@@ -761,6 +761,16 @@ function App() {
             />
           )}
 
+          {/* Top 5 véhicules du mois : section dédiée si l'ops a marqué des shortlist */}
+          {!tcoView && projectType === "vehicles" && (
+            <TopShortlistSection
+              vehicles={vehicles.filter((v) => v.shortlist).slice(0, 5)}
+              selectedV={selectedV}
+              onToggle={toggleV}
+              leaserOffers={leaserOffers}
+            />
+          )}
+
           {!tcoView && projectType === "vehicles" && (
             <CatalogSection
               title={`Véhicules (${filteredVehicles.length}${filteredVehicles.length !== vehicles.length ? ` / ${vehicles.length}` : ""})`}
@@ -1149,6 +1159,71 @@ function ClientCard({ client, setClient }: { client: any; setClient: (c: any) =>
         <Field label="Notes & conditions" className="sm:col-span-2">
           <Textarea rows={3} value={client.notes} onChange={(e) => setClient({ ...client, notes: e.target.value })} placeholder="Laisser vide pour appliquer les conditions standard du type de projet." />
         </Field>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============ TOP SHORTLIST DU MOIS ============
+// Section visible sur l'accueil mode 'projet véhicules' juste au-dessus du
+// catalogue. Affiche les véhicules marqués 'shortlist' dans /admin/vehicles
+// comme cartes horizontales avec badge "Top du mois". Permet à l'ops de
+// recommander activement 5 véhicules à mettre en avant pour le mois.
+function TopShortlistSection({
+  vehicles: shortlistVehicles, selectedV, onToggle, leaserOffers,
+}: {
+  vehicles: Vehicle[];
+  selectedV: Record<string, SelectedVehicle>;
+  onToggle: (v: Vehicle) => void;
+  leaserOffers: LeaserOffer[];
+}) {
+  if (shortlistVehicles.length === 0) return null;
+  return (
+    <Card className="border-[#FFB800]/40 bg-gradient-to-br from-[#FFB800]/5 to-transparent">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 rounded-full bg-[#FFB800] text-[#1D1D1D] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+              <svg viewBox="0 0 24 24" className="w-3 h-3 fill-current"><path d="M12 2 14.39 8.26 21 9.27l-4.78 4.66L17.34 21 12 17.77 6.66 21l1.12-7.07L3 9.27l6.61-1.01L12 2z" /></svg>
+              Top du mois
+            </span>
+            <CardTitle className="text-base">Recommandations Beev — {shortlistVehicles.length} véhicule{shortlistVehicles.length > 1 ? "s" : ""} mis en avant</CardTitle>
+          </div>
+          <p className="text-[11px] text-muted-foreground">Sélection ops Beev · à proposer en priorité ce mois-ci</p>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(shortlistVehicles.length, 5)}, minmax(0, 1fr))` }}>
+          {shortlistVehicles.map((v) => {
+            const selected = !!selectedV[v.id];
+            const offers = leaserOffers.filter((o) => o.vehicleId === v.id).sort((a, b) => a.monthlyPriceTtc - b.monthlyPriceTtc);
+            const best = offers[0];
+            return (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => onToggle(v)}
+                className={`text-left rounded-lg border bg-white p-3 transition-all hover:shadow-md ${selected ? "ring-2 ring-primary border-primary" : ""}`}
+              >
+                {v.image && (
+                  <div className="aspect-video bg-muted rounded mb-2 overflow-hidden">
+                    <img src={v.image} alt="" className="w-full h-full object-contain p-1" />
+                  </div>
+                )}
+                <p className="text-xs font-semibold truncate">{v.brand} {v.model}</p>
+                <p className="text-[10px] text-muted-foreground truncate">{v.version || v.category}</p>
+                {best ? (
+                  <div className="mt-2 pt-2 border-t">
+                    <p className="text-[9px] text-muted-foreground uppercase tracking-wide">{best.loueur} · {best.durationMonths}m</p>
+                    <p className="text-sm font-bold text-[#3809EA]">{fmtEur(best.monthlyPriceTtc)} <span className="text-[10px] text-muted-foreground font-normal">/mois</span></p>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-muted-foreground mt-2">{fmtEur(v.priceTtc)} TTC</p>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </CardContent>
     </Card>
   );
