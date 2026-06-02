@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText } from "lucide-react";
+import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users } from "lucide-react";
 import { toast } from "sonner";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type EnergyParams } from "@/lib/store";
 import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, type SelectedCharger, type SelectedVehicle } from "@/lib/pdf";
@@ -690,6 +690,12 @@ function App() {
             {isOps && (
               <Button asChild variant="ghost" size="sm" className="gap-2" title="Personnaliser le PDF généré">
                 <a href="/admin/pdf"><Settings2 className="w-4 h-4" /> Éditer PDF</a>
+              </Button>
+            )}
+            {/* Gestion utilisateurs : admin uniquement */}
+            {isAdmin && (
+              <Button asChild variant="ghost" size="sm" className="gap-2" title="Inviter et gérer les rôles utilisateurs">
+                <a href="/admin/users"><Users className="w-4 h-4" /> Utilisateurs</a>
               </Button>
             )}
             <Button
