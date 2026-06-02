@@ -1,9 +1,7 @@
--- Migration 023 : RE-SEED du pricing véhicules S1 2026
--- À lancer si la migration 018 n'a pas appliqué les INSERT (les ALTER TABLE
--- avaient été exécutées séparément). Idempotente : ON CONFLICT DO UPDATE
--- pour les véhicules, DELETE puis INSERT pour les offres loueurs.
---
--- Prérequis : avoir lancé 018 (ou ses ALTER TABLE équivalents) et 022 (kind).
+-- Migration 023 (corrigée) : RE-SEED pricing S1 2026
+-- Idempotente : ON CONFLICT DO UPDATE véhicules, DELETE puis INSERT offres.
+-- Colonnes NOT NULL (price_ttc, monthly_lld) reçoivent 0 par défaut si la
+-- cellule Excel est vide pour ne pas violer la contrainte.
 
 
 INSERT INTO vehicles (id, brand, model, version, category, energy, price_ttc, monthly_lld, range_wltp, eco_score_bool, remise, shortlist, pcom_pct, commission_beev, distributeur_nord, distributeur_sud, available_stock, lead_time, tripartite_contract, last_sync_at)
@@ -938,7 +936,7 @@ DELETE FROM leaser_offers WHERE vehicle_id = 'bmw-ix3-50-xdrive';
 INSERT INTO leaser_offers (vehicle_id, loueur, kind, duration_months, km_total, monthly_price_ttc) VALUES ('bmw-ix3-50-xdrive', 'AYVENS', 'loueur', 49, 40000, 879.0);
 INSERT INTO leaser_offers (vehicle_id, loueur, kind, duration_months, km_total, monthly_price_ttc) VALUES ('bmw-ix3-50-xdrive', 'ALPHABET', 'loueur', 37, 90000, 1129.0);
 INSERT INTO vehicles (id, brand, model, version, category, energy, price_ttc, monthly_lld, range_wltp, eco_score_bool, remise, shortlist, pcom_pct, commission_beev, distributeur_nord, distributeur_sud, available_stock, lead_time, tripartite_contract, last_sync_at)
-VALUES ('skoda-epiq', 'SKODA', 'EPIQ', '', 'Citadine', 'Électrique', NULL, 0, NULL, TRUE, 17.5, FALSE, 1.5, 1000.0, 'ABVV', 'ABVV', FALSE, NULL, NULL, NOW())
+VALUES ('skoda-epiq', 'SKODA', 'EPIQ', '', 'Citadine', 'Électrique', 0, 0, NULL, TRUE, 17.5, FALSE, 1.5, 1000.0, 'ABVV', 'ABVV', FALSE, NULL, NULL, NOW())
 ON CONFLICT (id) DO UPDATE SET
   price_ttc = EXCLUDED.price_ttc,
   range_wltp = COALESCE(EXCLUDED.range_wltp, vehicles.range_wltp),
@@ -993,7 +991,7 @@ DELETE FROM leaser_offers WHERE vehicle_id = 'byd-sealion-7-comfort';
 INSERT INTO leaser_offers (vehicle_id, loueur, kind, duration_months, km_total, monthly_price_ttc) VALUES ('byd-sealion-7-comfort', 'AYVENS', 'loueur', 49, 40000, 599.0);
 INSERT INTO leaser_offers (vehicle_id, loueur, kind, duration_months, km_total, monthly_price_ttc) VALUES ('byd-sealion-7-comfort', 'AYVENS', 'loueur', 37, 90000, 819.0);
 INSERT INTO vehicles (id, brand, model, version, category, energy, price_ttc, monthly_lld, range_wltp, eco_score_bool, remise, shortlist, pcom_pct, commission_beev, distributeur_nord, distributeur_sud, available_stock, lead_time, tripartite_contract, last_sync_at)
-VALUES ('skoda-peaq', 'SKODA', 'PEAQ', '', 'SUV', 'Électrique', NULL, 0, NULL, TRUE, 17.5, FALSE, 1.5, 1000.0, 'ABVV', 'ABVV', FALSE, NULL, NULL, NOW())
+VALUES ('skoda-peaq', 'SKODA', 'PEAQ', '', 'SUV', 'Électrique', 0, 0, NULL, TRUE, 17.5, FALSE, 1.5, 1000.0, 'ABVV', 'ABVV', FALSE, NULL, NULL, NOW())
 ON CONFLICT (id) DO UPDATE SET
   price_ttc = EXCLUDED.price_ttc,
   range_wltp = COALESCE(EXCLUDED.range_wltp, vehicles.range_wltp),
@@ -1452,4 +1450,5 @@ INSERT INTO leaser_offers (vehicle_id, loueur, kind, duration_months, km_total, 
 SELECT
   (SELECT COUNT(*) FROM vehicles WHERE last_sync_at IS NOT NULL) AS vehicles_synces,
   (SELECT COUNT(*) FROM leaser_offers) AS offres_loueurs,
-  (SELECT SUM(commission_beev) FROM vehicles WHERE commission_beev > 0) AS total_commission_beev;
+  (SELECT SUM(commission_beev) FROM vehicles WHERE commission_beev > 0) AS total_commission_beev,
+  (SELECT COUNT(*) FROM vehicles WHERE price_ttc = 0) AS vehicules_sans_prix;
