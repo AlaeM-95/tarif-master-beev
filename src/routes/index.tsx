@@ -33,6 +33,7 @@ import { usePdfConfig } from "@/lib/pdf-config";
 import { usePdfSettings } from "@/lib/pdf-settings";
 import { useProposalTemplates } from "@/lib/proposal-templates";
 import { calculateTcoFull, type TcoContractParams } from "@/lib/tco-calculator";
+import { useLeaserOffers, findBestOffer, type LeaserOffer } from "@/lib/leaser-offers";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, LabelList,
@@ -61,6 +62,10 @@ function App() {
   const { data: loadedProposal } = useProposal(loadedProposalId);
   const { save: saveProposal, proposals: allProposals, remove: removeProposal } = useProposals();
   const { vehicles, update: updateVehicle, add: addVehicle, remove: removeVehicle, removeAll: removeAllVehicles, importMany: importVehicles } = useVehicles();
+  // Offres loueurs (table leaser_offers — migration 018). Permet de pré-remplir
+  // le loyer négocié à la sélection et d'afficher un badge "AYVENS 649€/mois"
+  // sur la carte véhicule.
+  const { offers: leaserOffers } = useLeaserOffers();
   const { chargers, update: updateCharger, add: addCharger, remove: removeCharger, removeAllByDeployment } = useChargers();
   const { energy, set: setEnergy, reset: resetEnergy } = useEnergy();
   const { projectType, setProjectType } = useProjectType();
@@ -307,12 +312,18 @@ function App() {
   const toggleV = (v: Vehicle) => {
     setSelectedV((s) => {
       if (s[v.id]) { const { [v.id]: _, ...rest } = s; return rest; }
+      // Pré-remplir le loyer négocié depuis la meilleure offre loueur matching.
+      // Cherche d'abord match exact (49m/40k ou 37m/90k), sinon approximatif.
+      // Si pas d'offre, fallback sur monthlyLld du catalogue.
+      const matching = findBestOffer(leaserOffers, v.id, 48, energy.kmPerYear);
+      const negotiated = matching ? matching.monthlyPriceTtc : v.monthlyLld;
+      const duration = matching ? matching.durationMonths : 48;
       return {
         ...s,
         [v.id]: {
           vehicle: v, quantity: 1, discountPct: 0,
-          negotiatedMonthly: v.monthlyLld,
-          durationMonths: 48, kmPerYear: energy.kmPerYear,
+          negotiatedMonthly: negotiated,
+          durationMonths: duration, kmPerYear: energy.kmPerYear,
           includeTco: false, services: [], options: [],
         },
       };
@@ -668,6 +679,16 @@ function App() {
                 <a href="/proposals"><FolderOpen className="w-4 h-4" /> Mes propositions</a>
               </Button>
             )}
+            {isAdmin && (
+              <Button asChild variant="ghost" size="sm" className="gap-2" title="Éditer véhicules + offres loueurs">
+                <a href="/admin/vehicles"><Car className="w-4 h-4" /> Éditer véhicules</a>
+              </Button>
+            )}
+            {isAdmin && (
+              <Button asChild variant="ghost" size="sm" className="gap-2" title="Personnaliser le PDF généré">
+                <a href="/admin/pdf"><Settings2 className="w-4 h-4" /> Éditer PDF</a>
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -811,6 +832,7 @@ function App() {
                       else toast.success(`${v.brand} ${v.model} supprimé définitivement`);
                     } : undefined}
                     existingCategories={existingCategories}
+                    leaserOffers={leaserOffers.filter((o) => o.vehicleId === v.id)}
                   />
                 ))}
                 {filteredVehicles.length === 0 && vehicles.length > 0 && (
@@ -1546,7 +1568,7 @@ function ConfirmDeleteButton({ label, onConfirm }: { label: string; onConfirm: (
   );
 }
 
-function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existingCategories = [] }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Vehicle>) => void; onDelete?: () => void; existingCategories?: string[] }) {
+function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existingCategories = [], leaserOffers = [] }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Vehicle>) => void; onDelete?: () => void; existingCategories?: string[]; leaserOffers?: LeaserOffer[] }) {
   const [editing, setEditing] = useState(false);
   return (
     <Card className={`overflow-hidden transition-all ${selected ? "ring-2 ring-primary" : "hover:shadow-md"}`}>
@@ -1581,6 +1603,22 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
             {onUpdate && <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)}>{editing ? "OK" : "Éditer"}</Button>}
           </div>
         </div>
+        {/* Badges loueurs : 1 par offre disponible (durée / km / mensuel) */}
+        {leaserOffers.length > 0 && (
+          <div className="flex flex-wrap gap-1 pt-1 border-t">
+            {leaserOffers.map((o) => (
+              <span
+                key={o.id}
+                className="inline-flex items-center gap-1 rounded-full bg-[#3809EA]/10 text-[#3809EA] px-2 py-0.5 text-[10px] font-medium"
+                title={`Loueur ${o.loueur} · ${o.durationMonths} mois / ${o.kmTotal.toLocaleString("fr-FR")} km`}
+              >
+                <strong>{o.loueur}</strong>
+                <span className="opacity-70">{o.durationMonths}m/{(o.kmTotal / 1000).toFixed(0)}k</span>
+                <strong>{fmtEur(o.monthlyPriceTtc)}/m</strong>
+              </span>
+            ))}
+          </div>
+        )}
         {editing && onUpdate && (
           <div className="space-y-2 pt-2 border-t">
             <div className="grid grid-cols-2 gap-2">

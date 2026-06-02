@@ -155,6 +155,16 @@ export type Vehicle = {
   consoMaxThermique?: number;
   consoMinElec?: number; // kWh/100km min
   consoMaxElec?: number;
+  // Champs commerciaux (migration 018 — pricing loueur S1 2026)
+  shortlist?: boolean; // top du catalogue
+  pcomPct?: number; // pourcentage de commission distributeur
+  commissionBeev?: number; // commission Beev en €
+  distributeurNord?: string;
+  distributeurSud?: string;
+  availableStock?: boolean;
+  leadTime?: string;
+  tripartiteContract?: string;
+  lastSyncAt?: string;
   image: string;
   services?: string[];
   custom?: boolean;
