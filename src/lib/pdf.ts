@@ -1904,119 +1904,144 @@ function drawFinancialSummary(
 // Parcours client compact : 5 colonnes verticales sur 1 seule page.
 // Chaque colonne = 1 étape avec son cercle numéroté + titre + durée + résumé court.
 function drawJourney(doc: jsPDF, type: ProjectType, _client: ClientInfo) {
+  // Refonte selon design Claude/Beev — accent violet, eyebrow + ptitle + lead,
+  // puis liste verticale de step cards (style identique aux Prochaines étapes
+  // pour cohérence visuelle bout-en-bout du PDF). Chaque carte = badge numéroté
+  // sur fond violet décroissant + bloc droit avec titre, chip durée, lignes
+  // "Beev fait" et "Vous fournissez". Pas de cascade diagonale (trop complexe
+  // à reproduire en jsPDF), mais respect du système d'accents par section.
+  const VIOLET: [number, number, number] = [211, 204, 216]; // #D3CCD8
+  const VIOLET_50: [number, number, number] = [233, 230, 236]; // #E9E6EC
+  const VIOLET_30: [number, number, number] = [242, 240, 243]; // #F2F0F3
+  const VIOLET_20: [number, number, number] = [246, 245, 247]; // #F6F5F7
+  const ROSE: [number, number, number] = [244, 184, 170]; // #F4B8AA pour le "Beev"
+  const stepBgs = [VIOLET, VIOLET_50, VIOLET_30, VIOLET_20, [255, 255, 255] as [number, number, number]];
+
   const fallbackJourney = BEEV_JOURNEYS[type];
   const j = PDF_CONTENT.steps.length > 0
     ? { intro: fallbackJourney.intro, steps: PDF_CONTENT.steps }
     : fallbackJourney;
-  let y = 116;
-  eyebrow(doc, "PARCOURS CLIENT BEEV — DE A À Z", y);
-  y += 32;
-  title(doc, type === "vehicles" ? "Comment Beev pilote votre flotte." :
-              type === "home" ? "Comment Beev équipe vos collaborateurs." :
-              "Comment Beev déploie vos sites.", y);
-  y += 30;
 
+  let y = 116;
+  // Eyebrow : barre violette 22×2 + label
+  doc.setFillColor(...VIOLET);
+  doc.rect(M, y - 8, 22, 2, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text("PARCOURS CLIENT BEEV — DE A À Z", M + 30, y - 4);
+  y += 14;
+
+  // Title (.ptitle 33px ≈ 25pt)
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(25);
+  doc.setTextColor(...INK);
+  const titleText = type === "vehicles" ? "Comment Beev pilote votre flotte." :
+                    type === "home" ? "Comment Beev équipe vos collaborateurs." :
+                    "Comment Beev déploie vos sites.";
+  doc.text(lookupText(TEXTS, type, "journey_title", titleText), M, y + 18);
+  y += 38;
+
+  // Lead intro (.lead 13px ≈ 10pt)
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
   const intro = doc.splitTextToSize(j.intro, PAGE_W - M * 2);
   doc.text(intro, M, y);
-  y += intro.length * 13 + 18;
+  y += intro.length * 13 + 20;
 
-  // ===== Frise horizontale (cercles + ligne) =====
-  const stripY = y + 14;
-  const stripX0 = M + 18;
-  const stripX1 = PAGE_W - M - 18;
-  doc.setDrawColor(...RULE);
-  doc.setLineWidth(1.2);
-  doc.line(stripX0, stripY, stripX1, stripY);
-  const stepX = (stripX1 - stripX0) / Math.max(j.steps.length - 1, 1);
-  j.steps.forEach((s, i) => {
-    const x = stripX0 + i * stepX;
-    doc.setFillColor(...ACCENT);
-    doc.circle(x, stripY, 11, "F");
+  // Step cards verticales
+  const cardH = 90;
+  const cardGap = 8;
+  const badgeR = 16; // rayon du cercle numéroté
+
+  j.steps.slice(0, 5).forEach((s, i) => {
+    const cardY = y;
+    const bg = stepBgs[Math.min(i, stepBgs.length - 1)];
+
+    // Fond carte
+    doc.setFillColor(...bg);
+    doc.roundedRect(M, cardY, PAGE_W - M * 2, cardH, 8, 8, "F");
+    // Si dernière carte blanche, ajout d'un border subtil
+    if (i === 4) {
+      doc.setDrawColor(...RULE);
+      doc.setLineWidth(0.6);
+      doc.roundedRect(M, cardY, PAGE_W - M * 2, cardH, 8, 8, "S");
+    }
+
+    // Badge cercle numéroté (positionné gauche, centré verticalement)
+    const badgeX = M + 24;
+    const badgeY = cardY + cardH / 2;
+    doc.setFillColor(255, 255, 255);
+    doc.circle(badgeX, badgeY, badgeR, "F");
+    doc.setDrawColor(...INK);
+    doc.setLineWidth(1.2);
+    doc.circle(badgeX, badgeY, badgeR, "S");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(15);
+    doc.setTextColor(...INK);
+    doc.text(s.n, badgeX, badgeY + 5, { align: "center" });
+
+    // Bloc droit : titre + chip durée + détails
+    const contentX = M + 60;
+    const contentW = PAGE_W - M - contentX - 14;
+
+    // Ligne 1 : titre gauche + chip durée droite
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(11);
-    doc.setTextColor(255, 255, 255);
-    doc.text(s.n, x, stripY + 4, { align: "center" });
-  });
-  y = stripY + 30;
+    doc.setTextColor(...INK);
+    const titleL = doc.splitTextToSize(s.title, contentW - 80);
+    doc.text(titleL[0], contentX, cardY + 18);
 
-  // ===== Colonnes verticales : 1 par étape =====
-  const cardW = (PAGE_W - M * 2 - (j.steps.length - 1) * 8) / j.steps.length;
-  const cardH = 380;
-  const colY = y;
-
-  j.steps.forEach((s, i) => {
-    const x = M + i * (cardW + 8);
-
-    // Fond cream + barre accent
-    doc.setFillColor(...BG);
-    doc.rect(x, colY, cardW, cardH, "F");
-    doc.setFillColor(...ACCENT);
-    doc.rect(x, colY, cardW, 3, "F");
-
-    // Durée en haut
     if (s.duration) {
       doc.setFont(BRAND_FONT, "bold");
-      doc.setFontSize(7.5);
-      doc.setTextColor(...ACCENT);
-      doc.text(s.duration.toUpperCase(), x + 10, colY + 18);
+      doc.setFontSize(7);
+      doc.setTextColor(...SUB);
+      const durText = s.duration.toUpperCase();
+      const durW = doc.getTextWidth(durText);
+      doc.text(durText, PAGE_W - M - 14, cardY + 18, { align: "right" });
+      // Pas de pill graphique : juste le texte, sobre
     }
 
-    // Titre étape
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(10);
-    doc.setTextColor(...INK);
-    const titleL = doc.splitTextToSize(s.title, cardW - 20);
-    doc.text(titleL, x + 10, colY + 36);
-    let yy = colY + 36 + titleL.length * 11 + 8;
-
-    // Résumé (très court, max 3 lignes)
+    // Ligne 2 : résumé
+    let yy = cardY + 32;
     if (s.summary) {
       doc.setFont(BRAND_FONT, "normal");
-      doc.setFontSize(8);
+      doc.setFontSize(8.5);
       doc.setTextColor(...SUB);
-      const sumL = doc.splitTextToSize(s.summary, cardW - 20).slice(0, 3);
-      doc.text(sumL, x + 10, yy);
-      yy += sumL.length * 10 + 10;
+      const sumL = doc.splitTextToSize(s.summary, contentW).slice(0, 1);
+      doc.text(sumL, contentX, yy);
+      yy += 11;
     }
 
-    // Section "Beev fait"
-    doc.setFillColor(...ACCENT);
-    doc.rect(x + 10, yy - 6, 16, 2, "F");
+    // Ligne 3 : "Beev" + "Client" inline, séparés par ·
+    const beevList = s.beev.slice(0, 2).join(" · ");
+    const clientList = s.client.slice(0, 2).join(" · ");
+
+    // Beev (rose accent badge inline)
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7);
+    doc.setTextColor(...ROSE);
+    doc.text("BEEV", contentX, yy + 6);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...INK);
+    const beevText = doc.splitTextToSize(beevList, contentW - 30).slice(0, 1);
+    doc.text(beevText, contentX + 30, yy + 6);
+    yy += 14;
+
+    // Client
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(7);
     doc.setTextColor(...SUB);
-    doc.text("BEEV", x + 10, yy + 4);
-    yy += 12;
+    doc.text("CLIENT", contentX, yy + 6);
     doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(7.5);
+    doc.setFontSize(8);
     doc.setTextColor(...INK);
-    s.beev.slice(0, 3).forEach((b) => {
-      const ll = doc.splitTextToSize("· " + b, cardW - 20);
-      doc.text(ll, x + 10, yy);
-      yy += ll.length * 9 + 2;
-    });
+    const clientText = doc.splitTextToSize(clientList, contentW - 30).slice(0, 1);
+    doc.text(clientText, contentX + 30, yy + 6);
 
-    yy += 6;
-
-    // Section "Client"
-    doc.setFillColor(...LAVENDER);
-    doc.rect(x + 10, yy - 6, 16, 2, "F");
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(7);
-    doc.setTextColor(...SUB);
-    doc.text("CLIENT", x + 10, yy + 4);
-    yy += 12;
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(7.5);
-    doc.setTextColor(...INK);
-    s.client.slice(0, 3).forEach((b) => {
-      const ll = doc.splitTextToSize("· " + b, cardW - 20);
-      doc.text(ll, x + 10, yy);
-      yy += ll.length * 9 + 2;
-    });
+    y += cardH + cardGap;
   });
 }
 
