@@ -6,6 +6,7 @@ import { DEFAULT_PDF_CONFIG, type PdfDisplayConfig } from "./pdf-config";
 import { fetchTcoResultsForVehicles, type TcoResult } from "./tco-results";
 import { loadBeevPillars, type BeevPillar } from "./beev-pillars";
 import { loadPdfTexts, buildPdfTextMap, lookupText, lookupList, type PdfTextMap } from "./pdf-texts";
+import { calculateTcoFull } from "./tco-calculator";
 import type { EnergyParams } from "./store";
 
 export type ClientInfo = {
@@ -378,6 +379,11 @@ export async function generateProposalPdf(opts: {
 
   // Page comparaison TCO multi-véhicules (toggleable) — toujours si 2+ véhicules
   if (cfg.showTcoComparison && v.length >= 2 && v.some((sv) => sv.includeTco)) {
+    // 1) Tableau de bord visuel (KPI cards + barres empilées) en ouverture
+    doc.addPage();
+    drawHeader(doc, client, "vehicles");
+    drawTcoDashboard(doc, v, energy);
+    // 2) Page comparaison classique (ranking + écart max) en détail
     doc.addPage();
     drawHeader(doc, client, "vehicles");
     drawTcoComparison(doc, v, energy);
@@ -1278,6 +1284,212 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
 // Affichée uniquement si 2+ véhicules sont dans la sélection. Compare les
 // véhicules les uns par rapport aux autres (pas de référence essence).
 // Le véhicule le moins cher est mis en valeur en vert Beev.
+// ============ TCO DASHBOARD (page de synthèse visuelle pour le mode TCO) ============
+// Page d'ouverture du PDF TCO standalone : 4 KPI cards en haut + barres
+// empilées par véhicule (loyer + énergie + TVS + malus) en bas. Permet au
+// décideur de visualiser instantanément la structure du coût total et de
+// repérer où sont les écarts entre véhicules.
+function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams) {
+  // Couleurs cohérentes avec les graphiques recharts dans l'app
+  const COLOR_LOYER: [number, number, number] = [56, 9, 234]; // #3809EA LAVENDER
+  const COLOR_ENERGIE: [number, number, number] = [53, 218, 118]; // #35DA76 ACCENT
+  const COLOR_TVS: [number, number, number] = [245, 166, 35]; // #F5A623 orange
+  const COLOR_MALUS: [number, number, number] = [229, 75, 75]; // #E54B4B rouge
+
+  let y = 116;
+  eyebrow(doc, "ANALYSE TCO · TABLEAU DE BORD", y);
+  y += 32;
+  title(doc, "Décomposition du coût total de possession.", y);
+  y += 30;
+
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...SUB);
+  const intro = "Chaque véhicule est décomposé en 4 composantes : loyer LLD, coût énergie, fiscalité (TVS), malus à l'achat. Le véhicule en haut a le TCO le plus bas.";
+  const introL = doc.splitTextToSize(intro, PAGE_W - M * 2);
+  doc.text(introL, M, y);
+  y += introL.length * 13 + 14;
+
+  // Calcul TCO par véhicule via calculateTcoFull (utilise les paramètres
+  // fiscaux Beev 2026 : malus CO2, malus poids, TVS, etc.)
+  const rows = vehicles.map((sv) => {
+    const contract: import("./tco-calculator").TcoContractParams = {
+      dureeAnnees: sv.durationMonths / 12,
+      kmContrat: (sv.kmPerYear * sv.durationMonths) / 12,
+      prixEssenceLitre: e.fuelPriceL,
+      prixKwhDomicile: e.kWhHome,
+      prixKwhPublic: e.kWhPublic,
+    };
+    const r = calculateTcoFull(sv.vehicle, contract, sv.negotiatedMonthly);
+    return {
+      sv,
+      total: r.tcoTotal,
+      loyer: r.loyerTotal,
+      energie: r.coutEnergie,
+      tvs: r.tvsTotal,
+      malus: r.malusCO2 + r.malusPoids,
+      annuel: r.tcoAnnuel,
+      par100km: r.tcoParKm * 100,
+    };
+  }).sort((a, b) => a.total - b.total);
+
+  if (rows.length === 0) {
+    doc.text("Aucun véhicule sélectionné pour l'analyse TCO.", M, y);
+    return;
+  }
+
+  const cheapest = rows[0];
+  const mostExpensive = rows[rows.length - 1];
+  const ecartTotal = mostExpensive.total - cheapest.total;
+  const ecartAnnuel = mostExpensive.annuel - cheapest.annuel;
+  const fleetAnnual = rows.reduce((s, r) => s + r.annuel * Math.max(1, r.sv.quantity), 0);
+  const fleetTotal = rows.reduce((s, r) => s + r.total * Math.max(1, r.sv.quantity), 0);
+
+  // === 4 KPI cards en haut ===
+  const cardW = (PAGE_W - M * 2 - 30) / 4;
+  const cardH = 70;
+  const kpis = [
+    {
+      label: "MEILLEUR TCO",
+      value: `${cheapest.par100km.toFixed(2)} €`,
+      sub: `${cheapest.sv.vehicle.brand} ${cheapest.sv.vehicle.model}`.slice(0, 22),
+      color: COLOR_ENERGIE,
+    },
+    {
+      label: "ÉCART MAX",
+      value: eur(ecartAnnuel),
+      sub: "par an entre best et worst",
+      color: COLOR_LOYER,
+    },
+    {
+      label: "TCO FLOTTE / AN",
+      value: eur(fleetAnnual),
+      sub: `${rows.reduce((s, r) => s + r.sv.quantity, 0)} véhicule(s)`,
+      color: COLOR_TVS,
+    },
+    {
+      label: "TCO FLOTTE TOTAL",
+      value: eur(fleetTotal),
+      sub: "sur la durée contrat",
+      color: COLOR_MALUS,
+    },
+  ];
+  kpis.forEach((k, i) => {
+    const cx = M + i * (cardW + 10);
+    doc.setFillColor(...BG);
+    doc.roundedRect(cx, y, cardW, cardH, 6, 6, "F");
+    doc.setFillColor(...k.color);
+    doc.rect(cx, y, cardW, 3, "F");
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(...SUB);
+    doc.text(k.label, cx + 8, y + 16);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(15);
+    doc.setTextColor(...INK);
+    doc.text(k.value, cx + 8, y + 38);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...SUB);
+    const subLines = doc.splitTextToSize(k.sub, cardW - 16);
+    doc.text(subLines.slice(0, 2), cx + 8, y + 54);
+  });
+  y += cardH + 20;
+
+  // === Légende couleurs des composantes ===
+  const legend = [
+    { label: "Loyer LLD", color: COLOR_LOYER },
+    { label: "Énergie", color: COLOR_ENERGIE },
+    { label: "TVS / fiscalité", color: COLOR_TVS },
+    { label: "Malus à l'achat", color: COLOR_MALUS },
+  ];
+  let lx = M;
+  legend.forEach((l) => {
+    doc.setFillColor(...l.color);
+    doc.rect(lx, y - 6, 12, 8, "F");
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...INK);
+    doc.text(l.label, lx + 16, y);
+    lx += 16 + doc.getTextWidth(l.label) + 20;
+  });
+  y += 16;
+
+  // === Barres empilées par véhicule (horizontales) ===
+  const maxTotal = mostExpensive.total || 1;
+  const labelW = 150;
+  const barAreaW = PAGE_W - M * 2 - labelW - 80;
+  const barX = M + labelW;
+  const valueX = M + labelW + barAreaW + 8;
+  const rowH = 36;
+
+  rows.forEach((r, idx) => {
+    const isBest = idx === 0;
+
+    // Rang + nom véhicule (gauche)
+    if (isBest) {
+      doc.setFillColor(...COLOR_ENERGIE);
+      doc.circle(M + 8, y + 10, 8, "F");
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(255, 255, 255);
+      doc.text(String(idx + 1), M + 8, y + 13, { align: "center" });
+    } else {
+      doc.setFillColor(220, 220, 225);
+      doc.circle(M + 8, y + 10, 8, "F");
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(...INK);
+      doc.text(String(idx + 1), M + 8, y + 13, { align: "center" });
+    }
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(...INK);
+    doc.text(`${r.sv.vehicle.brand} ${r.sv.vehicle.model}`.slice(0, 22), M + 22, y + 8);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(...SUB);
+    doc.text(`${r.par100km.toFixed(2)} €/100km · × ${r.sv.quantity}`, M + 22, y + 18);
+
+    // Barre empilée (loyer + énergie + TVS + malus, largeur relative au max total)
+    const scale = (barAreaW - 4) / maxTotal;
+    let bx = barX;
+    const segments: Array<{ width: number; color: [number, number, number] }> = [
+      { width: r.loyer * scale, color: COLOR_LOYER },
+      { width: r.energie * scale, color: COLOR_ENERGIE },
+      { width: r.tvs * scale, color: COLOR_TVS },
+      { width: r.malus * scale, color: COLOR_MALUS },
+    ];
+    segments.forEach((s) => {
+      if (s.width > 0.5) {
+        doc.setFillColor(...s.color);
+        doc.rect(bx, y + 4, s.width, 14, "F");
+        bx += s.width;
+      }
+    });
+
+    // Valeur totale TCO contrat (droite)
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(9.5);
+    doc.setTextColor(isBest ? COLOR_ENERGIE[0] : INK[0], isBest ? COLOR_ENERGIE[1] : INK[1], isBest ? COLOR_ENERGIE[2] : INK[2]);
+    doc.text(eur(r.total), valueX, y + 14);
+
+    y += rowH;
+  });
+
+  // Pied : note méthodologie
+  y += 6;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...SUB);
+  doc.text(
+    "Estimation Beev 2026 : loyer LLD × durée + énergie sur kilométrage prévu + TVS annualisée + malus à l'achat. Valeurs indicatives, à confirmer auprès du loueur retenu.",
+    M,
+    y,
+    { maxWidth: PAGE_W - M * 2 },
+  );
+}
+
 function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams) {
   let y = 130;
   eyebrow(doc, lookupText(TEXTS, "vehicles", "tco_compare_eyebrow", "COMPARAISON TCO ENTRE VÉHICULES"), y);
