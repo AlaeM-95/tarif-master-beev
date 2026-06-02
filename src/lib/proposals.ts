@@ -30,6 +30,12 @@ export type Proposal = {
   id: string;
   createdAt: string;
   updatedAt: string;
+  /** UUID du créateur (auth.users.id) */
+  createdBy: string | null;
+  /** UUID du sales attribué (ops peut assigner) */
+  assignedTo: string | null;
+  /** UUIDs des autres users avec accès lecture/écriture */
+  sharedWith: string[];
   status: ProposalStatus;
   followUpDate: string | null;
   clientCompany: string;
@@ -57,6 +63,9 @@ function dbToProposal(row: ProposalRow): Proposal {
     updatedAt: row.updated_at,
     status: row.status,
     followUpDate: row.follow_up_date,
+    createdBy: (row as any).created_by ?? null,
+    assignedTo: (row as any).assigned_to ?? null,
+    sharedWith: Array.isArray((row as any).shared_with) ? ((row as any).shared_with as string[]) : [],
     clientCompany: row.client_company,
     clientContact: row.client_contact ?? "",
     clientEmail: row.client_email ?? "",
@@ -226,6 +235,18 @@ export function useProposals() {
     return { error: null };
   };
 
+  // Partage / assignation : utilisé par la modale de partage sur /proposals/$id.
+  const updateSharing = async (id: string, patch: { assignedTo?: string | null; sharedWith?: string[] }): Promise<{ error: string | null }> => {
+    const row: any = {};
+    if (patch.assignedTo !== undefined) row.assigned_to = patch.assignedTo;
+    if (patch.sharedWith !== undefined) row.shared_with = patch.sharedWith;
+    const { error } = await supabase.from("proposals").update(row).eq("id", id);
+    if (error) return { error: error.message };
+    await qc.invalidateQueries({ queryKey: ["proposals"] });
+    await qc.invalidateQueries({ queryKey: ["proposal", id] });
+    return { error: null };
+  };
+
   const remove = async (id: string): Promise<{ error: string | null }> => {
     const { error } = await supabase.from("proposals").delete().eq("id", id);
     if (error) return { error: error.message };
@@ -272,7 +293,7 @@ export function useProposals() {
     return { id: data.id, error: null };
   };
 
-  return { proposals, isLoading, save, updateStatus, updateFollowUp, updateInternalNotes, remove, duplicate };
+  return { proposals, isLoading, save, updateStatus, updateFollowUp, updateInternalNotes, updateSharing, remove, duplicate };
 }
 
 export function useProposal(id: string | undefined) {

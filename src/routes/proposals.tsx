@@ -27,25 +27,41 @@ const STATUS_FILTERS: Array<{ key: ProposalStatus | "all"; label: string }> = [
 ];
 
 function ProposalsPage() {
-  const { isSales, loading } = useAuth();
+  const { isSales, isOps, loading, user } = useAuth();
   const navigate = useNavigate();
   const { proposals, isLoading, remove, duplicate } = useProposals();
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<ProposalStatus | "all">("all");
+  // Onglet de visibilité : mine (créées par moi) / shared (partagées avec moi)
+  // / all (visibles via RLS — ops voit tout, sales voit son périmètre)
+  const [scopeFilter, setScopeFilter] = useState<"mine" | "shared" | "all">("mine");
 
   useEffect(() => {
     if (!loading && !isSales) navigate({ to: "/login" });
   }, [loading, isSales, navigate]);
 
+  const uid = user?.id ?? "";
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return proposals.filter((p) => {
+      // Scope
+      if (scopeFilter === "mine" && p.createdBy !== uid) return false;
+      if (scopeFilter === "shared" && (p.createdBy === uid || (!p.sharedWith.includes(uid) && p.assignedTo !== uid))) return false;
+      // Status
       if (statusFilter !== "all" && p.status !== statusFilter) return false;
+      // Texte
       if (q && !p.clientCompany.toLowerCase().includes(q) && !p.clientContact.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [proposals, search, statusFilter]);
+  }, [proposals, search, statusFilter, scopeFilter, uid]);
+
+  // Compteurs pour les chips
+  const counts = useMemo(() => ({
+    mine: proposals.filter((p) => p.createdBy === uid).length,
+    shared: proposals.filter((p) => p.createdBy !== uid && (p.sharedWith.includes(uid) || p.assignedTo === uid)).length,
+    all: proposals.length,
+  }), [proposals, uid]);
 
   if (loading || isLoading) {
     return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Chargement...</div>;
@@ -69,6 +85,21 @@ function ProposalsPage() {
       </header>
 
       <main className="container mx-auto px-6 py-6 space-y-4">
+        {/* Onglets de visibilité */}
+        <div className="flex flex-wrap items-center gap-1">
+          <Button variant={scopeFilter === "mine" ? "default" : "outline"} size="sm" onClick={() => setScopeFilter("mine")}>
+            Mes propositions ({counts.mine})
+          </Button>
+          <Button variant={scopeFilter === "shared" ? "default" : "outline"} size="sm" onClick={() => setScopeFilter("shared")}>
+            Partagées avec moi ({counts.shared})
+          </Button>
+          {isOps && (
+            <Button variant={scopeFilter === "all" ? "default" : "outline"} size="sm" onClick={() => setScopeFilter("all")}>
+              Toutes ({counts.all})
+            </Button>
+          )}
+        </div>
+
         {/* Filtres */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[240px] max-w-md">
