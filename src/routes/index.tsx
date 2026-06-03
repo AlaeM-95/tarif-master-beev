@@ -839,27 +839,27 @@ function App() {
                 )}
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {filteredVehicles.map((v) => (
-                  <VehicleCard key={v.id} vehicle={v} selected={!!selectedV[v.id]}
-                    onToggle={() => toggleV(v)}
-                    onUpdate={isOps ? (p) => updateVehicle(v.id, p) : undefined}
-                    onDelete={isOps ? async () => {
-                      if (selectedV[v.id]) toggleV(v);
-                      const result = await removeVehicle(v.id);
-                      if (result?.error) toast.error(`Échec suppression : ${result.error}`);
-                      else toast.success(`${v.brand} ${v.model} supprimé définitivement`);
-                    } : undefined}
-                    existingCategories={existingCategories}
-                    leaserOffers={leaserOffers.filter((o) => o.vehicleId === v.id)}
-                  />
-                ))}
-                {filteredVehicles.length === 0 && vehicles.length > 0 && (
-                  <div className="col-span-full text-center py-12 text-sm text-muted-foreground">
-                    Aucun véhicule ne correspond à votre recherche.
-                  </div>
-                )}
-              </div>
+              <VehicleCatalogByBrand
+                vehicles={filteredVehicles}
+                allVehicleCount={vehicles.length}
+                selectedV={selectedV}
+                onToggle={toggleV}
+                onUpdate={isOps ? updateVehicle : undefined}
+                onDelete={isOps ? async (v) => {
+                  if (selectedV[v.id]) toggleV(v);
+                  const result = await removeVehicle(v.id);
+                  if (result?.error) toast.error(`Échec suppression : ${result.error}`);
+                  else toast.success(`${v.brand} ${v.model} supprimé définitivement`);
+                } : undefined}
+                existingCategories={existingCategories}
+                leaserOffers={leaserOffers}
+                hasActiveSearch={!!vehicleSearch.trim()}
+              />
+              {filteredVehicles.length === 0 && vehicles.length > 0 && (
+                <div className="col-span-full text-center py-12 text-sm text-muted-foreground">
+                  Aucun véhicule ne correspond à votre recherche.
+                </div>
+              )}
             </CatalogSection>
           )}
 
@@ -1170,6 +1170,135 @@ function ClientCard({ client, setClient }: { client: any; setClient: (c: any) =>
         </Field>
       </CardContent>
     </Card>
+  );
+}
+
+// ============ CATALOGUE VÉHICULES PAR MARQUE ============
+// Remplace la grille plate de 76+ véhicules par un layout 2 niveaux :
+// 1) Grille de cartes "marque" (BMW · 7 modèles · 2 stock dispo)
+// 2) Click sur une carte → expansion inline de la marque avec les fiches
+//    véhicules.
+// Si l'utilisateur tape une recherche, les marques avec résultats sont
+// automatiquement dépliées pour rendre les véhicules trouvables.
+function VehicleCatalogByBrand({
+  vehicles, allVehicleCount, selectedV, onToggle, onUpdate, onDelete, existingCategories, leaserOffers, hasActiveSearch,
+}: {
+  vehicles: Vehicle[];
+  allVehicleCount: number;
+  selectedV: Record<string, SelectedVehicle>;
+  onToggle: (v: Vehicle) => void;
+  onUpdate?: (id: string, patch: Partial<Vehicle>) => void | Promise<void>;
+  onDelete?: (v: Vehicle) => void | Promise<void>;
+  existingCategories: string[];
+  leaserOffers: LeaserOffer[];
+  hasActiveSearch: boolean;
+}) {
+  // Groupement par marque (trie alphabétique sauf BMW/Audi/Mercedes/Tesla en tête)
+  const byBrand = useMemo(() => {
+    const map = new Map<string, Vehicle[]>();
+    for (const v of vehicles) {
+      const brand = v.brand || "Autre";
+      if (!map.has(brand)) map.set(brand, []);
+      map.get(brand)!.push(v);
+    }
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [vehicles]);
+
+  // Marques dépliées : par défaut aucune, sauf si recherche active → toutes.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  // Compteur de sélection par marque pour afficher un badge si le commercial a déjà coché dans cette marque
+  const selectedCountByBrand = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const sv of Object.values(selectedV)) {
+      const b = sv.vehicle.brand;
+      counts[b] = (counts[b] ?? 0) + 1;
+    }
+    return counts;
+  }, [selectedV]);
+
+  if (vehicles.length === 0) return null;
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[11px] text-muted-foreground">
+        {byBrand.length} marque{byBrand.length > 1 ? "s" : ""} · {vehicles.length} modèle{vehicles.length > 1 ? "s" : ""}
+        {vehicles.length !== allVehicleCount ? ` sur ${allVehicleCount}` : ""}. Cliquez sur une marque pour voir ses véhicules.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {byBrand.map(([brand, list]) => {
+          const isOpen = expanded.has(brand) || hasActiveSearch;
+          const stockCount = list.filter((v) => v.availableStock).length;
+          const selCount = selectedCountByBrand[brand] ?? 0;
+          return (
+            <button
+              key={brand}
+              type="button"
+              onClick={() => {
+                setExpanded((s) => {
+                  const next = new Set(s);
+                  if (next.has(brand)) next.delete(brand); else next.add(brand);
+                  return next;
+                });
+              }}
+              className={`text-left rounded-lg border p-4 transition-all ${isOpen ? "border-primary ring-2 ring-primary/30 bg-primary/5" : "hover:border-foreground/30 bg-card"} ${selCount > 0 ? "ring-2 ring-[#35DA76]/40" : ""}`}
+            >
+              <div className="flex items-center justify-between">
+                <p className="font-semibold text-base">{brand}</p>
+                {selCount > 0 && (
+                  <span className="text-[10px] font-semibold uppercase rounded-full bg-[#35DA76] text-white px-2 py-0.5">
+                    {selCount} sélectionné{selCount > 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {list.length} modèle{list.length > 1 ? "s" : ""}
+                {stockCount > 0 && (
+                  <span className="ml-2 inline-flex items-center gap-1 text-[#35DA76]">
+                    · {stockCount} en stock
+                  </span>
+                )}
+              </p>
+              <div className="mt-3 flex items-center justify-between text-[11px]">
+                <span className="text-muted-foreground">
+                  À partir de {fmtEur(Math.min(...list.map((v) => v.priceTtc).filter((p) => p > 0)) || 0)}
+                </span>
+                <span className="text-primary font-medium">
+                  {isOpen ? "Réduire ▴" : "Voir les modèles ▾"}
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Section dépliée par marque */}
+      {byBrand.map(([brand, list]) => {
+        const isOpen = expanded.has(brand) || hasActiveSearch;
+        if (!isOpen) return null;
+        return (
+          <div key={`open-${brand}`} className="pt-2 border-t">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+              {brand} <span className="text-[10px] normal-case font-normal">({list.length} modèle{list.length > 1 ? "s" : ""})</span>
+            </h3>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {list.map((v) => (
+                <VehicleCard
+                  key={v.id}
+                  vehicle={v}
+                  selected={!!selectedV[v.id]}
+                  onToggle={() => onToggle(v)}
+                  onUpdate={onUpdate ? (p) => onUpdate(v.id, p) : undefined}
+                  onDelete={onDelete ? () => onDelete(v) : undefined}
+                  existingCategories={existingCategories}
+                  leaserOffers={leaserOffers.filter((o) => o.vehicleId === v.id)}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
