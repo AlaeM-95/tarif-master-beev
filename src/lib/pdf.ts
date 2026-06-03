@@ -409,6 +409,9 @@ export async function generateProposalPdf(opts: {
     drawSiteOverview(doc, client, c);
     doc.addPage();
     drawHeader(doc, client, effectiveType);
+    drawSiteGuarantees(doc);
+    doc.addPage();
+    drawHeader(doc, client, effectiveType);
     drawSiteProjectSynthesis(doc, client, c);
     doc.addPage();
     drawHeader(doc, client, effectiveType);
@@ -436,6 +439,18 @@ export async function generateProposalPdf(opts: {
       drawHeader(doc, client, effectiveType);
       drawSiteSupervision(doc, supPlan);
     }
+    // Conformité réglementaire (Bureau Contrôle / Consuel / Maintenance)
+    doc.addPage();
+    drawHeader(doc, client, effectiveType);
+    drawSiteCompliance(doc, c);
+    // Récap financier site enrichi (table Poste/Fournisseur/Montant HT)
+    doc.addPage();
+    drawHeader(doc, client, effectiveType);
+    drawSiteFinancialRecap(doc, c);
+    // Options de paiement
+    doc.addPage();
+    drawHeader(doc, client, effectiveType);
+    drawSitePaymentOptions(doc, c);
   }
 
   if (cfg.showWhyBeev) {
@@ -1370,6 +1385,403 @@ function drawSiteSupervision(doc: jsPDF, plan: "beev_connect" | "beev_home_charg
     noteY,
     { maxWidth: PAGE_W - M * 2 },
   );
+}
+
+// ============ RAPPORT SITE — GARANTIES ============
+// 3 colonnes : Qualification IRVE / RC Décennale AXA / Conformité &
+// Certifications, suivies d'un bandeau "Reconnu par" en bas de page.
+function drawSiteGuarantees(doc: jsPDF) {
+  const PINK: [number, number, number] = [244, 184, 170];
+  const PINK_LIGHT: [number, number, number] = [253, 241, 238];
+  let y = 116;
+  doc.setFillColor(...PINK);
+  doc.rect(M, y - 8, 22, 2, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text("GARANTIES", M + 30, y - 4);
+  y += 14;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(28);
+  doc.setTextColor(...INK);
+  doc.text("Nos qualifications et assurances", M, y + 18);
+  y += 50;
+
+  const colW = (PAGE_W - M * 2 - 24) / 3;
+  const cols = [
+    {
+      title: "Qualification IRVE",
+      items: [
+        "Installateurs certifiés IRVE",
+        "Habilitation infrastructure VE",
+        "Formation continue réglementaire",
+        "Agréments : Hager, Smappee, Alfen, Schneider",
+      ],
+    },
+    {
+      title: "RC Décennale AXA",
+      items: [
+        "Contrat BATISSUR n° 10998463604",
+        "RC Entreprise : 10 000 000 €",
+        "Dommages matériels : 2 000 000 €",
+        "Garantie décennale travaux IRVE",
+      ],
+    },
+    {
+      title: "Conformité et Certifications",
+      items: [
+        "Respect NF C15-100",
+        "CONSUEL systématique",
+        "Certification B Corp",
+        "Membre ORIAS n° 21009382",
+      ],
+    },
+  ];
+
+  cols.forEach((col, i) => {
+    const cx = M + i * (colW + 12);
+    doc.setFillColor(...PINK_LIGHT);
+    doc.roundedRect(cx, y, colW, 200, 8, 8, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...INK);
+    const titleLines = doc.splitTextToSize(col.title, colW - 24);
+    doc.text(titleLines, cx + 12, y + 24);
+    let by = y + 24 + titleLines.length * 14 + 10;
+    col.items.forEach((it) => {
+      doc.setFillColor(...PINK);
+      doc.circle(cx + 16, by - 3, 2, "F");
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(9.5);
+      doc.setTextColor(...INK);
+      const lines = doc.splitTextToSize(it, colW - 36);
+      doc.text(lines, cx + 24, by);
+      by += lines.length * 12 + 6;
+    });
+  });
+  y += 220;
+
+  // Bandeau bas
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...SUB);
+  doc.text("RECONNU PAR", M, y);
+  y += 14;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...INK);
+  doc.text(
+    "Attestations et certifications disponibles sur simple demande : RC Décennale AXA, Qualifelec IRVE, agréments constructeurs.",
+    M,
+    y,
+    { maxWidth: PAGE_W - M * 2 },
+  );
+}
+
+// ============ RAPPORT SITE — CONFORMITÉ RÉGLEMENTAIRE ============
+// 2 colonnes : Bureau de Contrôle (obligatoire si abonnement > 36 kVA) +
+// Maintenance annuelle (forfait préventif).
+function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
+  const PINK: [number, number, number] = [244, 184, 170];
+  const PINK_LIGHT: [number, number, number] = [253, 241, 238];
+  const totalBornes = chargers.reduce((s, sc) => s + sc.quantity, 0);
+  const maintenanceUnit = 150;
+  const maintenanceTotal = totalBornes * maintenanceUnit;
+
+  let y = 116;
+  doc.setFillColor(...PINK);
+  doc.rect(M, y - 8, 22, 2, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text("5 · CONFORMITÉ RÉGLEMENTAIRE", M + 30, y - 4);
+  y += 14;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(26);
+  doc.setTextColor(...INK);
+  doc.text("Contrôles obligatoires et maintenance", M, y + 18);
+  y += 50;
+
+  const colW = (PAGE_W - M * 2 - 20) / 2;
+
+  // Colonne gauche : Bureau de Contrôle + Consuel
+  doc.setFillColor(...PINK_LIGHT);
+  doc.roundedRect(M, y, colW, 280, 8, 8, "F");
+  let ly = y + 22;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(...INK);
+  doc.text("Bureau de Contrôle", M + 14, ly);
+  ly += 18;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(9.5);
+  doc.setTextColor(...INK);
+  doc.text(
+    "Abonnement client > 36 kVA → contrôle réglementaire obligatoire. Intervention prévue J+25 après installation. Attestation délivrée à réception.",
+    M + 14,
+    ly,
+    { maxWidth: colW - 28 },
+  );
+  ly += 60;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(...SUB);
+  doc.text("COÛT", M + 14, ly);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(18);
+  doc.setTextColor(...INK);
+  doc.text("700 € HT", M + 14, ly + 22);
+
+  ly += 56;
+  doc.setDrawColor(...RULE);
+  doc.line(M + 14, ly, M + colW - 14, ly);
+  ly += 18;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(...INK);
+  doc.text("Consuel", M + 14, ly);
+  ly += 18;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(9.5);
+  doc.setTextColor(...INK);
+  doc.text(
+    "Obligatoire pour toute installation IRVE. Passage prévu J+28 après installation. Attestation de conformité délivrée à réception.",
+    M + 14,
+    ly,
+    { maxWidth: colW - 28 },
+  );
+
+  // Colonne droite : Maintenance annuelle
+  const rx = M + colW + 20;
+  doc.setFillColor(29, 29, 29);
+  doc.roundedRect(rx, y, colW, 280, 8, 8, "F");
+  let ry = y + 22;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(...PINK);
+  doc.text("Maintenance annuelle", rx + 14, ry);
+  ry += 22;
+  // Lignes tarifaires
+  const lines = [
+    { l: "Forfait préventif", v: `${maintenanceUnit} € HT / PDC / an` },
+    { l: "Points de recharge", v: `${totalBornes} PDC` },
+    { l: "Total maintenance / an", v: `${eur(maintenanceTotal)} HT` },
+  ];
+  lines.forEach((line, i) => {
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(200, 200, 200);
+    doc.text(line.l, rx + 14, ry);
+    doc.setFont(BRAND_FONT, i === 2 ? "bold" : "normal");
+    doc.setFontSize(i === 2 ? 14 : 11);
+    doc.setTextColor(i === 2 ? PINK[0] : 252, i === 2 ? PINK[1] : 249, i === 2 ? PINK[2] : 242);
+    doc.text(line.v, rx + colW - 14, ry, { align: "right" });
+    ry += 24;
+    if (i < 2) {
+      doc.setDrawColor(70, 67, 62);
+      doc.line(rx + 14, ry - 6, rx + colW - 14, ry - 6);
+    }
+  });
+  ry += 16;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(...PINK);
+  doc.text("VISITE ANNUELLE SUR SITE", rx + 14, ry);
+  ry += 14;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(9.5);
+  doc.setTextColor(252, 249, 242);
+  ["Entretien général", "Vérification électrique", "Rapport de maintenance détaillé"].forEach((it) => {
+    doc.setFillColor(...PINK);
+    doc.circle(rx + 18, ry + 4, 2, "F");
+    doc.text(it, rx + 26, ry + 7);
+    ry += 16;
+  });
+}
+
+// ============ RAPPORT SITE — RÉCAP FINANCIER ENRICHI ============
+// Table Poste / Fournisseur / Montant HT + ligne TVA + ligne TTC + note maintenance.
+function drawSiteFinancialRecap(doc: jsPDF, chargers: SelectedCharger[]) {
+  const PINK: [number, number, number] = [244, 184, 170];
+  let y = 116;
+  doc.setFillColor(...PINK);
+  doc.rect(M, y - 8, 22, 2, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text("6 · RÉCAPITULATIF FINANCIER", M + 30, y - 4);
+  y += 14;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(26);
+  doc.setTextColor(...INK);
+  doc.text("Votre budget projet", M, y + 18);
+  y += 50;
+
+  // Agrégation par fournisseur
+  const totalChargers = chargers.reduce((sum, sc) => {
+    return sum + sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0) * sc.quantity;
+  }, 0);
+  // Estimation installation = somme des lignes non-borne (typiquement "Pose...")
+  // Approximation : on extrait les lignes dont le label contient "Pose" ou "Forfait"
+  const installItems: number[] = [];
+  const chargerItems: number[] = [];
+  for (const sc of chargers) {
+    for (const li of sc.lineItems) {
+      const t = lineItemClientTotal(li) * sc.quantity;
+      const isInstall = /pose|forfait|raccord|installation|tranch[ée]|génie/i.test(li.label);
+      if (isInstall) installItems.push(t);
+      else chargerItems.push(t);
+    }
+  }
+  const totalInstall = installItems.reduce((a, b) => a + b, 0);
+  const totalChargersOnly = chargerItems.reduce((a, b) => a + b, 0);
+  const bureauControle = 700;
+  const totalHt = totalInstall + totalChargersOnly + bureauControle;
+  const tva = totalHt * 0.2;
+  const totalTtc = totalHt + tva;
+  const supSpecs = chargers.map((sc) => sc.siteSpecs?.supervisionPlan).filter(Boolean);
+  const hasSupervision = supSpecs.length > 0 && supSpecs[0] !== "none";
+
+  autoTable(doc, {
+    startY: y,
+    theme: "plain",
+    head: [["POSTE", "FOURNISSEUR", "MONTANT HT"]],
+    body: [
+      ...(totalInstall > 0 ? [["Installation électrique", "Électricien partenaire", { content: eur(totalInstall), styles: { halign: "right", fontStyle: "bold" } }]] : []),
+      ...(totalChargersOnly > 0 ? [["Bornes de recharge", "Beev", { content: eur(totalChargersOnly), styles: { halign: "right", fontStyle: "bold" } }]] : []),
+      ["Bureau de Contrôle (>36 kVA)", "Tiers", { content: eur(bureauControle), styles: { halign: "right", fontStyle: "bold" } }],
+      ...(hasSupervision ? [["Supervision (12 premiers mois)", "Beev", { content: "OPTION", styles: { halign: "right", textColor: SUB, fontStyle: "normal" } }]] : []),
+    ],
+    foot: [
+      [{ content: "Total projet HT", colSpan: 2, styles: { halign: "right", fontStyle: "bold", textColor: INK, fillColor: BG } }, { content: eur(totalHt), styles: { halign: "right", fontStyle: "bold", textColor: INK, fillColor: BG } }],
+      [{ content: "TVA 20 %", colSpan: 2, styles: { halign: "right", textColor: SUB, fillColor: BG } }, { content: eur(tva), styles: { halign: "right", textColor: SUB, fillColor: BG } }],
+      [{ content: "Total TTC", colSpan: 2, styles: { halign: "right", fontStyle: "bold", textColor: LAVENDER, fillColor: BG, fontSize: 12 } }, { content: eur(totalTtc), styles: { halign: "right", fontStyle: "normal", textColor: LAVENDER, fillColor: BG, fontSize: 12, font: BRAND_FONT } }],
+    ],
+    headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT, cellPadding: 7 },
+    bodyStyles: { fontSize: 10, cellPadding: 7, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
+    footStyles: { font: BRAND_FONT },
+    columnStyles: { 0: { cellWidth: "auto" }, 1: { cellWidth: 140 }, 2: { halign: "right", cellWidth: 100, fontStyle: "bold" } },
+    margin: { left: M, right: M },
+  });
+  let y2 = (doc as any).lastAutoTable.finalY + 16;
+
+  // Note maintenance
+  const totalBornes = chargers.reduce((s, sc) => s + sc.quantity, 0);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text(
+    `Maintenance annuelle : ${eur(totalBornes * 150)} HT/an (${totalBornes} PDC × 150 €), non incluse dans le total ci-dessus.`,
+    M,
+    y2,
+    { maxWidth: PAGE_W - M * 2 },
+  );
+}
+
+// ============ RAPPORT SITE — OPTIONS DE PAIEMENT ============
+// 3 colonnes : Comptant -2% / 50% acompte + 50% / Leasing.
+function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
+  const PINK: [number, number, number] = [244, 184, 170];
+  const PINK_LIGHT: [number, number, number] = [253, 241, 238];
+  const BLACK: [number, number, number] = [29, 29, 29];
+
+  // Total recalculé pour cohérence avec la page précédente
+  const total = chargers.reduce((sum, sc) => sum + sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0) * sc.quantity, 0) + 700;
+  const ttc = total * 1.2;
+  const acompte50 = ttc * 0.5;
+
+  let y = 116;
+  doc.setFillColor(...PINK);
+  doc.rect(M, y - 8, 22, 2, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text("7 · OPTIONS DE PAIEMENT", M + 30, y - 4);
+  y += 14;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(26);
+  doc.setTextColor(...INK);
+  doc.text("Régler en toute flexibilité", M, y + 18);
+  y += 50;
+
+  const colW = (PAGE_W - M * 2 - 24) / 3;
+  const opts = [
+    {
+      title: "Comptant",
+      badge: "Remise 2 %",
+      desc: "Paiement intégral à la commande. Économie immédiate sur le total projet.",
+      tone: "highlight" as const,
+    },
+    {
+      title: "Classique",
+      badge: "Standard",
+      desc: "50 % acompte à la commande, 50 % à réception. Échéancier détaillé possible.",
+      tone: "default" as const,
+    },
+    {
+      title: "Leasing",
+      badge: "Sur demande",
+      desc: "Financement LLD sur 36 / 48 / 60 mois selon profil. Simulation personnalisée par notre partenaire.",
+      tone: "default" as const,
+    },
+  ];
+
+  opts.forEach((opt, i) => {
+    const cx = M + i * (colW + 12);
+    if (opt.tone === "highlight") {
+      doc.setFillColor(...BLACK);
+      doc.roundedRect(cx, y, colW, 200, 8, 8, "F");
+      doc.setFillColor(...PINK);
+      doc.roundedRect(cx + 14, y + 16, 80, 18, 9, 9, "F");
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(...BLACK);
+      doc.text(opt.badge, cx + 54, y + 28, { align: "center" });
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(22);
+      doc.setTextColor(252, 249, 242);
+      doc.text(opt.title, cx + 14, y + 70);
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(200, 200, 200);
+      const lines = doc.splitTextToSize(opt.desc, colW - 28);
+      doc.text(lines, cx + 14, y + 96);
+    } else {
+      doc.setFillColor(...PINK_LIGHT);
+      doc.roundedRect(cx, y, colW, 200, 8, 8, "F");
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(...SUB);
+      doc.text(opt.badge, cx + 14, y + 24);
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(22);
+      doc.setTextColor(...INK);
+      doc.text(opt.title, cx + 14, y + 60);
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(...INK);
+      const lines = doc.splitTextToSize(opt.desc, colW - 28);
+      doc.text(lines, cx + 14, y + 86);
+    }
+  });
+  y += 220;
+
+  // Bandeau bas : montant total + CTA
+  doc.setFillColor(...BLACK);
+  doc.roundedRect(M, y, PAGE_W - M * 2, 100, 8, 8, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...PINK);
+  doc.text("MONTANT TOTAL PROJET", M + 16, y + 22);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(24);
+  doc.setTextColor(252, 249, 242);
+  doc.text(`${eur(total)} HT · ${eur(ttc)} TTC`, M + 16, y + 50);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(200, 200, 200);
+  doc.text(`Acompte 50 % à la commande : ${eur(acompte50)} TTC`, M + 16, y + 70);
+  doc.text("Signez le devis en ligne · contact@beev.co", M + 16, y + 86);
 }
 
 function drawWhyBeev(doc: jsPDF, type: ProjectType) {
