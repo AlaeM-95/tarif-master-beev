@@ -839,45 +839,49 @@ function drawSiteOverview(doc: jsPDF, client: ClientInfo, chargers: SelectedChar
   });
 
   // === Colonne droite : contacts Beev (card noire) ===
+  // Hauteur de la card alignée sur la hauteur de la colonne gauche (ly - y)
+  // pour avoir 2 colonnes de même hauteur visuelle.
   doc.setFillColor(...BLACK);
-  const contactCardH = 160;
+  const contactCardH = Math.max(180, ly - y);
   doc.roundedRect(rightX, y, colW, contactCardH, 8, 8, "F");
 
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(7.5);
   doc.setTextColor(...PINK);
-  doc.text(lookupText(TEXTS, "common", "overview_contacts_title", "VOS CONTACTS BEEV"), rightX + 16, y + 18);
+  doc.text(lookupText(TEXTS, "common", "overview_contacts_title", "VOS CONTACTS BEEV"), rightX + 16, y + 22);
 
-  // Chargé d'affaires (commercial)
+  // Chargé d'affaires (commercial) — nom en gros, rôle en petit
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(13);
   doc.setTextColor(...BEIGE_BG);
-  doc.text(client.salesRep || "—", rightX + 16, y + 40);
+  doc.text(client.salesRep || "—", rightX + 16, y + 46, { maxWidth: colW - 32 });
   doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(200, 200, 200);
-  doc.text(lookupText(TEXTS, "common", "overview_contact1_role", "Chargé d'affaires"), rightX + 16, y + 54);
+  doc.text(lookupText(TEXTS, "common", "overview_contact1_role", "Chargé d'affaires"), rightX + 16, y + 60);
   doc.setFontSize(9);
   doc.setTextColor(...BEIGE_BG);
-  if (client.salesRepEmail) doc.text(client.salesRepEmail, rightX + 16, y + 68);
-  if (client.salesRepPhone) doc.text(client.salesRepPhone, rightX + 16, y + 80);
+  let contact1Y = y + 76;
+  if (client.salesRepEmail) { doc.text(client.salesRepEmail, rightX + 16, contact1Y, { maxWidth: colW - 32 }); contact1Y += 12; }
+  if (client.salesRepPhone) { doc.text(client.salesRepPhone, rightX + 16, contact1Y); contact1Y += 12; }
 
   // Séparateur
+  const sepY = Math.max(contact1Y + 6, y + 108);
   doc.setDrawColor(70, 67, 62);
-  doc.line(rightX + 16, y + 94, rightX + colW - 16, y + 94);
+  doc.line(rightX + 16, sepY, rightX + colW - 16, sepY);
 
-  // Référent technique (placeholder par défaut)
+  // Référent technique — nom en gros, rôle en petit (cohérent avec contact 1)
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(13);
   doc.setTextColor(...BEIGE_BG);
-  doc.text(lookupText(TEXTS, "common", "overview_contact2_role", "Référent technique"), rightX + 16, y + 114);
+  doc.text(lookupText(TEXTS, "common", "overview_contact2_team", "Équipe IRVE Beev"), rightX + 16, sepY + 24, { maxWidth: colW - 32 });
   doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(200, 200, 200);
-  doc.text(lookupText(TEXTS, "common", "overview_contact2_team", "Équipe IRVE Beev"), rightX + 16, y + 128);
+  doc.text(lookupText(TEXTS, "common", "overview_contact2_role", "Référent technique"), rightX + 16, sepY + 38);
   doc.setFontSize(9);
   doc.setTextColor(...BEIGE_BG);
-  doc.text("contact@beev.co", rightX + 16, y + 142);
+  doc.text("contact@beev.co", rightX + 16, sepY + 56);
 }
 
 // ============ RAPPORT SITE — SYNTHÈSE PROJET ============
@@ -1163,21 +1167,25 @@ function drawSiteEquipments(doc: jsPDF, chargers: SelectedCharger[]) {
   };
   const cards = [...modelCards, smartCharging].slice(0, 3);
 
+  // Hauteur de carte uniforme calculée pour accueillir le pire cas (titre 2 lignes + 4 bullets 1 ligne)
+  const cardH = 140;
   cards.forEach((card, i) => {
     const cx = M + i * (cardW + 10);
     doc.setFillColor(255, 255, 255);
-    doc.roundedRect(cx, y, cardW, 130, 8, 8, "F");
+    doc.roundedRect(cx, y, cardW, cardH, 8, 8, "F");
     doc.setDrawColor(...RULE);
-    doc.roundedRect(cx, y, cardW, 130, 8, 8, "S");
+    doc.roundedRect(cx, y, cardW, cardH, 8, 8, "S");
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(11);
     doc.setTextColor(...INK);
-    doc.text(card.title, cx + 12, y + 22, { maxWidth: cardW - 24 });
+    const titleLines = doc.splitTextToSize(card.title, cardW - 24);
+    doc.text(titleLines, cx + 12, y + 22);
+    const subY = y + 22 + titleLines.length * 13;
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(9);
     doc.setTextColor(...SUB);
-    doc.text(card.sub, cx + 12, y + 36);
-    let by = y + 58;
+    doc.text(card.sub, cx + 12, subY);
+    let by = subY + 22;
     card.lines.forEach((l) => {
       doc.setFillColor(...PINK);
       doc.circle(cx + 16, by - 3, 2, "F");
@@ -1306,8 +1314,11 @@ function drawSiteSupervision(doc: jsPDF, plan: "beev_connect" | "beev_home_charg
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(28);
   doc.setTextColor(...INK);
-  doc.text(title, M, y + 22);
-  y += 50;
+  // Titre limité à la largeur utile, peut s'étaler sur 2 lignes si nécessaire
+  const titleLines = doc.splitTextToSize(title, PAGE_W - M * 2);
+  doc.text(titleLines, M, y + 22);
+  y += 22 + (titleLines.length - 1) * 30 + 28;
+
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10.5);
   doc.setTextColor(...SUB);
@@ -1315,13 +1326,34 @@ function drawSiteSupervision(doc: jsPDF, plan: "beev_connect" | "beev_home_charg
   doc.text(subLines, M, y);
   y += subLines.length * 13 + 24;
 
-  // Liste des fonctionnalités à gauche
-  const featuresW = PAGE_W - M * 2 - 220;
+  // Card noire à droite : tarification — démarre au même Y que la liste features
+  const cardX = PAGE_W - M - 200;
+  const cardY = y;
+  const cardW = 200;
+  const cardH = 180;
+  doc.setFillColor(...BLACK);
+  doc.roundedRect(cardX, cardY, cardW, cardH, 8, 8, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...PINK);
+  doc.text(priceLabel, cardX + 16, cardY + 24);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(24);
+  doc.setTextColor(...BEIGE);
+  doc.text(priceValue, cardX + 16, cardY + 58, { maxWidth: cardW - 32 });
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(200, 200, 200);
+  doc.text(priceUnit, cardX + 16, cardY + 80, { maxWidth: cardW - 32 });
+
+  // Liste des fonctionnalités à gauche (largeur restreinte pour ne pas
+  // empiéter sur la card noire à droite)
+  const featuresW = cardX - M - 24;
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(9);
   doc.setTextColor(...SUB);
   doc.text("FONCTIONNALITÉS INCLUSES", M, y);
-  y += 12;
+  y += 14;
   features.forEach((f) => {
     doc.setFillColor(...PINK);
     doc.circle(M + 4, y + 4, 2.5, "F");
@@ -1333,26 +1365,8 @@ function drawSiteSupervision(doc: jsPDF, plan: "beev_connect" | "beev_home_charg
     y += lines.length * 13 + 6;
   });
 
-  // Card noire à droite : tarification
-  const cardX = PAGE_W - M - 200;
-  const cardY = 250;
-  doc.setFillColor(...BLACK);
-  doc.roundedRect(cardX, cardY, 200, 200, 8, 8, "F");
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(8);
-  doc.setTextColor(...PINK);
-  doc.text(priceLabel, cardX + 16, cardY + 22);
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(24);
-  doc.setTextColor(...BEIGE);
-  doc.text(priceValue, cardX + 16, cardY + 56);
-  doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(10);
-  doc.setTextColor(200, 200, 200);
-  doc.text(priceUnit, cardX + 16, cardY + 76, { maxWidth: 200 - 32 });
-
   // Bandeau bas
-  const noteY = Math.max(y + 10, cardY + 220);
+  const noteY = Math.max(y + 16, cardY + cardH + 24);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8);
   doc.setTextColor(...SUB);
@@ -1412,16 +1426,18 @@ function drawSiteGuarantees(doc: jsPDF) {
     },
   ];
 
+  // Hauteur de carte uniforme : suffisant pour titre 2 lignes + 5 puces 1 ligne
+  const guaranteeCardH = 230;
   cols.forEach((col, i) => {
     const cx = M + i * (colW + 12);
     doc.setFillColor(...PINK_LIGHT);
-    doc.roundedRect(cx, y, colW, 200, 8, 8, "F");
+    doc.roundedRect(cx, y, colW, guaranteeCardH, 8, 8, "F");
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(11);
     doc.setTextColor(...INK);
     const titleLines = doc.splitTextToSize(col.title, colW - 24);
     doc.text(titleLines, cx + 12, y + 24);
-    let by = y + 24 + titleLines.length * 14 + 10;
+    let by = y + 24 + titleLines.length * 14 + 12;
     col.items.forEach((it) => {
       doc.setFillColor(...PINK);
       doc.circle(cx + 16, by - 3, 2, "F");
@@ -1433,7 +1449,7 @@ function drawSiteGuarantees(doc: jsPDF) {
       by += lines.length * 12 + 6;
     });
   });
-  y += 220;
+  y += guaranteeCardH + 24;
 
   // Bandeau bas
   doc.setFont(BRAND_FONT, "bold");
@@ -1702,21 +1718,25 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
     },
   ];
 
+  const payCardH = 200;
   opts.forEach((opt, i) => {
     const cx = M + i * (colW + 12);
     if (opt.tone === "highlight") {
       doc.setFillColor(...BLACK);
-      doc.roundedRect(cx, y, colW, 200, 8, 8, "F");
-      doc.setFillColor(...PINK);
-      doc.roundedRect(cx + 14, y + 16, 80, 18, 9, 9, "F");
+      doc.roundedRect(cx, y, colW, payCardH, 8, 8, "F");
+      // Badge largeur dynamique selon le texte (min 80, max colW - 28)
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(8);
+      const badgeTextW = doc.getTextWidth(opt.badge);
+      const badgeW = Math.min(colW - 28, Math.max(80, badgeTextW + 20));
+      doc.setFillColor(...PINK);
+      doc.roundedRect(cx + 14, y + 16, badgeW, 18, 9, 9, "F");
       doc.setTextColor(...BLACK);
-      doc.text(opt.badge, cx + 54, y + 28, { align: "center" });
+      doc.text(opt.badge, cx + 14 + badgeW / 2, y + 28, { align: "center" });
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(22);
       doc.setTextColor(252, 249, 242);
-      doc.text(opt.title, cx + 14, y + 70);
+      doc.text(opt.title, cx + 14, y + 70, { maxWidth: colW - 28 });
       doc.setFont(BRAND_FONT, "normal");
       doc.setFontSize(10);
       doc.setTextColor(200, 200, 200);
@@ -1724,7 +1744,7 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
       doc.text(lines, cx + 14, y + 96);
     } else {
       doc.setFillColor(...PINK_LIGHT);
-      doc.roundedRect(cx, y, colW, 200, 8, 8, "F");
+      doc.roundedRect(cx, y, colW, payCardH, 8, 8, "F");
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(8);
       doc.setTextColor(...SUB);
@@ -1732,7 +1752,7 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(22);
       doc.setTextColor(...INK);
-      doc.text(opt.title, cx + 14, y + 60);
+      doc.text(opt.title, cx + 14, y + 60, { maxWidth: colW - 28 });
       doc.setFont(BRAND_FONT, "normal");
       doc.setFontSize(10);
       doc.setTextColor(...INK);
@@ -1740,7 +1760,7 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
       doc.text(lines, cx + 14, y + 86);
     }
   });
-  y += 220;
+  y += payCardH + 24;
 
   // Bandeau bas : montant total + CTA
   doc.setFillColor(...BLACK);
