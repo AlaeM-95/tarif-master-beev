@@ -2314,7 +2314,7 @@ function SelectedChargerRow({ sc, onChange, onRemove }: { sc: SelectedCharger; o
             onClick={() => setImportDialogOpen(true)}
           >
             <Sparkles className="w-3 h-3" />
-            {sc.technicianQuoteUrl ? "Détecter et importer les lignes (Claude)" : "Téléversez d'abord un PDF"}
+            {sc.technicianQuoteUrl ? "Détecter et importer les lignes du devis" : "Téléversez d'abord un PDF"}
           </Button>
         </div>
       )}

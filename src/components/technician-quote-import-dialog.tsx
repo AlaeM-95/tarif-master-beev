@@ -1,16 +1,10 @@
-// Dialog d'import des lignes d'un devis technicien parsé par Claude API.
-// Ouvert depuis le bouton "Détecter les lignes" sous l'upload du PDF dans
-// SelectedChargerRow. Permet au commercial de :
-//   - voir le supplier / numéro / date / total détectés
-//   - cocher/décocher les lignes à importer
-//   - éditer label / qty / unitHt avant import
-//   - choisir entre 'ajouter au chiffrage existant' et 'remplacer le chiffrage'
-//
-// Une fois validé, onConfirm est appelé avec la liste finale de LineItem
-// (le composant parent fusionne dans sc.lineItems).
+// Dialog d'import des lignes d'un devis technicien.
+// Utilise un parser local (pdfjs-dist + regex) — aucune API externe.
+// Le commercial peut éditer chaque ligne avant import, et même copier-coller
+// depuis le texte brut affiché en bas si une ligne a été manquée.
 
 import { useEffect, useState } from "react";
-import { Loader2, Sparkles, AlertCircle, Check } from "lucide-react";
+import { Loader2, FileSearch, AlertCircle, Check, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -27,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { parseTechnicianQuote, type ParsedQuote, type ParsedQuoteLine } from "@/lib/technician-quote";
+import { parseTechnicianQuoteFromUrl, type ParsedQuote, type ParsedQuoteLine } from "@/lib/technician-quote";
 import type { LineItem } from "@/lib/catalog";
 
 type Mode = "append" | "replace";
@@ -35,6 +29,8 @@ type Mode = "append" | "replace";
 type EditableLine = ParsedQuoteLine & { selected: boolean };
 
 const fmtEur = (n: number) => n.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
+
+const EMPTY_LINE: EditableLine = { label: "", qty: 1, unit: "u", unitHt: 0, selected: true };
 
 export function TechnicianQuoteImportDialog({
   open,
@@ -52,20 +48,21 @@ export function TechnicianQuoteImportDialog({
   const [lines, setLines] = useState<EditableLine[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("append");
+  const [showRaw, setShowRaw] = useState(false);
 
-  // Reset à chaque ouverture
   useEffect(() => {
     if (!open) return;
     setParsed(null);
     setLines([]);
     setError(null);
     setMode("append");
+    setShowRaw(false);
     if (!pdfUrl) {
       setError("Aucun PDF de devis uploadé. Téléversez d'abord le PDF du devis technicien.");
       return;
     }
     setLoading(true);
-    parseTechnicianQuote(pdfUrl)
+    parseTechnicianQuoteFromUrl(pdfUrl)
       .then((r) => {
         setParsed(r);
         setLines(r.lines.map((l) => ({ ...l, selected: true })));
@@ -80,15 +77,19 @@ export function TechnicianQuoteImportDialog({
   const updateLine = (i: number, patch: Partial<EditableLine>) => {
     setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   };
+  const addLine = () => setLines((prev) => [...prev, { ...EMPTY_LINE }]);
+  const removeLine = (i: number) => setLines((prev) => prev.filter((_, idx) => idx !== i));
 
   const handleConfirm = () => {
-    const items: LineItem[] = selectedLines.map((l) => ({
-      label: l.label,
-      qty: l.qty,
-      unitHt: l.unitHt,
-    }));
+    const items: LineItem[] = selectedLines
+      .filter((l) => l.label.trim() !== "")
+      .map((l) => ({
+        label: l.label.trim(),
+        qty: l.qty,
+        unitHt: l.unitHt,
+      }));
     if (items.length === 0) {
-      toast.error("Sélectionnez au moins une ligne.");
+      toast.error("Sélectionnez au moins une ligne avec un libellé.");
       return;
     }
     onConfirm(items, mode);
@@ -98,22 +99,21 @@ export function TechnicianQuoteImportDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <AlertDialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-[#3809EA]" />
+            <FileSearch className="w-4 h-4 text-[#3809EA]" />
             Importer les lignes du devis technicien
           </AlertDialogTitle>
           <AlertDialogDescription>
-            Lecture du PDF par Claude API. Vérifiez les lignes détectées avant import dans le chiffrage.
+            Lecture locale du PDF (aucune donnée envoyée à un service externe). Vérifiez les lignes détectées et ajustez si besoin.
           </AlertDialogDescription>
         </AlertDialogHeader>
 
         {loading && (
           <div className="flex flex-col items-center justify-center py-12 gap-3">
             <Loader2 className="w-8 h-8 animate-spin text-[#3809EA]" />
-            <p className="text-sm text-muted-foreground">Analyse du devis en cours…</p>
-            <p className="text-xs text-muted-foreground">15-30 secondes selon la taille du PDF.</p>
+            <p className="text-sm text-muted-foreground">Analyse du devis…</p>
           </div>
         )}
 
@@ -123,10 +123,6 @@ export function TechnicianQuoteImportDialog({
             <div className="text-xs">
               <p className="font-semibold text-destructive mb-1">Échec de l'analyse</p>
               <p className="text-foreground">{error}</p>
-              <p className="text-muted-foreground mt-2">
-                Vérifiez que la clé <code className="bg-muted px-1 py-0.5 rounded">ANTHROPIC_API_KEY</code> est bien configurée
-                dans Supabase Edge Functions, ou que l'Edge Function a été déployée.
-              </p>
             </div>
           </div>
         )}
@@ -140,6 +136,21 @@ export function TechnicianQuoteImportDialog({
               <Meta label="Date" value={parsed.quoteDate || "—"} />
               <Meta label="Total HT (devis)" value={parsed.totalHt > 0 ? fmtEur(parsed.totalHt) : "—"} />
             </div>
+
+            {/* Warnings non bloquants */}
+            {parsed.warnings.length > 0 && (
+              <div className="flex items-start gap-2 p-2 rounded-md border border-amber-500/30 bg-amber-500/5 text-xs">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <ul className="space-y-0.5">
+                  {parsed.warnings.slice(0, 3).map((w, i) => (
+                    <li key={i} className="text-foreground">{w}</li>
+                  ))}
+                  {parsed.warnings.length > 3 && (
+                    <li className="text-muted-foreground">+ {parsed.warnings.length - 3} autres avertissements</li>
+                  )}
+                </ul>
+              </div>
+            )}
 
             {/* Lignes détectées (éditables) */}
             <div className="space-y-2">
@@ -159,7 +170,7 @@ export function TechnicianQuoteImportDialog({
                 </div>
               </div>
 
-              <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
                 {lines.map((l, i) => (
                   <div key={i} className="flex items-start gap-2 p-2 rounded-md border bg-card">
                     <Checkbox
@@ -196,13 +207,21 @@ export function TechnicianQuoteImportDialog({
                         placeholder="PU HT"
                         step="0.01"
                       />
-                      <div className="col-span-3 text-xs flex items-center justify-end font-semibold">
+                      <div className="col-span-2 text-xs flex items-center justify-end font-semibold">
                         {fmtEur(l.qty * l.unitHt)}
                       </div>
+                      <Button type="button" variant="ghost" size="icon" className="h-7 w-7 col-span-1"
+                        onClick={() => removeLine(i)} title="Supprimer">
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
                     </div>
                   </div>
                 ))}
               </div>
+
+              <Button type="button" variant="outline" size="sm" className="w-full h-7 text-xs gap-2" onClick={addLine}>
+                <Plus className="w-3 h-3" /> Ajouter une ligne manuellement
+              </Button>
 
               {/* Total sélectionné vs total devis */}
               <div className="flex items-center justify-between text-xs p-2 rounded-md bg-secondary/40">
@@ -228,17 +247,27 @@ export function TechnicianQuoteImportDialog({
                 <RadioGroupItem value="append" className="mt-0.5" />
                 <div className="text-xs">
                   <p className="font-semibold">Ajouter au chiffrage</p>
-                  <p className="text-muted-foreground">Conserve les lignes existantes et ajoute les nouvelles.</p>
+                  <p className="text-muted-foreground">Conserve les lignes existantes.</p>
                 </div>
               </label>
               <label className={`flex items-start gap-2 p-3 rounded-md border cursor-pointer ${mode === "replace" ? "border-[#3809EA] bg-[#3809EA]/5" : "border-border"}`}>
                 <RadioGroupItem value="replace" className="mt-0.5" />
                 <div className="text-xs">
                   <p className="font-semibold">Remplacer le chiffrage</p>
-                  <p className="text-muted-foreground">Supprime toutes les lignes actuelles et utilise uniquement celles détectées.</p>
+                  <p className="text-muted-foreground">Supprime tout et utilise uniquement les lignes ci-dessus.</p>
                 </div>
               </label>
             </RadioGroup>
+
+            {/* Texte brut (debug / fallback copier-coller) */}
+            <details open={showRaw} onToggle={(e) => setShowRaw((e.target as HTMLDetailsElement).open)}>
+              <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                Voir le texte brut extrait du PDF ({parsed.rawText.length} caractères)
+              </summary>
+              <pre className="mt-2 p-2 text-[10px] leading-relaxed bg-muted rounded max-h-64 overflow-auto whitespace-pre-wrap">
+                {parsed.rawText}
+              </pre>
+            </details>
           </>
         )}
 
@@ -246,7 +275,7 @@ export function TechnicianQuoteImportDialog({
           <AlertDialogCancel>Annuler</AlertDialogCancel>
           {parsed && !error && (
             <AlertDialogAction onClick={handleConfirm}>
-              Importer {selectedLines.length} ligne{selectedLines.length > 1 ? "s" : ""}
+              Importer {selectedLines.filter((l) => l.label.trim()).length} ligne{selectedLines.filter((l) => l.label.trim()).length > 1 ? "s" : ""}
             </AlertDialogAction>
           )}
         </AlertDialogFooter>
