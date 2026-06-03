@@ -368,7 +368,8 @@ export async function generateProposalPdf(opts: {
 
   // Pages dédiées 'rapport site' — pour les projets bornes site entreprise,
   // inspiré du rapport visite technique Château la Commaraine.
-  // Vue d'ensemble + Synthèse projet entre la couverture et 'Pourquoi Beev'.
+  // Suite : Vue d'ensemble + Synthèse projet + Infrastructure + Équipements
+  // + Fiche produit, entre la couverture et 'Pourquoi Beev'.
   if (effectiveType === "site" && c.length > 0) {
     doc.addPage();
     drawHeader(doc, client, effectiveType);
@@ -376,6 +377,23 @@ export async function generateProposalPdf(opts: {
     doc.addPage();
     drawHeader(doc, client, effectiveType);
     drawSiteProjectSynthesis(doc, client, c);
+    doc.addPage();
+    drawHeader(doc, client, effectiveType);
+    drawSiteInfrastructure(doc, c);
+    doc.addPage();
+    drawHeader(doc, client, effectiveType);
+    drawSiteEquipments(doc, c);
+    // Fiche produit par modèle unique de borne
+    const uniqueChargers = new Map<string, typeof c[0]>();
+    for (const sc of c) {
+      const key = `${sc.charger.brand}-${sc.charger.model}`;
+      if (!uniqueChargers.has(key)) uniqueChargers.set(key, sc);
+    }
+    for (const sc of uniqueChargers.values()) {
+      doc.addPage();
+      drawHeader(doc, client, effectiveType);
+      await drawSiteProductSheet(doc, sc);
+    }
   }
 
   if (cfg.showWhyBeev) {
@@ -852,6 +870,301 @@ function drawSiteProjectSynthesis(doc: jsPDF, client: ClientInfo, chargers: Sele
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
   doc.text("Précisés lors de la visite technique avec le bureau d'études IRVE Beev et le partenaire installateur certifié.", M + 16, y + 36);
+}
+
+// ============ RAPPORT SITE — INFRASTRUCTURE ÉLECTRIQUE ============
+// Page 'Travaux à réaliser · devis installation' inspirée Château la Commaraine.
+// 2 colonnes de bullets (gros œuvre / équipements + raccordement) avec un
+// bandeau bas 'GÉNIE CIVIL TOTAL' et 'MASSIFS BÉTON'.
+function drawSiteInfrastructure(doc: jsPDF, chargers: SelectedCharger[]) {
+  const PINK: [number, number, number] = [244, 184, 170];
+  const PINK_LIGHT: [number, number, number] = [253, 241, 238]; // rose-20 fond bandeau
+
+  let y = 116;
+  doc.setFillColor(...PINK);
+  doc.rect(M, y - 8, 22, 2, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text("2 · INFRASTRUCTURE ÉLECTRIQUE", M + 30, y - 4);
+  y += 14;
+
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(26);
+  doc.setTextColor(...INK);
+  doc.text("Travaux à réaliser · devis installation", M, y + 18);
+  y += 50;
+
+  // Deux colonnes de bullets
+  const totalBornes = chargers.reduce((s, sc) => s + sc.quantity, 0);
+  const has22kW = chargers.some((sc) => sc.charger.powerKw >= 22);
+  const has7kW = chargers.some((sc) => sc.charger.powerKw < 22);
+
+  const leftBullets = [
+    "Mise à niveau de l'infrastructure amont (câble principal, protections amont — à dimensionner après visite)",
+    has22kW ? "Fourniture et pose câble U1000 R2V 5G16 mm² pour les bornes 22 kW" : null,
+    has7kW ? "Fourniture et pose câble U1000 R2V 3G10 mm² pour les bornes 7,4 kW" : null,
+    "Génie civil : fouilles selon longueurs depuis le TGBT",
+    `Pose de ${totalBornes} massifs béton pour bornes sur pied / poteau`,
+  ].filter(Boolean) as string[];
+
+  const rightBullets = [
+    "Création chambre(s) de tirage selon cheminement validé en visite",
+    `Pose et fixation de ${totalBornes} bornes ${chargers[0]?.charger.brand ?? ""}`,
+    "Raccordement électrique complet et mise en service",
+    "VIE · Vérification Installation Électrique",
+    "Étiquetage et repérage final des protections",
+  ];
+
+  const colW = (PAGE_W - M * 2 - 30) / 2;
+  const leftX = M;
+  const rightX = M + colW + 30;
+  const bulletStart = y;
+
+  const drawBullets = (bullets: string[], x: number) => {
+    let by = bulletStart;
+    bullets.forEach((b) => {
+      doc.setFillColor(...PINK);
+      doc.circle(x + 4, by - 3, 2.5, "F");
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(9.5);
+      doc.setTextColor(...INK);
+      const lines = doc.splitTextToSize(b, colW - 16);
+      doc.text(lines, x + 14, by);
+      by += lines.length * 13 + 8;
+    });
+    return by;
+  };
+  const leftEnd = drawBullets(leftBullets, leftX);
+  const rightEnd = drawBullets(rightBullets, rightX);
+  y = Math.max(leftEnd, rightEnd) + 20;
+
+  // Bandeau bas : génie civil total + massifs béton
+  doc.setFillColor(...PINK_LIGHT);
+  doc.roundedRect(M, y, PAGE_W - M * 2, 70, 8, 8, "F");
+  const stripCols = 2;
+  const stripColW = (PAGE_W - M * 2 - 32) / stripCols;
+  const stripData = [
+    { label: "GÉNIE CIVIL TOTAL", value: "À chiffrer après visite", sub: "fouilles selon cheminement" },
+    { label: "MASSIFS BÉTON", value: `${totalBornes} unités`, sub: "1 par borne sur pied" },
+  ];
+  stripData.forEach((s, i) => {
+    const sx = M + 16 + i * stripColW;
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...SUB);
+    doc.text(s.label, sx, y + 18);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(18);
+    doc.setTextColor(...INK);
+    doc.text(s.value, sx, y + 42);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...SUB);
+    doc.text(s.sub, sx, y + 58);
+  });
+}
+
+// ============ RAPPORT SITE — ÉQUIPEMENTS BEEV ============
+// Page 'Les bornes de recharge' avec table prix par modèle + 3 colonnes
+// caractéristiques techniques.
+function drawSiteEquipments(doc: jsPDF, chargers: SelectedCharger[]) {
+  const PINK: [number, number, number] = [244, 184, 170];
+
+  let y = 116;
+  doc.setFillColor(...PINK);
+  doc.rect(M, y - 8, 22, 2, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text("3 · ÉQUIPEMENTS BEEV", M + 30, y - 4);
+  y += 14;
+
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(26);
+  doc.setTextColor(...INK);
+  doc.text("Les bornes de recharge", M, y + 18);
+  y += 50;
+
+  // Table récapitulative : 1 ligne par modèle agrégé
+  const byModel = new Map<string, { brand: string; model: string; powerKw: number; quantity: number; unitHt: number }>();
+  for (const sc of chargers) {
+    const key = `${sc.charger.brand}-${sc.charger.model}`;
+    const unitHt = sc.lineItems[0]?.unitHt ?? sc.charger.priceHt ?? 0;
+    if (byModel.has(key)) {
+      byModel.get(key)!.quantity += sc.quantity;
+    } else {
+      byModel.set(key, {
+        brand: sc.charger.brand,
+        model: sc.charger.model,
+        powerKw: sc.charger.powerKw,
+        quantity: sc.quantity,
+        unitHt,
+      });
+    }
+  }
+  const aggregated = Array.from(byModel.values());
+  const totalQty = aggregated.reduce((s, r) => s + r.quantity, 0);
+  const totalHt = aggregated.reduce((s, r) => s + r.quantity * r.unitHt, 0);
+
+  autoTable(doc, {
+    startY: y,
+    theme: "plain",
+    head: [["MODÈLE", "QTÉ", "P.U. HT", "TOTAL HT"]],
+    body: [
+      ...aggregated.map((r) => [
+        `${r.brand} ${r.model} · ${r.powerKw} kW`,
+        String(r.quantity),
+        eur(r.unitHt),
+        { content: eur(r.quantity * r.unitHt), styles: { fontStyle: "bold", halign: "right" } },
+      ]),
+    ],
+    foot: [[
+      { content: `Total bornes`, styles: { fontStyle: "bold", textColor: INK, fillColor: BG, cellPadding: 8 } },
+      { content: String(totalQty), styles: { halign: "center", fontStyle: "bold", textColor: INK, fillColor: BG, cellPadding: 8 } },
+      { content: "", styles: { fillColor: BG, cellPadding: 8 } },
+      { content: eur(totalHt), styles: { halign: "right", fontStyle: "normal", textColor: LAVENDER, fillColor: BG, cellPadding: 8, fontSize: 12, font: BRAND_FONT } },
+    ]],
+    headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT, cellPadding: 7 },
+    bodyStyles: { fontSize: 10, cellPadding: 7, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
+    footStyles: { font: BRAND_FONT },
+    columnStyles: {
+      0: { cellWidth: "auto" },
+      1: { halign: "center", cellWidth: 50 },
+      2: { halign: "right", cellWidth: 80 },
+      3: { halign: "right", cellWidth: 100, fontStyle: "bold" },
+    },
+    margin: { left: M, right: M },
+  });
+  y = (doc as any).lastAutoTable.finalY + 24;
+
+  // 3 colonnes caractéristiques techniques (top 2 models + Smart charging)
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text("CARACTÉRISTIQUES TECHNIQUES", M, y);
+  y += 16;
+
+  const cardW = (PAGE_W - M * 2 - 20) / 3;
+  const cards = [
+    aggregated[0] ? {
+      title: `${aggregated[0].brand} ${aggregated[0].model}`,
+      sub: `${aggregated[0].powerKw} kW`,
+      lines: ["Prise Type 2 intégrée", "RFID + supervision OCPP", "Connectivité WiFi/4G", "IP54 · garantie 3 ans"],
+    } : null,
+    aggregated[1] ? {
+      title: `${aggregated[1].brand} ${aggregated[1].model}`,
+      sub: `${aggregated[1].powerKw} kW`,
+      lines: ["Prise Type 2 intégrée", "RFID + supervision OCPP", "Connectivité WiFi/4G", "IP54 · garantie 3 ans"],
+    } : { title: "Smart charging", sub: "Pilotage flotte", lines: ["Délestage dynamique natif", "Équilibrage de charge actif", "Compatible OCPP 1.6 et 2.0", "Données temps réel"] },
+    { title: "Smart charging", sub: "Pilotage flotte", lines: ["Délestage dynamique natif", "Équilibrage de charge actif", "Compatible OCPP 1.6 et 2.0", "Supervision unifiée"] },
+  ].filter(Boolean) as Array<{ title: string; sub: string; lines: string[] }>;
+
+  cards.forEach((card, i) => {
+    const cx = M + i * (cardW + 10);
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(cx, y, cardW, 130, 8, 8, "F");
+    doc.setDrawColor(...RULE);
+    doc.roundedRect(cx, y, cardW, 130, 8, 8, "S");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...INK);
+    doc.text(card.title, cx + 12, y + 22, { maxWidth: cardW - 24 });
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...SUB);
+    doc.text(card.sub, cx + 12, y + 36);
+    let by = y + 58;
+    card.lines.forEach((l) => {
+      doc.setFillColor(...PINK);
+      doc.circle(cx + 16, by - 3, 2, "F");
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(...INK);
+      const lines = doc.splitTextToSize(l, cardW - 36);
+      doc.text(lines, cx + 24, by);
+      by += lines.length * 11 + 4;
+    });
+  });
+}
+
+// ============ RAPPORT SITE — FICHE PRODUIT ============
+// 1 page par modèle de borne unique : nom + image + table specs détaillées
+// (puissance, connectivité, communication, smart charging, qualité/garantie).
+async function drawSiteProductSheet(doc: jsPDF, sc: SelectedCharger) {
+  const PINK: [number, number, number] = [244, 184, 170];
+  const v = sc.charger;
+
+  let y = 116;
+  doc.setFillColor(...PINK);
+  doc.rect(M, y - 8, 22, 2, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text("FICHE PRODUIT", M + 30, y - 4);
+  y += 14;
+
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(32);
+  doc.setTextColor(...INK);
+  doc.text(`${v.brand} ${v.model}`, M, y + 22);
+  y += 60;
+
+  // 2 colonnes : table specs gauche, photo droite
+  const photoW = 180;
+  const photoX = PAGE_W - M - photoW;
+  const tableW = PAGE_W - M * 2 - photoW - 20;
+
+  // Photo borne dans cadre rose clair
+  doc.setFillColor(253, 241, 238);
+  doc.roundedRect(photoX, y, photoW, 200, 8, 8, "F");
+  await drawImageContain(doc, v.image, photoX + 12, y + 12, photoW - 24, 180);
+
+  // Table specs
+  const specs = [
+    { label: "Puissance", value: `${v.powerKw} kW${v.powerKw >= 22 ? " triphasé" : " monophasé"}` },
+    { label: "Connectivité", value: "Prise Type 2 intégrée · Lecteur RFID · Connectivité WiFi/4G" },
+    { label: "Communication", value: "OCPP 1.6 et 2.0 · Supervision compatible" },
+    { label: "Smart Charging", value: "Délestage dynamique · Équilibrage actif" },
+    { label: "Qualité et Garantie", value: "IP54 · IK10 · Garantie constructeur 3 ans (extensible 6 ans)" },
+  ];
+  let ty = y;
+  doc.setDrawColor(...RULE);
+  doc.setLineWidth(0.4);
+  specs.forEach((s) => {
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...SUB);
+    doc.text(s.label, M, ty);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(10.5);
+    doc.setTextColor(...INK);
+    const valLines = doc.splitTextToSize(s.value, tableW);
+    doc.text(valLines, M, ty + 14);
+    ty += 14 + valLines.length * 12 + 8;
+    doc.line(M, ty - 2, M + tableW, ty - 2);
+    ty += 6;
+  });
+
+  // Sous-titre photo
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...SUB);
+  doc.text(`${v.brand} ${v.model} · borne sur poteau ou mur`, photoX + photoW / 2, y + 218, { align: "center" });
+
+  // Description longue de l'admin si renseignée
+  if (v.description && v.description.trim().length > 0) {
+    const descY = Math.max(ty, y + 240) + 10;
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...LAVENDER);
+    doc.text("PRÉSENTATION", M, descY);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...INK);
+    const descL = doc.splitTextToSize(v.description, PAGE_W - M * 2);
+    doc.text(descL.slice(0, 8), M, descY + 14);
+  }
 }
 
 function drawWhyBeev(doc: jsPDF, type: ProjectType) {
