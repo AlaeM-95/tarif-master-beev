@@ -14,7 +14,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users } from "lucide-react";
 import { toast } from "sonner";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type EnergyParams } from "@/lib/store";
-import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, type SelectedCharger, type SelectedVehicle, type PricingConfig } from "@/lib/pdf";
+import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
 import { BEEV_JOURNEYS, MANDATORY_SERVICES, createBlankCharger, createBlankVehicle, type Charger, type LineItem, type ProjectType, type Vehicle } from "@/lib/catalog";
 import { AdminBadge } from "@/components/admin-badge";
 import { ImageUpload } from "@/components/image-upload";
@@ -2301,6 +2301,13 @@ function SelectedChargerRow({ sc, onChange, onRemove }: { sc: SelectedCharger; o
         </div>
       )}
 
+      {/* Encart site entreprise : personnalisation du rapport PDF (specs site,
+          supervision). Tous les champs sont optionnels — utilisés dans le
+          rapport visite technique généré uniquement quand renseignés. */}
+      {!isHome && (
+        <SiteSpecsEditor sc={sc} onChange={onChange} />
+      )}
+
       <button type="button" onClick={() => setOpenLi((o) => !o)} className="w-full text-xs px-2 py-1.5 rounded-md border bg-card hover:bg-accent/40 flex justify-between">
         <span>Chiffrage · {sc.lineItems.length} lignes · marge {margePct.toFixed(1)} %</span><span>{openLi ? "▴" : "▾"}</span>
       </button>
@@ -2625,6 +2632,101 @@ function BpuPicker({ onPick }: { onPick: (f: BpuForfait, zone: BpuZone) => void 
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ============ ÉDITEUR DES SPECS SITE (rapport visite technique) ============
+// Composant inline dans SelectedChargerRow (mode site uniquement) : permet
+// au commercial de personnaliser les champs du rapport PDF site entreprise
+// (récap projet, synthèse chantier, infrastructure, supervision).
+function SiteSpecsEditor({ sc, onChange }: { sc: SelectedCharger; onChange: (p: Partial<SelectedCharger>) => void }) {
+  const [open, setOpen] = useState(false);
+  const specs: SiteSpecs = sc.siteSpecs ?? {};
+  const setSpec = (patch: Partial<SiteSpecs>) => {
+    onChange({ siteSpecs: { ...specs, ...patch } });
+  };
+
+  const filledCount = [
+    specs.sector, specs.installationType, specs.usage, specs.estimatedDelay,
+    specs.edfPower, specs.distanceTgbt, specs.locationDescription, specs.tgbtRoom,
+    specs.worksList?.length, specs.supervisionPlan,
+  ].filter((v) => v !== undefined && v !== null && v !== "" && v !== 0 && v !== "none").length;
+
+  return (
+    <div className="rounded-md border border-dashed border-[#F4B8AA] bg-[#FDF1EE] p-2 space-y-2">
+      <button type="button" onClick={() => setOpen((o) => !o)} className="w-full flex items-center justify-between gap-2 text-xs">
+        <span className="font-semibold uppercase text-[#3809EA]">
+          Rapport visite technique · {filledCount}/10 champs renseignés
+        </span>
+        <span className="text-muted-foreground">{open ? "Replier ▴" : "Personnaliser ▾"}</span>
+      </button>
+
+      {open && (
+        <div className="space-y-2 pt-2 border-t border-[#F4B8AA]/40">
+          <p className="text-[10px] text-muted-foreground italic">
+            Tous les champs sont optionnels. Renseignez ceux que vous avez et le PDF s'adapte automatiquement.
+          </p>
+
+          <div className="grid grid-cols-2 gap-2">
+            <TxtField label="Secteur" value={specs.sector ?? ""} onChange={(v) => setSpec({ sector: v })} />
+            <TxtField label="Type d'installation" value={specs.installationType ?? ""} onChange={(v) => setSpec({ installationType: v })} />
+            <TxtField label="Usage" value={specs.usage ?? ""} onChange={(v) => setSpec({ usage: v })} />
+            <TxtField label="Délai estimé" value={specs.estimatedDelay ?? ""} onChange={(v) => setSpec({ estimatedDelay: v })} />
+            <TxtField label="Puissance EDF" value={specs.edfPower ?? ""} onChange={(v) => setSpec({ edfPower: v })} />
+            <TxtField label="Distance TGBT" value={specs.distanceTgbt ?? ""} onChange={(v) => setSpec({ distanceTgbt: v })} />
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-[10px] text-muted-foreground uppercase">Emplacement (description)</Label>
+            <Input
+              value={specs.locationDescription ?? ""}
+              onChange={(e) => setSpec({ locationDescription: e.target.value })}
+              placeholder="Ex : Parking extérieur, cour gravillons devant le bâtiment principal"
+              className="h-8 text-xs"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-[10px] text-muted-foreground uppercase">Local TGBT et cheminement</Label>
+            <Input
+              value={specs.tgbtRoom ?? ""}
+              onChange={(e) => setSpec({ tgbtRoom: e.target.value })}
+              placeholder="Ex : Local technique RDC, cheminement façade nord puis tranchée parking"
+              className="h-8 text-xs"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-[10px] text-muted-foreground uppercase">
+              Travaux à réaliser (1 par ligne, max 10)
+            </Label>
+            <Textarea
+              value={(specs.worksList ?? []).join("\n")}
+              onChange={(e) => setSpec({ worksList: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 10) })}
+              placeholder="Mise à niveau câble principal 150mm² → 240mm² alu (40m)&#10;NSX400F + INS320&#10;Fouilles 65m sur terre végétale et graviers&#10;..."
+              className="min-h-[100px] text-xs"
+            />
+            <p className="text-[10px] text-muted-foreground">
+              Répartis automatiquement sur 2 colonnes dans le PDF "Infrastructure électrique".
+              Si vide, une liste générique sera utilisée.
+            </p>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-[10px] text-muted-foreground uppercase">Supervision (page dédiée du PDF)</Label>
+            <select
+              value={specs.supervisionPlan ?? "none"}
+              onChange={(e) => setSpec({ supervisionPlan: e.target.value as SiteSpecs["supervisionPlan"] })}
+              className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+            >
+              <option value="none">— Pas de bloc supervision —</option>
+              <option value="beev_connect">Beev Connect (site entreprise)</option>
+              <option value="beev_home_charging">Beev Home Charging (B2B2E domicile)</option>
+            </select>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

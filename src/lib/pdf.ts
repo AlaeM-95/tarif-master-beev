@@ -48,6 +48,37 @@ export type SelectedVehicle = {
   options: LineItem[];
 };
 
+/** Spécifications site personnalisables par le commercial pour le rapport site
+ *  entreprise. Tous les champs sont optionnels — quand renseignés, ils
+ *  remplacent les placeholders 'à confirmer après visite technique' dans le
+ *  PDF généré (Vue d'ensemble, Synthèse projet, Infrastructure).
+ *  L'option supervision détermine aussi le bloc 'Supervision' du PDF :
+ *  beev_connect (site entreprise) ou beev_home_charging (B2B2E). */
+export type SiteSpecs = {
+  /** Secteur d'activité du client (Hôtellerie, Tertiaire, Logistique...) */
+  sector?: string;
+  /** Type d'installation (Parking extérieur, sous-sol, etc.) */
+  installationType?: string;
+  /** Usage des bornes (collaborateurs, visiteurs...) */
+  usage?: string;
+  /** Délai estimé après validation devis */
+  estimatedDelay?: string;
+  /** Puissance abonnement EDF (ex : "180 kVA") */
+  edfPower?: string;
+  /** Distance TGBT → bornes la plus longue */
+  distanceTgbt?: string;
+  /** Description de l'emplacement (ex : "Parking extérieur, cour gravillons") */
+  locationDescription?: string;
+  /** Local TGBT et cheminement câble */
+  tgbtRoom?: string;
+  /** Liste des travaux à réaliser (1 bullet = 1 ligne) — remplace la
+   *  liste par défaut dans la page Infrastructure électrique du PDF. */
+  worksList?: string[];
+  /** Plan de supervision : Beev Connect (site entreprise) ou Beev Home Charging
+   *  (B2B2E domicile collaborateur). 'none' = pas de bloc supervision. */
+  supervisionPlan?: "beev_connect" | "beev_home_charging" | "none";
+};
+
 export type SelectedCharger = {
   charger: Charger;
   quantity: number;
@@ -59,6 +90,8 @@ export type SelectedCharger = {
   lineItems: LineItem[];
   // URL du devis technicien uploadé (privé, jamais inclus dans le PDF client)
   technicianQuoteUrl?: string;
+  /** Spécifications site personnalisables par le commercial. */
+  siteSpecs?: SiteSpecs;
 };
 
 // Calcule le prix unitaire final (avec marge) qui sera présenté au client.
@@ -394,6 +427,15 @@ export async function generateProposalPdf(opts: {
       drawHeader(doc, client, effectiveType);
       await drawSiteProductSheet(doc, sc);
     }
+    // Page Supervision : Beev Connect ou Beev Home Charging selon le choix
+    // du commercial dans le panneau droit (sc.siteSpecs.supervisionPlan).
+    const supSpecs = c.map((sc) => sc.siteSpecs?.supervisionPlan).filter(Boolean) as string[];
+    const supPlan = (supSpecs[0] as "beev_connect" | "beev_home_charging" | "none" | undefined);
+    if (supPlan && supPlan !== "none") {
+      doc.addPage();
+      drawHeader(doc, client, effectiveType);
+      drawSiteSupervision(doc, supPlan);
+    }
   }
 
   if (cfg.showWhyBeev) {
@@ -683,6 +725,28 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
 // à gauche les caractéristiques projet (Client, Site, Secteur, Nb bornes,
 // Type d'installation, Usage, Supervision, Délai), à droite les contacts
 // Beev (chargé d'affaires + référent technique).
+// Agrège les SiteSpecs de toutes les bornes sélectionnées en un seul objet.
+// Prend la première valeur définie pour chaque champ. Travaux et supervision
+// pris depuis la première borne qui les définit.
+function aggregateSiteSpecs(chargers: SelectedCharger[]): SiteSpecs {
+  const merged: SiteSpecs = {};
+  for (const sc of chargers) {
+    const s = sc.siteSpecs;
+    if (!s) continue;
+    if (!merged.sector && s.sector) merged.sector = s.sector;
+    if (!merged.installationType && s.installationType) merged.installationType = s.installationType;
+    if (!merged.usage && s.usage) merged.usage = s.usage;
+    if (!merged.estimatedDelay && s.estimatedDelay) merged.estimatedDelay = s.estimatedDelay;
+    if (!merged.edfPower && s.edfPower) merged.edfPower = s.edfPower;
+    if (!merged.distanceTgbt && s.distanceTgbt) merged.distanceTgbt = s.distanceTgbt;
+    if (!merged.locationDescription && s.locationDescription) merged.locationDescription = s.locationDescription;
+    if (!merged.tgbtRoom && s.tgbtRoom) merged.tgbtRoom = s.tgbtRoom;
+    if (!merged.worksList && s.worksList && s.worksList.length > 0) merged.worksList = s.worksList;
+    if (!merged.supervisionPlan && s.supervisionPlan) merged.supervisionPlan = s.supervisionPlan;
+  }
+  return merged;
+}
+
 function drawSiteOverview(doc: jsPDF, client: ClientInfo, chargers: SelectedCharger[]) {
   const BLACK: [number, number, number] = [29, 29, 29];
   const BEIGE_BG: [number, number, number] = [252, 249, 242];
@@ -726,16 +790,19 @@ function drawSiteOverview(doc: jsPDF, client: ClientInfo, chargers: SelectedChar
   const powerBreakdown = chargers.map((sc) => `${sc.quantity} × ${sc.charger.powerKw} kW`).join(" + ");
 
   // === Colonne gauche : caractéristiques projet ===
+  // Toutes les valeurs sont surchargeables via sc.siteSpecs (champs admin
+  // par borne renseignés dans le panneau droit en mode site).
+  const specs = aggregateSiteSpecs(chargers);
   const rows = [
     { label: "Client", value: client.company || "—" },
     { label: "Site", value: chargers[0]?.siteAddress || "—" },
-    { label: "Secteur", value: "—" }, // À enrichir depuis pdf_settings si l'admin le configure
+    { label: "Secteur", value: specs.sector || "—" },
     { label: "Nombre de bornes", value: `${totalChargers} ${modelsSummary ? `· ${modelsSummary}` : ""}` },
-    { label: "Puissance", value: powerBreakdown || "—" },
-    { label: "Type d'installation", value: chargers.some((sc) => sc.charger.deployment === "site") ? "Parking, site entreprise" : "—" },
-    { label: "Usage", value: "Collaborateurs et visiteurs" },
-    { label: "Supervision", value: "Smappee CPO (à confirmer)" },
-    { label: "Délai estimé", value: "3 à 5 semaines après validation du devis" },
+    { label: "Puissance bornes", value: powerBreakdown || "—" },
+    { label: "Type d'installation", value: specs.installationType || (chargers.some((sc) => sc.charger.deployment === "site") ? "Parking, site entreprise" : "—") },
+    { label: "Usage", value: specs.usage || "Collaborateurs et visiteurs" },
+    { label: "Supervision", value: specs.supervisionPlan === "beev_connect" ? "Beev Connect (site entreprise)" : specs.supervisionPlan === "beev_home_charging" ? "Beev Home Charging (B2B2E)" : "À définir avec votre commercial" },
+    { label: "Délai estimé", value: specs.estimatedDelay || "3 à 5 semaines après validation du devis" },
   ];
 
   let ly = y;
@@ -826,17 +893,18 @@ function drawSiteProjectSynthesis(doc: jsPDF, client: ClientInfo, chargers: Sele
   const cable22 = hasHighPower ? "U1000 R2V 5G16 mm²" : "—";
   const hasLowPower = chargers.some((sc) => sc.charger.powerKw < 22);
   const cable74 = hasLowPower ? "U1000 R2V 3G10 mm²" : "—";
+  const specs = aggregateSiteSpecs(chargers);
 
-  // Table 2 colonnes : libellé / valeur
+  // Table 2 colonnes : libellé / valeur. Surcharge via sc.siteSpecs.
   const rows = [
     { label: "Points de recharge", value: `${totalChargers} borne${totalChargers > 1 ? "s" : ""} (${breakdown})` },
-    { label: "Distance TGBT → Bornes", value: "À confirmer après visite technique" },
-    { label: "Emplacement", value: chargers[0]?.siteAddress || "Parking site entreprise" },
-    { label: "Puissance abonnement EDF", value: "180 kVA (à confirmer)" },
+    { label: "Distance TGBT → Bornes", value: specs.distanceTgbt || "À confirmer après visite technique" },
+    { label: "Emplacement", value: specs.locationDescription || chargers[0]?.siteAddress || "Parking site entreprise" },
+    { label: "Puissance abonnement EDF", value: specs.edfPower || "À confirmer (abonnement client)" },
     { label: "Type câble 22 kW", value: cable22 },
     { label: "Type câble 7,4 kW", value: cable74 },
-    { label: "Délai estimé", value: "3 à 5 semaines après validation" },
-    { label: "Local TGBT et cheminement", value: "Cheminement à valider lors de la visite technique" },
+    { label: "Délai estimé", value: specs.estimatedDelay || "3 à 5 semaines après validation" },
+    { label: "Local TGBT et cheminement", value: specs.tgbtRoom || "Cheminement à valider lors de la visite technique" },
   ];
 
   doc.setDrawColor(...RULE);
@@ -895,26 +963,35 @@ function drawSiteInfrastructure(doc: jsPDF, chargers: SelectedCharger[]) {
   doc.text("Travaux à réaliser · devis installation", M, y + 18);
   y += 50;
 
-  // Deux colonnes de bullets
+  // Deux colonnes de bullets. Si le commercial a saisi une liste custom dans
+  // sc.siteSpecs.worksList, on l'utilise pour la colonne gauche. Sinon
+  // génération automatique depuis les bornes sélectionnées (placeholder).
   const totalBornes = chargers.reduce((s, sc) => s + sc.quantity, 0);
   const has22kW = chargers.some((sc) => sc.charger.powerKw >= 22);
   const has7kW = chargers.some((sc) => sc.charger.powerKw < 22);
+  const specs = aggregateSiteSpecs(chargers);
 
-  const leftBullets = [
-    "Mise à niveau de l'infrastructure amont (câble principal, protections amont — à dimensionner après visite)",
-    has22kW ? "Fourniture et pose câble U1000 R2V 5G16 mm² pour les bornes 22 kW" : null,
-    has7kW ? "Fourniture et pose câble U1000 R2V 3G10 mm² pour les bornes 7,4 kW" : null,
-    "Génie civil : fouilles selon longueurs depuis le TGBT",
-    `Pose de ${totalBornes} massifs béton pour bornes sur pied / poteau`,
-  ].filter(Boolean) as string[];
+  const customWorks = specs.worksList ?? [];
+  const splitIdx = Math.ceil(customWorks.length / 2);
+  const leftBullets = customWorks.length > 0
+    ? customWorks.slice(0, splitIdx)
+    : ([
+        "Mise à niveau de l'infrastructure amont (câble principal, protections amont — à dimensionner après visite)",
+        has22kW ? "Fourniture et pose câble U1000 R2V 5G16 mm² pour les bornes 22 kW" : null,
+        has7kW ? "Fourniture et pose câble U1000 R2V 3G10 mm² pour les bornes 7,4 kW" : null,
+        "Génie civil : fouilles selon longueurs depuis le TGBT",
+        `Pose de ${totalBornes} massifs béton pour bornes sur pied / poteau`,
+      ].filter(Boolean) as string[]);
 
-  const rightBullets = [
-    "Création chambre(s) de tirage selon cheminement validé en visite",
-    `Pose et fixation de ${totalBornes} bornes ${chargers[0]?.charger.brand ?? ""}`,
-    "Raccordement électrique complet et mise en service",
-    "VIE · Vérification Installation Électrique",
-    "Étiquetage et repérage final des protections",
-  ];
+  const rightBullets = customWorks.length > 0
+    ? customWorks.slice(splitIdx)
+    : [
+        "Création chambre(s) de tirage selon cheminement validé en visite",
+        `Pose et fixation de ${totalBornes} bornes ${chargers[0]?.charger.brand ?? ""}`,
+        "Raccordement électrique complet et mise en service",
+        "VIE · Vérification Installation Électrique",
+        "Étiquetage et repérage final des protections",
+      ];
 
   const colW = (PAGE_W - M * 2 - 30) / 2;
   const leftX = M;
@@ -1046,19 +1123,30 @@ function drawSiteEquipments(doc: jsPDF, chargers: SelectedCharger[]) {
   y += 16;
 
   const cardW = (PAGE_W - M * 2 - 20) / 3;
-  const cards = [
-    aggregated[0] ? {
-      title: `${aggregated[0].brand} ${aggregated[0].model}`,
-      sub: `${aggregated[0].powerKw} kW`,
-      lines: ["Prise Type 2 intégrée", "RFID + supervision OCPP", "Connectivité WiFi/4G", "IP54 · garantie 3 ans"],
-    } : null,
-    aggregated[1] ? {
-      title: `${aggregated[1].brand} ${aggregated[1].model}`,
-      sub: `${aggregated[1].powerKw} kW`,
-      lines: ["Prise Type 2 intégrée", "RFID + supervision OCPP", "Connectivité WiFi/4G", "IP54 · garantie 3 ans"],
-    } : { title: "Smart charging", sub: "Pilotage flotte", lines: ["Délestage dynamique natif", "Équilibrage de charge actif", "Compatible OCPP 1.6 et 2.0", "Données temps réel"] },
-    { title: "Smart charging", sub: "Pilotage flotte", lines: ["Délestage dynamique natif", "Équilibrage de charge actif", "Compatible OCPP 1.6 et 2.0", "Supervision unifiée"] },
-  ].filter(Boolean) as Array<{ title: string; sub: string; lines: string[] }>;
+  // 3 cards : modèles uniques (max 2) + Smart charging unique.
+  // Filtrage pour éviter le doublon historique (Smart charging affiché 2 fois
+  // quand un seul modèle dans la sélection).
+  const modelCards = aggregated.slice(0, 2).map((a) => ({
+    title: `${a.brand} ${a.model}`,
+    sub: `${a.powerKw} kW`,
+    lines: [
+      "Prise Type 2 intégrée",
+      "RFID + supervision OCPP",
+      "Connectivité WiFi/4G",
+      "IP54 · garantie 3 ans",
+    ],
+  }));
+  const smartCharging = {
+    title: "Smart charging",
+    sub: "Pilotage flotte",
+    lines: [
+      "Délestage dynamique natif",
+      "Équilibrage de charge actif",
+      "Compatible OCPP 1.6 et 2.0",
+      "Données temps réel",
+    ],
+  };
+  const cards = [...modelCards, smartCharging].slice(0, 3);
 
   cards.forEach((card, i) => {
     const cx = M + i * (cardW + 10);
@@ -1165,6 +1253,123 @@ async function drawSiteProductSheet(doc: jsPDF, sc: SelectedCharger) {
     const descL = doc.splitTextToSize(v.description, PAGE_W - M * 2);
     doc.text(descL.slice(0, 8), M, descY + 14);
   }
+}
+
+// ============ RAPPORT SITE — SUPERVISION ============
+// Page Supervision affichée si le commercial a choisi un plan dans le panneau
+// droit : Beev Connect (site entreprise) ou Beev Home Charging (B2B2E).
+function drawSiteSupervision(doc: jsPDF, plan: "beev_connect" | "beev_home_charging") {
+  const PINK: [number, number, number] = [244, 184, 170];
+  const BLACK: [number, number, number] = [29, 29, 29];
+  const BEIGE: [number, number, number] = [252, 249, 242];
+
+  const isHome = plan === "beev_home_charging";
+  const title = isHome ? "Beev Home Charging — B2B2E" : "Beev Connect — Site entreprise";
+  const subtitle = isHome
+    ? "Supervision dédiée au remboursement de l'énergie consommée à des fins professionnelles, au domicile de vos collaborateurs."
+    : "Pilotage centralisé de votre infrastructure de recharge sur site : sessions, énergie, badges et alertes en temps réel.";
+  const features = isHome
+    ? [
+        "Authentification badge RFID ou app mobile par collaborateur",
+        "Calcul mensuel des kWh consommés à titre professionnel (séparation pro/perso)",
+        "Remboursement automatisé du collaborateur sur sa fiche de paie",
+        "Conformité fiscale URSSAF · justificatifs à jour",
+        "Reporting employeur consolidé : énergie, coûts, émissions CO₂ évitées",
+      ]
+    : [
+        "Pilotage des bornes à distance (démarrage, arrêt, paramétrage)",
+        "Statistiques de charge en temps réel (kWh, durée, fréquence)",
+        "Gestion utilisateurs et badges RFID, carte physique compatible",
+        "Alertes maintenance et pannes par email/SMS",
+        "Délestage dynamique centralisé, compatible installation photovoltaïque",
+        "Émissions CO₂ évitées suivies par session",
+      ];
+
+  let y = 116;
+  doc.setFillColor(...PINK);
+  doc.rect(M, y - 8, 22, 2, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text("4 · SUPERVISION", M + 30, y - 4);
+  y += 14;
+
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(28);
+  doc.setTextColor(...INK);
+  doc.text(title, M, y + 22);
+  y += 50;
+
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10.5);
+  doc.setTextColor(...SUB);
+  const subLines = doc.splitTextToSize(subtitle, PAGE_W - M * 2);
+  doc.text(subLines, M, y);
+  y += subLines.length * 13 + 24;
+
+  // Liste des fonctionnalités à gauche
+  const featuresW = PAGE_W - M * 2 - 220;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(...SUB);
+  doc.text("FONCTIONNALITÉS INCLUSES", M, y);
+  y += 12;
+  features.forEach((f) => {
+    doc.setFillColor(...PINK);
+    doc.circle(M + 4, y + 4, 2.5, "F");
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...INK);
+    const lines = doc.splitTextToSize(f, featuresW - 20);
+    doc.text(lines, M + 14, y + 7);
+    y += lines.length * 13 + 6;
+  });
+
+  // Card noire à droite : tarification (placeholder)
+  const cardX = PAGE_W - M - 200;
+  const cardY = 250;
+  doc.setFillColor(...BLACK);
+  doc.roundedRect(cardX, cardY, 200, 200, 8, 8, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...PINK);
+  doc.text(isHome ? "TARIFICATION HOME CHARGING" : "TARIFICATION BEEV CONNECT", cardX + 16, cardY + 22);
+
+  const pricing = isHome
+    ? [
+        { v: "8 €", l: "HT / collaborateur / mois" },
+        { v: "12 mois", l: "engagement minimum" },
+        { v: "Inclus", l: "badge RFID + app mobile" },
+      ]
+    : [
+        { v: "6 €", l: "HT / point de charge / mois" },
+        { v: "72 € HT", l: "/ an / point de charge" },
+        { v: "7 €", l: "HT / badge RFID supplémentaire" },
+      ];
+  let py = cardY + 50;
+  pricing.forEach((p) => {
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(18);
+    doc.setTextColor(...BEIGE);
+    doc.text(p.v, cardX + 16, py);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(200, 200, 200);
+    doc.text(p.l, cardX + 16, py + 14, { maxWidth: 200 - 32 });
+    py += 42;
+  });
+
+  // Bandeau bas : conditions
+  const noteY = Math.max(y + 10, cardY + 220);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...SUB);
+  doc.text(
+    "Un contrat cadre de supervision est signé avant toute facturation. L'abonnement démarre à la mise en service effective de la première borne.",
+    M,
+    noteY,
+    { maxWidth: PAGE_W - M * 2 },
+  );
 }
 
 function drawWhyBeev(doc: jsPDF, type: ProjectType) {
