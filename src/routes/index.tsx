@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users } from "lucide-react";
+import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type EnergyParams } from "@/lib/store";
 import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
@@ -19,6 +19,7 @@ import { BEEV_JOURNEYS, MANDATORY_SERVICES, createBlankCharger, createBlankVehic
 import { AdminBadge } from "@/components/admin-badge";
 import { ImageUpload } from "@/components/image-upload";
 import { FileUpload } from "@/components/file-upload";
+import { TechnicianQuoteImportDialog } from "@/components/technician-quote-import-dialog";
 import { MarginReviewDialog } from "@/components/margin-review-dialog";
 import { PdfConfigPanel } from "@/components/pdf-config-panel";
 import { CategoryField } from "@/components/category-field";
@@ -2257,9 +2258,15 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove }: { sv: SelectedVe
 
 function SelectedChargerRow({ sc, onChange, onRemove }: { sc: SelectedCharger; onChange: (p: Partial<SelectedCharger>) => void; onRemove: () => void }) {
   const [openLi, setOpenLi] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const setLi = (i: number, p: Partial<LineItem>) => onChange({ lineItems: sc.lineItems.map((x, idx) => idx === i ? { ...x, ...p } : x) });
   const addLi = () => onChange({ lineItems: [...sc.lineItems, { label: "Nouvelle ligne", qty: 1, unitHt: 0, marginPct: 0 }] });
   const delLi = (i: number) => onChange({ lineItems: sc.lineItems.filter((_, idx) => idx !== i) });
+  const handleQuoteImport = (items: LineItem[], mode: "append" | "replace") => {
+    const next = mode === "replace" ? items : [...sc.lineItems, ...items];
+    onChange({ lineItems: next });
+    setOpenLi(true);
+  };
 
   const isHome = sc.charger.deployment === "domicile";
   // Total client (avec marge) — c'est ce qui apparaît dans le PDF
@@ -2298,8 +2305,26 @@ function SelectedChargerRow({ sc, onChange, onRemove }: { sc: SelectedCharger; o
             accept="application/pdf,image/png,image/jpeg"
             helper="PDF du chiffrage technicien après visite. Conservé en interne, jamais joint au PDF client."
           />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full gap-2 h-8 text-xs border-[#3809EA]/40 text-[#3809EA] hover:bg-[#3809EA]/10"
+            disabled={!sc.technicianQuoteUrl}
+            onClick={() => setImportDialogOpen(true)}
+          >
+            <Sparkles className="w-3 h-3" />
+            {sc.technicianQuoteUrl ? "Détecter et importer les lignes (Claude)" : "Téléversez d'abord un PDF"}
+          </Button>
         </div>
       )}
+
+      <TechnicianQuoteImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        pdfUrl={sc.technicianQuoteUrl}
+        onConfirm={handleQuoteImport}
+      />
 
       {/* Encart site entreprise : personnalisation du rapport PDF (specs site,
           supervision). Tous les champs sont optionnels — utilisés dans le
