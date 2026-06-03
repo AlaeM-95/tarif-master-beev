@@ -788,7 +788,7 @@ function drawSiteOverview(doc: jsPDF, client: ClientInfo, chargers: SelectedChar
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
-  const intro = "Ce rapport détaille la solution technique, les équipements, le planning et le budget pour l'installation de votre infrastructure de recharge.";
+  const intro = lookupText(TEXTS, "common", "overview_intro", "Ce rapport détaille la solution technique, les équipements, le planning et le budget pour l'installation de votre infrastructure de recharge.");
   const introL = doc.splitTextToSize(intro, PAGE_W - M * 2);
   doc.text(introL, M, y);
   y += introL.length * 13 + 26;
@@ -846,7 +846,7 @@ function drawSiteOverview(doc: jsPDF, client: ClientInfo, chargers: SelectedChar
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(7.5);
   doc.setTextColor(...PINK);
-  doc.text("VOS CONTACTS BEEV", rightX + 16, y + 18);
+  doc.text(lookupText(TEXTS, "common", "overview_contacts_title", "VOS CONTACTS BEEV"), rightX + 16, y + 18);
 
   // Chargé d'affaires (commercial)
   doc.setFont(BRAND_FONT, "bold");
@@ -856,7 +856,7 @@ function drawSiteOverview(doc: jsPDF, client: ClientInfo, chargers: SelectedChar
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
   doc.setTextColor(200, 200, 200);
-  doc.text("Chargé d'affaires", rightX + 16, y + 54);
+  doc.text(lookupText(TEXTS, "common", "overview_contact1_role", "Chargé d'affaires"), rightX + 16, y + 54);
   doc.setFontSize(9);
   doc.setTextColor(...BEIGE_BG);
   if (client.salesRepEmail) doc.text(client.salesRepEmail, rightX + 16, y + 68);
@@ -870,11 +870,11 @@ function drawSiteOverview(doc: jsPDF, client: ClientInfo, chargers: SelectedChar
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(13);
   doc.setTextColor(...BEIGE_BG);
-  doc.text("Référent technique", rightX + 16, y + 114);
+  doc.text(lookupText(TEXTS, "common", "overview_contact2_role", "Référent technique"), rightX + 16, y + 114);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
   doc.setTextColor(200, 200, 200);
-  doc.text("Équipe IRVE Beev", rightX + 16, y + 128);
+  doc.text(lookupText(TEXTS, "common", "overview_contact2_team", "Équipe IRVE Beev"), rightX + 16, y + 128);
   doc.setFontSize(9);
   doc.setTextColor(...BEIGE_BG);
   doc.text("contact@beev.co", rightX + 16, y + 142);
@@ -949,10 +949,10 @@ function drawSiteProjectSynthesis(doc: jsPDF, client: ClientInfo, chargers: Sele
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(9);
   doc.setTextColor(...INK);
-  doc.text("EMPLACEMENTS SÉLECTIONNÉS", M + 16, y + 18);
+  doc.text(lookupText(TEXTS, "common", "overview_perimeter_title", "EMPLACEMENTS SÉLECTIONNÉS"), M + 16, y + 18);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
-  doc.text("Précisés lors de la visite technique avec le bureau d'études IRVE Beev et le partenaire installateur certifié.", M + 16, y + 36);
+  doc.text(lookupText(TEXTS, "common", "overview_perimeter_note", "Précisés lors de la visite technique avec le bureau d'études IRVE Beev et le partenaire installateur certifié."), M + 16, y + 36);
 }
 
 // ============ RAPPORT SITE — INFRASTRUCTURE ÉLECTRIQUE ============
@@ -1134,7 +1134,7 @@ function drawSiteEquipments(doc: jsPDF, chargers: SelectedCharger[]) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text("CARACTÉRISTIQUES TECHNIQUES", M, y);
+  doc.text(lookupText(TEXTS, "site", "site_equip_specs_label", "CARACTÉRISTIQUES TECHNIQUES"), M, y);
   y += 16;
 
   const cardW = (PAGE_W - M * 2 - 20) / 3;
@@ -1144,12 +1144,12 @@ function drawSiteEquipments(doc: jsPDF, chargers: SelectedCharger[]) {
   const modelCards = aggregated.slice(0, 2).map((a) => ({
     title: `${a.brand} ${a.model}`,
     sub: `${a.powerKw} kW`,
-    lines: [
+    lines: lookupList(TEXTS, "site", "site_equip_default_features", [
       "Prise Type 2 intégrée",
       "RFID + supervision OCPP",
       "Connectivité WiFi/4G",
       "IP54 · garantie 3 ans",
-    ],
+    ]),
   }));
   const smartCharging = {
     title: lookupText(TEXTS, "site", "site_equip_smart_title", "Smart charging"),
@@ -1204,7 +1204,7 @@ async function drawSiteProductSheet(doc: jsPDF, sc: SelectedCharger) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text("FICHE PRODUIT", M + 30, y - 4);
+  doc.text(lookupText(TEXTS, "site", "site_product_eyebrow", "FICHE PRODUIT"), M + 30, y - 4);
   y += 14;
 
   doc.setFont(BRAND_FONT, "bold");
@@ -1261,7 +1261,7 @@ async function drawSiteProductSheet(doc: jsPDF, sc: SelectedCharger) {
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(8.5);
     doc.setTextColor(...LAVENDER);
-    doc.text("PRÉSENTATION", M, descY);
+    doc.text(lookupText(TEXTS, "site", "site_product_presentation_label", "PRÉSENTATION"), M, descY);
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(10);
     doc.setTextColor(...INK);
@@ -1951,7 +1951,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(6.5);
   doc.setTextColor(150, 150, 155);
-  doc.text("Photo non contractuelle", M + photoW / 2, mainY + mainH - 8, { align: "center" });
+  doc.text(lookupText(TEXTS, "vehicles", "vehicle_photo_disclaimer", "Photo non contractuelle"), M + photoW / 2, mainY + mainH - 8, { align: "center" });
 
   // Price card NOIRE, radius 16
   doc.setFillColor(...BLACK);
@@ -1995,7 +1995,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
   doc.setTextColor(...GREY_LABEL_DARK);
-  doc.text("PRIX REMISÉ TTC", innerX, py);
+  doc.text(lookupText(TEXTS, "vehicles", "vehicle_price_remise_label", "PRIX REMISÉ TTC"), innerX, py);
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(10);
   doc.setTextColor(...BEIGE);
@@ -2048,7 +2048,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(8.5);
     doc.setTextColor(...LAVENDER);
-    doc.text("CONFIGURATIONS ALTERNATIVES", M + 12, y + 11);
+    doc.text(lookupText(TEXTS, "vehicles", "vehicle_alt_configs_label", "CONFIGURATIONS ALTERNATIVES"), M + 12, y + 11);
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(9);
     doc.setTextColor(...INK);
@@ -2059,7 +2059,13 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     autoTable(doc, {
       startY: y,
       theme: "plain",
-      head: [["Scénario", "Durée", "Km / an", "Km total", "Loyer mensuel TTC"]],
+      head: [[
+        lookupText(TEXTS, "vehicles", "vehicle_scenarios_head_label", "Scénario"),
+        lookupText(TEXTS, "vehicles", "vehicle_scenarios_head_duration", "Durée"),
+        lookupText(TEXTS, "vehicles", "vehicle_scenarios_head_kmyear", "Km / an"),
+        lookupText(TEXTS, "vehicles", "vehicle_scenarios_head_kmtotal", "Km total"),
+        lookupText(TEXTS, "vehicles", "vehicle_scenarios_head_monthly", "Loyer mensuel TTC"),
+      ]],
       body: [
         [
           { content: "Principal", styles: { fontStyle: "bold", textColor: LAVENDER } },
@@ -2275,7 +2281,7 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(8.5);
     doc.setTextColor(...LAVENDER);
-    doc.text("POINTS FORTS", fx, fy);
+    doc.text(lookupText(TEXTS, "vehicles", "vehicle_strengths_label", "POINTS FORTS"), fx, fy);
     fy += 14;
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(10);
@@ -2316,7 +2322,7 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(8.5);
     doc.setTextColor(...LAVENDER);
-    doc.text("PRÉSENTATION", M, y);
+    doc.text(lookupText(TEXTS, "vehicles", "vehicle_presentation_label", "PRÉSENTATION"), M, y);
     y += 14;
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(10);
@@ -2518,7 +2524,7 @@ function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
   }).sort((a, b) => a.total - b.total);
 
   if (rows.length === 0) {
-    doc.text("Aucun véhicule sélectionné pour l'analyse TCO.", M, y);
+    doc.text(lookupText(TEXTS, "vehicles", "tco_compare_empty", "Aucun véhicule sélectionné pour l'analyse TCO."), M, y);
     return;
   }
 
@@ -2754,11 +2760,11 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
   doc.setTextColor(...SUB);
-  doc.text("VÉHICULE", colLabelX, y);
-  doc.text("TCO / 100 KM", colBarX, y);
-  doc.text("PRIX TCO", colTco100X + tcoPer100W - 6, y, { align: "right" });
-  doc.text("TCO TOTAL", colTcoTotalX + tcoTotalW - 6, y, { align: "right" });
-  doc.text("ÉCART", colEcartX, y, { align: "right" });
+  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_col_vehicle", "VÉHICULE"), colLabelX, y);
+  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_col_per100", "TCO / 100 KM"), colBarX, y);
+  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_col_tco", "PRIX TCO"), colTco100X + tcoPer100W - 6, y, { align: "right" });
+  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_col_total", "TCO TOTAL"), colTcoTotalX + tcoTotalW - 6, y, { align: "right" });
+  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_col_gap", "ÉCART"), colEcartX, y, { align: "right" });
   y += 6;
   doc.setDrawColor(...RULE);
   doc.line(chartX, y, chartX + chartW, y);
@@ -2816,7 +2822,7 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(10);
       doc.setTextColor(...ACCENT);
-      doc.text("MEILLEUR", colEcartX, y + 12, { align: "right" });
+      doc.text(lookupText(TEXTS, "vehicles", "tco_compare_best", "MEILLEUR"), colEcartX, y + 12, { align: "right" });
     } else {
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(10);
@@ -2867,7 +2873,7 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8);
   doc.setTextColor(180, 180, 185);
-  doc.text("ÉCART / 100 KM", chartX + 16, y + 52);
+  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_chart1_label", "ÉCART / 100 KM"), chartX + 16, y + 52);
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(18);
   doc.setTextColor(255, 255, 255);
@@ -2876,7 +2882,7 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8);
   doc.setTextColor(180, 180, 185);
-  doc.text("ÉCART ANNUEL (PAR VÉHICULE)", chartX + 16 + colW, y + 52);
+  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_chart2_label", "ÉCART ANNUEL (PAR VÉHICULE)"), chartX + 16 + colW, y + 52);
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(18);
   doc.setTextColor(255, 255, 255);
@@ -2885,7 +2891,7 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8);
   doc.setTextColor(180, 180, 185);
-  doc.text("ÉCART SUR DURÉE CONTRAT", chartX + 16 + 2 * colW, y + 52);
+  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_chart3_label", "ÉCART SUR DURÉE CONTRAT"), chartX + 16 + 2 * colW, y + 52);
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(18);
   doc.setTextColor(...ACCENT);
@@ -2897,7 +2903,7 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(7.5);
   doc.setTextColor(...SUB);
-  doc.text("Comparaison entre les véhicules de votre sélection uniquement. Estimation indicative basée sur les paramètres énergie & kilométrage du projet.", chartX, y, {
+  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_footnote", "Comparaison entre les véhicules de votre sélection uniquement. Estimation indicative basée sur les paramètres énergie & kilométrage du projet."), chartX, y, {
     maxWidth: chartW,
   });
 }
@@ -3188,7 +3194,7 @@ function drawExecutiveSummary(
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(10);
   doc.setTextColor(...ACCENT);
-  doc.text("PROCHAINE ÉTAPE", M + 16, y + 18);
+  doc.text(lookupText(TEXTS, "common", "bpa_next_step_label", "PROCHAINE ÉTAPE"), M + 16, y + 18);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(11);
   doc.setTextColor(255, 255, 255);
@@ -3261,7 +3267,7 @@ function drawFinancialSummary(
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(11);
       doc.setTextColor(...SUB);
-      doc.text("VÉHICULES — LOYERS LLD TTC", M, y);
+      doc.text(lookupText(TEXTS, "common", "financial_vehicles_title", "VÉHICULES — LOYERS LLD TTC"), M, y);
       y += 14;
     }
     // Pour les véhicules : récap LLD mensuel + annuel TTC (la fiscalité TVA récupérée)
@@ -3284,10 +3290,15 @@ function drawFinancialSummary(
     autoTable(doc, {
       startY: y,
       theme: "grid",
-      head: [["Véhicule", "Conditions", "Loyer unitaire/mois", "Loyer mensuel TTC"]],
+      head: [[
+        lookupText(TEXTS, "common", "financial_head_vehicle", "Véhicule"),
+        lookupText(TEXTS, "common", "financial_head_conditions", "Conditions"),
+        lookupText(TEXTS, "common", "financial_head_unit_monthly", "Loyer unitaire/mois"),
+        lookupText(TEXTS, "common", "financial_head_total_monthly", "Loyer mensuel TTC"),
+      ]],
       body: rows,
       foot: [
-        ["", "", { content: "Loyer mensuel total TTC", styles: { fontStyle: "bold", halign: "right" } }, { content: eur(monthlyTotal), styles: { fontStyle: "bold", halign: "right", fillColor: BG } }],
+        ["", "", { content: lookupText(TEXTS, "common", "financial_foot_total_label", "Loyer mensuel total TTC"), styles: { fontStyle: "bold", halign: "right" } }, { content: eur(monthlyTotal), styles: { fontStyle: "bold", halign: "right", fillColor: BG } }],
         ["", "", { content: "Loyer annuel total TTC", styles: { fontStyle: "bold", halign: "right" } }, { content: eur(annualTotal), styles: { fontStyle: "bold", halign: "right", fillColor: ACCENT, textColor: 255 } }],
       ],
       headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT },
@@ -3301,7 +3312,7 @@ function drawFinancialSummary(
     // Mention TVA
     doc.setFontSize(9);
     doc.setTextColor(...SUB);
-    doc.text("Loyers exprimés en TTC. Conformément à la fiscalité LLD, la TVA sur le loyer véhicule électrique est récupérable à 100 %.", M, y);
+    doc.text(lookupText(TEXTS, "common", "financial_vehicles_tva_note", "Loyers exprimés en TTC. Conformément à la fiscalité LLD, la TVA sur le loyer véhicule électrique est récupérable à 100 %."), M, y);
     y += 28;
   }
 
@@ -3312,7 +3323,7 @@ function drawFinancialSummary(
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(11);
       doc.setTextColor(...SUB);
-      doc.text("BORNES DE RECHARGE — HT / TVA / TTC", M, y);
+      doc.text(lookupText(TEXTS, "common", "financial_chargers_title", "BORNES DE RECHARGE — HT / TVA / TTC"), M, y);
       y += 14;
     }
     // Pour les chargers (home / site) : tableau HT par site + TVA 20 % + TTC
@@ -3358,7 +3369,7 @@ function drawFinancialSummary(
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(9);
     doc.setTextColor(...SUB);
-    doc.text("MODALITÉS DE PAIEMENT (À CONFIRMER LORS DE LA SIGNATURE)", M + 16, y + 16);
+    doc.text(lookupText(TEXTS, "common", "financial_payment_title", "MODALITÉS DE PAIEMENT (À CONFIRMER LORS DE LA SIGNATURE)"), M + 16, y + 16);
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(9);
     doc.setTextColor(...INK);
@@ -3494,7 +3505,7 @@ function drawJourney(doc: jsPDF, type: ProjectType, _client: ClientInfo) {
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(7);
     doc.setTextColor(...ROSE);
-    doc.text("BEEV", contentX, yy + 6);
+    doc.text(lookupText(TEXTS, "common", "bpa_beev_label", "BEEV"), contentX, yy + 6);
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(8);
     doc.setTextColor(...INK);
@@ -3506,7 +3517,7 @@ function drawJourney(doc: jsPDF, type: ProjectType, _client: ClientInfo) {
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(7);
     doc.setTextColor(...SUB);
-    doc.text("CLIENT", contentX, yy + 6);
+    doc.text(lookupText(TEXTS, "common", "bpa_client_label", "CLIENT"), contentX, yy + 6);
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(8);
     doc.setTextColor(...INK);
@@ -3572,7 +3583,7 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
-  doc.text("CONDITIONS COMMERCIALES", M, y);
+  doc.text(lookupText(TEXTS, "common", "bpa_conditions_title", "CONDITIONS COMMERCIALES"), M, y);
   y += 14;
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9.5);
@@ -3620,7 +3631,7 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(9);
   doc.setTextColor(...SUB);
-  doc.text("CADRE RÉSERVÉ AU CLIENT", M + 16, y + 18);
+  doc.text(lookupText(TEXTS, "common", "bpa_client_box_title", "CADRE RÉSERVÉ AU CLIENT"), M + 16, y + 18);
 
   // 2 colonnes : infos client | signature
   const colY = y + 36;
@@ -3630,15 +3641,15 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
   doc.setTextColor(...INK);
-  doc.text("Date de signature :", M + 16, colY);
+  doc.text(lookupText(TEXTS, "common", "bpa_date_label", "Date de signature :"), M + 16, colY);
   doc.setDrawColor(...INK);
   doc.setLineWidth(0.5);
   doc.line(M + 100, colY + 2, M + 16 + colW - 10, colY + 2);
 
-  doc.text("Nom & qualité :", M + 16, colY + 22);
+  doc.text(lookupText(TEXTS, "common", "bpa_name_label", "Nom & qualité :"), M + 16, colY + 22);
   doc.line(M + 100, colY + 24, M + 16 + colW - 10, colY + 24);
 
-  doc.text("Téléphone :", M + 16, colY + 44);
+  doc.text(lookupText(TEXTS, "common", "bpa_phone_label", "Téléphone :"), M + 16, colY + 44);
   doc.line(M + 100, colY + 46, M + 16 + colW - 10, colY + 46);
 
   // Colonne droite : zone signature
@@ -3647,7 +3658,7 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
   doc.setTextColor(...SUB);
-  doc.text("Signature et cachet de l'entreprise", sigX, colY);
+  doc.text(lookupText(TEXTS, "common", "bpa_signature_label", "Signature et cachet de l'entreprise"), sigX, colY);
   doc.setDrawColor(...INK);
   doc.setLineWidth(0.5);
   doc.rect(sigX, colY + 6, sigW, 60);
@@ -3662,7 +3673,7 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(9);
   doc.setTextColor(...ACCENT);
-  doc.text("VOTRE INTERLOCUTEUR BEEV", M + 16, y + 14);
+  doc.text(lookupText(TEXTS, "common", "bpa_contact_title", "VOTRE INTERLOCUTEUR BEEV"), M + 16, y + 14);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
   doc.setTextColor(255, 255, 255);
