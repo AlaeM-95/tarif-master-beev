@@ -774,14 +774,14 @@ function drawSiteOverview(doc: jsPDF, client: ClientInfo, chargers: SelectedChar
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text("VUE D'ENSEMBLE", M + 30, y - 4);
+  doc.text(lookupText(TEXTS, "site", "site_overview_eyebrow", "1 · VUE D'ENSEMBLE"), M + 30, y - 4);
   y += 14;
 
   // Title
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(28);
   doc.setTextColor(...INK);
-  doc.text("Récapitulatif projet", M, y + 18);
+  doc.text(lookupText(TEXTS, "site", "site_overview_title", "Votre projet de recharge en un coup d'œil"), M, y + 18);
   y += 50;
 
   // Intro
@@ -893,13 +893,13 @@ function drawSiteProjectSynthesis(doc: jsPDF, client: ClientInfo, chargers: Sele
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text("1 · SYNTHÈSE PROJET", M + 30, y - 4);
+  doc.text(lookupText(TEXTS, "site", "site_synthesis_eyebrow", "2 · SYNTHÈSE PROJET"), M + 30, y - 4);
   y += 14;
 
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(28);
   doc.setTextColor(...INK);
-  doc.text("Une lecture rapide du chantier", M, y + 18);
+  doc.text(lookupText(TEXTS, "site", "site_synthesis_title", "Une lecture rapide du chantier"), M, y + 18);
   y += 50;
 
   const totalChargers = chargers.reduce((s, sc) => s + sc.quantity, 0);
@@ -969,13 +969,13 @@ function drawSiteInfrastructure(doc: jsPDF, chargers: SelectedCharger[]) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text("2 · INFRASTRUCTURE ÉLECTRIQUE", M + 30, y - 4);
+  doc.text(lookupText(TEXTS, "site", "site_infra_eyebrow", "3 · INFRASTRUCTURE ÉLECTRIQUE"), M + 30, y - 4);
   y += 14;
 
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(26);
   doc.setTextColor(...INK);
-  doc.text("Travaux à réaliser · devis installation", M, y + 18);
+  doc.text(lookupText(TEXTS, "site", "site_infra_title", "Travaux à réaliser · devis installation"), M, y + 18);
   y += 50;
 
   // Deux colonnes de bullets. Si le commercial a saisi une liste custom dans
@@ -1069,13 +1069,13 @@ function drawSiteEquipments(doc: jsPDF, chargers: SelectedCharger[]) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text("3 · ÉQUIPEMENTS BEEV", M + 30, y - 4);
+  doc.text(lookupText(TEXTS, "site", "site_equip_eyebrow", "4 · ÉQUIPEMENTS BEEV"), M + 30, y - 4);
   y += 14;
 
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(26);
   doc.setTextColor(...INK);
-  doc.text("Les bornes de recharge", M, y + 18);
+  doc.text(lookupText(TEXTS, "site", "site_equip_title", "Les bornes de recharge"), M, y + 18);
   y += 50;
 
   // Table récapitulative : 1 ligne par modèle agrégé
@@ -1152,14 +1152,14 @@ function drawSiteEquipments(doc: jsPDF, chargers: SelectedCharger[]) {
     ],
   }));
   const smartCharging = {
-    title: "Smart charging",
+    title: lookupText(TEXTS, "site", "site_equip_smart_title", "Smart charging"),
     sub: "Pilotage flotte",
-    lines: [
+    lines: lookupList(TEXTS, "site", "site_equip_smart_items", [
       "Délestage dynamique natif",
       "Équilibrage de charge actif",
       "Compatible OCPP 1.6 et 2.0",
       "Données temps réel",
-    ],
+    ]),
   };
   const cards = [...modelCards, smartCharging].slice(0, 3);
 
@@ -1277,28 +1277,23 @@ function drawSiteSupervision(doc: jsPDF, plan: "beev_connect" | "beev_home_charg
   const PINK: [number, number, number] = [244, 184, 170];
   const BLACK: [number, number, number] = [29, 29, 29];
   const BEIGE: [number, number, number] = [252, 249, 242];
-
   const isHome = plan === "beev_home_charging";
-  const title = isHome ? "Beev Home Charging — B2B2E" : "Beev Connect — Site entreprise";
-  const subtitle = isHome
-    ? "Supervision dédiée au remboursement de l'énergie consommée à des fins professionnelles, au domicile de vos collaborateurs."
-    : "Pilotage centralisé de votre infrastructure de recharge sur site : sessions, énergie, badges et alertes en temps réel.";
-  const features = isHome
-    ? [
-        "Authentification badge RFID ou app mobile par collaborateur",
-        "Calcul mensuel des kWh consommés à titre professionnel (séparation pro/perso)",
-        "Remboursement automatisé du collaborateur sur sa fiche de paie",
-        "Conformité fiscale URSSAF · justificatifs à jour",
-        "Reporting employeur consolidé : énergie, coûts, émissions CO₂ évitées",
-      ]
-    : [
-        "Pilotage des bornes à distance (démarrage, arrêt, paramétrage)",
-        "Statistiques de charge en temps réel (kWh, durée, fréquence)",
-        "Gestion utilisateurs et badges RFID, carte physique compatible",
-        "Alertes maintenance et pannes par email/SMS",
-        "Délestage dynamique centralisé, compatible installation photovoltaïque",
-        "Émissions CO₂ évitées suivies par session",
-      ];
+  const pfx = isHome ? "site_sup_home" : "site_sup_connect";
+  const t = (s: string, fb: string) => lookupText(TEXTS, "site", s, fb);
+  const tl = (s: string, fb: string[]) => lookupList(TEXTS, "site", s, fb);
+
+  const eyebrow = t(`${pfx}_eyebrow`, isHome ? "SUPERVISION · BEEV HOME CHARGING" : "SUPERVISION · BEEV CONNECT");
+  const title = t(`${pfx}_title`, isHome ? "Refacturez la recharge à domicile sans friction" : "Pilotez votre infrastructure en temps réel");
+  const subtitle = t(`${pfx}_intro`, isHome
+    ? "Beev Home Charging gère la refacturation de l'électricité consommée à domicile par les collaborateurs en véhicule de fonction."
+    : "Beev Connect centralise la supervision de votre parc de bornes sur une plateforme unique.");
+  const features = tl(`${pfx}_features`, isHome
+    ? ["Comptage précis kWh par session domicile","Tarif électricité indexé sur le contrat collaborateur","Versement mensuel automatisé sur RIB salarié","Reporting employeur","Conformité fiscale URSSAF","Application mobile collaborateur"]
+    : ["Suivi temps réel des sessions","Reporting consommation","Gestion des accès (badges, QR codes)","Alerting défaut technique","Pilotage à distance","API ouverte"]);
+  const priceLabel = t(`${pfx}_price_label`, "À PARTIR DE");
+  const priceValue = t(`${pfx}_price_value`, isHome ? "8 € HT" : "6 € HT");
+  const priceUnit = t(`${pfx}_price_unit`, isHome ? "/ mois / collaborateur" : "/ mois / point de recharge");
+  const footer = t(`${pfx}_footer`, "Engagement 12 mois minimum · sans frais d'activation.");
 
   let y = 116;
   doc.setFillColor(...PINK);
@@ -1306,15 +1301,13 @@ function drawSiteSupervision(doc: jsPDF, plan: "beev_connect" | "beev_home_charg
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text("4 · SUPERVISION", M + 30, y - 4);
+  doc.text(eyebrow, M + 30, y - 4);
   y += 14;
-
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(28);
   doc.setTextColor(...INK);
   doc.text(title, M, y + 22);
   y += 50;
-
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10.5);
   doc.setTextColor(...SUB);
@@ -1340,7 +1333,7 @@ function drawSiteSupervision(doc: jsPDF, plan: "beev_connect" | "beev_home_charg
     y += lines.length * 13 + 6;
   });
 
-  // Card noire à droite : tarification (placeholder)
+  // Card noire à droite : tarification
   const cardX = PAGE_W - M - 200;
   const cardY = 250;
   doc.setFillColor(...BLACK);
@@ -1348,43 +1341,22 @@ function drawSiteSupervision(doc: jsPDF, plan: "beev_connect" | "beev_home_charg
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
   doc.setTextColor(...PINK);
-  doc.text(isHome ? "TARIFICATION HOME CHARGING" : "TARIFICATION BEEV CONNECT", cardX + 16, cardY + 22);
+  doc.text(priceLabel, cardX + 16, cardY + 22);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(24);
+  doc.setTextColor(...BEIGE);
+  doc.text(priceValue, cardX + 16, cardY + 56);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(200, 200, 200);
+  doc.text(priceUnit, cardX + 16, cardY + 76, { maxWidth: 200 - 32 });
 
-  const pricing = isHome
-    ? [
-        { v: "8 €", l: "HT / collaborateur / mois" },
-        { v: "12 mois", l: "engagement minimum" },
-        { v: "Inclus", l: "badge RFID + app mobile" },
-      ]
-    : [
-        { v: "6 €", l: "HT / point de charge / mois" },
-        { v: "72 € HT", l: "/ an / point de charge" },
-        { v: "7 €", l: "HT / badge RFID supplémentaire" },
-      ];
-  let py = cardY + 50;
-  pricing.forEach((p) => {
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(18);
-    doc.setTextColor(...BEIGE);
-    doc.text(p.v, cardX + 16, py);
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(8.5);
-    doc.setTextColor(200, 200, 200);
-    doc.text(p.l, cardX + 16, py + 14, { maxWidth: 200 - 32 });
-    py += 42;
-  });
-
-  // Bandeau bas : conditions
+  // Bandeau bas
   const noteY = Math.max(y + 10, cardY + 220);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8);
   doc.setTextColor(...SUB);
-  doc.text(
-    "Un contrat cadre de supervision est signé avant toute facturation. L'abonnement démarre à la mise en service effective de la première borne.",
-    M,
-    noteY,
-    { maxWidth: PAGE_W - M * 2 },
-  );
+  doc.text(footer, M, noteY, { maxWidth: PAGE_W - M * 2 });
 }
 
 // ============ RAPPORT SITE — GARANTIES ============
@@ -1393,48 +1365,50 @@ function drawSiteSupervision(doc: jsPDF, plan: "beev_connect" | "beev_home_charg
 function drawSiteGuarantees(doc: jsPDF) {
   const PINK: [number, number, number] = [244, 184, 170];
   const PINK_LIGHT: [number, number, number] = [253, 241, 238];
+  const t = (s: string, fb: string) => lookupText(TEXTS, "site", s, fb);
+  const tl = (s: string, fb: string[]) => lookupList(TEXTS, "site", s, fb);
   let y = 116;
   doc.setFillColor(...PINK);
   doc.rect(M, y - 8, 22, 2, "F");
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text("GARANTIES", M + 30, y - 4);
+  doc.text(t("site_guarantees_eyebrow", "GARANTIES"), M + 30, y - 4);
   y += 14;
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(28);
   doc.setTextColor(...INK);
-  doc.text("Nos qualifications et assurances", M, y + 18);
+  doc.text(t("site_guarantees_title", "Nos qualifications et assurances"), M, y + 18);
   y += 50;
 
   const colW = (PAGE_W - M * 2 - 24) / 3;
   const cols = [
     {
-      title: "Qualification IRVE",
-      items: [
+      title: t("site_guarantees_col1_title", "Qualification IRVE"),
+      items: tl("site_guarantees_col1_items", [
         "Installateurs certifiés IRVE",
         "Habilitation infrastructure VE",
         "Formation continue réglementaire",
         "Agréments : Hager, Smappee, Alfen, Schneider",
-      ],
+      ]),
     },
     {
-      title: "RC Décennale AXA",
-      items: [
+      title: t("site_guarantees_col2_title", "RC Décennale AXA"),
+      items: tl("site_guarantees_col2_items", [
         "Contrat BATISSUR n° 10998463604",
         "RC Entreprise : 10 000 000 €",
         "Dommages matériels : 2 000 000 €",
         "Garantie décennale travaux IRVE",
-      ],
+      ]),
     },
     {
-      title: "Conformité et Certifications",
-      items: [
+      title: t("site_guarantees_col3_title", "Conformité et Certifications"),
+      items: tl("site_guarantees_col3_items", [
         "Respect NF C15-100",
         "CONSUEL systématique",
         "Certification B Corp",
         "Membre ORIAS n° 21009382",
-      ],
+      ]),
     },
   ];
 
@@ -1465,13 +1439,13 @@ function drawSiteGuarantees(doc: jsPDF) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
   doc.setTextColor(...SUB);
-  doc.text("RECONNU PAR", M, y);
+  doc.text(t("site_guarantees_footer_label", "RECONNU PAR"), M, y);
   y += 14;
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
   doc.setTextColor(...INK);
   doc.text(
-    "Attestations et certifications disponibles sur simple demande : RC Décennale AXA, Qualifelec IRVE, agréments constructeurs.",
+    t("site_guarantees_footer_text", "Attestations et certifications disponibles sur simple demande : RC Décennale AXA, Qualifelec IRVE, agréments constructeurs."),
     M,
     y,
     { maxWidth: PAGE_W - M * 2 },
@@ -1484,8 +1458,10 @@ function drawSiteGuarantees(doc: jsPDF) {
 function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
   const PINK: [number, number, number] = [244, 184, 170];
   const PINK_LIGHT: [number, number, number] = [253, 241, 238];
+  const t = (s: string, fb: string) => lookupText(TEXTS, "site", s, fb);
+  const tl = (s: string, fb: string[]) => lookupList(TEXTS, "site", s, fb);
   const totalBornes = chargers.reduce((s, sc) => s + sc.quantity, 0);
-  const maintenanceUnit = 150;
+  const maintenanceUnit = Math.max(0, parseFloat(t("site_comp_maint_unit_eur", "150")) || 150);
   const maintenanceTotal = totalBornes * maintenanceUnit;
 
   let y = 116;
@@ -1494,12 +1470,12 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text("5 · CONFORMITÉ RÉGLEMENTAIRE", M + 30, y - 4);
+  doc.text(t("site_comp_eyebrow", "5 · CONFORMITÉ RÉGLEMENTAIRE"), M + 30, y - 4);
   y += 14;
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(26);
   doc.setTextColor(...INK);
-  doc.text("Contrôles obligatoires et maintenance", M, y + 18);
+  doc.text(t("site_comp_title", "Contrôles obligatoires et maintenance"), M, y + 18);
   y += 50;
 
   const colW = (PAGE_W - M * 2 - 20) / 2;
@@ -1511,13 +1487,13 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(11);
   doc.setTextColor(...INK);
-  doc.text("Bureau de Contrôle", M + 14, ly);
+  doc.text(t("site_comp_bureau_title", "Bureau de Contrôle"), M + 14, ly);
   ly += 18;
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9.5);
   doc.setTextColor(...INK);
   doc.text(
-    "Abonnement client > 36 kVA → contrôle réglementaire obligatoire. Intervention prévue J+25 après installation. Attestation délivrée à réception.",
+    t("site_comp_bureau_desc", "Abonnement client > 36 kVA → contrôle réglementaire obligatoire. Intervention prévue J+25 après installation. Attestation délivrée à réception."),
     M + 14,
     ly,
     { maxWidth: colW - 28 },
@@ -1526,11 +1502,11 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(9);
   doc.setTextColor(...SUB);
-  doc.text("COÛT", M + 14, ly);
+  doc.text(t("site_comp_bureau_price_label", "COÛT"), M + 14, ly);
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(18);
   doc.setTextColor(...INK);
-  doc.text("700 € HT", M + 14, ly + 22);
+  doc.text(t("site_comp_bureau_price", "700 € HT"), M + 14, ly + 22);
 
   ly += 56;
   doc.setDrawColor(...RULE);
@@ -1539,13 +1515,13 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(11);
   doc.setTextColor(...INK);
-  doc.text("Consuel", M + 14, ly);
+  doc.text(t("site_comp_consuel_title", "Consuel"), M + 14, ly);
   ly += 18;
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9.5);
   doc.setTextColor(...INK);
   doc.text(
-    "Obligatoire pour toute installation IRVE. Passage prévu J+28 après installation. Attestation de conformité délivrée à réception.",
+    t("site_comp_consuel_desc", "Obligatoire pour toute installation IRVE. Passage prévu J+28 après installation. Attestation de conformité délivrée à réception."),
     M + 14,
     ly,
     { maxWidth: colW - 28 },
@@ -1559,13 +1535,12 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(11);
   doc.setTextColor(...PINK);
-  doc.text("Maintenance annuelle", rx + 14, ry);
+  doc.text(t("site_comp_maint_title", "Maintenance annuelle"), rx + 14, ry);
   ry += 22;
-  // Lignes tarifaires
   const lines = [
-    { l: "Forfait préventif", v: `${maintenanceUnit} € HT / PDC / an` },
-    { l: "Points de recharge", v: `${totalBornes} PDC` },
-    { l: "Total maintenance / an", v: `${eur(maintenanceTotal)} HT` },
+    { l: t("site_comp_maint_unit_label", "Forfait préventif"), v: t("site_comp_maint_unit_value", `${maintenanceUnit} € HT / PDC / an`) },
+    { l: t("site_comp_maint_pdc_label", "Points de recharge"), v: `${totalBornes} PDC` },
+    { l: t("site_comp_maint_total_label", "Total maintenance / an"), v: `${eur(maintenanceTotal)} HT` },
   ];
   lines.forEach((line, i) => {
     doc.setFont(BRAND_FONT, "normal");
@@ -1586,12 +1561,12 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(9);
   doc.setTextColor(...PINK);
-  doc.text("VISITE ANNUELLE SUR SITE", rx + 14, ry);
+  doc.text(t("site_comp_maint_subtitle", "VISITE ANNUELLE SUR SITE"), rx + 14, ry);
   ry += 14;
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9.5);
   doc.setTextColor(252, 249, 242);
-  ["Entretien général", "Vérification électrique", "Rapport de maintenance détaillé"].forEach((it) => {
+  tl("site_comp_maint_items", ["Entretien général", "Vérification électrique", "Rapport de maintenance détaillé"]).forEach((it) => {
     doc.setFillColor(...PINK);
     doc.circle(rx + 18, ry + 4, 2, "F");
     doc.text(it, rx + 26, ry + 7);
@@ -1603,59 +1578,59 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
 // Table Poste / Fournisseur / Montant HT + ligne TVA + ligne TTC + note maintenance.
 function drawSiteFinancialRecap(doc: jsPDF, chargers: SelectedCharger[]) {
   const PINK: [number, number, number] = [244, 184, 170];
+  const t = (s: string, fb: string) => lookupText(TEXTS, "site", s, fb);
   let y = 116;
   doc.setFillColor(...PINK);
   doc.rect(M, y - 8, 22, 2, "F");
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text("6 · RÉCAPITULATIF FINANCIER", M + 30, y - 4);
+  doc.text(t("site_fin_eyebrow", "6 · RÉCAPITULATIF FINANCIER"), M + 30, y - 4);
   y += 14;
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(26);
   doc.setTextColor(...INK);
-  doc.text("Votre budget projet", M, y + 18);
+  doc.text(t("site_fin_title", "Votre budget projet"), M, y + 18);
   y += 50;
 
   // Agrégation par fournisseur
-  const totalChargers = chargers.reduce((sum, sc) => {
-    return sum + sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0) * sc.quantity;
-  }, 0);
-  // Estimation installation = somme des lignes non-borne (typiquement "Pose...")
-  // Approximation : on extrait les lignes dont le label contient "Pose" ou "Forfait"
   const installItems: number[] = [];
   const chargerItems: number[] = [];
   for (const sc of chargers) {
     for (const li of sc.lineItems) {
-      const t = lineItemClientTotal(li) * sc.quantity;
+      const tot = lineItemClientTotal(li) * sc.quantity;
       const isInstall = /pose|forfait|raccord|installation|tranch[ée]|génie/i.test(li.label);
-      if (isInstall) installItems.push(t);
-      else chargerItems.push(t);
+      if (isInstall) installItems.push(tot);
+      else chargerItems.push(tot);
     }
   }
   const totalInstall = installItems.reduce((a, b) => a + b, 0);
   const totalChargersOnly = chargerItems.reduce((a, b) => a + b, 0);
-  const bureauControle = 700;
+  const bureauControle = Math.max(0, parseFloat(t("site_pay_bureau_ht", "700")) || 700);
   const totalHt = totalInstall + totalChargersOnly + bureauControle;
   const tva = totalHt * 0.2;
   const totalTtc = totalHt + tva;
   const supSpecs = chargers.map((sc) => sc.siteSpecs?.supervisionPlan).filter(Boolean);
   const hasSupervision = supSpecs.length > 0 && supSpecs[0] !== "none";
 
+  const headPoste = t("site_fin_head_poste", "POSTE");
+  const headFour = t("site_fin_head_fournisseur", "FOURNISSEUR");
+  const headMontant = t("site_fin_head_montant", "MONTANT HT");
+
   autoTable(doc, {
     startY: y,
     theme: "plain",
-    head: [["POSTE", "FOURNISSEUR", "MONTANT HT"]],
+    head: [[headPoste, headFour, headMontant]],
     body: [
-      ...(totalInstall > 0 ? [["Installation électrique", "Électricien partenaire", { content: eur(totalInstall), styles: { halign: "right", fontStyle: "bold" } }]] : []),
-      ...(totalChargersOnly > 0 ? [["Bornes de recharge", "Beev", { content: eur(totalChargersOnly), styles: { halign: "right", fontStyle: "bold" } }]] : []),
-      ["Bureau de Contrôle (>36 kVA)", "Tiers", { content: eur(bureauControle), styles: { halign: "right", fontStyle: "bold" } }],
-      ...(hasSupervision ? [["Supervision (12 premiers mois)", "Beev", { content: "OPTION", styles: { halign: "right", textColor: SUB, fontStyle: "normal" } }]] : []),
+      ...(totalInstall > 0 ? [[t("site_fin_install_label", "Installation électrique"), t("site_fin_install_supplier", "Électricien partenaire"), { content: eur(totalInstall), styles: { halign: "right", fontStyle: "bold" } }]] : []),
+      ...(totalChargersOnly > 0 ? [[t("site_fin_bornes_label", "Bornes de recharge"), t("site_fin_bornes_supplier", "Beev"), { content: eur(totalChargersOnly), styles: { halign: "right", fontStyle: "bold" } }]] : []),
+      [t("site_fin_bureau_label", "Bureau de Contrôle (>36 kVA)"), t("site_fin_bureau_supplier", "Tiers"), { content: eur(bureauControle), styles: { halign: "right", fontStyle: "bold" } }],
+      ...(hasSupervision ? [[t("site_fin_sup_label", "Supervision (12 premiers mois)"), t("site_fin_sup_supplier", "Beev"), { content: t("site_fin_sup_value", "OPTION"), styles: { halign: "right", textColor: SUB, fontStyle: "normal" } }]] : []),
     ],
     foot: [
-      [{ content: "Total projet HT", colSpan: 2, styles: { halign: "right", fontStyle: "bold", textColor: INK, fillColor: BG } }, { content: eur(totalHt), styles: { halign: "right", fontStyle: "bold", textColor: INK, fillColor: BG } }],
-      [{ content: "TVA 20 %", colSpan: 2, styles: { halign: "right", textColor: SUB, fillColor: BG } }, { content: eur(tva), styles: { halign: "right", textColor: SUB, fillColor: BG } }],
-      [{ content: "Total TTC", colSpan: 2, styles: { halign: "right", fontStyle: "bold", textColor: LAVENDER, fillColor: BG, fontSize: 12 } }, { content: eur(totalTtc), styles: { halign: "right", fontStyle: "normal", textColor: LAVENDER, fillColor: BG, fontSize: 12, font: BRAND_FONT } }],
+      [{ content: t("site_fin_total_ht_label", "Total projet HT"), colSpan: 2, styles: { halign: "right", fontStyle: "bold", textColor: INK, fillColor: BG } }, { content: eur(totalHt), styles: { halign: "right", fontStyle: "bold", textColor: INK, fillColor: BG } }],
+      [{ content: t("site_fin_tva_label", "TVA 20 %"), colSpan: 2, styles: { halign: "right", textColor: SUB, fillColor: BG } }, { content: eur(tva), styles: { halign: "right", textColor: SUB, fillColor: BG } }],
+      [{ content: t("site_fin_total_ttc_label", "Total TTC"), colSpan: 2, styles: { halign: "right", fontStyle: "bold", textColor: LAVENDER, fillColor: BG, fontSize: 12 } }, { content: eur(totalTtc), styles: { halign: "right", fontStyle: "normal", textColor: LAVENDER, fillColor: BG, fontSize: 12, font: BRAND_FONT } }],
     ],
     headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT, cellPadding: 7 },
     bodyStyles: { fontSize: 10, cellPadding: 7, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
@@ -1666,12 +1641,11 @@ function drawSiteFinancialRecap(doc: jsPDF, chargers: SelectedCharger[]) {
   let y2 = (doc as any).lastAutoTable.finalY + 16;
 
   // Note maintenance
-  const totalBornes = chargers.reduce((s, sc) => s + sc.quantity, 0);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
   doc.text(
-    `Maintenance annuelle : ${eur(totalBornes * 150)} HT/an (${totalBornes} PDC × 150 €), non incluse dans le total ci-dessus.`,
+    t("site_fin_maint_note", "Maintenance annuelle non incluse dans le total ci-dessus. Voir page Conformité."),
     M,
     y2,
     { maxWidth: PAGE_W - M * 2 },
@@ -1684,9 +1658,11 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
   const PINK: [number, number, number] = [244, 184, 170];
   const PINK_LIGHT: [number, number, number] = [253, 241, 238];
   const BLACK: [number, number, number] = [29, 29, 29];
+  const t = (s: string, fb: string) => lookupText(TEXTS, "site", s, fb);
+  const bureauControle = Math.max(0, parseFloat(t("site_pay_bureau_ht", "700")) || 700);
 
   // Total recalculé pour cohérence avec la page précédente
-  const total = chargers.reduce((sum, sc) => sum + sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0) * sc.quantity, 0) + 700;
+  const total = chargers.reduce((sum, sc) => sum + sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0) * sc.quantity, 0) + bureauControle;
   const ttc = total * 1.2;
   const acompte50 = ttc * 0.5;
 
@@ -1696,32 +1672,32 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text("7 · OPTIONS DE PAIEMENT", M + 30, y - 4);
+  doc.text(t("site_pay_eyebrow", "7 · OPTIONS DE PAIEMENT"), M + 30, y - 4);
   y += 14;
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(26);
   doc.setTextColor(...INK);
-  doc.text("Régler en toute flexibilité", M, y + 18);
+  doc.text(t("site_pay_title", "Régler en toute flexibilité"), M, y + 18);
   y += 50;
 
   const colW = (PAGE_W - M * 2 - 24) / 3;
   const opts = [
     {
-      title: "Comptant",
-      badge: "Remise 2 %",
-      desc: "Paiement intégral à la commande. Économie immédiate sur le total projet.",
+      title: t("site_pay_opt1_title", "Comptant"),
+      badge: t("site_pay_opt1_badge", "Remise 2 %"),
+      desc: t("site_pay_opt1_desc", "Paiement intégral à la commande. Économie immédiate sur le total projet."),
       tone: "highlight" as const,
     },
     {
-      title: "Classique",
-      badge: "Standard",
-      desc: "50 % acompte à la commande, 50 % à réception. Échéancier détaillé possible.",
+      title: t("site_pay_opt2_title", "Classique"),
+      badge: t("site_pay_opt2_badge", "Standard"),
+      desc: t("site_pay_opt2_desc", "50 % acompte à la commande, 50 % à réception. Échéancier détaillé possible."),
       tone: "default" as const,
     },
     {
-      title: "Leasing",
-      badge: "Sur demande",
-      desc: "Financement LLD sur 36 / 48 / 60 mois selon profil. Simulation personnalisée par notre partenaire.",
+      title: t("site_pay_opt3_title", "Leasing"),
+      badge: t("site_pay_opt3_badge", "Sur demande"),
+      desc: t("site_pay_opt3_desc", "Financement LLD sur 36 / 48 / 60 mois selon profil. Simulation personnalisée par notre partenaire."),
       tone: "default" as const,
     },
   ];
@@ -1772,7 +1748,7 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
   doc.setTextColor(...PINK);
-  doc.text("MONTANT TOTAL PROJET", M + 16, y + 22);
+  doc.text(t("site_pay_total_label", "MONTANT TOTAL PROJET"), M + 16, y + 22);
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(24);
   doc.setTextColor(252, 249, 242);
@@ -1780,8 +1756,8 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(200, 200, 200);
-  doc.text(`Acompte 50 % à la commande : ${eur(acompte50)} TTC`, M + 16, y + 70);
-  doc.text("Signez le devis en ligne · contact@beev.co", M + 16, y + 86);
+  doc.text(`${t("site_pay_acompte_label", "Acompte 50 % à la commande")} : ${eur(acompte50)} TTC`, M + 16, y + 70);
+  doc.text(t("site_pay_cta", "Signez le devis en ligne · contact@beev.co"), M + 16, y + 86);
 }
 
 function drawWhyBeev(doc: jsPDF, type: ProjectType) {
