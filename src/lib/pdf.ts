@@ -20,13 +20,29 @@ export type ClientInfo = {
   notes: string;
 };
 
+/** Configuration alternative durée/km/loyer pour un même véhicule sélectionné.
+ *  Permet au commercial de présenter plusieurs scénarios au client (ex : 48m
+ *  / 30k vs 60m / 60k) sur la même fiche véhicule. */
+export type PricingConfig = {
+  id: string;
+  durationMonths: number;
+  kmPerYear: number;
+  negotiatedMonthly: number;
+};
+
 export type SelectedVehicle = {
   vehicle: Vehicle;
   quantity: number;
   discountPct: number;
+  /** Loyer mensuel TTC de la configuration PRINCIPALE (rétro-compat). */
   negotiatedMonthly: number;
+  /** Durée de la configuration principale. */
   durationMonths: number;
+  /** Km/an de la configuration principale. */
   kmPerYear: number;
+  /** Configurations supplémentaires (durée, km, loyer) au-delà de la principale.
+   *  Affichées dans le PDF et le panneau droit comme scénarios alternatifs. */
+  additionalConfigs?: PricingConfig[];
   includeTco: boolean;
   services: string[];
   options: LineItem[];
@@ -906,6 +922,61 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.text(noteLines, innerX, py);
 
   let y = mainY + mainH + 18;
+
+  // Configurations alternatives — si le commercial a ajouté plusieurs scénarios
+  // durée/km/loyer pour ce véhicule, on les présente en tableau comparatif
+  // juste après la price card pour aider le client à choisir son scénario.
+  const altConfigs = sv.additionalConfigs ?? [];
+  if (altConfigs.length > 0) {
+    y = ensureSpace(doc, y, 80 + altConfigs.length * 18, client, type);
+    // Bandeau d'introduction
+    doc.setFillColor(...BLEU_LIGHT);
+    doc.roundedRect(M, y, PAGE_W - M * 2, 26, 6, 6, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...LAVENDER);
+    doc.text("CONFIGURATIONS ALTERNATIVES", M + 12, y + 11);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...INK);
+    doc.text(`${altConfigs.length + 1} scénarios disponibles selon vos besoins kilométrage et durée.`, M + 12, y + 22);
+    y += 32;
+
+    // Table comparative : principale + alternatives
+    autoTable(doc, {
+      startY: y,
+      theme: "plain",
+      head: [["Scénario", "Durée", "Km / an", "Km total", "Loyer mensuel TTC"]],
+      body: [
+        [
+          { content: "Principal", styles: { fontStyle: "bold", textColor: LAVENDER } },
+          `${sv.durationMonths} mois`,
+          fmt(sv.kmPerYear),
+          fmt(sv.kmPerYear * sv.durationMonths / 12),
+          { content: eur(sv.negotiatedMonthly), styles: { fontStyle: "bold", textColor: LAVENDER, halign: "right" } },
+        ],
+        ...altConfigs.map((c, i) => [
+          { content: `Alternative ${i + 1}`, styles: { textColor: SUB } },
+          `${c.durationMonths} mois`,
+          fmt(c.kmPerYear),
+          fmt(c.kmPerYear * c.durationMonths / 12),
+          { content: eur(c.negotiatedMonthly), styles: { fontStyle: "bold", halign: "right" } },
+        ]),
+      ],
+      headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 8.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 6 },
+      bodyStyles: { fontSize: 9.5, cellPadding: 6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
+      alternateRowStyles: { fillColor: [252, 251, 248] as [number, number, number] },
+      columnStyles: {
+        0: { cellWidth: 110 },
+        1: { halign: "center", cellWidth: 70 },
+        2: { halign: "right", cellWidth: 80 },
+        3: { halign: "right", cellWidth: 80 },
+        4: { halign: "right" },
+      },
+      margin: { left: M, right: M },
+    });
+    y = (doc as any).lastAutoTable.finalY + 16;
+  }
 
   autoTable(doc, {
     startY: y,

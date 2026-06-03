@@ -14,7 +14,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users } from "lucide-react";
 import { toast } from "sonner";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type EnergyParams } from "@/lib/store";
-import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, type SelectedCharger, type SelectedVehicle } from "@/lib/pdf";
+import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, type SelectedCharger, type SelectedVehicle, type PricingConfig } from "@/lib/pdf";
 import { BEEV_JOURNEYS, MANDATORY_SERVICES, createBlankCharger, createBlankVehicle, type Charger, type LineItem, type ProjectType, type Vehicle } from "@/lib/catalog";
 import { AdminBadge } from "@/components/admin-badge";
 import { ImageUpload } from "@/components/image-upload";
@@ -1225,79 +1225,69 @@ function VehicleCatalogByBrand({
         {byBrand.length} marque{byBrand.length > 1 ? "s" : ""} · {vehicles.length} modèle{vehicles.length > 1 ? "s" : ""}
         {vehicles.length !== allVehicleCount ? ` sur ${allVehicleCount}` : ""}. Cliquez sur une marque pour voir ses véhicules.
       </p>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Accordion vertical : 1 ligne par marque, expansion inline juste en dessous */}
+      <div className="space-y-2">
         {byBrand.map(([brand, list]) => {
           const isOpen = expanded.has(brand) || hasActiveSearch;
           const stockCount = list.filter((v) => v.availableStock).length;
           const selCount = selectedCountByBrand[brand] ?? 0;
+          const minPrice = Math.min(...list.map((v) => v.priceTtc).filter((p) => p > 0)) || 0;
           return (
-            <button
-              key={brand}
-              type="button"
-              onClick={() => {
-                setExpanded((s) => {
-                  const next = new Set(s);
-                  if (next.has(brand)) next.delete(brand); else next.add(brand);
-                  return next;
-                });
-              }}
-              className={`text-left rounded-lg border p-4 transition-all ${isOpen ? "border-primary ring-2 ring-primary/30 bg-primary/5" : "hover:border-foreground/30 bg-card"} ${selCount > 0 ? "ring-2 ring-[#35DA76]/40" : ""}`}
-            >
-              <div className="flex items-center justify-between">
-                <p className="font-semibold text-base">{brand}</p>
-                {selCount > 0 && (
-                  <span className="text-[10px] font-semibold uppercase rounded-full bg-[#35DA76] text-white px-2 py-0.5">
-                    {selCount} sélectionné{selCount > 1 ? "s" : ""}
+            <div key={brand} className={`rounded-lg border ${isOpen ? "border-primary/40 bg-primary/5" : "bg-card"} ${selCount > 0 ? "ring-1 ring-[#35DA76]/40" : ""} transition-all`}>
+              <button
+                type="button"
+                onClick={() => {
+                  setExpanded((s) => {
+                    const next = new Set(s);
+                    if (next.has(brand)) next.delete(brand); else next.add(brand);
+                    return next;
+                  });
+                }}
+                className="w-full flex items-center justify-between gap-3 p-4 text-left hover:bg-accent/30 rounded-lg"
+              >
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <span className={`text-base transition-transform ${isOpen ? "rotate-90" : ""}`}>▶</span>
+                  <p className="font-semibold text-base">{brand}</p>
+                  <span className="text-xs text-muted-foreground">
+                    {list.length} modèle{list.length > 1 ? "s" : ""}
                   </span>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {list.length} modèle{list.length > 1 ? "s" : ""}
-                {stockCount > 0 && (
-                  <span className="ml-2 inline-flex items-center gap-1 text-[#35DA76]">
-                    · {stockCount} en stock
-                  </span>
-                )}
-              </p>
-              <div className="mt-3 flex items-center justify-between text-[11px]">
-                <span className="text-muted-foreground">
-                  À partir de {fmtEur(Math.min(...list.map((v) => v.priceTtc).filter((p) => p > 0)) || 0)}
+                  {stockCount > 0 && (
+                    <span className="text-[10px] inline-flex items-center gap-1 rounded-full bg-[#35DA76]/10 text-[#35DA76] px-2 py-0.5 font-medium">
+                      {stockCount} en stock
+                    </span>
+                  )}
+                  {selCount > 0 && (
+                    <span className="text-[10px] font-semibold uppercase rounded-full bg-[#35DA76] text-white px-2 py-0.5">
+                      {selCount} sélectionné{selCount > 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs text-muted-foreground flex-shrink-0">
+                  À partir de <strong className="text-foreground">{fmtEur(minPrice)}</strong>
                 </span>
-                <span className="text-primary font-medium">
-                  {isOpen ? "Réduire ▴" : "Voir les modèles ▾"}
-                </span>
-              </div>
-            </button>
+              </button>
+              {isOpen && (
+                <div className="px-4 pb-4 pt-1">
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    {list.map((v) => (
+                      <VehicleCard
+                        key={v.id}
+                        vehicle={v}
+                        selected={!!selectedV[v.id]}
+                        onToggle={() => onToggle(v)}
+                        onUpdate={onUpdate ? (p) => onUpdate(v.id, p) : undefined}
+                        onDelete={onDelete ? () => onDelete(v) : undefined}
+                        existingCategories={existingCategories}
+                        leaserOffers={leaserOffers.filter((o) => o.vehicleId === v.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
-
-      {/* Section dépliée par marque */}
-      {byBrand.map(([brand, list]) => {
-        const isOpen = expanded.has(brand) || hasActiveSearch;
-        if (!isOpen) return null;
-        return (
-          <div key={`open-${brand}`} className="pt-2 border-t">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-              {brand} <span className="text-[10px] normal-case font-normal">({list.length} modèle{list.length > 1 ? "s" : ""})</span>
-            </h3>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {list.map((v) => (
-                <VehicleCard
-                  key={v.id}
-                  vehicle={v}
-                  selected={!!selectedV[v.id]}
-                  onToggle={() => onToggle(v)}
-                  onUpdate={onUpdate ? (p) => onUpdate(v.id, p) : undefined}
-                  onDelete={onDelete ? () => onDelete(v) : undefined}
-                  existingCategories={existingCategories}
-                  leaserOffers={leaserOffers.filter((o) => o.vehicleId === v.id)}
-                />
-              ))}
-            </div>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -2149,6 +2139,74 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove }: { sv: SelectedVe
           <div><div className="text-muted-foreground">TCO/100km</div><div className="font-semibold text-primary">{tco.tco100.toFixed(2)} €</div></div>
         </div>
       )}
+
+      {/* Configurations alternatives : couples durée/km/loyer supplémentaires */}
+      <div className="rounded-md bg-card p-2 space-y-1.5">
+        <div className="flex items-center justify-between">
+          <Label className="text-[10px] uppercase text-muted-foreground">
+            Configurations alternatives ({(sv.additionalConfigs ?? []).length})
+          </Label>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 text-xs gap-1"
+            onClick={() => {
+              const newConfig: PricingConfig = {
+                id: `cfg-${typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : String((sv.additionalConfigs ?? []).length + 1)}`,
+                durationMonths: sv.durationMonths,
+                kmPerYear: sv.kmPerYear,
+                negotiatedMonthly: sv.negotiatedMonthly,
+              };
+              onChange({ additionalConfigs: [...(sv.additionalConfigs ?? []), newConfig] });
+            }}
+          >
+            <Plus className="w-3 h-3" /> Ajouter
+          </Button>
+        </div>
+        {(sv.additionalConfigs ?? []).map((cfg, idx) => (
+          <div key={cfg.id} className="grid grid-cols-[1fr_1fr_1fr_28px] gap-1 items-end">
+            <NumField
+              label={idx === 0 ? "Durée (mois)" : ""}
+              value={cfg.durationMonths}
+              onChange={(n) => {
+                const next = (sv.additionalConfigs ?? []).map((c) => c.id === cfg.id ? { ...c, durationMonths: n } : c);
+                onChange({ additionalConfigs: next });
+              }}
+            />
+            <NumField
+              label={idx === 0 ? "Km / an" : ""}
+              value={cfg.kmPerYear}
+              onChange={(n) => {
+                const next = (sv.additionalConfigs ?? []).map((c) => c.id === cfg.id ? { ...c, kmPerYear: n } : c);
+                onChange({ additionalConfigs: next });
+              }}
+            />
+            <NumField
+              label={idx === 0 ? "Loyer TTC" : ""}
+              value={cfg.negotiatedMonthly}
+              onChange={(n) => {
+                const next = (sv.additionalConfigs ?? []).map((c) => c.id === cfg.id ? { ...c, negotiatedMonthly: n } : c);
+                onChange({ additionalConfigs: next });
+              }}
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-destructive"
+              onClick={() => {
+                onChange({ additionalConfigs: (sv.additionalConfigs ?? []).filter((c) => c.id !== cfg.id) });
+              }}
+            >
+              <Trash2 className="w-3 h-3" />
+            </Button>
+          </div>
+        ))}
+        {(sv.additionalConfigs ?? []).length === 0 && (
+          <p className="text-[10px] text-muted-foreground italic">
+            Le client veut comparer plusieurs scénarios ? Ajoutez une configuration alternative (ex : 48m/30k + 60m/60k).
+          </p>
+        )}
+      </div>
       <div className="flex gap-1">
         <button type="button" onClick={() => setTab(tab === "svc" ? "none" : "svc")} className="flex-1 text-xs px-2 py-1.5 rounded-md border bg-card hover:bg-accent/40">Prestations · {3 + sv.services.length}</button>
         <button type="button" onClick={() => setTab(tab === "opt" ? "none" : "opt")} className="flex-1 text-xs px-2 py-1.5 rounded-md border bg-card hover:bg-accent/40">Options · {sv.options.length}</button>
