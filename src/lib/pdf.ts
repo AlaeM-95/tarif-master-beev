@@ -366,6 +366,18 @@ export async function generateProposalPdf(opts: {
 
   drawCover(doc, effectiveType, client, v.length, c.length);
 
+  // Pages dédiées 'rapport site' — pour les projets bornes site entreprise,
+  // inspiré du rapport visite technique Château la Commaraine.
+  // Vue d'ensemble + Synthèse projet entre la couverture et 'Pourquoi Beev'.
+  if (effectiveType === "site" && c.length > 0) {
+    doc.addPage();
+    drawHeader(doc, client, effectiveType);
+    drawSiteOverview(doc, client, c);
+    doc.addPage();
+    drawHeader(doc, client, effectiveType);
+    drawSiteProjectSynthesis(doc, client, c);
+  }
+
   if (cfg.showWhyBeev) {
     doc.addPage();
     drawHeader(doc, client, effectiveType);
@@ -647,6 +659,201 @@ function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nb
 }
 
 // ============ POURQUOI BEEV (varie par type) ============
+// ============ RAPPORT SITE — VUE D'ENSEMBLE ============
+// Page d'ouverture du rapport pour projets bornes site entreprise, inspirée
+// du rapport visite technique Château la Commaraine. Affiche en 2 colonnes :
+// à gauche les caractéristiques projet (Client, Site, Secteur, Nb bornes,
+// Type d'installation, Usage, Supervision, Délai), à droite les contacts
+// Beev (chargé d'affaires + référent technique).
+function drawSiteOverview(doc: jsPDF, client: ClientInfo, chargers: SelectedCharger[]) {
+  const BLACK: [number, number, number] = [29, 29, 29];
+  const BEIGE_BG: [number, number, number] = [252, 249, 242];
+  const PINK: [number, number, number] = [244, 184, 170]; // accent rose Beev
+
+  let y = 116;
+  // Eyebrow
+  doc.setFillColor(...PINK);
+  doc.rect(M, y - 8, 22, 2, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text("VUE D'ENSEMBLE", M + 30, y - 4);
+  y += 14;
+
+  // Title
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(28);
+  doc.setTextColor(...INK);
+  doc.text("Récapitulatif projet", M, y + 18);
+  y += 50;
+
+  // Intro
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...SUB);
+  const intro = "Ce rapport détaille la solution technique, les équipements, le planning et le budget pour l'installation de votre infrastructure de recharge.";
+  const introL = doc.splitTextToSize(intro, PAGE_W - M * 2);
+  doc.text(introL, M, y);
+  y += introL.length * 13 + 26;
+
+  // 2 colonnes : gauche = specs, droite = contacts Beev
+  const colW = (PAGE_W - M * 2 - 24) / 2;
+  const leftX = M;
+  const rightX = M + colW + 24;
+
+  // Calculs des champs synthétiques
+  const totalChargers = chargers.reduce((s, sc) => s + sc.quantity, 0);
+  const uniqueModels = new Set(chargers.map((sc) => `${sc.charger.brand} ${sc.charger.model}`));
+  const modelsSummary = Array.from(uniqueModels).slice(0, 2).join(", ") + (uniqueModels.size > 2 ? "..." : "");
+  const powerBreakdown = chargers.map((sc) => `${sc.quantity} × ${sc.charger.powerKw} kW`).join(" + ");
+
+  // === Colonne gauche : caractéristiques projet ===
+  const rows = [
+    { label: "Client", value: client.company || "—" },
+    { label: "Site", value: chargers[0]?.siteAddress || "—" },
+    { label: "Secteur", value: "—" }, // À enrichir depuis pdf_settings si l'admin le configure
+    { label: "Nombre de bornes", value: `${totalChargers} ${modelsSummary ? `· ${modelsSummary}` : ""}` },
+    { label: "Puissance", value: powerBreakdown || "—" },
+    { label: "Type d'installation", value: chargers.some((sc) => sc.charger.deployment === "site") ? "Parking, site entreprise" : "—" },
+    { label: "Usage", value: "Collaborateurs et visiteurs" },
+    { label: "Supervision", value: "Smappee CPO (à confirmer)" },
+    { label: "Délai estimé", value: "3 à 5 semaines après validation du devis" },
+  ];
+
+  let ly = y;
+  doc.setDrawColor(...RULE);
+  doc.setLineWidth(0.4);
+  rows.forEach((row) => {
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...SUB);
+    doc.text(row.label, leftX, ly);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...INK);
+    const valLines = doc.splitTextToSize(row.value, colW - 4).slice(0, 2);
+    doc.text(valLines, leftX, ly + 14);
+    ly += 14 + valLines.length * 12 + 6;
+    doc.line(leftX, ly - 2, leftX + colW - 8, ly - 2);
+    ly += 4;
+  });
+
+  // === Colonne droite : contacts Beev (card noire) ===
+  doc.setFillColor(...BLACK);
+  const contactCardH = 160;
+  doc.roundedRect(rightX, y, colW, contactCardH, 8, 8, "F");
+
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...PINK);
+  doc.text("VOS CONTACTS BEEV", rightX + 16, y + 18);
+
+  // Chargé d'affaires (commercial)
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(13);
+  doc.setTextColor(...BEIGE_BG);
+  doc.text(client.salesRep || "—", rightX + 16, y + 40);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(200, 200, 200);
+  doc.text("Chargé d'affaires", rightX + 16, y + 54);
+  doc.setFontSize(9);
+  doc.setTextColor(...BEIGE_BG);
+  if (client.salesRepEmail) doc.text(client.salesRepEmail, rightX + 16, y + 68);
+  if (client.salesRepPhone) doc.text(client.salesRepPhone, rightX + 16, y + 80);
+
+  // Séparateur
+  doc.setDrawColor(70, 67, 62);
+  doc.line(rightX + 16, y + 94, rightX + colW - 16, y + 94);
+
+  // Référent technique (placeholder par défaut)
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(13);
+  doc.setTextColor(...BEIGE_BG);
+  doc.text("Référent technique", rightX + 16, y + 114);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(200, 200, 200);
+  doc.text("Équipe IRVE Beev", rightX + 16, y + 128);
+  doc.setFontSize(9);
+  doc.setTextColor(...BEIGE_BG);
+  doc.text("contact@beev.co", rightX + 16, y + 142);
+}
+
+// ============ RAPPORT SITE — SYNTHÈSE PROJET ============
+// Page lecture rapide du chantier inspirée de Château la Commaraine. Présente
+// les specs clés sous forme de bandeau horizontal + table de caractéristiques
+// techniques chiffrées.
+function drawSiteProjectSynthesis(doc: jsPDF, client: ClientInfo, chargers: SelectedCharger[]) {
+  const PINK: [number, number, number] = [244, 184, 170];
+
+  let y = 116;
+  doc.setFillColor(...PINK);
+  doc.rect(M, y - 8, 22, 2, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text("1 · SYNTHÈSE PROJET", M + 30, y - 4);
+  y += 14;
+
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(28);
+  doc.setTextColor(...INK);
+  doc.text("Une lecture rapide du chantier", M, y + 18);
+  y += 50;
+
+  const totalChargers = chargers.reduce((s, sc) => s + sc.quantity, 0);
+  const breakdown = chargers.map((sc) => `${sc.quantity} × ${sc.charger.powerKw} kW`).join(" + ");
+  const hasHighPower = chargers.some((sc) => sc.charger.powerKw >= 22);
+  const cable22 = hasHighPower ? "U1000 R2V 5G16 mm²" : "—";
+  const hasLowPower = chargers.some((sc) => sc.charger.powerKw < 22);
+  const cable74 = hasLowPower ? "U1000 R2V 3G10 mm²" : "—";
+
+  // Table 2 colonnes : libellé / valeur
+  const rows = [
+    { label: "Points de recharge", value: `${totalChargers} borne${totalChargers > 1 ? "s" : ""} (${breakdown})` },
+    { label: "Distance TGBT → Bornes", value: "À confirmer après visite technique" },
+    { label: "Emplacement", value: chargers[0]?.siteAddress || "Parking site entreprise" },
+    { label: "Puissance abonnement EDF", value: "180 kVA (à confirmer)" },
+    { label: "Type câble 22 kW", value: cable22 },
+    { label: "Type câble 7,4 kW", value: cable74 },
+    { label: "Délai estimé", value: "3 à 5 semaines après validation" },
+    { label: "Local TGBT et cheminement", value: "Cheminement à valider lors de la visite technique" },
+  ];
+
+  doc.setDrawColor(...RULE);
+  doc.setLineWidth(0.4);
+  rows.forEach((row) => {
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...SUB);
+    doc.text(row.label, M, y);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(10.5);
+    doc.setTextColor(...INK);
+    const valLines = doc.splitTextToSize(row.value, PAGE_W - M * 2 - 240).slice(0, 2);
+    valLines.forEach((vl: string, i: number) => {
+      doc.text(vl, M + 240, y + i * 12);
+    });
+    const advance = Math.max(20, valLines.length * 12 + 8);
+    y += advance;
+    doc.line(M, y - 4, PAGE_W - M, y - 4);
+    y += 6;
+  });
+
+  // Bandeau bas : emplacements sélectionnés (placeholder)
+  y += 14;
+  doc.setFillColor(...PINK);
+  doc.roundedRect(M, y, PAGE_W - M * 2, 50, 8, 8, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(...INK);
+  doc.text("EMPLACEMENTS SÉLECTIONNÉS", M + 16, y + 18);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(9);
+  doc.text("Précisés lors de la visite technique avec le bureau d'études IRVE Beev et le partenaire installateur certifié.", M + 16, y + 36);
+}
+
 function drawWhyBeev(doc: jsPDF, type: ProjectType) {
   let y = 130;
   eyebrow(doc, lookupText(TEXTS, "common", "why_beev_eyebrow", "NOTRE APPROCHE"), y);
