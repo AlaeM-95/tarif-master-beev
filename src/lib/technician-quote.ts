@@ -2,17 +2,13 @@
 // 100 % côté client. Utilise pdfjs-dist pour extraire le texte du PDF
 // puis des heuristiques regex pour reconnaître les lignes de prestation.
 //
-// Calibré principalement sur le format Talent Tech (devis MOBILITAS),
-// mais s'adapte aux formats similaires (5 colonnes Désignation/Qté/
-// Unité/Prix unitaire/TVA/Montant HT).
-//
-// Si la détection échoue, le commercial peut toujours ajouter / éditer
-// les lignes manuellement dans la dialog d'import.
+// Cas géré spécifiquement : certains PDFs (ex. Talent Tech) sortent
+// les glyphes individuellement avec des espaces parasites entre lettres
+// d'un même mot ("F orf a it" au lieu de "Forfait"). Le parser répare
+// ciblement les unités IRVE et les marqueurs avant matching.
 
 import * as pdfjsLib from "pdfjs-dist";
-// Vite gère ce worker via import.meta.url
-// (https://github.com/mozilla/pdf.js/wiki/Setup-pdf.js-in-a-website#using-pdfjs-with-vite)
-// @ts-expect-error -- import worker URL
+// @ts-expect-error -- worker import URL Vite-style
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -29,32 +25,107 @@ export type ParsedQuote = {
   quoteDate: string;
   totalHt: number;
   lines: ParsedQuoteLine[];
-  /** Texte brut du PDF (utile pour debug et fallback affichage). */
   rawText: string;
-  /** Liste des warnings non bloquants rencontrés pendant le parsing. */
   warnings: string[];
 };
 
-// Convertit un nombre au format FR "1 234,56" ou "798,00" en number JS
 function parseFrNumber(s: string): number {
-  const clean = s.replace(/\s| /g, "").replace(",", ".");
+  const clean = s.replace(/[\s  ]/g, "").replace(",", ".");
   const n = parseFloat(clean);
   return Number.isFinite(n) ? n : 0;
 }
 
-// Unités acceptées dans un devis IRVE typique
-const UNIT_REGEX = "(?:forfait|forfaits|article|articles|m|ml|h|heure|heures|u|unité|unités|jour|jours|j|pièce|pieces|piece|ens|kit)";
+// Construit un pattern qui matche un mot avec espaces optionnels entre
+// chaque lettre (utile pour les PDFs glyphés individuellement).
+// loose("forfait") → /\bf[\s ]*o[\s ]*r[\s ]*f[\s ]*a[\s ]*i[\s ]*t\b/i
+function looseWord(word: string): string {
+  return word.split("").map((c) => {
+    // Échappe les caractères regex spéciaux
+    if (/[.*+?^${}()|[\]\\]/.test(c)) return "\\" + c;
+    // Variantes accentuées tolérées
+    if (c === "e") return "[ee\\xe9\\xe8\\xea]";
+    return c;
+  }).join("[\\s ]*");
+}
 
-// Pattern de fin de ligne : <qté>,XX <unité> <PU>,XX <TVA>% <Montant>,XX
-//   - qty : 1 ou 2 décimales optionnelles, virgule ou point
-//   - prix : peut contenir des espaces (séparateur milliers)
+function caseRespecting(original: string, replacement: string): string {
+  const firstLetter = original.replace(/\s/g, "")[0] ?? "";
+  if (firstLetter && firstLetter === firstLetter.toUpperCase()) {
+    return replacement[0].toUpperCase() + replacement.slice(1);
+  }
+  return replacement;
+}
+
+// Réparation des fragments les plus fréquents : unités IRVE + marqueurs
+// du devis. Ciblé et non destructif (ne touche pas aux mots du label).
+function repairCommonFragments(text: string): string {
+  const unitRepairs: Array<[RegExp, string]> = [
+    [new RegExp(`\\b${looseWord("forfait")}s?\\b`, "gi"), "forfait"],
+    [new RegExp(`\\b${looseWord("article")}s?\\b`, "gi"), "article"],
+    [new RegExp(`\\b${looseWord("piece")}s?\\b`, "gi"), "pièce"],
+    [new RegExp(`\\b${looseWord("pièce")}s?\\b`, "gi"), "pièce"],
+    [new RegExp(`\\b${looseWord("unite")}s?\\b`, "gi"), "unité"],
+    [new RegExp(`\\b${looseWord("unité")}s?\\b`, "gi"), "unité"],
+    [new RegExp(`\\b${looseWord("heure")}s?\\b`, "gi"), "heure"],
+    [new RegExp(`\\b${looseWord("jour")}s?\\b`, "gi"), "jour"],
+    [new RegExp(`\\b${looseWord("metre")}s?\\b`, "gi"), "mètre"],
+    [new RegExp(`\\b${looseWord("mètre")}s?\\b`, "gi"), "mètre"],
+  ];
+  let out = text;
+  for (const [re, repl] of unitRepairs) {
+    out = out.replace(re, (match) => {
+      const isPlural = /s\b/i.test(match);
+      const word = isPlural ? repl + "s" : repl;
+      return caseRespecting(match, word);
+    });
+  }
+  // Termes IRVE/électriques courants — apparaissent dans la majorité des
+  // devis techniciens donc valent une réparation ciblée pour rendre les
+  // labels lisibles dès le 1er affichage.
+  const techTerms = [
+    "triphasé", "triphase", "monophasé", "monophase", "tranchée", "tranchee",
+    "répartiteur", "repartiteur", "bornier", "borne", "tableau", "câble",
+    "cable", "dalle", "béton", "beton", "regard", "fourniture", "réalisation",
+    "realisation", "création", "creation", "installation", "raccordement",
+    "électrique", "electrique", "disjoncteur", "compteur", "armoire",
+    "passage", "fixation", "pose", "câblage", "cablage", "section",
+  ];
+  for (const term of techTerms) {
+    const re = new RegExp(`\\b${looseWord(term)}s?\\b`, "gi");
+    out = out.replace(re, (match) => {
+      const isPlural = /s\b/i.test(match);
+      const word = isPlural ? term + "s" : term;
+      return caseRespecting(match, word);
+    });
+  }
+  // Marqueurs de devis (préservent la casse)
+  const markerRepairs: Array<[RegExp, string]> = [
+    [new RegExp(`\\b${looseWord("Total")}\\s+${looseWord("HT")}\\b`, "gi"), "Total HT"],
+    [new RegExp(`\\b${looseWord("Total")}\\s+${looseWord("TTC")}\\b`, "gi"), "Total TTC"],
+    [new RegExp(`\\b${looseWord("Montant")}\\s+${looseWord("HT")}\\b`, "gi"), "Montant HT"],
+    [new RegExp(`\\b${looseWord("Devis")}\\s+N\\s*[°o]`, "gi"), "Devis N°"],
+    [new RegExp(`\\b${looseWord("Date")}\\s+d['\\u2019\\s]*${looseWord("emission")}`, "gi"), "Date d'émission"],
+    [new RegExp(`\\b${looseWord("Date")}\\s+d['\\u2019\\s]*${looseWord("émission")}`, "gi"), "Date d'émission"],
+    [new RegExp(`\\b${looseWord("Designation")}\\b`, "gi"), "Désignation"],
+    [new RegExp(`\\b${looseWord("Désignation")}\\b`, "gi"), "Désignation"],
+    [new RegExp(`\\b${looseWord("Quantite")}\\b`, "gi"), "Quantité"],
+    [new RegExp(`\\b${looseWord("Quantité")}\\b`, "gi"), "Quantité"],
+  ];
+  for (const [re, repl] of markerRepairs) {
+    out = out.replace(re, repl);
+  }
+  return out;
+}
+
+const UNIT_REGEX = "(?:forfait|forfaits|article|articles|ml|ens|kit|jours?|j|heures?|h|pi[èe]ces?|unit[ée]s?|m[èe]tres?|u\\b|m\\b)";
+
+// Queue de ligne : qty unit PU TVA% total
 const LINE_TAIL = new RegExp(
   `(\\d+(?:[.,]\\d{1,3})?)\\s+(${UNIT_REGEX})\\s+([\\d\\s\\u00a0]+[.,]\\d{2})\\s+(\\d{1,2})\\s*%\\s+([\\d\\s\\u00a0]+[.,]\\d{2})`,
   "i",
 );
 
-// Lignes à exclure systématiquement
-const EXCLUDE_LINE = /^(total ht|tva|total ttc|sous[- ]total|remise globale|net à payer|escompte|acompte|page \d|signature)/i;
+const EXCLUDE_LINE = /^(total ht|tva\b|total ttc|sous[- ]total|remise globale|net à payer|escompte|acompte|page \d|signature|sas au capital|siren\b|siret\b|tva intr)/i;
 const EXCLUDE_LABEL = /^(d[ée]signation|montant ht|prix unitaire|qte|qté|quantit|tva|unit[ée])$/i;
 
 async function extractPdfText(file: File): Promise<string> {
@@ -64,37 +135,73 @@ async function extractPdfText(file: File): Promise<string> {
   for (let p = 1; p <= pdf.numPages; p++) {
     const page = await pdf.getPage(p);
     const tc = await page.getTextContent();
-    // On regroupe les items par ligne (même Y, à 2 pixels près)
-    const byY = new Map<number, { x: number; str: string }[]>();
-    for (const it of tc.items as Array<{ str: string; transform: number[] }>) {
-      if (!it.str.trim()) continue;
+    const items = (tc.items as Array<{ str: string; transform: number[]; height?: number; width?: number }>).filter((it) => it.str.length > 0);
+    if (items.length === 0) continue;
+    const avgH = items.reduce((s, it) => s + (it.height ?? 10), 0) / items.length;
+    const yTol = Math.max(3, avgH * 0.4);
+    const spaceW = avgH * 0.3;
+    const colW = avgH * 1.4;
+
+    const byY = new Map<number, { x: number; w: number; str: string }[]>();
+    for (const it of items) {
       const y = Math.round(it.transform[5]);
       const x = it.transform[4];
-      const bucket = Array.from(byY.entries()).find(([by]) => Math.abs(by - y) <= 2);
+      const w = it.width ?? it.str.length * avgH * 0.5;
+      const bucket = Array.from(byY.entries()).find(([by]) => Math.abs(by - y) <= yTol);
       const key = bucket ? bucket[0] : y;
       const arr = byY.get(key) ?? [];
-      arr.push({ x, str: it.str });
+      arr.push({ x, w, str: it.str });
       byY.set(key, arr);
     }
-    // Tri descendant par Y (haut → bas), puis ascendant par X (gauche → droite)
     const ys = Array.from(byY.keys()).sort((a, b) => b - a);
     for (const y of ys) {
-      const items = byY.get(y)!.sort((a, b) => a.x - b.x);
-      const line = items.map((i) => i.str).join(" ").replace(/\s+/g, " ").trim();
+      const cells = byY.get(y)!.sort((a, b) => a.x - b.x);
+      let line = "";
+      let prevEnd = -Infinity;
+      for (const it of cells) {
+        const s = it.str;
+        if (!s) continue;
+        const gap = it.x - prevEnd;
+        if (line === "") {
+          line = s;
+        } else if (gap < spaceW * 0.5) {
+          line += s;
+        } else if (gap < colW) {
+          line += (line.endsWith(" ") ? "" : " ") + s.replace(/^\s+/, "");
+        } else {
+          line += "  " + s.replace(/^\s+/, "");
+        }
+        prevEnd = it.x + it.w;
+      }
+      line = line.replace(/[ \t]+/g, " ").trim();
       if (line) allLines.push(line);
     }
   }
-  return allLines.join("\n");
+  // Réparation ciblée des fragments connus (unités, marqueurs)
+  return repairCommonFragments(allLines.join("\n"));
 }
 
 function detectMeta(text: string): { supplier: string; quoteNumber: string; quoteDate: string; totalHt: number } {
-  const supplierM = text.match(/^([A-ZÉÈÀÂÊÎÔÛÇ][A-Za-zÀ-ÿ&'.\- ]{2,60}?)$/m);
-  const supplier = supplierM?.[1]?.trim() ?? "";
+  let supplier = "";
+  const allLines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  const siretIdx = allLines.findIndex((l) => /SIRET\s*[:.]?\s*\d/i.test(l));
+  if (siretIdx > 0) {
+    for (let i = siretIdx - 1; i >= Math.max(0, siretIdx - 8); i--) {
+      const cand = allLines[i];
+      if (/^(SAS|SARL|SA|SASU|EURL|EI|SCI|SCOP|GIE)\b/i.test(cand) && !/^beev\b/i.test(cand)) {
+        supplier = cand;
+        break;
+      }
+    }
+  }
+  if (!supplier) {
+    supplier = allLines.find((l) => /^(SAS|SARL|SA|SASU|EURL)\b/i.test(l) && !/^beev/i.test(l)) ?? "";
+  }
 
-  const numM = text.match(/Devis\s*N[°o]\s*[:.]?\s*([A-Z0-9\-_/]+)/i);
+  const numM = text.match(/Devis\s*N[°o]?\s*[:.]?\s*([A-Z0-9\-_/]+)/i);
   const quoteNumber = numM?.[1] ?? "";
 
-  const dateM = text.match(/Date d'?[ée]mission\s*[:.]?\s*(\d{2}\/\d{2}\/\d{4})/i)
+  const dateM = text.match(/Date\s+d['’]?\s*[ée]mission\s*[:.]?\s*(\d{2}\/\d{2}\/\d{4})/i)
     ?? text.match(/(\d{2}\/\d{2}\/\d{4})/);
   let quoteDate = "";
   if (dateM?.[1]) {
@@ -102,16 +209,38 @@ function detectMeta(text: string): { supplier: string; quoteNumber: string; quot
     quoteDate = `${y}-${m}-${d}`;
   }
 
-  const totalM = text.match(/Total\s+HT\s+([\d\s ]+[.,]\d{2})/i);
-  const totalHt = totalM ? parseFrNumber(totalM[1]) : 0;
+  const totalCandidates = [
+    /Total\s+HT\s*[:.]?\s*([\d\s ]+[.,]\d{2})\s*€?/i,
+    /Montant\s+HT\s*[:.]?\s*([\d\s ]+[.,]\d{2})\s*€?/i,
+  ];
+  let totalHt = 0;
+  for (const re of totalCandidates) {
+    const m = text.match(re);
+    if (m) {
+      totalHt = parseFrNumber(m[1]);
+      if (totalHt > 0) break;
+    }
+  }
 
   return { supplier, quoteNumber, quoteDate, totalHt };
 }
 
-// Découpe le texte brut en blocs "ligne de prestation" avec leur label
-// multi-lignes accumulé. Une nouvelle ligne de prestation est détectée
-// quand le pattern LINE_TAIL est rencontré ; les lignes précédentes
-// non-numériques deviennent le label.
+// Nettoie les espaces parasites isolés dans un label déjà bien structuré.
+// On retire les espaces simples entre une lettre seule et une lettre seule
+// (heuristique très conservatrice : ne touche qu'aux séquences A B C de
+// lettres isolées). Utile pour rendre "T riph a sé" → "Triphasé" sans
+// affecter "5 Rue Pleyel" ou "de la borne".
+function softCleanLabel(label: string): string {
+  // Coller un caractère seul à son voisin gauche si voisin gauche fait > 1 char lettres
+  let out = label;
+  for (let iter = 0; iter < 10; iter++) {
+    const before = out;
+    out = out.replace(/([A-Za-zÀ-ÿ]{2,})\s+([A-Za-zÀ-ÿ])\s+([A-Za-zÀ-ÿ]{1,3})\b/g, (_, a, b, c) => `${a}${b}${c}`);
+    if (out === before) break;
+  }
+  return out;
+}
+
 function detectLines(rawText: string): { lines: ParsedQuoteLine[]; warnings: string[] } {
   const warnings: string[] = [];
   const lines: ParsedQuoteLine[] = [];
@@ -125,14 +254,11 @@ function detectLines(rawText: string): { lines: ParsedQuoteLine[]; warnings: str
       labelBuffer = [];
       continue;
     }
-    // Skip en-tête de colonnes
     if (EXCLUDE_LABEL.test(line)) {
       labelBuffer = [];
       continue;
     }
 
-    // La queue numérique peut être sur la même ligne que le début du label,
-    // ou sur sa propre ligne après plusieurs lignes de label.
     const tail = line.match(LINE_TAIL);
     if (tail) {
       const [, qtyStr, unitStr, puStr, , totalStr] = tail;
@@ -140,9 +266,9 @@ function detectLines(rawText: string): { lines: ParsedQuoteLine[]; warnings: str
       const unitHt = parseFrNumber(puStr);
       const total = parseFrNumber(totalStr);
 
-      // Label = ce qui précède le pattern sur cette même ligne + buffer accumulé
       const beforeMatch = line.slice(0, tail.index!).trim();
-      const label = [...labelBuffer, beforeMatch].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+      const labelRaw = [...labelBuffer, beforeMatch].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+      const label = softCleanLabel(labelRaw);
       labelBuffer = [];
 
       if (!label) {
@@ -150,8 +276,6 @@ function detectLines(rawText: string): { lines: ParsedQuoteLine[]; warnings: str
         continue;
       }
 
-      // Cohérence qty × PU ≈ total : si écart > 1 €, on garde quand même
-      // mais on ajoute un warning
       if (Math.abs(qty * unitHt - total) > 1 && total > 0) {
         warnings.push(`Ligne "${label.slice(0, 40)}…" : qté×PU (${(qty * unitHt).toFixed(2)}) ≠ total devis (${total.toFixed(2)}).`);
       }
@@ -160,13 +284,10 @@ function detectLines(rawText: string): { lines: ParsedQuoteLine[]; warnings: str
         label,
         qty: qty || 1,
         unit: unitStr.toLowerCase(),
-        unitHt: unitHt,
+        unitHt,
       });
     } else {
-      // Pas de queue numérique → c'est du label en construction
-      // On limite à 5 lignes consécutives pour éviter d'accumuler les
-      // paragraphes hors tableau
-      if (labelBuffer.length < 5) labelBuffer.push(line);
+      if (labelBuffer.length < 6) labelBuffer.push(line);
     }
   }
   return { lines, warnings };
@@ -185,19 +306,12 @@ export async function parseTechnicianQuote(file: File): Promise<ParsedQuote> {
   const { lines, warnings } = detectLines(rawText);
 
   if (lines.length === 0) {
-    warnings.unshift("Aucune ligne de prestation détectée. Vérifiez le format du devis ou ajoutez manuellement.");
+    warnings.unshift("Aucune ligne de prestation détectée automatiquement. Format non standard — ajoutez les lignes manuellement via le bouton + ci-dessous.");
   }
 
-  return {
-    ...meta,
-    lines,
-    rawText,
-    warnings,
-  };
+  return { ...meta, lines, rawText, warnings };
 }
 
-// Téléchargement du PDF depuis une URL Supabase Storage puis parsing.
-// Utilisé quand le PDF est déjà uploadé dans technicianQuoteUrl.
 export async function parseTechnicianQuoteFromUrl(pdfUrl: string): Promise<ParsedQuote> {
   if (!pdfUrl) throw new Error("URL manquante.");
   const resp = await fetch(pdfUrl);
