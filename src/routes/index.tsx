@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles } from "lucide-react";
+import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type EnergyParams } from "@/lib/store";
 import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
@@ -21,6 +21,7 @@ import { ImageUpload } from "@/components/image-upload";
 import { FileUpload } from "@/components/file-upload";
 import { TechnicianQuoteImportDialog } from "@/components/technician-quote-import-dialog";
 import { B2B2ECalculator, useB2B2EInput } from "@/components/b2b2e-calculator";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MarginReviewDialog } from "@/components/margin-review-dialog";
 import { PdfConfigPanel } from "@/components/pdf-config-panel";
 import { CategoryField } from "@/components/category-field";
@@ -676,86 +677,104 @@ function App() {
         }}
         onConfirm={doGeneratePdf}
       />
-      <header className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-md border-b border-border">
-        <div className="container mx-auto px-6 py-3 flex items-center justify-between gap-3 overflow-x-auto">
+      <header className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-md border-b border-border">
+        <div className="container mx-auto px-6 py-3 flex items-center justify-between gap-3 flex-wrap">
+          {/* ─── Identité Beev (gauche) ─── */}
           <div className="flex items-center gap-3 flex-shrink-0">
-            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary text-primary-foreground font-bold text-lg tracking-tight">B</div>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary text-primary-foreground font-bold text-xl tracking-tight shadow-sm">B</div>
             <div>
-              <h1 className="text-base font-semibold leading-tight tracking-tight text-foreground">Beev</h1>
-              <p className="text-[10px] text-muted-foreground tracking-wide uppercase">Offre commerciale grand compte</p>
+              <h1 className="text-base font-bold leading-tight tracking-tight text-foreground">Beev</h1>
+              <p className="text-[10px] text-muted-foreground tracking-wide uppercase font-medium">Offre commerciale grand compte</p>
             </div>
+            <Badge variant="outline" className="hidden md:inline-flex border-primary/30 bg-primary/5 text-primary text-[10px] font-semibold ml-2">{visibleCount} sélection(s)</Badge>
           </div>
-          <div className="flex items-center gap-1.5">
+
+          {/* ─── Actions (droite) — regroupées par hiérarchie ─── */}
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {/* Status meta : refresh + badge admin discrets */}
             <RefreshButton />
             <AdminBadge />
-            <Badge variant="outline" className="hidden sm:inline-flex border-border text-foreground/70 bg-transparent text-[10px]">{visibleCount} sélection(s)</Badge>
-            <Button asChild variant="ghost" size="sm" className="gap-1.5 text-foreground/70 hover:text-foreground hover:bg-muted">
-              <a href="/proposals"><FolderOpen className="w-3.5 h-3.5" /> Propositions</a>
-            </Button>
-            {isOps && (
-              <Button asChild variant="ghost" size="sm" className="gap-1.5 text-foreground/70 hover:text-foreground hover:bg-muted" title="Éditer véhicules + offres loueurs">
-                <a href="/admin/vehicles"><Car className="w-3.5 h-3.5" /> Véhicules</a>
-              </Button>
-            )}
-            {isOps && (
-              <Button asChild variant="ghost" size="sm" className="gap-1.5 text-foreground/70 hover:text-foreground hover:bg-muted" title="Personnaliser le PDF généré">
-                <a href="/admin/pdf"><Settings2 className="w-3.5 h-3.5" /> PDF</a>
-              </Button>
-            )}
-            {isAdmin && (
-              <Button asChild variant="ghost" size="sm" className="gap-1.5 text-foreground/70 hover:text-foreground hover:bg-muted" title="Inviter et gérer les rôles utilisateurs">
-                <a href="/admin/users"><Users className="w-3.5 h-3.5" /> Utilisateurs</a>
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setPickTplDialog(true)}
-              className="gap-1.5 text-foreground/70 hover:text-foreground hover:bg-muted"
-              title="Démarrer depuis un template"
-            >
-              <FileText className="w-3.5 h-3.5" /> Templates
-            </Button>
-            {isOps && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSaveTplDialog({ open: true, name: "", description: "" })}
-                disabled={visibleCount === 0}
-                className="gap-1.5 text-foreground/70 hover:text-foreground hover:bg-muted"
-                title="Sauver comme template"
-              >
-                <Save className="w-3.5 h-3.5" /> Sauver
-              </Button>
-            )}
-            <div className="flex items-center gap-1.5">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSaveProposal}
-                disabled={visibleCount === 0 || isSavingProposal}
-                className="gap-1.5 border-border text-foreground hover:bg-muted hover:border-border"
-              >
-                {isSavingProposal ? (
-                  <><RotateCcw className="w-3.5 h-3.5 animate-spin" /> ...</>
-                ) : (
-                  <><Save className="w-3.5 h-3.5" /> {loadedProposalId ? "Màj" : "Sauver"}</>
+
+            {/* Menu Admin déroulant : regroupe Propositions, Véhicules, PDF admin,
+                Utilisateurs, Templates, Refresh. Évite la surcharge horizontale. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-1.5">
+                  <Settings2 className="w-3.5 h-3.5" /> Menu
+                  <ChevronDown className="w-3 h-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>Navigation</DropdownMenuLabel>
+                <DropdownMenuItem asChild>
+                  <a href="/proposals" className="cursor-pointer"><FolderOpen className="w-4 h-4 mr-2" /> Propositions</a>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setPickTplDialog(true)} className="cursor-pointer">
+                  <FileText className="w-4 h-4 mr-2" /> Templates
+                </DropdownMenuItem>
+                {isOps && (
+                  <DropdownMenuItem
+                    onClick={() => setSaveTplDialog({ open: true, name: "", description: "" })}
+                    disabled={visibleCount === 0}
+                    className="cursor-pointer"
+                  >
+                    <Save className="w-4 h-4 mr-2" /> Sauver comme template
+                  </DropdownMenuItem>
                 )}
-              </Button>
-              {lastSavedAt && (
-                <span className="text-[9px] text-muted-foreground hidden md:inline" title={lastSavedAt.toISOString()}>
-                  {lastSavedAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                </span>
-              )}
-            </div>
-            <Button variant="outline" size="sm" onClick={() => setPresenting(true)} disabled={visibleCount === 0} className="gap-1.5 border-border text-foreground hover:bg-muted hover:border-border">
-              <Presentation className="w-3.5 h-3.5" /> Présenter
-            </Button>
-            <Button size="sm" onClick={exportPdf} disabled={visibleCount === 0 || isGenerating} className="gap-1.5 bg-white text-black hover:bg-[#e0e0e0]">
-              {isGenerating ? (
+                {(isOps || isAdmin) && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>Administration</DropdownMenuLabel>
+                    {isOps && (
+                      <DropdownMenuItem asChild>
+                        <a href="/admin/vehicles" className="cursor-pointer"><Car className="w-4 h-4 mr-2" /> Véhicules & loueurs</a>
+                      </DropdownMenuItem>
+                    )}
+                    {isOps && (
+                      <DropdownMenuItem asChild>
+                        <a href="/admin/pdf" className="cursor-pointer"><FileDown className="w-4 h-4 mr-2" /> Configuration PDF</a>
+                      </DropdownMenuItem>
+                    )}
+                    {isAdmin && (
+                      <DropdownMenuItem asChild>
+                        <a href="/admin/users" className="cursor-pointer"><Users className="w-4 h-4 mr-2" /> Utilisateurs & rôles</a>
+                      </DropdownMenuItem>
+                    )}
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Actions principales — toujours visibles */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSaveProposal}
+              disabled={visibleCount === 0 || isSavingProposal}
+              className="gap-1.5"
+            >
+              {isSavingProposal ? (
                 <><RotateCcw className="w-3.5 h-3.5 animate-spin" /> ...</>
               ) : (
-                <><FileDown className="w-3.5 h-3.5" /> {tcoView ? "PDF TCO" : "PDF"}</>
+                <><Save className="w-3.5 h-3.5" /> {loadedProposalId ? "Mettre à jour" : "Sauvegarder"}</>
+              )}
+            </Button>
+            {lastSavedAt && (
+              <span className="text-[10px] text-muted-foreground hidden lg:inline" title={lastSavedAt.toISOString()}>
+                {lastSavedAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
+
+            <Button variant="outline" size="sm" onClick={() => setPresenting(true)} disabled={visibleCount === 0} className="gap-1.5">
+              <Presentation className="w-3.5 h-3.5" /> Présenter
+            </Button>
+
+            {/* CTA primaire : PDF (lavande Beev) */}
+            <Button size="sm" onClick={exportPdf} disabled={visibleCount === 0 || isGenerating} className="gap-1.5">
+              {isGenerating ? (
+                <><RotateCcw className="w-3.5 h-3.5 animate-spin" /> Génération...</>
+              ) : (
+                <><FileDown className="w-3.5 h-3.5" /> {tcoView ? "Générer PDF TCO" : "Générer PDF"}</>
               )}
             </Button>
           </div>
