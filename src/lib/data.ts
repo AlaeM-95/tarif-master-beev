@@ -108,6 +108,7 @@ function dbToCharger(row: ChargerRow): Charger {
     installPriceHt: row.install_price_ht,
     features: Array.isArray(row.features) ? (row.features as string[]) : [],
     image: row.image ?? "",
+    marketingImageUrl: (row as any).marketing_image_url ?? undefined,
     description: row.description ?? undefined,
     defaultLineItems: Array.isArray(row.default_line_items)
       ? (row.default_line_items as LineItem[])
@@ -142,6 +143,10 @@ function chargerToDb(c: Charger): ChargerInsert {
   // le défaut DB 0).
   if (c.priceBuyHt !== undefined && c.priceBuyHt !== null) {
     row.price_buy_ht = c.priceBuyHt;
+  }
+  // marketing_image_url : envoyé seulement si la migration 027 a tourné.
+  if (c.marketingImageUrl !== undefined && c.marketingImageUrl !== null && c.marketingImageUrl !== "") {
+    (row as any).marketing_image_url = c.marketingImageUrl;
   }
   return row;
 }

@@ -203,6 +203,10 @@ export type Charger = {
   installPriceHt: number;
   features: string[];
   image: string;
+  /** URL d'une image marketing haute résolution (rendu produit pro) affichée
+   *  grande sur la page "Fiche produit" du PDF site entreprise. Si absente,
+   *  on retombe sur `image`. Pilotée par l'ops/admin via /admin/chargers. */
+  marketingImageUrl?: string;
   /** Description longue (paragraphe) — éditable par l'admin, affichée dans le PDF. */
   description?: string;
   defaultLineItems?: LineItem[];

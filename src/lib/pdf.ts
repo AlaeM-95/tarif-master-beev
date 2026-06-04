@@ -1227,9 +1227,12 @@ async function drawSiteProductSheet(doc: jsPDF, sc: SelectedCharger) {
   const tableW = PAGE_W - M * 2 - photoW - 20;
 
   // Photo borne dans cadre rose clair
+  // Priorité : marketingImageUrl (image marketing HD éditable par l'ops) →
+  // fallback sur v.image standard.
   doc.setFillColor(253, 241, 238);
   doc.roundedRect(photoX, y, photoW, 200, 8, 8, "F");
-  await drawImageContain(doc, v.image, photoX + 12, y + 12, photoW - 24, 180);
+  const productImg = v.marketingImageUrl && v.marketingImageUrl.trim() ? v.marketingImageUrl : v.image;
+  await drawImageContain(doc, productImg, photoX + 12, y + 12, photoW - 24, 180);
 
   // Table specs
   const specs = [

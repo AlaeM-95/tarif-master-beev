@@ -933,7 +933,24 @@ function App() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-base">Sélection en cours</CardTitle>
-              <SaveIndicator watch={[selectedV, selectedC, client]} />
+              <div className="flex items-center gap-2">
+                {visibleCount > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 gap-1"
+                    onClick={() => {
+                      setSelectedV({});
+                      setSelectedC({});
+                      toast.success("Sélections vidées");
+                    }}
+                    title="Vider tous les véhicules et bornes sélectionnés"
+                  >
+                    <Trash2 className="w-3 h-3" /> Vider
+                  </Button>
+                )}
+                <SaveIndicator watch={[selectedV, selectedC, client]} />
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               {visibleCount === 0 ? (
@@ -1155,9 +1172,24 @@ function ImportTcoDialog({ onImport }: { onImport: (list: Vehicle[]) => void }) 
 }
 
 function ClientCard({ client, setClient }: { client: any; setClient: (c: any) => void }) {
+  const hasAnyField = Object.values(client).some((v) => typeof v === "string" && v.trim() !== "");
+  const reset = () => setClient({ company: "", contact: "", email: "", salesRep: "", salesRepEmail: "", salesRepPhone: "", date: "", notes: "" });
   return (
     <Card>
-      <CardHeader><CardTitle className="text-base">Informations client & commercial</CardTitle></CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-base">Informations client & commercial</CardTitle>
+        {hasAnyField && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 gap-1"
+            onClick={() => { reset(); toast.success("Informations client réinitialisées"); }}
+            title="Vider tous les champs client et commercial"
+          >
+            <Trash2 className="w-3 h-3" /> Réinitialiser
+          </Button>
+        )}
+      </CardHeader>
       <CardContent className="grid gap-4 sm:grid-cols-2">
         <Field label="Société *"><Input value={client.company} onChange={(e) => setClient({ ...client, company: e.target.value })} placeholder="Ex. BIG France" /></Field>
         <Field label="Contact client"><Input value={client.contact} onChange={(e) => setClient({ ...client, contact: e.target.value })} placeholder="Nom Prénom" /></Field>
@@ -2003,7 +2035,13 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { char
               currentUrl={charger.image}
               onChange={(url) => onUpdate({ image: url })}
               folder="chargers"
-              label="Photo de la borne"
+              label="Photo de la borne (vignette catalogue)"
+            />
+            <ImageUpload
+              currentUrl={charger.marketingImageUrl ?? ""}
+              onChange={(url) => onUpdate({ marketingImageUrl: url || undefined })}
+              folder="chargers-marketing"
+              label="Image marketing HD (page Fiche produit du PDF site)"
             />
             <LongTxtField
               label="Caractéristiques (une par ligne)"
