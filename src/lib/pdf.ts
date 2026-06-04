@@ -108,12 +108,16 @@ export function lineItemClientTotal(li: LineItem): number {
 // === CHARTE GRAPHIQUE BEEV 2026 ===
 // Les couleurs sont mutables : elles sont écrasées par les valeurs de pdf_settings
 // (Supabase) au début de chaque génération via applyPdfSettings().
-let INK: [number, number, number] = [17, 17, 17];           // #111111 noir principal
-const SUB: [number, number, number] = [95, 95, 100];        // #5F5F64 gris secondaire (non éditable)
-const RULE: [number, number, number] = [220, 218, 212];     // #DCDAD4 filets (non éditable)
-let BG: [number, number, number] = [250, 248, 244];         // #FAF8F4 fond cream
-let ACCENT: [number, number, number] = [53, 218, 118];      // #35DA76 vert Beev
-let LAVENDER: [number, number, number] = [56, 9, 234];      // #3809EA bleu/violet Beev
+// Charte Beev 2026 officielle :
+//   Black  #1D1D1D  · Beige #FCF9F2  · Rose #F4B8AA · Bleu #A5D2FF · Violet #D3CCD8
+// LAVENDER conservé comme alias historique mais pointe désormais sur le ROSE
+// (accent principal de la charte) pour compatibilité avec le code existant.
+let INK: [number, number, number] = [29, 29, 29];           // #1D1D1D Black charte
+const SUB: [number, number, number] = [95, 95, 100];        // #5F5F64 gris secondaire
+const RULE: [number, number, number] = [220, 218, 212];     // #DCDAD4 filets
+let BG: [number, number, number] = [252, 249, 242];         // #FCF9F2 Beige charte
+let ACCENT: [number, number, number] = [244, 184, 170];     // #F4B8AA Rose charte (était vert)
+let LAVENDER: [number, number, number] = [244, 184, 170];   // alias Rose pour code legacy
 
 // Contenus éditables depuis l'admin (chargés depuis pdf_settings + journey_steps).
 let PDF_CONTENT: {

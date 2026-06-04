@@ -4,16 +4,36 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Beev design system — light cream premium
- * Charte officielle synchronisée avec pdf_settings (admin) :
- *   Lavender   #3809EA  (primaire)
- *   Accent     #35DA76  (vert)
- *   Pink/Rose  #F4B8AA  (accent secondaire pêche)
- *   BG cream   #FAF8F4  (fond)
- *   Ink        #111111  (texte) */
+/* Beev design system — Charte officielle 2026
+ *
+ * Couleurs primaires
+ *   Black   #1D1D1D  R29  G29  B29   — texte + boutons + cards sombres
+ *   Beige   #FCF9F2  R252 G249 B242  — fond principal
+ *
+ * Couleurs secondaires (accents + fonds sombres)
+ *   Rose    #F4B8AA  R244 G184 B170  — accent principal
+ *     50%   #FADCD4
+ *     30%   #FCEAE5
+ *     20%   #FDF1EE
+ *   Bleu    #A5D2FF  R165 G210 B255  — variante information
+ *     50%   #D2E8FF
+ *     30%   #E4F2FF
+ *     20%   #EDF6FF
+ *   Violet  #D3CCD8  R211 G204 B216  — variante neutre
+ *     50%   #E9E6EC
+ *     30%   #F2F0F3
+ *     20%   #F6F5F7
+ *
+ * Typographie : Roobert (à défaut Inter en fallback)
+ *   Titre 1     60/60
+ *   Titre 2     38/46
+ *   Titre 3 b   22/26
+ *   Titre 3 l   22/28
+ *   Texte       15/22
+ */
 @theme inline {
-  --font-display: "Inter", system-ui, sans-serif;
-  --font-sans: "Inter", system-ui, sans-serif;
+  --font-display: "Roobert", "Inter", system-ui, sans-serif;
+  --font-sans: "Roobert", "Inter", system-ui, sans-serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -38,71 +58,108 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-beev-lavender: var(--beev-lavender);
-  --color-beev-pink: var(--beev-pink);
-  --color-beev-emerald: var(--beev-emerald);
-  --shadow-soft: 0 1px 2px oklch(0 0 0 / 0.04), 0 4px 16px oklch(0 0 0 / 0.06);
-  --shadow-elevated: 0 12px 40px -12px oklch(0 0 0 / 0.18);
+  /* Couleurs Beev nommées (utilisables via bg-beev-rose, text-beev-bleu...) */
+  --color-beev-black: var(--beev-black);
+  --color-beev-beige: var(--beev-beige);
+  --color-beev-rose: var(--beev-rose);
+  --color-beev-rose-50: var(--beev-rose-50);
+  --color-beev-rose-30: var(--beev-rose-30);
+  --color-beev-rose-20: var(--beev-rose-20);
+  --color-beev-bleu: var(--beev-bleu);
+  --color-beev-bleu-50: var(--beev-bleu-50);
+  --color-beev-bleu-30: var(--beev-bleu-30);
+  --color-beev-bleu-20: var(--beev-bleu-20);
+  --color-beev-violet: var(--beev-violet);
+  --color-beev-violet-50: var(--beev-violet-50);
+  --color-beev-violet-30: var(--beev-violet-30);
+  --color-beev-violet-20: var(--beev-violet-20);
+  --shadow-soft: 0 1px 2px rgba(29, 29, 29, 0.05), 0 4px 16px rgba(29, 29, 29, 0.08);
+  --shadow-elevated: 0 12px 40px -12px rgba(29, 29, 29, 0.18);
 }
 
 :root {
-  --radius: 0.5rem;
-  /* Beev light palette */
-  --background: #FAF8F4;      /* cream principal */
-  --foreground: #111111;      /* texte noir */
-  --card: #FFFFFF;             /* cards blanches sur fond cream */
-  --card-foreground: #111111;
+  --radius: 0.75rem; /* boutons pill style charte */
+
+  /* === Charte Beev 2026 — primaires === */
+  --background: #FCF9F2;       /* Beige */
+  --foreground: #1D1D1D;       /* Black */
+  --card: #FFFFFF;
+  --card-foreground: #1D1D1D;
   --popover: #FFFFFF;
-  --popover-foreground: #111111;
-  /* Primaire = lavande Beev */
-  --primary: #3809EA;
-  --primary-foreground: #FFFFFF;
-  --secondary: #F4EFE7;        /* cream foncé pour zones secondaires */
-  --secondary-foreground: #111111;
+  --popover-foreground: #1D1D1D;
+
+  /* Primaire = Black (boutons pill noirs avec texte blanc) */
+  --primary: #1D1D1D;
+  --primary-foreground: #FCF9F2;
+
+  /* Secondary = Rose 30% (encart accent doux) */
+  --secondary: #FCEAE5;
+  --secondary-foreground: #1D1D1D;
+
+  /* Muted = Beige légèrement plus foncé */
   --muted: #F4EFE7;
-  --muted-foreground: #5F5F64; /* gris secondaire (cf. SUB du PDF) */
-  --accent: #35DA76;           /* vert Beev */
-  --accent-foreground: #FFFFFF;
-  --destructive: #DC2626;      /* rouge alerte standard */
+  --muted-foreground: #5F5F64;
+
+  /* Accent = Rose principal */
+  --accent: #F4B8AA;
+  --accent-foreground: #1D1D1D;
+
+  --destructive: #DC2626;
   --destructive-foreground: #FFFFFF;
-  --border: #DCDAD4;           /* filet beige clair (cf. RULE du PDF) */
+
+  --border: #DCDAD4;
   --input: #DCDAD4;
-  --ring: #3809EA;
-  /* Couleurs Beev spécifiques (utilisables via bg-beev-lavender etc.) */
-  --beev-lavender: #3809EA;
-  --beev-pink: #F4B8AA;
-  --beev-emerald: #35DA76;
-  --sidebar: #FAF8F4;
-  --sidebar-foreground: #111111;
-  --sidebar-primary: #3809EA;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #F4EFE7;
-  --sidebar-accent-foreground: #111111;
-  --sidebar-border: #DCDAD4;
-  --sidebar-ring: #3809EA;
+  --ring: #1D1D1D;
+
+  /* === Couleurs Beev nommées === */
+  --beev-black:      #1D1D1D;
+  --beev-beige:      #FCF9F2;
+  --beev-rose:       #F4B8AA;
+  --beev-rose-50:    #FADCD4;
+  --beev-rose-30:    #FCEAE5;
+  --beev-rose-20:    #FDF1EE;
+  --beev-bleu:       #A5D2FF;
+  --beev-bleu-50:    #D2E8FF;
+  --beev-bleu-30:    #E4F2FF;
+  --beev-bleu-20:    #EDF6FF;
+  --beev-violet:     #D3CCD8;
+  --beev-violet-50:  #E9E6EC;
+  --beev-violet-30:  #F2F0F3;
+  --beev-violet-20:  #F6F5F7;
+
+  /* Sidebar : aligné sur background */
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--secondary);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
 }
 
 .dark {
-  /* Mode sombre conservé pour le futur — pour l'instant identique au light Beev
-   * pour éviter qu'un toggle .dark accidentel ne rebascule en thème Tesla noir.
-   * Si vous voulez ré-activer un dark mode, copiez ici la palette inversée. */
-  --background: #FAF8F4;
-  --foreground: #111111;
-  --card: #FFFFFF;
-  --card-foreground: #111111;
-  --primary: #3809EA;
-  --primary-foreground: #FFFFFF;
-  --secondary: #F4EFE7;
-  --secondary-foreground: #111111;
-  --muted: #F4EFE7;
-  --muted-foreground: #5F5F64;
-  --accent: #35DA76;
-  --accent-foreground: #FFFFFF;
+  /* Mode sombre Beev — fond Black + texte Beige
+   * Utilisé pour les sections "premium" / overlays */
+  --background: #1D1D1D;
+  --foreground: #FCF9F2;
+  --card: #2A2A2A;
+  --card-foreground: #FCF9F2;
+  --popover: #2A2A2A;
+  --popover-foreground: #FCF9F2;
+  --primary: #FCF9F2;
+  --primary-foreground: #1D1D1D;
+  --secondary: #3A3A3A;
+  --secondary-foreground: #FCF9F2;
+  --muted: #3A3A3A;
+  --muted-foreground: #B8B5AE;
+  --accent: #F4B8AA;
+  --accent-foreground: #1D1D1D;
   --destructive: #DC2626;
   --destructive-foreground: #FFFFFF;
-  --border: #DCDAD4;
-  --input: #DCDAD4;
-  --ring: #3809EA;
+  --border: #3A3A3A;
+  --input: #3A3A3A;
+  --ring: #FCF9F2;
 }
 
 @layer base {
@@ -113,21 +170,54 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.01em;
   }
   h1, h2, h3, h4 {
     font-family: var(--font-display);
     letter-spacing: -0.02em;
-    font-weight: 600;
+    font-weight: 700;
   }
+  /* Échelles typographiques Beev 2026 — utilisables via classes Tailwind
+   * arbitraires ou via .text-beev-h1 etc. */
+}
+
+/* Roobert (fallback Inter si non chargée) — chargement local depuis public/fonts */
+@font-face {
+  font-family: "Roobert";
+  src: url("/fonts/Roobert-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Roobert";
+  src: url("/fonts/Roobert-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Roobert";
+  src: url("/fonts/Roobert-SemiBold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Roobert";
+  src: url("/fonts/Roobert-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
 }
 
 html { scroll-behavior: smooth; }
 
-/* Scrollbar discrète sur fond cream */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+/* Scrollbar discrète sur fond beige */
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--color-background); }
 ::-webkit-scrollbar-thumb {
   background: var(--color-border);
-  border-radius: 3px;
+  border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-muted-foreground); }
