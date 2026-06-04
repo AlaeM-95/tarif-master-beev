@@ -56,9 +56,13 @@ type Props = {
   /** Inclure dans le PDF — toggle persisté indépendamment (par devis). */
   includeInPdf: boolean;
   setIncludeInPdf: (v: boolean) => void;
+  /** Suggestion de nbCollabs depuis les bornes domicile sélectionnées
+   *  (∑ quantity). Si différent de input.nbCollabs, le composant affiche
+   *  un encart avec un bouton "Appliquer" pour synchroniser. */
+  suggestedNbCollabs?: number;
 };
 
-export function B2B2ECalculator({ input, update, reset, includeInPdf, setIncludeInPdf }: Props) {
+export function B2B2ECalculator({ input, update, reset, includeInPdf, setIncludeInPdf, suggestedNbCollabs }: Props) {
   const [openDetails, setOpenDetails] = useState(false);
   const result = calculateB2B2ETco(input);
 
@@ -83,6 +87,25 @@ export function B2B2ECalculator({ input, update, reset, includeInPdf, setInclude
       </CardHeader>
 
       <CardContent className="space-y-4">
+        {/* Suggestion auto basée sur les bornes domicile sélectionnées */}
+        {suggestedNbCollabs !== undefined && suggestedNbCollabs > 0 && suggestedNbCollabs !== input.nbCollabs && (
+          <div className="rounded-md border border-[#3809EA]/30 bg-[#3809EA]/5 p-2 flex items-center justify-between gap-2 text-xs">
+            <span>
+              Vous avez sélectionné <strong>{suggestedNbCollabs}</strong> borne{suggestedNbCollabs > 1 ? "s" : ""} domicile —
+              actuellement <strong>{input.nbCollabs}</strong> collaborateur{input.nbCollabs > 1 ? "s" : ""} pris en compte ici.
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs flex-shrink-0"
+              onClick={() => update({ nbCollabs: suggestedNbCollabs })}
+            >
+              Appliquer {suggestedNbCollabs}
+            </Button>
+          </div>
+        )}
+
         {/* === BLOC RÉSULTAT EN GRAND === */}
         <div className="rounded-lg bg-gradient-to-br from-[#3809EA] to-[#5B3FFF] text-white p-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
           <ResultCell

@@ -2012,7 +2012,9 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
 
   // Prix remisé = (prix catalogue + options TTC) × (1 - remise%)
   // Les options s'ajoutent AVANT remise pour matcher le calcul AND.
-  const optionsTotalTtcCard = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0) * 1.2;
+  // sv.options sont saisies en TTC dans le panneau droit (convention UX —
+  // le nom du champ "unitHt" est legacy). On ne multiplie donc PAS par 1.2.
+  const optionsTotalTtcCard = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
   const priceBeforeDiscount = v.priceTtc + optionsTotalTtcCard;
   const discounted = priceBeforeDiscount * (1 - sv.discountPct / 100);
   let py = mainY + 22;
@@ -2274,10 +2276,10 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       doc.setTextColor(...LAVENDER);
       doc.text(lookupText(TEXTS, "vehicles", "vehicle_tco_fiscal_title", "CHARGES FISCALES ANNEXES (CALCUL BEEV 2026)"), M + 16, fiscalY + 12);
 
-      // Calcul TCO complet à la volée — intègre options + remise commerciale
+      // Calcul TCO complet à la volée — intègre options + remise commerciale.
+      // sv.options sont saisies en TTC dans le panneau droit (convention UX).
       const duree = sv.durationMonths / 12;
-      const optionsTotalHt = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
-      const optionsTotalTtc = optionsTotalHt * 1.2;
+      const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
       const tcoFull = calculateTcoFull(sv.vehicle, {
         dureeAnnees: duree,
         kmContrat: sv.kmPerYear * duree,
@@ -2653,8 +2655,9 @@ function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
 
   // Calcul TCO par véhicule via calculateTcoFull (utilise les paramètres
   // fiscaux Beev 2026 : malus CO2, malus poids, TVS, etc.)
+  // sv.options sont saisies en TTC dans le panneau droit.
   const rows = vehicles.map((sv) => {
-    const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0) * 1.2;
+    const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
     const contract: import("./tco-calculator").TcoContractParams = {
       dureeAnnees: sv.durationMonths / 12,
       kmContrat: (sv.kmPerYear * sv.durationMonths) / 12,
@@ -3059,10 +3062,9 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
 
   // Calcul TCO unifié via calculateTcoFull pour TOUS les véhicules (mêmes
   // hypothèses : prix catalogue + options - remise, barèmes 2026, etc.).
-  // Évite l'incohérence avec drawTcoDashboard qui utilisait calculateTcoFull
-  // alors que cette page utilisait un fallback différent.
+  // sv.options sont saisies en TTC dans le panneau droit.
   const tcos = vehicles.map((sv) => {
-    const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0) * 1.2;
+    const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
     const duree = sv.durationMonths / 12;
     const kmContrat = sv.kmPerYear * duree;
     const r = calculateTcoFull(sv.vehicle, {

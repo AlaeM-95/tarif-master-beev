@@ -903,9 +903,10 @@ function App() {
             </CatalogSection>
           )}
 
-          {/* Calculateur TCO B2B2E — apparaît en mode Bornes domicile, juste
-              après le catalogue des bornes. Le commercial saisit ses paramètres
-              et toggle "Inclure PDF" pour insérer une page dédiée. */}
+          {/* Calculateur TCO B2B2E — apparaît en mode Bornes domicile,
+              juste après le catalogue des bornes. Affiché en permanence
+              en mode home pour offrir l'estimation économique même avant
+              sélection. */}
           {projectType === "home" && (
             <B2B2ECalculator
               input={b2b2eInput}
@@ -913,6 +914,9 @@ function App() {
               reset={resetB2B2EInput}
               includeInPdf={b2b2eIncludeInPdf}
               setIncludeInPdf={setB2B2EIncludeInPdf}
+              suggestedNbCollabs={Object.values(selectedC)
+                .filter((sc) => sc.charger.deployment === "domicile")
+                .reduce((sum, sc) => sum + (sc.quantity || 1), 0)}
             />
           )}
 
@@ -1492,7 +1496,9 @@ function TcoCalculator({
       prixKwhPublic: energy.kWhPublic,
     };
     return Object.values(selectedV).map((sv) => {
-      const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0) * 1.2;
+      // sv.options sont saisies en TTC dans le panneau droit (la convention
+      // d'affichage utilisateur — le nom du champ "unitHt" est historique).
+      const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
       const r = calculateTcoFull(sv.vehicle, { ...contractParams, optionsTotalTtc, remisePctOverride: sv.discountPct }, sv.negotiatedMonthly);
       const tco100 = r.tcoParKm * 100;
       const lease100 = (r.loyerTotal / contractParams.kmContrat) * 100;
@@ -2351,9 +2357,15 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove }: { sv: SelectedVe
       )}
       {tab === "opt" && (
         <div className="rounded-md border bg-card p-2 space-y-2">
+          <div className="grid grid-cols-[1fr_50px_70px_24px] gap-1 items-center text-[9px] uppercase text-muted-foreground">
+            <span>Désignation</span>
+            <span className="text-center">Qté</span>
+            <span className="text-right">PU TTC</span>
+            <span></span>
+          </div>
           {sv.options.map((o, i) => (
             <div key={i} className="grid grid-cols-[1fr_50px_70px_24px] gap-1 items-center">
-              <Input value={o.label} onChange={(e) => setOpt(i, { label: e.target.value })} className="h-7 text-xs" />
+              <Input value={o.label} onChange={(e) => setOpt(i, { label: e.target.value })} className="h-7 text-xs" placeholder="Ex. Peinture métallisée" />
               <Input type="number" value={o.qty} onChange={(e) => setOpt(i, { qty: Number(e.target.value) })} className="h-7 text-xs" />
               <Input type="number" value={o.unitHt} onChange={(e) => setOpt(i, { unitHt: Number(e.target.value) })} className="h-7 text-xs" />
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => delOpt(i)}><Trash2 className="w-3 h-3" /></Button>
