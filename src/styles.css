@@ -4,7 +4,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Beev brand: cream background, deep black primary, lavender + coral accents */
+/* Tesla-style design system: dark premium, massive typography, full-bleed */
 @theme inline {
   --font-display: "Inter", system-ui, sans-serif;
   --font-sans: "Inter", system-ui, sans-serif;
@@ -32,70 +32,69 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-lavender: var(--lavender);
-  --color-coral: var(--coral);
-  --color-cream: var(--cream);
+  --color-tesla-blue: var(--tesla-blue);
+  --color-tesla-gray: var(--tesla-gray);
+  --color-tesla-surface: var(--tesla-surface);
   --shadow-soft: 0 1px 2px oklch(0 0 0 / 0.04), 0 4px 16px oklch(0 0 0 / 0.06);
   --shadow-elevated: 0 12px 40px -12px oklch(0 0 0 / 0.18);
 }
 
 :root {
-  --radius: 0.875rem;
-  /* Beev cream */
-  --background: oklch(0.965 0.018 85);
-  --foreground: oklch(0.15 0 0);
-  --cream: oklch(0.965 0.018 85);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.15 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.15 0 0);
-  /* Black primary like Beev CTA */
-  --primary: oklch(0.15 0 0);
-  --primary-foreground: oklch(0.98 0.01 85);
-  --secondary: oklch(0.93 0.015 85);
-  --secondary-foreground: oklch(0.15 0 0);
-  --muted: oklch(0.93 0.015 85);
-  --muted-foreground: oklch(0.45 0.01 85);
-  /* Lavender accent (header band on Beev) */
-  --lavender: oklch(0.82 0.06 295);
-  --coral: oklch(0.78 0.12 30);
-  --accent: oklch(0.88 0.05 295);
-  --accent-foreground: oklch(0.2 0.05 295);
-  --destructive: oklch(0.6 0.22 27);
-  --destructive-foreground: oklch(0.99 0 0);
-  --border: oklch(0.88 0.012 85);
-  --input: oklch(0.92 0.012 85);
-  --ring: oklch(0.15 0 0);
-  --sidebar: oklch(0.97 0.018 85);
-  --sidebar-foreground: oklch(0.15 0 0);
-  --sidebar-primary: oklch(0.15 0 0);
-  --sidebar-primary-foreground: oklch(0.98 0.01 85);
-  --sidebar-accent: oklch(0.92 0.04 295);
-  --sidebar-accent-foreground: oklch(0.2 0.05 295);
-  --sidebar-border: oklch(0.88 0.012 85);
-  --sidebar-ring: oklch(0.15 0 0);
+  --radius: 0.25rem;
+  /* Tesla dark palette */
+  --background: #000000;
+  --foreground: #ffffff;
+  --tesla-gray: #393c41;
+  --tesla-surface: #171a20;
+  --card: #171a20;
+  --card-foreground: #ffffff;
+  --popover: #171a20;
+  --popover-foreground: #ffffff;
+  /* Tesla blue accent */
+  --primary: #ffffff;
+  --primary-foreground: #000000;
+  --secondary: #171a20;
+  --secondary-foreground: #ffffff;
+  --muted: #171a20;
+  --muted-foreground: #777777;
+  --accent: #3e6ae1;
+  --accent-foreground: #ffffff;
+  --destructive: #e82127;
+  --destructive-foreground: #ffffff;
+  --border: #393c41;
+  --input: #393c41;
+  --ring: #3e6ae1;
+  --tesla-blue: #3e6ae1;
+  --sidebar: #000000;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #000000;
+  --sidebar-accent: #171a20;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #393c41;
+  --sidebar-ring: #3e6ae1;
 }
 
 .dark {
-  --background: oklch(0.15 0 0);
-  --foreground: oklch(0.96 0.01 85);
-  --card: oklch(0.2 0 0);
-  --card-foreground: oklch(0.96 0.01 85);
-  --popover: oklch(0.2 0 0);
-  --popover-foreground: oklch(0.96 0.01 85);
-  --primary: oklch(0.96 0.01 85);
-  --primary-foreground: oklch(0.15 0 0);
-  --secondary: oklch(0.25 0 0);
-  --secondary-foreground: oklch(0.96 0.01 85);
-  --muted: oklch(0.25 0 0);
-  --muted-foreground: oklch(0.7 0.01 85);
-  --accent: oklch(0.3 0.05 295);
-  --accent-foreground: oklch(0.96 0.01 85);
-  --destructive: oklch(0.65 0.22 27);
-  --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 14%);
-  --ring: oklch(0.96 0.01 85);
+  --background: #000000;
+  --foreground: #ffffff;
+  --card: #171a20;
+  --card-foreground: #ffffff;
+  --popover: #171a20;
+  --popover-foreground: #ffffff;
+  --primary: #ffffff;
+  --primary-foreground: #000000;
+  --secondary: #171a20;
+  --secondary-foreground: #ffffff;
+  --muted: #171a20;
+  --muted-foreground: #777777;
+  --accent: #3e6ae1;
+  --accent-foreground: #ffffff;
+  --destructive: #e82127;
+  --destructive-foreground: #ffffff;
+  --border: #393c41;
+  --input: #393c41;
+  --ring: #3e6ae1;
 }
 
 @layer base {
@@ -105,10 +104,28 @@
     color: var(--color-foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
   h1, h2, h3, h4 {
     font-family: var(--font-display);
     letter-spacing: -0.02em;
     font-weight: 600;
   }
+}
+
+/* Tesla smooth scroll + snap */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar — minimal Tesla style */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: #000000;
+}
+::-webkit-scrollbar-thumb {
+  background: #393c41;
+  border-radius: 2px;
 }
