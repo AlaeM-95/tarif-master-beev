@@ -2914,60 +2914,9 @@ function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: Energy
     y2 += 13;
   });
 
-  // Totaux flotte si plusieurs véhicules — bloc visible
-  if (rows.length > 1) {
-    y2 += 20;
-    const totFlotte = rows.reduce((acc, { sv, r, duree }) => {
-      const qty = sv.quantity || 1;
-      acc.loyer += r.loyerTotal * qty;
-      acc.energie += r.coutEnergie * qty;
-      acc.tvs += r.tvsTotal * qty;
-      acc.malus += (r.malusCO2 + r.malusPoids) * qty;
-      acc.fiscalite += (r.andAnnuel + r.partEmployeurAnnuelle) * duree * qty;
-      acc.tcoEmp += r.tcoEmployeurComplet * qty;
-      return acc;
-    }, { loyer: 0, energie: 0, tvs: 0, malus: 0, fiscalite: 0, tcoEmp: 0 });
-
-    const blockH = 90;
-    doc.setFillColor(...BG);
-    doc.rect(M, y2, PAGE_W - M * 2, blockH, "F");
-    doc.setFillColor(...LAVENDER);
-    doc.rect(M, y2, 4, blockH, "F");
-
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(...LAVENDER);
-    doc.text("TOTAUX FLOTTE", M + 16, y2 + 18);
-
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(8.5);
-    doc.setTextColor(...INK);
-    const sub = [
-      { l: "Loyer", v: eur(totFlotte.loyer) },
-      { l: "Énergie", v: eur(totFlotte.energie) },
-      { l: "TVS", v: eur(totFlotte.tvs) },
-      { l: "Malus", v: eur(totFlotte.malus) },
-      { l: "AND+AEN", v: eur(totFlotte.fiscalite) },
-    ];
-    const colsW = (PAGE_W - M * 2 - 32) / sub.length;
-    sub.forEach((s, i) => {
-      const cx = M + 16 + i * colsW;
-      doc.setFont(BRAND_FONT, "normal");
-      doc.setFontSize(7.5);
-      doc.setTextColor(...SUB);
-      doc.text(s.l.toUpperCase(), cx, y2 + 38);
-      doc.setFont(BRAND_FONT, "bold");
-      doc.setFontSize(11);
-      doc.setTextColor(...INK);
-      doc.text(s.v, cx, y2 + 54);
-    });
-
-    // Total final en bas — gros + lavande pour le coût employeur
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(...LAVENDER);
-    doc.text(`COÛT EMPLOYEUR COMPLET FLOTTE : ${eur(totFlotte.tcoEmp)}`, PAGE_W - M - 16, y2 + blockH - 14, { align: "right" });
-  }
+  // Bloc TOTAUX FLOTTE retiré sur demande utilisateur (il s'agit d'une
+  // comparaison entre véhicules pour aider le client à choisir, pas d'une
+  // flotte à commander en totalité).
 }
 
 // ============ TCO B2B2E — Bornes au domicile des collaborateurs ============
