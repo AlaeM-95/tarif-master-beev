@@ -1870,40 +1870,70 @@ function ConfirmDeleteButton({ label, onConfirm }: { label: string; onConfirm: (
 
 function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existingCategories = [], leaserOffers = [] }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Vehicle>) => void; onDelete?: () => void; existingCategories?: string[]; leaserOffers?: LeaserOffer[] }) {
   const [editing, setEditing] = useState(false);
+  // Couleur badge énergie (différencie visuellement les véhicules EL / PHEV / thermique)
+  const energyBadgeCls = vehicle.energy === "Électrique"
+    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+    : vehicle.energy === "Hybride Rechargeable"
+    ? "bg-blue-500/20 text-blue-300 border-blue-500/40"
+    : vehicle.energy === "Hybride" || vehicle.energy === "Mild Hybrid"
+    ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+    : "bg-zinc-500/20 text-zinc-300 border-zinc-500/40";
   return (
-    <Card className={`overflow-hidden transition-all duration-300 ${selected ? "ring-1 ring-white/30" : "hover:border-[#5c5f66]"}`}>
-      <div className="aspect-[16/10] bg-[#0d0f12] overflow-hidden relative group">
+    <Card className={`overflow-hidden transition-all duration-300 ${selected ? "ring-2 ring-[#3e6ae1]/60 border-[#3e6ae1]" : "hover:border-[#5c5f66] hover:shadow-lg"}`}>
+      <div className="aspect-[4/3] bg-gradient-to-br from-[#0d0f12] to-[#1a1d23] overflow-hidden relative group">
         <img src={vehicle.image} alt={`${vehicle.brand} ${vehicle.model}`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
-        {vehicle.custom && <Badge className="absolute top-2 left-2 bg-white text-black">Custom</Badge>}
-        {selected && <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-white text-black grid place-content-center text-xs font-bold">✓</div>}
+        {/* Overlay badges en haut */}
+        <div className="absolute top-2 left-2 flex flex-col gap-1.5">
+          <Badge className={`text-[10px] font-semibold border ${energyBadgeCls}`}>{vehicle.energy}</Badge>
+          {vehicle.shortlist && <Badge className="bg-[#3e6ae1] text-white text-[10px] border-0">★ Recommandé</Badge>}
+          {vehicle.custom && <Badge className="bg-white text-black text-[10px]">Custom</Badge>}
+          {vehicle.availableStock !== undefined && vehicle.availableStock > 0 && (
+            <Badge className="bg-emerald-600 text-white text-[10px] border-0">Stock × {vehicle.availableStock}</Badge>
+          )}
+        </div>
+        {selected && (
+          <div className="absolute top-2 right-2 w-8 h-8 rounded-full bg-[#3e6ae1] text-white grid place-content-center text-sm font-bold shadow-lg">
+            ✓
+          </div>
+        )}
+        {/* Bandeau loyer mensuel en bas de l'image (overlay) */}
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-3 pt-8">
+          <p className="text-[10px] text-white/70 uppercase tracking-wide">Loyer mensuel TTC</p>
+          <p className="text-xl font-bold text-white leading-tight">{fmtEur(vehicle.monthlyLld)}<span className="text-xs text-white/60 font-normal ml-1">/mois</span></p>
+        </div>
       </div>
       <CardContent className="p-4 space-y-3">
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-semibold leading-tight text-white text-base">{vehicle.brand} {vehicle.model}</h3>
-              <Badge variant="outline" className="text-[10px] border-[#393c41] text-[#aaaaaa]">{vehicle.energy}</Badge>
-            </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="font-bold leading-tight text-white text-base truncate">{vehicle.brand} {vehicle.model}</h3>
             <p className="text-xs text-[#777777] truncate mt-0.5">{vehicle.version}</p>
           </div>
-          <Checkbox checked={selected} onCheckedChange={onToggle} className="mt-1 border-[#393c41] data-[state=checked]:bg-white data-[state=checked]:text-black" />
         </div>
-        <div className="grid grid-cols-3 gap-2 text-[11px] text-[#777777]">
+        <div className="grid grid-cols-3 gap-2 text-[11px] text-[#aaaaaa]">
           <Spec icon={<Gauge className="w-3 h-3" />} v={vehicle.rangeWltp ? `${vehicle.rangeWltp} km` : `${vehicle.co2} g/km`} />
           <Spec icon={<Battery className="w-3 h-3" />} v={vehicle.batteryKwh ? `${vehicle.batteryKwh} kWh` : "—"} />
           <Spec icon={<Zap className="w-3 h-3" />} v={`${vehicle.powerHp} ch`} />
         </div>
-        <div className="flex items-end justify-between pt-1">
+        <div className="flex items-end justify-between pt-1 border-t border-[#393c41]/50 pt-3">
           <div>
-            <p className="text-[10px] text-[#777777] uppercase tracking-wide">À partir de</p>
-            <p className="font-semibold text-white text-lg">{fmtEur(vehicle.priceTtc)} <span className="text-xs text-[#777777] font-normal">TTC</span></p>
-            <p className="text-xs text-[#3e6ae1] font-medium">{fmtEur(vehicle.monthlyLld)} TTC/mois</p>
+            <p className="text-[10px] text-[#777777] uppercase tracking-wide">Prix catalogue TTC</p>
+            <p className="font-semibold text-white text-sm">{fmtEur(vehicle.priceTtc)}</p>
           </div>
           <div className="flex items-center gap-1">
             {onDelete && <ConfirmDeleteButton label={`${vehicle.brand} ${vehicle.model}`} onConfirm={onDelete} />}
             {onUpdate && <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)} className="text-[#aaaaaa] hover:text-white hover:bg-white/5">{editing ? "OK" : "Éditer"}</Button>}
           </div>
         </div>
+        {/* CTA explicite Ajouter/Retirer */}
+        <Button
+          type="button"
+          onClick={onToggle}
+          variant={selected ? "secondary" : "default"}
+          className={`w-full gap-2 ${selected ? "bg-zinc-700 hover:bg-zinc-600 text-white" : "bg-[#3e6ae1] hover:bg-[#2c5dd9] text-white"}`}
+          size="sm"
+        >
+          {selected ? (<><X className="w-4 h-4" /> Retirer de la sélection</>) : (<><Plus className="w-4 h-4" /> Ajouter à la sélection</>)}
+        </Button>
         {/* Badges loueurs : 1 par offre disponible (durée / km / mensuel) */}
         {leaserOffers.length > 0 && (
           <div className="flex flex-wrap gap-1 pt-2 border-t border-[#393c41]/50">
@@ -1996,38 +2026,63 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
 
 function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { charger: Charger; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Charger>) => void; onDelete?: () => void }) {
   const [editing, setEditing] = useState(false);
+  const isHome = charger.deployment === "domicile";
   return (
-    <Card className={`overflow-hidden transition-all duration-300 ${selected ? "ring-1 ring-white/30" : "hover:border-[#5c5f66]"}`}>
-      <div className="aspect-[16/10] bg-[#0d0f12] overflow-hidden relative group">
-        <img src={charger.image} alt={`${charger.brand} ${charger.model}`} className="w-full h-full object-contain p-3 transition-transform duration-500 group-hover:scale-105" loading="lazy" />
-        {charger.custom && <Badge className="absolute top-2 left-2 bg-white text-black">Custom</Badge>}
-        {selected && <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-white text-black grid place-content-center text-xs font-bold">✓</div>}
+    <Card className={`overflow-hidden transition-all duration-300 ${selected ? "ring-2 ring-[#3e6ae1]/60 border-[#3e6ae1]" : "hover:border-[#5c5f66] hover:shadow-lg"}`}>
+      <div className="aspect-[4/3] bg-gradient-to-br from-[#0d0f12] to-[#1a1d23] overflow-hidden relative group">
+        <img src={charger.image} alt={`${charger.brand} ${charger.model}`} className="w-full h-full object-contain p-4 transition-transform duration-500 group-hover:scale-105" loading="lazy" />
+        {/* Overlay badges */}
+        <div className="absolute top-2 left-2 flex flex-col gap-1.5">
+          <Badge className={`text-[10px] font-semibold border ${charger.powerKw >= 22 ? "bg-amber-500/20 text-amber-300 border-amber-500/40" : "bg-blue-500/20 text-blue-300 border-blue-500/40"}`}>
+            {charger.powerKw} kW {charger.powerKw >= 22 ? "triphasé" : "monophasé"}
+          </Badge>
+          <Badge className={`text-[10px] border ${isHome ? "bg-purple-500/20 text-purple-300 border-purple-500/40" : "bg-rose-500/20 text-rose-300 border-rose-500/40"}`}>
+            {isHome ? "Domicile B2B2E" : "Site entreprise"}
+          </Badge>
+          {charger.custom && <Badge className="bg-white text-black text-[10px]">Custom</Badge>}
+        </div>
+        {selected && (
+          <div className="absolute top-2 right-2 w-8 h-8 rounded-full bg-[#3e6ae1] text-white grid place-content-center text-sm font-bold shadow-lg">
+            ✓
+          </div>
+        )}
+        {/* Bandeau prix en bas de l'image (overlay) */}
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-3 pt-8">
+          <p className="text-[10px] text-white/70 uppercase tracking-wide">{isHome ? "Forfait clé en main HT" : "Borne HT"}</p>
+          <p className="text-xl font-bold text-white leading-tight">{fmtEur(charger.priceHt)}
+            {charger.installPriceHt > 0 && <span className="text-xs text-white/60 font-normal ml-2">+ pose ~{fmtEur(charger.installPriceHt)}</span>}
+          </p>
+        </div>
       </div>
       <CardContent className="p-4 space-y-3">
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-semibold leading-tight text-white text-base">{charger.brand} {charger.model}</h3>
-              <Badge variant="outline" className="text-[10px] border-[#393c41] text-[#aaaaaa]">{charger.powerKw} kW</Badge>
-            </div>
-            <p className="text-xs text-[#777777]">{charger.type}</p>
+          <div className="min-w-0 flex-1">
+            <h3 className="font-bold leading-tight text-white text-base truncate">{charger.brand} {charger.model}</h3>
+            <p className="text-xs text-[#777777] truncate mt-0.5">{charger.type}</p>
           </div>
-          <Checkbox checked={selected} onCheckedChange={onToggle} className="mt-1 border-[#393c41] data-[state=checked]:bg-white data-[state=checked]:text-black" />
         </div>
-        <ul className="text-xs text-[#777777] space-y-1">
-          {charger.features.slice(0, 4).map((f, i) => <li key={i} className="flex gap-1.5"><Plus className="w-3 h-3 mt-0.5 text-[#3e6ae1]" />{f}</li>)}
+        <ul className="text-xs text-[#aaaaaa] space-y-1">
+          {charger.features.slice(0, 4).map((f, i) => (
+            <li key={i} className="flex gap-1.5 items-start">
+              <span className="text-[#3e6ae1] mt-0.5">✓</span>
+              <span className="leading-tight">{f}</span>
+            </li>
+          ))}
         </ul>
-        <div className="flex items-end justify-between pt-1">
-          <div>
-            <p className="text-[10px] text-[#777777] uppercase tracking-wide">{charger.deployment === "domicile" ? "Forfait clé en main HT" : "Borne HT"}</p>
-            <p className="font-semibold text-white text-lg">{fmtEur(charger.priceHt)}</p>
-            {charger.installPriceHt > 0 && <p className="text-xs text-[#3e6ae1]">+ pose ~{fmtEur(charger.installPriceHt)} HT</p>}
-          </div>
-          <div className="flex items-center gap-1">
-            {onDelete && <ConfirmDeleteButton label={`${charger.brand} ${charger.model}`} onConfirm={onDelete} />}
-            {onUpdate && <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)} className="text-[#aaaaaa] hover:text-white hover:bg-white/5">{editing ? "OK" : "Éditer"}</Button>}
-          </div>
+        <div className="flex items-center justify-end gap-1 pt-1 border-t border-[#393c41]/50 pt-3">
+          {onDelete && <ConfirmDeleteButton label={`${charger.brand} ${charger.model}`} onConfirm={onDelete} />}
+          {onUpdate && <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)} className="text-[#aaaaaa] hover:text-white hover:bg-white/5">{editing ? "OK" : "Éditer"}</Button>}
         </div>
+        {/* CTA explicite Ajouter / Retirer */}
+        <Button
+          type="button"
+          onClick={onToggle}
+          variant={selected ? "secondary" : "default"}
+          className={`w-full gap-2 ${selected ? "bg-zinc-700 hover:bg-zinc-600 text-white" : "bg-[#3e6ae1] hover:bg-[#2c5dd9] text-white"}`}
+          size="sm"
+        >
+          {selected ? (<><X className="w-4 h-4" /> Retirer de la sélection</>) : (<><Plus className="w-4 h-4" /> Ajouter à la sélection</>)}
+        </Button>
         {editing && onUpdate && (
           <div className="space-y-2 pt-2 border-t border-[#393c41]/50">
             <div className="grid grid-cols-2 gap-2">
