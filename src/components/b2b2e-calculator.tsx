@@ -7,7 +7,7 @@
 // pour rester cohérents entre les sessions.
 
 import { useEffect, useState } from "react";
-import { Leaf, Calculator, Sparkles, ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
+import { Leaf, Calculator, Sparkles, ChevronDown, ChevronUp, RotateCcw, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -106,56 +106,76 @@ export function B2B2ECalculator({ input, update, reset, includeInPdf, setInclude
           </div>
         )}
 
-        {/* === BLOC RÉSULTAT EN GRAND === */}
-        <div className="rounded-lg bg-gradient-to-br from-[#3809EA] to-[#5B3FFF] text-white p-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <ResultCell
-            label="ÉCONOMIE / COLLAB / AN"
-            value={fmtEur(result.economieParCollabParAn)}
-            highlight
-          />
-          <ResultCell label="ÉCONOMIE FLOTTE / AN" value={fmtEur(result.economieFlotteAnnuelle)} />
-          <ResultCell
-            label={`SUR ${input.dureeAnnees} ANS`}
-            value={fmtEur(result.economieFlotteTotale)}
-          />
-          <ResultCell label="GAIN" value={fmtPct(result.economiePct)} suffix="vs thermique" />
+        {/* === BANDEAU ÉCONOMIE GÉANT === */}
+        <div className="rounded-xl bg-gradient-to-br from-[#3809EA] via-[#4F2DF5] to-[#5B3FFF] text-white p-6 sm:p-8 text-center shadow-lg">
+          <p className="text-xs uppercase tracking-widest text-white/70 mb-2">Votre flotte économise</p>
+          <p className="text-4xl sm:text-5xl font-bold leading-none">{fmtEur(result.economieFlotteAnnuelle)}<span className="text-2xl sm:text-3xl font-normal ml-1">/an</span></p>
+          <p className="text-sm text-white/80 mt-3">
+            sur {input.dureeAnnees} ans de contrat = <strong>{fmtEur(result.economieFlotteTotale)}</strong> économisés au total
+            <span className="hidden sm:inline"> · soit {fmtPct(result.economiePct)} moins cher que le thermique</span>
+          </p>
         </div>
 
-        {/* Ligne secondaire : ROI + CO2 évité */}
-        <div className="grid grid-cols-2 gap-3 text-xs">
-          <div className="rounded-md border border-[#3809EA]/20 bg-[#3809EA]/5 p-3">
-            <p className="text-[10px] uppercase text-muted-foreground tracking-wide">ROI investissement borne</p>
-            <p className="text-lg font-bold text-[#3809EA] mt-1">
-              {result.roiMois > 0 && result.roiMois < 120 ? `${result.roiMois.toFixed(0)} mois` : "—"}
-            </p>
-            <p className="text-[10px] text-muted-foreground">avant amortissement</p>
+        {/* === COMPARAISON CÔTE À CÔTE Beev vs Thermique === */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-lg border-2 border-[#3809EA]/30 bg-[#3809EA]/5 p-3 sm:p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] uppercase font-bold text-[#3809EA] tracking-wide">Solution Beev</p>
+              <Sparkles className="w-3 h-3 text-[#3809EA]" />
+            </div>
+            <ul className="text-xs space-y-1 text-foreground">
+              <li className="flex gap-1.5"><span className="text-[#3809EA] font-bold">✓</span> Recharge domicile</li>
+              <li className="flex gap-1.5"><span className="text-[#3809EA] font-bold">✓</span> Itinérance kWh public</li>
+              <li className="flex gap-1.5"><span className="text-[#3809EA] font-bold">✓</span> Supervision Home Charging</li>
+              <li className="flex gap-1.5"><span className="text-[#3809EA] font-bold">✓</span> Borne installée incluse</li>
+            </ul>
+            <div className="pt-2 border-t border-[#3809EA]/20">
+              <p className="text-[10px] uppercase text-muted-foreground">Total {input.dureeAnnees} ans</p>
+              <p className="text-lg sm:text-xl font-bold text-[#3809EA]">{fmtEur(result.coutBeevFlotteTotal)}</p>
+            </div>
           </div>
-          <div className="rounded-md border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/20 p-3">
-            <p className="text-[10px] uppercase text-muted-foreground tracking-wide flex items-center gap-1">
-              <Leaf className="w-3 h-3" /> CO₂ évité sur la durée
-            </p>
-            <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400 mt-1">
-              {result.co2EviteTonnes.toFixed(1)} t
-            </p>
-            <p className="text-[10px] text-muted-foreground">estimation 135 g CO₂/km thermique évité</p>
+
+          <div className="rounded-lg border-2 border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/10 p-3 sm:p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] uppercase font-bold text-amber-700 dark:text-amber-400 tracking-wide">Solution Thermique</p>
+              <AlertCircle className="w-3 h-3 text-amber-600" />
+            </div>
+            <ul className="text-xs space-y-1 text-foreground">
+              <li className="flex gap-1.5"><span className="text-amber-700 font-bold">⚠</span> Carburant SP95 / Diesel</li>
+              <li className="flex gap-1.5"><span className="text-amber-700 font-bold">⚠</span> Pas d'optimisation</li>
+              <li className="flex gap-1.5"><span className="text-amber-700 font-bold">⚠</span> Émissions CO2 directes</li>
+              <li className="flex gap-1.5"><span className="text-amber-700 font-bold">⚠</span> Volatilité prix essence</li>
+            </ul>
+            <div className="pt-2 border-t border-amber-500/20">
+              <p className="text-[10px] uppercase text-muted-foreground">Total {input.dureeAnnees} ans</p>
+              <p className="text-lg sm:text-xl font-bold text-amber-700 dark:text-amber-400">{fmtEur(result.coutCarbFlotteTotal)}</p>
+            </div>
           </div>
+        </div>
+
+        {/* === 4 KPIs SECONDAIRES === */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <KpiCell label="Économie / collab / an" value={fmtEur(result.economieParCollabParAn)} accent="lavender" />
+          <KpiCell label="ROI borne" value={result.roiMois > 0 && result.roiMois < 120 ? `${result.roiMois.toFixed(0)} mois` : "—"} accent="lavender" />
+          <KpiCell label="CO2 évité" value={`${result.co2EviteTonnes.toFixed(1)} t`} accent="emerald" icon={<Leaf className="w-3 h-3" />} />
+          <KpiCell label="Gain vs thermique" value={fmtPct(result.economiePct)} accent="emerald" />
         </div>
 
         {/* === INPUTS PRINCIPAUX === */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t">
           <Param label="Nb collaborateurs" value={input.nbCollabs} onChange={(n) => update({ nbCollabs: n })} step={1} />
           <Param label="Durée (années)" value={input.dureeAnnees} onChange={(n) => update({ dureeAnnees: n })} step={1} />
           <Param label="Km / an / collab" value={input.kmParAnParCollab} onChange={(n) => update({ kmParAnParCollab: n })} step={1000} />
           <Param label="Mix domicile %" value={input.mixDomicilePct} onChange={(n) => update({ mixDomicilePct: n })} step={5} suffix="%" />
         </div>
 
-        {/* === BLOC DÉPLIABLE — Hypothèses détaillées === */}
+        {/* === BLOC DÉPLIABLE — Hypothèses détaillées (replié par défaut) === */}
         <button
           type="button"
           onClick={() => setOpenDetails((v) => !v)}
           className="w-full flex items-center justify-between text-xs text-muted-foreground hover:text-foreground border-t pt-3"
         >
-          <span className="font-semibold">Hypothèses détaillées</span>
+          <span className="font-semibold">Hypothèses détaillées (énergie, supervision, invest)</span>
           {openDetails ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
         </button>
 
@@ -171,20 +191,20 @@ export function B2B2ECalculator({ input, update, reset, includeInPdf, setInclude
               <Param label="Invest borne / collab HT" value={input.investBorneParCollabHt} onChange={(n) => update({ investBorneParCollabHt: n })} step={100} />
             </div>
 
-            {/* Détail comparaison côte à côte */}
+            {/* Détail décomposition Beev */}
             <div className="grid grid-cols-2 gap-3 text-xs">
               <DetailBlock
-                title="Solution Beev (recharge domicile + itinérance)"
+                title="Décomposition Beev"
                 accent="text-[#3809EA]"
                 lines={[
                   ["Énergie élec totale", fmtEur(result.energieBeevFlotteTotale)],
-                  ["Supervision Beev Home Charging", fmtEur(result.supervisionFlotteTotale)],
-                  ["Investissement bornes (amorti)", fmtEur(result.investBorneFlotte)],
+                  ["Supervision Home Charging", fmtEur(result.supervisionFlotteTotale)],
+                  ["Investissement bornes", fmtEur(result.investBorneFlotte)],
                   ["TOTAL", fmtEur(result.coutBeevFlotteTotal), true],
                 ]}
               />
               <DetailBlock
-                title="Solution thermique (référence)"
+                title="Décomposition thermique"
                 accent="text-amber-600"
                 lines={[
                   ["Carburant total", fmtEur(result.coutCarbFlotteTotal)],
@@ -209,6 +229,20 @@ export function B2B2ECalculator({ input, update, reset, includeInPdf, setInclude
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function KpiCell({ label, value, accent, icon }: { label: string; value: string; accent: "lavender" | "emerald"; icon?: React.ReactNode }) {
+  const colorCls = accent === "lavender"
+    ? "border-[#3809EA]/30 bg-[#3809EA]/5 text-[#3809EA]"
+    : "border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400";
+  return (
+    <div className={`rounded-md border ${colorCls} p-2.5`}>
+      <p className="text-[9px] uppercase text-muted-foreground tracking-wide flex items-center gap-1">
+        {icon}{label}
+      </p>
+      <p className="text-base sm:text-lg font-bold mt-0.5">{value}</p>
+    </div>
   );
 }
 
