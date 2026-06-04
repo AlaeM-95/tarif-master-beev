@@ -514,6 +514,12 @@ export async function generateProposalPdf(opts: {
     doc.addPage();
     drawHeader(doc, client, "vehicles");
     drawTcoDashboard(doc, v, energy);
+    // 1bis) Tableau détaillé : 1 ligne par véhicule avec TOUTES les composantes
+    // (Loyer / Énergie / TVS / Malus CO2 / Malus poids / AND / AEN / TCO total /
+    // Coût employeur complet) pour vérification ligne par ligne.
+    doc.addPage();
+    drawHeader(doc, client, "vehicles");
+    drawTcoDetailedTable(doc, v, energy);
     // 2) Page comparaison classique (ranking + écart max) en détail
     doc.addPage();
     drawHeader(doc, client, "vehicles");
@@ -2185,7 +2191,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       ...(PDF_CFG.showVehicleConsumption
         ? [[v.energy === "Électrique" || v.energy === "Hybride Rechargeable" ? "Consommation" : "Consommation moyenne", v.energy === "Électrique" ? `${v.consumption} kWh/100 km` : `${v.consumption} L/100 km`]]
         : []),
-      ...(PDF_CFG.showVehicleCo2 ? [["CO₂", `${v.co2} g/km`]] : []),
+      ...(PDF_CFG.showVehicleCo2 ? [["CO2", `${v.co2} g/km`]] : []),
       ...(PDF_CFG.showVehicleFiscalHp ? [["Puissance fiscale", `${v.fiscalHp} CV`]] : []),
       ...(PDF_CFG.showVehicleEnvScore && v.envScore !== undefined ? [["Score environnemental", `${v.envScore} / 100`]] : []),
     ],
@@ -2297,12 +2303,12 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       // sur la durée du contrat. Garantit la cohérence avec le tcoTotal affiché.
       const tcoEmployeur = tcoTotal + andAnnuel * duree + partEmpAnnuelle * duree;
 
-      // Ligne 1 : 3 colonnes (Malus CO₂, Malus poids, TVS contrat).
+      // Ligne 1 : 3 colonnes (Malus CO2, Malus poids, TVS contrat).
       // Couleur orange si valeur > 0 pour signaler la charge à l'achat.
       const ORANGE: [number, number, number] = [217, 119, 6]; // amber-600
       const row1Y = fiscalY + 22;
       const row1 = [
-        { label: "MALUS CO₂", value: tcoFull.malusCO2, formatted: eur(tcoFull.malusCO2) },
+        { label: "MALUS CO2", value: tcoFull.malusCO2, formatted: eur(tcoFull.malusCO2) },
         { label: "MALUS POIDS", value: tcoFull.malusPoids, formatted: eur(tcoFull.malusPoids) },
         { label: `TVS (${duree} ANS)`, value: tvsTotal, formatted: eur(tvsTotal) },
       ];
@@ -2836,6 +2842,159 @@ function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
   );
 }
 
+// ============ TABLEAU DÉTAILLÉ TCO PAR VÉHICULE ============
+// Page dédiée listant pour chaque véhicule sélectionné toutes les composantes
+// du TCO et des charges fiscales annexes : Loyer / Énergie / TVS / Malus CO2 /
+// Malus poids / AND (×durée) / AEN employeur (×durée) / TCO total /
+// TCO employeur complet. Permet au commercial et au client de vérifier
+// chaque ligne du calcul.
+function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams) {
+  let y = 116;
+  const PINK: [number, number, number] = [244, 184, 170];
+  doc.setFillColor(...PINK);
+  doc.rect(M, y - 8, 22, 2, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text("ANALYSE TCO · DÉTAIL DES COMPOSANTES", M + 30, y - 4);
+  y += 14;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(26);
+  doc.setTextColor(...INK);
+  doc.text("Tableau de décomposition du TCO", M, y + 18);
+  y += 50;
+
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...SUB);
+  const intro = "Chaque composante du coût total de possession est détaillée par véhicule sur la durée du contrat. Les valeurs intègrent les options et la remise commerciale négociée.";
+  const introL = doc.splitTextToSize(intro, PAGE_W - M * 2);
+  doc.text(introL, M, y);
+  y += introL.length * 13 + 16;
+
+  // Calcul pour chaque véhicule
+  const rows = vehicles.map((sv) => {
+    const duree = sv.durationMonths / 12;
+    const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
+    const r = calculateTcoFull(sv.vehicle, {
+      dureeAnnees: duree,
+      kmContrat: sv.kmPerYear * duree,
+      prixEssenceLitre: e.fuelPriceL,
+      prixKwhDomicile: e.kWhHome,
+      prixKwhPublic: e.kWhPublic,
+      optionsTotalTtc,
+      remisePctOverride: sv.discountPct,
+    }, sv.negotiatedMonthly);
+    return { sv, r, duree };
+  });
+
+  // Tableau autoTable — 10 colonnes
+  autoTable(doc, {
+    startY: y,
+    theme: "plain",
+    head: [[
+      "VÉHICULE",
+      "LOYER TOTAL",
+      "ÉNERGIE",
+      "TVS",
+      "MALUS CO2",
+      "MALUS POIDS",
+      "AND (×DURÉE)",
+      "AEN EMPL. (×DURÉE)",
+      "TCO TOTAL",
+      "COÛT EMPL. COMPLET",
+    ]],
+    body: rows.map(({ sv, r, duree }) => [
+      { content: `${sv.vehicle.brand} ${sv.vehicle.model}\n${sv.durationMonths} mois · ${(sv.kmPerYear / 1000).toFixed(0)}k km/an`, styles: { fontStyle: "bold" as any, fontSize: 8 } },
+      { content: eur(r.loyerTotal), styles: { halign: "right" as any } },
+      { content: eur(r.coutEnergie), styles: { halign: "right" as any } },
+      { content: eur(r.tvsTotal), styles: { halign: "right" as any, textColor: r.tvsTotal > 0 ? [217, 119, 6] : SUB } },
+      { content: eur(r.malusCO2), styles: { halign: "right" as any, textColor: r.malusCO2 > 0 ? [217, 119, 6] : SUB } },
+      { content: eur(r.malusPoids), styles: { halign: "right" as any, textColor: r.malusPoids > 0 ? [217, 119, 6] : SUB } },
+      { content: eur(r.andAnnuel * duree), styles: { halign: "right" as any } },
+      { content: eur(r.partEmployeurAnnuelle * duree), styles: { halign: "right" as any } },
+      { content: eur(r.tcoTotal), styles: { halign: "right" as any, fontStyle: "bold" as any } },
+      { content: eur(r.tcoEmployeurComplet), styles: { halign: "right" as any, fontStyle: "bold" as any, textColor: LAVENDER } },
+    ]),
+    headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 7, fontStyle: "bold", font: BRAND_FONT, cellPadding: 4, halign: "center" as any },
+    bodyStyles: { fontSize: 8, cellPadding: 4, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
+    alternateRowStyles: { fillColor: [252, 251, 248] as [number, number, number] },
+    columnStyles: {
+      0: { cellWidth: 95 },
+      1: { cellWidth: 50 },
+      2: { cellWidth: 45 },
+      3: { cellWidth: 40 },
+      4: { cellWidth: 45 },
+      5: { cellWidth: 45 },
+      6: { cellWidth: 50 },
+      7: { cellWidth: 60 },
+      8: { cellWidth: 50 },
+      9: { cellWidth: "auto" },
+    },
+    margin: { left: M, right: M },
+  });
+  let y2 = (doc as any).lastAutoTable.finalY + 20;
+
+  // Légende couleurs
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...SUB);
+  doc.text("· Valeurs en orange : charges fiscales à valider (malus / TVS non nuls)", M, y2);
+  y2 += 12;
+  doc.text("· Coût employeur complet = TCO total + AND × durée + part employeur AEN × durée", M, y2);
+  y2 += 12;
+  doc.text("· Loyer total = loyer mensuel négocié × nombre de mois", M, y2);
+  y2 += 12;
+  doc.text("· Énergie = conso véhicule × km contrat × prix carburant ou kWh (mix 85% domicile / 15% public)", M, y2);
+  y2 += 12;
+
+  // Totaux flotte si plusieurs véhicules
+  if (rows.length > 1) {
+    y2 += 14;
+    const totFlotte = rows.reduce((acc, { sv, r, duree }) => {
+      const qty = sv.quantity || 1;
+      acc.loyer += r.loyerTotal * qty;
+      acc.energie += r.coutEnergie * qty;
+      acc.tvs += r.tvsTotal * qty;
+      acc.malusCO2 += r.malusCO2 * qty;
+      acc.malusPoids += r.malusPoids * qty;
+      acc.and += r.andAnnuel * duree * qty;
+      acc.aen += r.partEmployeurAnnuelle * duree * qty;
+      acc.tco += r.tcoTotal * qty;
+      acc.tcoEmp += r.tcoEmployeurComplet * qty;
+      return acc;
+    }, { loyer: 0, energie: 0, tvs: 0, malusCO2: 0, malusPoids: 0, and: 0, aen: 0, tco: 0, tcoEmp: 0 });
+
+    doc.setFillColor(...BG);
+    doc.rect(M, y2, PAGE_W - M * 2, 60, "F");
+    doc.setFillColor(...LAVENDER);
+    doc.rect(M, y2, 4, 60, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(...LAVENDER);
+    doc.text("TOTAUX FLOTTE", M + 14, y2 + 16);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...SUB);
+    const items = [
+      [`Loyer total : ${eur(totFlotte.loyer)}`, `Énergie : ${eur(totFlotte.energie)}`, `TVS : ${eur(totFlotte.tvs)}`],
+      [`Malus CO2 : ${eur(totFlotte.malusCO2)}`, `Malus poids : ${eur(totFlotte.malusPoids)}`, `AND × durée : ${eur(totFlotte.and)}`],
+    ];
+    items.forEach((row, i) => {
+      row.forEach((cell, j) => {
+        doc.text(cell, M + 14 + j * ((PAGE_W - M * 2 - 28) / 3), y2 + 32 + i * 12);
+      });
+    });
+    // Total final
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...INK);
+    doc.text(`TCO TOTAL FLOTTE : ${eur(totFlotte.tco)}`, M + 14, y2 + 76);
+    doc.setTextColor(...LAVENDER);
+    doc.text(`COÛT EMPLOYEUR COMPLET FLOTTE : ${eur(totFlotte.tcoEmp)}`, PAGE_W - M - 14, y2 + 76, { align: "right" });
+  }
+}
+
 // ============ TCO B2B2E — Bornes au domicile des collaborateurs ============
 // Page dédiée pour les projets "Bornes domicile". Compare le coût total
 // entre la solution Beev (recharge domicile + itinérance + supervision)
@@ -2896,7 +3055,7 @@ function drawB2B2ETco(doc: jsPDF, input: B2B2ECalculatorInput) {
   const kpis = [
     { label: "ÉCONOMIE / COLLAB / AN", value: eur(result.economieParCollabParAn), color: EMERALD, sub: "vs solution thermique" },
     { label: "ROI BORNE", value: result.roiMois > 0 && result.roiMois < 120 ? `${result.roiMois.toFixed(0)} mois` : "—", color: LAVENDER, sub: "avant amortissement complet" },
-    { label: "CO₂ ÉVITÉ", value: `${result.co2EviteTonnes.toFixed(1)} t`, color: EMERALD, sub: `sur ${input.dureeAnnees} ans (135 g/km évité)` },
+    { label: "CO2 ÉVITÉ", value: `${result.co2EviteTonnes.toFixed(1)} t`, color: EMERALD, sub: `sur ${input.dureeAnnees} ans (135 g/km évité)` },
     { label: "KM CONTRAT / COLLAB", value: `${(result.kmTotalParCollab / 1000).toFixed(0)} k km`, color: AMBER, sub: `${input.kmParAnParCollab.toLocaleString("fr-FR")} km/an` },
   ];
   kpis.forEach((k, i) => {
@@ -3036,7 +3195,7 @@ function drawB2B2ETco(doc: jsPDF, input: B2B2ECalculatorInput) {
       `· Énergie : conso élec ${input.consoElecKWh100} kWh/100 (${input.mixDomicilePct}% domicile à ${input.prixKwhDom.toFixed(2)} €/kWh + ${100 - input.mixDomicilePct}% itinérance à ${input.prixKwhPub.toFixed(2)} €/kWh)`,
       `· Référence thermique : conso ${input.consoCarbL100} L/100 · prix carburant ${input.prixCarbL.toFixed(2)} €/L (SP95 ou Diesel)`,
       `· Supervision Beev Home Charging : ${input.supervisionParMoisParCollab} €/mois/collab · installation borne ${input.investBorneParCollabHt} € HT/collab amorti sur ${input.dureeAnnees} ans`,
-      `· CO₂ évité estimé sur la base de 135 g CO₂/km émis en moyenne par un véhicule thermique équivalent`,
+      `· CO2 évité estimé sur la base de 135 g CO2/km émis en moyenne par un véhicule thermique équivalent`,
     ];
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(7.5);
@@ -3296,8 +3455,8 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
     const lines = [
       `· Carburant SP95 / Diesel : ${fuelL.toFixed(2)} €/L`,
       `· Électricité : ${kwhDom.toFixed(2)} €/kWh domicile (85 %) + ${kwhPub.toFixed(2)} €/kWh public (15 %)`,
-      `· TVS : barème 2026 (taxe CO₂ par tranche + taxe pollution 130 € essence / 650 € diesel / 0 € électrique) × durée contrat`,
-      `· Malus CO₂ à l'achat : barème 2026 (0 € < 108 g, plafonné à 80 000 € au-delà de 192 g)`,
+      `· TVS : barème 2026 (taxe CO2 par tranche + taxe pollution 130 € essence / 650 € diesel / 0 € électrique) × durée contrat`,
+      `· Malus CO2 à l'achat : barème 2026 (0 € < 108 g, plafonné à 80 000 € au-delà de 192 g)`,
       `· Malus poids à l'achat : à partir de 1500 kg (abattement 100 kg hybride, 200 kg PHEV, exonération électrique)`,
       `· AND (Avantage Non Déductible) : (prix catalogue + options TTC) − remise − batterie − plafond, amorti sur 5 ans`,
       `· AEN (Avantage en Nature) : 50 % du loyer annuel, abattement 70 % si véhicule électrique éco-scoré`,
