@@ -681,9 +681,20 @@ function App() {
         <div className="container mx-auto px-6 py-3 flex items-center justify-between gap-3 flex-wrap">
           {/* ─── Identité Beev (gauche) ─── */}
           <div className="flex items-center gap-3 flex-shrink-0">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary text-primary-foreground font-bold text-xl tracking-tight shadow-sm">B</div>
+            <img
+              src="/images/logo-beev-noir.png"
+              alt="Beev"
+              className="h-10 w-auto object-contain"
+              onError={(ev) => {
+                // Fallback : si le logo ne charge pas, on affiche un placeholder lavande
+                const img = ev.currentTarget as HTMLImageElement;
+                img.style.display = "none";
+                const next = img.nextElementSibling as HTMLElement | null;
+                if (next) next.style.display = "flex";
+              }}
+            />
+            <div className="w-10 h-10 rounded-xl items-center justify-center bg-primary text-primary-foreground font-bold text-xl tracking-tight shadow-sm" style={{ display: "none" }}>B</div>
             <div>
-              <h1 className="text-base font-bold leading-tight tracking-tight text-foreground">Beev</h1>
               <p className="text-[10px] text-muted-foreground tracking-wide uppercase font-medium">Offre commerciale grand compte</p>
             </div>
             <Badge variant="outline" className="hidden md:inline-flex border-primary/30 bg-primary/5 text-primary text-[10px] font-semibold ml-2">{visibleCount} sélection(s)</Badge>

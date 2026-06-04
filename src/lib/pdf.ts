@@ -595,9 +595,9 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
   doc.setFillColor(...INK);
   doc.rect(0, 0, PAGE_W, PAGE_H, "F");
 
-  // Logo Beev en haut gauche — chargé depuis l'URL fournie via pdf_settings
-  // ou fallback sur le texte "Beev" en gros si l'image ne se charge pas.
-  const logoUrl = (PDF_CONTENT.coverLogoUrl as string | undefined) || "https://www.chacun-sa-route.fr/wp-content/uploads/2022/12/logo-beev-degrade%CC%81-640x360.png";
+  // Logo Beev en haut gauche — fichier blanc local (public/images/).
+  // Pilotable via pdf_settings.coverLogoUrl pour co-branding éventuel.
+  const logoUrl = (PDF_CONTENT.coverLogoUrl as string | undefined) || "/images/logo%20beev%20white.png";
   let logoLoaded = false;
   try {
     await drawImageContain(doc, logoUrl, M, 50, 120, 70);
