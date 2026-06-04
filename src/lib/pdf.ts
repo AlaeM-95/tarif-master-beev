@@ -2060,7 +2060,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(34);
   doc.setTextColor(...BEIGE);
-  const monthlyText = eur(sv.negotiatedMonthly);
+  const monthlyText = eurLoyer(sv.negotiatedMonthly);
   doc.text(monthlyText, innerX, py);
   const monthlyW = doc.getTextWidth(monthlyText);
   doc.setFont(BRAND_FONT, "normal");
@@ -2114,14 +2114,14 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
           `${sv.durationMonths} mois`,
           fmt(sv.kmPerYear),
           fmt(sv.kmPerYear * sv.durationMonths / 12),
-          { content: eur(sv.negotiatedMonthly), styles: { fontStyle: "bold", textColor: LAVENDER, halign: "right" } },
+          { content: eurLoyer(sv.negotiatedMonthly), styles: { fontStyle: "bold", textColor: LAVENDER, halign: "right" } },
         ],
         ...altConfigs.map((c, i) => [
           { content: `Alternative ${i + 1}`, styles: { textColor: SUB } },
           `${c.durationMonths} mois`,
           fmt(c.kmPerYear),
           fmt(c.kmPerYear * c.durationMonths / 12),
-          { content: eur(c.negotiatedMonthly), styles: { fontStyle: "bold", halign: "right" } },
+          { content: eurLoyer(c.negotiatedMonthly), styles: { fontStyle: "bold", halign: "right" } },
         ]),
       ],
       headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 8.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 6 },
@@ -2162,7 +2162,10 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   });
   y = (doc as any).lastAutoTable.finalY + 14;
 
-  if (PDF_CFG.showVehicleTcoBlock && sv.includeTco && y < FOOTER_LIMIT - 130) {
+  // Garde-fou espace : bloc TCO + encart fiscal = ~250px de haut.
+  // Si on est trop bas dans la page, on saute le bloc pour éviter
+  // un débordement sur le footer.
+  if (PDF_CFG.showVehicleTcoBlock && sv.includeTco && y < FOOTER_LIMIT - 250) {
     const t = computeTco(sv, e);
     // Vérifie si on a une TCO synchronisée depuis beev-tco-2026
     const synced = TCO_RESULTS.get(sv.vehicle.id);
@@ -2173,12 +2176,16 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     const tcoMonthly = synced?.tcoPerYear ? synced.tcoPerYear / 12 : t.tco100 * (sv.kmPerYear / 100) / 12;
     const tcoTotal = synced?.tcoTotalContract ?? t.tco100 * (sv.kmPerYear / 100) * (sv.durationMonths / 12);
 
-    const cardH = synced ? 130 : 100;
+    // hasFiscalBlock vrai dès que synced OU includeTco (cf. fin du bloc)
+    const hasFiscalBlock = !!synced || sv.includeTco;
+    const cardH = hasFiscalBlock ? 130 : 100;
+    // Hauteur réelle de la carte (KPIs + encart fiscal optionnel)
+    const totalCardH = cardH + (hasFiscalBlock ? 120 : 0);
 
     doc.setFillColor(...BG);
-    doc.rect(M, y, PAGE_W - M * 2, cardH, "F");
+    doc.rect(M, y, PAGE_W - M * 2, totalCardH, "F");
     doc.setFillColor(...ACCENT);
-    doc.rect(M, y, 4, cardH, "F");
+    doc.rect(M, y, 4, totalCardH, "F");
 
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(9.5);
@@ -2224,7 +2231,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     // Charges fiscales annexes : on calcule à la volée via calculateTcoFull
     // (calcul officiel beev-tco-2026). synced (depuis la DB tco_results) sert
     // de fallback pour rétro-compat.
-    if (synced || sv.includeTco) {
+    if (hasFiscalBlock) {
       const fiscalY = y + 80;
       doc.setDrawColor(...RULE);
       doc.setLineWidth(0.4);
@@ -2322,8 +2329,8 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       doc.text(eur(tcoEmployeur), PAGE_W - M - 16, recapY + 30, { align: "right" });
     }
 
-    // Hauteur de carte étendue pour accueillir les 2 lignes + récap
-    y += (synced ? cardH + 120 : cardH) + 12;
+    // Avance du Y : utilise la hauteur totale déjà calculée (BG + encart fiscal)
+    y += totalCardH + 12;
   }
 
   const body: any[] = [];
@@ -3273,9 +3280,9 @@ function drawExecutiveSummary(
 
   // KPI 2 : Investissement
   drawKpiBlock(doc, M + colW + 12, startY, colW, rowH, "INVESTISSEMENT", type === "vehicles" ? [
-    { label: "Loyer mensuel TTC", value: eur(monthlyTtc), accent: true },
-    { label: "Loyer annuel TTC", value: eur(annualTtc) },
-    { label: "Total contrat", value: eur(totalContrat) },
+    { label: "Loyer mensuel TTC", value: eurLoyer(monthlyTtc), accent: true },
+    { label: "Loyer annuel TTC", value: eurLoyer(annualTtc) },
+    { label: "Total contrat", value: eurLoyer(totalContrat) },
   ] : [
     { label: "Total HT", value: eur(chargersHt), accent: true },
     { label: "TVA 20 %", value: eur(chargersTtc - chargersHt) },
@@ -3397,8 +3404,8 @@ function drawFinancialSummary(
       rows.push([
         `${sv.vehicle.brand} ${sv.vehicle.model}`,
         `${sv.quantity} × ${sv.durationMonths} mois`,
-        eur(sv.negotiatedMonthly),
-        eur(monthly),
+        eurLoyer(sv.negotiatedMonthly),
+        eurLoyer(monthly),
       ]);
     });
 
@@ -3413,8 +3420,8 @@ function drawFinancialSummary(
       ]],
       body: rows,
       foot: [
-        ["", "", { content: lookupText(TEXTS, "common", "financial_foot_total_label", "Loyer mensuel total TTC"), styles: { fontStyle: "bold", halign: "right" } }, { content: eur(monthlyTotal), styles: { fontStyle: "bold", halign: "right", fillColor: BG } }],
-        ["", "", { content: "Loyer annuel total TTC", styles: { fontStyle: "bold", halign: "right" } }, { content: eur(annualTotal), styles: { fontStyle: "bold", halign: "right", fillColor: ACCENT, textColor: 255 } }],
+        ["", "", { content: lookupText(TEXTS, "common", "financial_foot_total_label", "Loyer mensuel total TTC"), styles: { fontStyle: "bold", halign: "right" } }, { content: eurLoyer(monthlyTotal), styles: { fontStyle: "bold", halign: "right", fillColor: BG } }],
+        ["", "", { content: "Loyer annuel total TTC", styles: { fontStyle: "bold", halign: "right" } }, { content: eurLoyer(annualTotal), styles: { fontStyle: "bold", halign: "right", fillColor: ACCENT, textColor: 255 } }],
       ],
       headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT },
       bodyStyles: { fontSize: 9.5, cellPadding: 6, textColor: INK, lineColor: RULE, font: BRAND_FONT },
@@ -3902,6 +3909,12 @@ const eur = (n: number) =>
   cleanSpaces(new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n));
 const eur2 = (n: number) =>
   cleanSpaces(new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(n));
+// Format dédié aux loyers : toujours 2 décimales (ex. 481,73 € — jamais 482 €),
+// utilisé sur les fiches véhicule + récap financier pour préserver la précision
+// négociée. Empêche l'arrondi à l'euro qui faisait apparaître le loyer comme
+// un chiffre rond alors qu'il a été négocié à la virgule.
+const eurLoyer = (n: number) =>
+  cleanSpaces(new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n));
 
 function ensureSpace(doc: jsPDF, y: number, needed: number, client?: ClientInfo, type?: ProjectType): number {
   if (y + needed > FOOTER_LIMIT) {
