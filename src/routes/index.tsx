@@ -678,7 +678,7 @@ function App() {
         onConfirm={doGeneratePdf}
       />
       <header className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-md border-b border-border">
-        <div className="container mx-auto px-6 py-3 flex items-center justify-between gap-3 flex-wrap">
+        <div className="container mx-auto px-6 py-3 flex items-center justify-between gap-3 flex-nowrap overflow-x-auto">
           {/* ─── Identité Beev (gauche) ─── */}
           <div className="flex items-center gap-3 flex-shrink-0">
             <img
@@ -701,7 +701,7 @@ function App() {
           </div>
 
           {/* ─── Actions (droite) — regroupées par hiérarchie ─── */}
-          <div className="flex items-center gap-2 flex-wrap justify-end">
+          <div className="flex items-center gap-2 flex-nowrap justify-end flex-shrink-0">
             {/* Status meta : refresh + badge admin discrets */}
             <RefreshButton />
             <AdminBadge />
@@ -792,7 +792,7 @@ function App() {
         </div>
       </header>
 
-      <main className="container mx-auto px-6 pt-24 pb-8 grid gap-8 lg:grid-cols-[1fr_380px]">
+      <main className="container mx-auto px-6 pt-32 pb-8 grid gap-8 lg:grid-cols-[1fr_380px]">
         <div className="space-y-8">
           <ProjectTypeSelector value={activeTab} onChange={switchProject} />
           <ClientCard client={client} setClient={setClient} />
