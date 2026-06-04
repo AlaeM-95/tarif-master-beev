@@ -14,10 +14,26 @@ export type TcoContractParams = {
   prixEssenceLitre: number;
   prixKwhDomicile: number;
   prixKwhPublic: number;
+  /** Total TTC des options sélectionnées sur le véhicule (sv.options).
+   *  Ajouté au prix catalogue avant application de la remise commerciale
+   *  pour le calcul AND (base d'amortissement). */
+  optionsTotalTtc?: number;
+  /** Remise commerciale en % appliquée au (prix catalogue + options).
+   *  Si fournie, remplace v.remise du véhicule (qui peut être la remise
+   *  catalogue par défaut alors qu'ici on veut la remise négociée). */
+  remisePctOverride?: number;
 };
 
 // ---- Résultat enrichi du calcul TCO ----
 export type TcoFullResult = {
+  /** Prix catalogue TTC du véhicule (sans options). */
+  prixCatalogue: number;
+  /** Total TTC des options ajoutées. */
+  optionsTotal: number;
+  /** Montant TTC de la remise commerciale appliquée sur (catalogue + options). */
+  remiseAmount: number;
+  /** Prix d'achat final retenu pour calculer la base AND. */
+  prixFinal: number;
   loyerTotal: number;
   coutEnergie: number;
   taxeCO2: number;
@@ -186,10 +202,17 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
   const malusPoids = calculateMalusPoids(v.poidsVide ?? 0, v.energy);
 
   // AND (Avantage Non Déductible) — annualisé sur 5 ans
+  // Base d'amortissement = (prix catalogue + options) - remise commerciale.
+  // C'est le prix d'achat réel pour l'entreprise, plus juste que le prix
+  // catalogue seul.
   const plafondAND = getPlafondAND(v.co2 ?? 0);
-  const remisePct = v.remise ?? 0;
-  const remiseAmount = (v.priceTtc * remisePct) / 100;
-  const baseAND = v.priceTtc - (v.prixBatterie ?? 0) - remiseAmount - plafondAND;
+  const prixCatalogue = v.priceTtc;
+  const optionsTotal = Math.max(0, contract.optionsTotalTtc ?? 0);
+  const remisePct = contract.remisePctOverride ?? v.remise ?? 0;
+  const prixAvantRemise = prixCatalogue + optionsTotal;
+  const remiseAmount = (prixAvantRemise * remisePct) / 100;
+  const prixFinal = prixAvantRemise - remiseAmount;
+  const baseAND = prixFinal - (v.prixBatterie ?? 0) - plafondAND;
   const andAnnuel = baseAND > 0 ? baseAND / 5 : 0;
 
   // AEN — Avantage en Nature (méthode forfaitaire basée sur le loyer)
@@ -215,6 +238,10 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
   const tcoEmployeurComplet = tcoTotal + andAnnuel * contract.dureeAnnees + partEmployeurAnnuelle * contract.dureeAnnees;
 
   return {
+    prixCatalogue,
+    optionsTotal,
+    remiseAmount,
+    prixFinal,
     loyerTotal,
     coutEnergie,
     taxeCO2,

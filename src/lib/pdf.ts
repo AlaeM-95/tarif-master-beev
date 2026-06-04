@@ -2235,14 +2235,18 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       doc.setTextColor(...LAVENDER);
       doc.text(lookupText(TEXTS, "vehicles", "vehicle_tco_fiscal_title", "CHARGES FISCALES ANNEXES (CALCUL BEEV 2026)"), M + 16, fiscalY + 12);
 
-      // Calcul TCO complet à la volée
+      // Calcul TCO complet à la volée — intègre options + remise commerciale
       const duree = sv.durationMonths / 12;
+      const optionsTotalHt = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
+      const optionsTotalTtc = optionsTotalHt * 1.2;
       const tcoFull = calculateTcoFull(sv.vehicle, {
         dureeAnnees: duree,
         kmContrat: sv.kmPerYear * duree,
         prixEssenceLitre: e.fuelPriceL ?? 1.75,
         prixKwhDomicile: e.kWhHome ?? 0.4,
         prixKwhPublic: e.kWhPublic ?? 0.6,
+        optionsTotalTtc,
+        remisePctOverride: sv.discountPct,
       }, sv.negotiatedMonthly);
       const tvsTotal = tcoFull.tvsTotal;
       const andAnnuel = tcoFull.andAnnuel;
@@ -2252,24 +2256,28 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       // sur la durée du contrat. Garantit la cohérence avec le tcoTotal affiché.
       const tcoEmployeur = tcoTotal + andAnnuel * duree + partEmpAnnuelle * duree;
 
-      // Ligne 1 : 3 colonnes (Malus CO₂, Malus poids, TVS contrat)
+      // Ligne 1 : 3 colonnes (Malus CO₂, Malus poids, TVS contrat).
+      // Couleur orange si valeur > 0 pour signaler la charge à l'achat.
+      const ORANGE: [number, number, number] = [217, 119, 6]; // amber-600
       const row1Y = fiscalY + 22;
       const row1 = [
-        { label: "MALUS CO₂", value: eur(tcoFull.malusCO2) },
-        { label: "MALUS POIDS", value: eur(tcoFull.malusPoids) },
-        { label: `TVS (${duree} ANS)`, value: eur(tvsTotal) },
+        { label: "MALUS CO₂", value: tcoFull.malusCO2, formatted: eur(tcoFull.malusCO2) },
+        { label: "MALUS POIDS", value: tcoFull.malusPoids, formatted: eur(tcoFull.malusPoids) },
+        { label: `TVS (${duree} ANS)`, value: tvsTotal, formatted: eur(tvsTotal) },
       ];
       const colW = (PAGE_W - M * 2 - 32) / 3;
       row1.forEach((col, i) => {
         const cx = M + 16 + i * colW;
+        const isCharge = col.value > 0;
         doc.setFont(BRAND_FONT, "normal");
         doc.setFontSize(6.5);
         doc.setTextColor(...SUB);
         doc.text(col.label, cx, row1Y);
         doc.setFont(BRAND_FONT, "bold");
         doc.setFontSize(11);
-        doc.setTextColor(...INK);
-        doc.text(col.value, cx, row1Y + 14);
+        if (isCharge) doc.setTextColor(...ORANGE);
+        else doc.setTextColor(...INK);
+        doc.text(col.formatted, cx, row1Y + 14);
       });
 
       // Ligne 2 : 3 colonnes (AND annuel, AEN annuel, Part employeur AEN)
@@ -2607,12 +2615,15 @@ function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
   // Calcul TCO par véhicule via calculateTcoFull (utilise les paramètres
   // fiscaux Beev 2026 : malus CO2, malus poids, TVS, etc.)
   const rows = vehicles.map((sv) => {
+    const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0) * 1.2;
     const contract: import("./tco-calculator").TcoContractParams = {
       dureeAnnees: sv.durationMonths / 12,
       kmContrat: (sv.kmPerYear * sv.durationMonths) / 12,
       prixEssenceLitre: e.fuelPriceL,
       prixKwhDomicile: e.kWhHome,
       prixKwhPublic: e.kWhPublic,
+      optionsTotalTtc,
+      remisePctOverride: sv.discountPct,
     };
     const r = calculateTcoFull(sv.vehicle, contract, sv.negotiatedMonthly);
     return {

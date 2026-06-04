@@ -33,7 +33,7 @@ import { useProposals, useProposal } from "@/lib/proposals";
 import { usePdfConfig } from "@/lib/pdf-config";
 import { usePdfSettings } from "@/lib/pdf-settings";
 import { useProposalTemplates } from "@/lib/proposal-templates";
-import { calculateTcoFull, type TcoContractParams } from "@/lib/tco-calculator";
+import { calculateTcoFull, calculateMalusCO2, calculateMalusPoids, type TcoContractParams } from "@/lib/tco-calculator";
 import { useLeaserOffers, findBestOffer, type LeaserOffer } from "@/lib/leaser-offers";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -1468,7 +1468,8 @@ function TcoCalculator({
       prixKwhPublic: energy.kWhPublic,
     };
     return Object.values(selectedV).map((sv) => {
-      const r = calculateTcoFull(sv.vehicle, contractParams, sv.negotiatedMonthly);
+      const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0) * 1.2;
+      const r = calculateTcoFull(sv.vehicle, { ...contractParams, optionsTotalTtc, remisePctOverride: sv.discountPct }, sv.negotiatedMonthly);
       const tco100 = r.tcoParKm * 100;
       const lease100 = (r.loyerTotal / contractParams.kmContrat) * 100;
       const energy100 = (r.coutEnergie / contractParams.kmContrat) * 100;
@@ -2136,6 +2137,49 @@ function Spec({ icon, v }: { icon: React.ReactNode; v: string }) {
 
 // ============ SELECTED ROWS ============
 
+// Badge d'alerte fiscale : affiche les charges à l'achat (malus CO₂ + malus
+// poids) et la TVS annuelle si > 0. Permet au commercial de vérifier la
+// cohérence du calcul avant présentation client.
+function FiscalWarningBadge({ vehicle, durationMonths }: { vehicle: Vehicle; durationMonths: number }) {
+  const malusCo2 = calculateMalusCO2(vehicle.co2 ?? 0);
+  const malusPoids = calculateMalusPoids(vehicle.poidsVide ?? 0, vehicle.energy);
+  const malusTotal = malusCo2 + malusPoids;
+  // TVS = taxe CO₂ + taxe pollution × durée
+  const co2 = vehicle.co2 ?? 0;
+  let taxeCO2 = 0;
+  if (co2 > 4) {
+    const brackets: Array<[number, number, number]> = [[5,45,1],[46,53,2],[54,85,3],[86,105,4],[106,125,10],[126,145,50],[146,165,60],[166,9999,65]];
+    for (const [min, max, rate] of brackets) {
+      if (co2 >= min) taxeCO2 += (Math.min(co2, max) - min + 1) * rate;
+    }
+  }
+  const taxePollution = vehicle.energy === "Électrique" ? 0 : vehicle.energy === "Diesel" ? 650 : 130;
+  const tvsAnnuelle = taxeCO2 + taxePollution;
+  const tvsTotale = tvsAnnuelle * (durationMonths / 12);
+
+  if (malusTotal === 0 && tvsAnnuelle === 0) return null;
+
+  return (
+    <div className="rounded-md border border-amber-500/40 bg-amber-50/60 dark:bg-amber-950/20 p-2 text-[11px] space-y-1">
+      <div className="flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-400">
+        <AlertTriangle className="w-3 h-3" /> Charges fiscales à vérifier
+      </div>
+      {malusTotal > 0 && (
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Malus à l'achat (CO₂ + poids)</span>
+          <span className="font-semibold">{malusTotal.toLocaleString("fr-FR")} €</span>
+        </div>
+      )}
+      {tvsAnnuelle > 0 && (
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">TVS / an (× {Math.round(durationMonths / 12)} ans = {tvsTotale.toLocaleString("fr-FR")} €)</span>
+          <span className="font-semibold">{tvsAnnuelle.toLocaleString("fr-FR")} €</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SelectedVehicleRow({ sv, energy, onChange, onRemove }: { sv: SelectedVehicle; energy: EnergyParams; onChange: (p: Partial<SelectedVehicle>) => void; onRemove: () => void }) {
   const [tab, setTab] = useState<"none" | "svc" | "opt">("none");
   const [newSvc, setNewSvc] = useState("");
@@ -2178,6 +2222,10 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove }: { sv: SelectedVe
           <div><div className="text-muted-foreground">TCO/100km</div><div className="font-semibold text-primary">{tco.tco100.toFixed(2)} €</div></div>
         </div>
       )}
+
+      {/* Alerte fiscale : Malus à l'achat + TVS annuelle. Visible si > 0 pour
+          que le commercial vérifie le calcul avant de présenter au client. */}
+      <FiscalWarningBadge vehicle={sv.vehicle} durationMonths={sv.durationMonths} />
 
       {/* Configurations alternatives : couples durée/km/loyer supplémentaires */}
       <div className="rounded-md bg-card p-2 space-y-1.5">
