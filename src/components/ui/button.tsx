@@ -5,17 +5,17 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#3e6ae1] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "bg-white text-black shadow hover:bg-[#e0e0e0] active:scale-[0.98]",
-        destructive: "bg-[#e82127] text-white shadow-sm hover:bg-[#c41a1f] active:scale-[0.98]",
+        default: "bg-primary text-primary-foreground shadow hover:bg-primary/90 active:scale-[0.98]",
+        destructive: "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 active:scale-[0.98]",
         outline:
-          "border border-[#393c41] bg-transparent text-white shadow-sm hover:bg-[#393c41]/30 hover:border-[#5c5f66] active:scale-[0.98]",
-        secondary: "bg-[#171a20] text-white border border-[#393c41] shadow-sm hover:bg-[#22262e] active:scale-[0.98]",
-        ghost: "hover:bg-[#393c41]/20 hover:text-white text-[#aaaaaa]",
-        link: "text-white underline-offset-4 hover:underline",
+          "border border-border bg-transparent text-foreground shadow-sm hover:bg-muted hover:border-muted-foreground active:scale-[0.98]",
+        secondary: "bg-secondary text-secondary-foreground border border-border shadow-sm hover:bg-secondary/80 active:scale-[0.98]",
+        ghost: "hover:bg-muted hover:text-foreground text-foreground/70",
+        link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
         default: "h-10 px-5 py-2",

@@ -677,9 +677,9 @@ function App() {
         onConfirm={doGeneratePdf}
       />
       <header className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-md border-b border-border">
-        <div className="container mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-white text-black font-bold text-lg tracking-tight">B</div>
+        <div className="container mx-auto px-6 py-3 flex items-center justify-between gap-3 overflow-x-auto">
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary text-primary-foreground font-bold text-lg tracking-tight">B</div>
             <div>
               <h1 className="text-base font-semibold leading-tight tracking-tight text-foreground">Beev</h1>
               <p className="text-[10px] text-muted-foreground tracking-wide uppercase">Offre commerciale grand compte</p>
