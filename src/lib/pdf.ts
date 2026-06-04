@@ -580,16 +580,19 @@ export async function generateProposalPdf(opts: {
 // - Bottom : 3 colonnes "Préparée pour / par / Périmètre" séparées par bordure top
 // - Footer : "Document confidentiel" / "Réf devis · contact"
 async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nbC: number) {
-  // Charte couverture Beev — minimaliste noir
-  const BLACK: [number, number, number] = [10, 10, 10]; // #0A0A0A fond noir
-  const BEIGE: [number, number, number] = [250, 248, 244]; // #FAF8F4 texte principal
-  const LAVENDER_COVER: [number, number, number] = [56, 9, 234]; // #3809EA accent
+  // Charte officielle Beev — couleurs synchronisées avec pdf_settings (admin)
+  // INK     = colorInk    (texte principal, #111111 par défaut)
+  // BG      = colorBg     (fond cream, #FAF8F4 par défaut)
+  // LAVENDER = colorLavender (accent primaire, #3809EA)
+  // ACCENT  = colorAccent  (vert Beev, #35DA76)
+  // Toute modification dans /admin/pdf > Apparence se répercute ici.
   const GREY_LABEL: [number, number, number] = [154, 150, 142];
   const GREY_LINE: [number, number, number] = [183, 180, 172];
   const GREY_FOOT: [number, number, number] = [118, 115, 108];
 
-  // Fond noir pleine page
-  doc.setFillColor(...BLACK);
+  // Fond pleine page : utilise INK (noir admin) — l'admin peut basculer
+  // sur une autre couleur via /admin/pdf > Apparence
+  doc.setFillColor(...INK);
   doc.rect(0, 0, PAGE_W, PAGE_H, "F");
 
   // Logo Beev en haut gauche — chargé depuis l'URL fournie via pdf_settings
@@ -603,7 +606,7 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
     // Fallback : texte wordmark
   }
   if (!logoLoaded) {
-    doc.setTextColor(...BEIGE);
+    doc.setTextColor(...BG);
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(22);
     doc.text("Beev", M, 80);
@@ -619,7 +622,7 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
   // Kicker
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(11);
-  doc.setTextColor(...LAVENDER_COVER);
+  doc.setTextColor(...LAVENDER);
   const kicker = isCombinedOffer
     ? "PROPOSITION COMMERCIALE · MULTI-PRODUITS"
     : type === "vehicles" ? "PROPOSITION COMMERCIALE · FLOTTE VÉHICULES"
@@ -630,7 +633,7 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
   // H1 client en très gros — découpé en lignes si trop long
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(54);
-  doc.setTextColor(...BEIGE);
+  doc.setTextColor(...BG);
   const h1 = (c.company || "Votre entreprise").toUpperCase();
   const h1Lines = doc.splitTextToSize(h1, PAGE_W - M * 2);
   let h1Y = 310;
@@ -641,13 +644,13 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
 
   // Séparateur lavande
   const sepY = h1End + 35;
-  doc.setFillColor(...LAVENDER_COVER);
+  doc.setFillColor(...LAVENDER);
   doc.rect(M, sepY, 40, 3, "F");
 
   // Sous-titre périmètre
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(16);
-  doc.setTextColor(...BEIGE);
+  doc.setTextColor(...BG);
   const total = isCombinedOffer ? nbV + nbC : (type === "vehicles" ? nbV : nbC);
   const sub = isCombinedOffer
     ? `Offre combinée : ${nbV} véhicule${nbV > 1 ? "s" : ""} et ${nbC} borne${nbC > 1 ? "s" : ""} de recharge`
@@ -688,11 +691,11 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
   // Col 1 : Préparée pour
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
-  doc.setTextColor(...LAVENDER_COVER);
+  doc.setTextColor(...LAVENDER);
   doc.text(lookupText(TEXTS, "common", "cover_prepared_for_label", "PRÉPARÉE POUR"), M, labelY);
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(13);
-  doc.setTextColor(...BEIGE);
+  doc.setTextColor(...BG);
   doc.text(c.company || "—", M, nameY, { maxWidth: colWidth - 20 });
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9.5);
@@ -704,11 +707,11 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
   const col2X = M + colWidth + 10;
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
-  doc.setTextColor(...LAVENDER_COVER);
+  doc.setTextColor(...LAVENDER);
   doc.text(lookupText(TEXTS, "common", "cover_prepared_by_label", "PRÉPARÉE PAR"), col2X, labelY);
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(13);
-  doc.setTextColor(...BEIGE);
+  doc.setTextColor(...BG);
   doc.text(c.salesRep || "Beev", col2X, nameY);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9.5);
@@ -2847,110 +2850,119 @@ function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: Energy
     return { sv, r, duree };
   });
 
-  // Tableau autoTable — 10 colonnes
+  // Tableau autoTable — 7 colonnes (au lieu de 10) pour rester lisible sur A4
+  // portrait. Les composantes sont fusionnées : "Malus" = Malus CO2 + Poids,
+  // "Fiscalité" = AND + AEN employeur sur la durée.
+  // Couleurs : charte Beev officielle (LAVENDER, INK, BG, ACCENT depuis admin).
   autoTable(doc, {
     startY: y,
     theme: "plain",
     head: [[
       "VÉHICULE",
-      "LOYER TOTAL",
+      "LOYER\nTOTAL",
       "ÉNERGIE",
-      "TVS",
-      "MALUS CO2",
-      "MALUS POIDS",
-      "AND (×DURÉE)",
-      "AEN EMPL. (×DURÉE)",
-      "TCO TOTAL",
-      "COÛT EMPL. COMPLET",
+      "TVS\n(×durée)",
+      "MALUS\n(achat)",
+      "FISCALITÉ\n(AND+AEN)",
+      "COÛT EMPL.\nCOMPLET",
     ]],
-    body: rows.map(({ sv, r, duree }) => [
-      { content: `${sv.vehicle.brand} ${sv.vehicle.model}\n${sv.durationMonths} mois · ${(sv.kmPerYear / 1000).toFixed(0)}k km/an`, styles: { fontStyle: "bold" as any, fontSize: 8 } },
-      { content: eur(r.loyerTotal), styles: { halign: "right" as any } },
-      { content: eur(r.coutEnergie), styles: { halign: "right" as any } },
-      { content: eur(r.tvsTotal), styles: { halign: "right" as any, textColor: r.tvsTotal > 0 ? [217, 119, 6] : SUB } },
-      { content: eur(r.malusCO2), styles: { halign: "right" as any, textColor: r.malusCO2 > 0 ? [217, 119, 6] : SUB } },
-      { content: eur(r.malusPoids), styles: { halign: "right" as any, textColor: r.malusPoids > 0 ? [217, 119, 6] : SUB } },
-      { content: eur(r.andAnnuel * duree), styles: { halign: "right" as any } },
-      { content: eur(r.partEmployeurAnnuelle * duree), styles: { halign: "right" as any } },
-      { content: eur(r.tcoTotal), styles: { halign: "right" as any, fontStyle: "bold" as any } },
-      { content: eur(r.tcoEmployeurComplet), styles: { halign: "right" as any, fontStyle: "bold" as any, textColor: LAVENDER } },
-    ]),
-    headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 7, fontStyle: "bold", font: BRAND_FONT, cellPadding: 4, halign: "center" as any },
-    bodyStyles: { fontSize: 8, cellPadding: 4, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
-    alternateRowStyles: { fillColor: [252, 251, 248] as [number, number, number] },
+    body: rows.map(({ sv, r, duree }) => {
+      const malusTotal = r.malusCO2 + r.malusPoids;
+      const fiscaliteTotal = r.andAnnuel * duree + r.partEmployeurAnnuelle * duree;
+      return [
+        { content: `${sv.vehicle.brand} ${sv.vehicle.model}\n${sv.durationMonths} mois · ${(sv.kmPerYear / 1000).toFixed(0)}k km/an`, styles: { fontStyle: "bold" as any, fontSize: 8.5 } },
+        { content: eur(r.loyerTotal), styles: { halign: "right" as any } },
+        { content: eur(r.coutEnergie), styles: { halign: "right" as any } },
+        { content: eur(r.tvsTotal), styles: { halign: "right" as any, textColor: r.tvsTotal > 0 ? LAVENDER : SUB, fontStyle: r.tvsTotal > 0 ? "bold" as any : "normal" as any } },
+        { content: eur(malusTotal), styles: { halign: "right" as any, textColor: malusTotal > 0 ? LAVENDER : SUB, fontStyle: malusTotal > 0 ? "bold" as any : "normal" as any } },
+        { content: eur(fiscaliteTotal), styles: { halign: "right" as any } },
+        { content: eur(r.tcoEmployeurComplet), styles: { halign: "right" as any, fontStyle: "bold" as any, textColor: LAVENDER, fontSize: 10 } },
+      ];
+    }),
+    headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 8, fontStyle: "bold", font: BRAND_FONT, cellPadding: 6, halign: "center" as any, valign: "middle" as any },
+    bodyStyles: { fontSize: 9, cellPadding: 7, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
+    alternateRowStyles: { fillColor: BG },
     columnStyles: {
-      0: { cellWidth: 95 },
-      1: { cellWidth: 50 },
-      2: { cellWidth: 45 },
-      3: { cellWidth: 40 },
-      4: { cellWidth: 45 },
-      5: { cellWidth: 45 },
-      6: { cellWidth: 50 },
-      7: { cellWidth: 60 },
-      8: { cellWidth: 50 },
-      9: { cellWidth: "auto" },
+      0: { cellWidth: 130 },
+      1: { cellWidth: 65 },
+      2: { cellWidth: 55 },
+      3: { cellWidth: 55 },
+      4: { cellWidth: 60 },
+      5: { cellWidth: 60 },
+      6: { cellWidth: "auto" },
     },
     margin: { left: M, right: M },
   });
   let y2 = (doc as any).lastAutoTable.finalY + 20;
 
-  // Légende couleurs
+  // Légende — couleurs charte Beev (LAVENDER pour les signaux d'alerte)
   doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(8);
+  doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text("· Valeurs en orange : charges fiscales à valider (malus / TVS non nuls)", M, y2);
-  y2 += 12;
-  doc.text("· Coût employeur complet = TCO total + AND × durée + part employeur AEN × durée", M, y2);
-  y2 += 12;
-  doc.text("· Loyer total = loyer mensuel négocié × nombre de mois", M, y2);
-  y2 += 12;
-  doc.text("· Énergie = conso véhicule × km contrat × prix carburant ou kWh (mix 85% domicile / 15% public)", M, y2);
-  y2 += 12;
+  const legendLines = [
+    "· Valeurs en violet : charges fiscales à valider (Malus CO2 + poids, TVS non nulles)",
+    "· Coût employeur complet = Loyer + Énergie + TVS + Malus + (AND × durée) + (AEN employeur × durée)",
+    "· Loyer total = loyer mensuel négocié × nombre de mois (TTC, TVA récupérable LLD)",
+    "· Énergie = conso véhicule × km contrat × prix carburant ou kWh (mix 85 % domicile / 15 % public)",
+  ];
+  legendLines.forEach((line) => {
+    doc.text(line, M, y2, { maxWidth: PAGE_W - M * 2 });
+    y2 += 13;
+  });
 
-  // Totaux flotte si plusieurs véhicules
+  // Totaux flotte si plusieurs véhicules — bloc visible
   if (rows.length > 1) {
-    y2 += 14;
+    y2 += 20;
     const totFlotte = rows.reduce((acc, { sv, r, duree }) => {
       const qty = sv.quantity || 1;
       acc.loyer += r.loyerTotal * qty;
       acc.energie += r.coutEnergie * qty;
       acc.tvs += r.tvsTotal * qty;
-      acc.malusCO2 += r.malusCO2 * qty;
-      acc.malusPoids += r.malusPoids * qty;
-      acc.and += r.andAnnuel * duree * qty;
-      acc.aen += r.partEmployeurAnnuelle * duree * qty;
-      acc.tco += r.tcoTotal * qty;
+      acc.malus += (r.malusCO2 + r.malusPoids) * qty;
+      acc.fiscalite += (r.andAnnuel + r.partEmployeurAnnuelle) * duree * qty;
       acc.tcoEmp += r.tcoEmployeurComplet * qty;
       return acc;
-    }, { loyer: 0, energie: 0, tvs: 0, malusCO2: 0, malusPoids: 0, and: 0, aen: 0, tco: 0, tcoEmp: 0 });
+    }, { loyer: 0, energie: 0, tvs: 0, malus: 0, fiscalite: 0, tcoEmp: 0 });
 
+    const blockH = 90;
     doc.setFillColor(...BG);
-    doc.rect(M, y2, PAGE_W - M * 2, 60, "F");
+    doc.rect(M, y2, PAGE_W - M * 2, blockH, "F");
     doc.setFillColor(...LAVENDER);
-    doc.rect(M, y2, 4, 60, "F");
+    doc.rect(M, y2, 4, blockH, "F");
+
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(9);
     doc.setTextColor(...LAVENDER);
-    doc.text("TOTAUX FLOTTE", M + 14, y2 + 16);
+    doc.text("TOTAUX FLOTTE", M + 16, y2 + 18);
+
     doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(...SUB);
-    const items = [
-      [`Loyer total : ${eur(totFlotte.loyer)}`, `Énergie : ${eur(totFlotte.energie)}`, `TVS : ${eur(totFlotte.tvs)}`],
-      [`Malus CO2 : ${eur(totFlotte.malusCO2)}`, `Malus poids : ${eur(totFlotte.malusPoids)}`, `AND × durée : ${eur(totFlotte.and)}`],
-    ];
-    items.forEach((row, i) => {
-      row.forEach((cell, j) => {
-        doc.text(cell, M + 14 + j * ((PAGE_W - M * 2 - 28) / 3), y2 + 32 + i * 12);
-      });
-    });
-    // Total final
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(10);
+    doc.setFontSize(8.5);
     doc.setTextColor(...INK);
-    doc.text(`TCO TOTAL FLOTTE : ${eur(totFlotte.tco)}`, M + 14, y2 + 76);
+    const sub = [
+      { l: "Loyer", v: eur(totFlotte.loyer) },
+      { l: "Énergie", v: eur(totFlotte.energie) },
+      { l: "TVS", v: eur(totFlotte.tvs) },
+      { l: "Malus", v: eur(totFlotte.malus) },
+      { l: "AND+AEN", v: eur(totFlotte.fiscalite) },
+    ];
+    const colsW = (PAGE_W - M * 2 - 32) / sub.length;
+    sub.forEach((s, i) => {
+      const cx = M + 16 + i * colsW;
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(7.5);
+      doc.setTextColor(...SUB);
+      doc.text(s.l.toUpperCase(), cx, y2 + 38);
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(...INK);
+      doc.text(s.v, cx, y2 + 54);
+    });
+
+    // Total final en bas — gros + lavande pour le coût employeur
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(11);
     doc.setTextColor(...LAVENDER);
-    doc.text(`COÛT EMPLOYEUR COMPLET FLOTTE : ${eur(totFlotte.tcoEmp)}`, PAGE_W - M - 14, y2 + 76, { align: "right" });
+    doc.text(`COÛT EMPLOYEUR COMPLET FLOTTE : ${eur(totFlotte.tcoEmp)}`, PAGE_W - M - 16, y2 + blockH - 14, { align: "right" });
   }
 }
 
@@ -2959,10 +2971,9 @@ function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: Energy
 // entre la solution Beev (recharge domicile + itinérance + supervision)
 // et la solution thermique de référence (carburant SP95/Diesel).
 function drawB2B2ETco(doc: jsPDF, input: B2B2ECalculatorInput) {
-  const PINK: [number, number, number] = [244, 184, 170];
-  const EMERALD: [number, number, number] = [16, 185, 129]; // #10B981
-  const AMBER: [number, number, number] = [217, 119, 6];
-
+  // Charte Beev officielle : LAVENDER (primaire), ACCENT (vert), INK (neutre)
+  // BG (cream). Pas de couleurs hardcodées hors charte.
+  const PINK: [number, number, number] = [244, 184, 170]; // eyebrow stripe Beev
   const result = calculateB2B2ETco(input);
 
   let y = 116;
@@ -3012,10 +3023,10 @@ function drawB2B2ETco(doc: jsPDF, input: B2B2ECalculatorInput) {
   const kpiW = (PAGE_W - M * 2 - 30) / 4;
   const kpiH = 80;
   const kpis = [
-    { label: "ÉCONOMIE / COLLAB / AN", value: eur(result.economieParCollabParAn), color: EMERALD, sub: "vs solution thermique" },
+    { label: "ÉCONOMIE / COLLAB / AN", value: eur(result.economieParCollabParAn), color: ACCENT, sub: "vs solution thermique" },
     { label: "ROI BORNE", value: result.roiMois > 0 && result.roiMois < 120 ? `${result.roiMois.toFixed(0)} mois` : "—", color: LAVENDER, sub: "avant amortissement complet" },
-    { label: "CO2 ÉVITÉ", value: `${result.co2EviteTonnes.toFixed(1)} t`, color: EMERALD, sub: `sur ${input.dureeAnnees} ans (135 g/km évité)` },
-    { label: "KM CONTRAT / COLLAB", value: `${(result.kmTotalParCollab / 1000).toFixed(0)} k km`, color: AMBER, sub: `${input.kmParAnParCollab.toLocaleString("fr-FR")} km/an` },
+    { label: "CO2 ÉVITÉ", value: `${result.co2EviteTonnes.toFixed(1)} t`, color: ACCENT, sub: `sur ${input.dureeAnnees} ans (135 g/km évité)` },
+    { label: "KM CONTRAT / COLLAB", value: `${(result.kmTotalParCollab / 1000).toFixed(0)} k km`, color: INK, sub: `${input.kmParAnParCollab.toLocaleString("fr-FR")} km/an` },
   ];
   kpis.forEach((k, i) => {
     const cx = M + i * (kpiW + 10);
@@ -3094,9 +3105,9 @@ function drawB2B2ETco(doc: jsPDF, input: B2B2ECalculatorInput) {
 
   // Colonne droite : Thermique
   const rx = M + colW + 20;
-  doc.setFillColor(254, 243, 199); // #FEF3C7 - amber-100
+  doc.setFillColor(...BG); // cream Beev (charte officielle)
   doc.roundedRect(rx, y, colW, colH, 8, 8, "F");
-  doc.setFillColor(...AMBER);
+  doc.setFillColor(...INK);
   doc.roundedRect(rx, y, colW, 28, 8, 8, "F");
   doc.rect(rx, y + 14, colW, 14, "F");
   doc.setFont(BRAND_FONT, "bold");
@@ -3129,11 +3140,11 @@ function drawB2B2ETco(doc: jsPDF, input: B2B2ECalculatorInput) {
   cy += 8;
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
-  doc.setTextColor(...AMBER);
+  doc.setTextColor(...INK);
   doc.text("COÛT TOTAL THERMIQUE", rx + 14, cy);
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(16);
-  doc.setTextColor(...AMBER);
+  doc.setTextColor(...INK);
   doc.text(eur(result.coutCarbFlotteTotal), rx + colW - 14, cy + 4, { align: "right" });
 
   y += colH + 20;
