@@ -1900,36 +1900,45 @@ function ConfirmDeleteButton({ label, onConfirm }: { label: string; onConfirm: (
 
 function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existingCategories = [], leaserOffers = [] }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Vehicle>) => void; onDelete?: () => void; existingCategories?: string[]; leaserOffers?: LeaserOffer[] }) {
   const [editing, setEditing] = useState(false);
-  // Couleur badge énergie (différencie visuellement les véhicules EL / PHEV / thermique)
+  // Badge énergie — couleurs charte Beev 2026 (Rose / Bleu / Violet / Beige)
   const energyBadgeCls = vehicle.energy === "Électrique"
-    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+    ? "bg-beev-rose-30 text-beev-black border-beev-rose"
     : vehicle.energy === "Hybride Rechargeable"
-    ? "bg-blue-500/20 text-blue-300 border-blue-500/40"
+    ? "bg-beev-bleu-30 text-beev-black border-beev-bleu"
     : vehicle.energy === "Hybride" || vehicle.energy === "Mild Hybrid"
-    ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
-    : "bg-zinc-500/20 text-zinc-300 border-zinc-500/40";
+    ? "bg-beev-violet-30 text-beev-black border-beev-violet"
+    : "bg-muted text-foreground border-border";
+  // Indique si une image valide est fournie (sinon on cache l'<img> pour ne
+  // pas afficher l'icône cassée ou le texte alt par-dessus le gradient).
+  const hasImage = Boolean(vehicle.image && vehicle.image.trim() !== "");
   return (
-    <Card className={`overflow-hidden transition-all duration-300 ${selected ? "ring-2 ring-[#3e6ae1]/60 border-[#3e6ae1]" : "hover:border-border hover:shadow-lg"}`}>
-      <div className="aspect-[4/3] bg-gradient-to-br from-[#0d0f12] to-[#1a1d23] overflow-hidden relative group">
-        <img src={vehicle.image} alt={`${vehicle.brand} ${vehicle.model}`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
+    <Card className={`overflow-hidden transition-all duration-300 ${selected ? "ring-2 ring-primary border-primary" : "hover:border-foreground/40 hover:shadow-lg"}`}>
+      <div className="aspect-[4/3] bg-beev-black overflow-hidden relative group">
+        {hasImage ? (
+          <img src={vehicle.image} alt={`${vehicle.brand} ${vehicle.model}`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-beev-beige/30 text-sm italic">
+            Image à venir
+          </div>
+        )}
         {/* Overlay badges en haut */}
         <div className="absolute top-2 left-2 flex flex-col gap-1.5">
           <Badge className={`text-[10px] font-semibold border ${energyBadgeCls}`}>{vehicle.energy}</Badge>
-          {vehicle.shortlist && <Badge className="bg-[#3e6ae1] text-white text-[10px] border-0">★ Recommandé</Badge>}
-          {vehicle.custom && <Badge className="bg-white text-black text-[10px]">Custom</Badge>}
+          {vehicle.shortlist && <Badge className="bg-beev-rose text-beev-black text-[10px] border-0 font-semibold">★ Recommandé</Badge>}
+          {vehicle.custom && <Badge className="bg-beev-beige text-beev-black text-[10px] border-0">Custom</Badge>}
           {vehicle.availableStock !== undefined && vehicle.availableStock > 0 && (
-            <Badge className="bg-emerald-600 text-white text-[10px] border-0">Stock × {vehicle.availableStock}</Badge>
+            <Badge className="bg-beev-bleu text-beev-black text-[10px] border-0 font-semibold">Stock × {vehicle.availableStock}</Badge>
           )}
         </div>
         {selected && (
-          <div className="absolute top-2 right-2 w-8 h-8 rounded-full bg-[#3e6ae1] text-white grid place-content-center text-sm font-bold shadow-lg">
+          <div className="absolute top-2 right-2 w-8 h-8 rounded-full bg-primary text-primary-foreground grid place-content-center text-sm font-bold shadow-lg">
             ✓
           </div>
         )}
         {/* Bandeau loyer mensuel en bas de l'image (overlay) */}
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-3 pt-8">
-          <p className="text-[10px] text-white/70 uppercase tracking-wide">Loyer mensuel TTC</p>
-          <p className="text-xl font-bold text-white leading-tight">{fmtEur(vehicle.monthlyLld)}<span className="text-xs text-white/60 font-normal ml-1">/mois</span></p>
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-beev-black via-beev-black/80 to-transparent p-3 pt-8">
+          <p className="text-[10px] text-beev-beige/70 uppercase tracking-wide">Loyer mensuel TTC</p>
+          <p className="text-xl font-bold text-beev-beige leading-tight">{fmtEur(vehicle.monthlyLld)}<span className="text-xs text-beev-beige/60 font-normal ml-1">/mois</span></p>
         </div>
       </div>
       <CardContent className="p-4 space-y-3">
@@ -1954,12 +1963,12 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
             {onUpdate && <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)} className="text-foreground/70 hover:text-foreground hover:bg-muted">{editing ? "OK" : "Éditer"}</Button>}
           </div>
         </div>
-        {/* CTA explicite Ajouter/Retirer */}
+        {/* CTA explicite Ajouter/Retirer — charte Beev (default=Black, outline=Black border) */}
         <Button
           type="button"
           onClick={onToggle}
-          variant={selected ? "secondary" : "default"}
-          className={`w-full gap-2 ${selected ? "bg-zinc-700 hover:bg-zinc-600 text-white" : "bg-[#3e6ae1] hover:bg-[#2c5dd9] text-white"}`}
+          variant={selected ? "outline" : "default"}
+          className="w-full gap-2"
           size="sm"
         >
           {selected ? (<><X className="w-4 h-4" /> Retirer de la sélection</>) : (<><Plus className="w-4 h-4" /> Ajouter à la sélection</>)}
@@ -1970,7 +1979,7 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
             {leaserOffers.map((o) => (
               <span
                 key={o.id}
-                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${o.kind === "captive" ? "bg-[#F4B8AA]/20 text-[#F4B8AA]" : "bg-[#3e6ae1]/20 text-[#3e6ae1]"}`}
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${o.kind === "captive" ? "bg-beev-rose-30 text-beev-black" : "bg-beev-bleu-30 text-beev-black"}`}
                 title={`${o.kind === "captive" ? "Captive" : "Loueur"} ${o.loueur} · ${o.durationMonths} mois / ${o.kmTotal.toLocaleString("fr-FR")} km`}
               >
                 <strong>{o.loueur}</strong>
@@ -2057,30 +2066,37 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
 function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { charger: Charger; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Charger>) => void; onDelete?: () => void }) {
   const [editing, setEditing] = useState(false);
   const isHome = charger.deployment === "domicile";
+  const hasImage = Boolean(charger.image && charger.image.trim() !== "");
   return (
-    <Card className={`overflow-hidden transition-all duration-300 ${selected ? "ring-2 ring-[#3e6ae1]/60 border-[#3e6ae1]" : "hover:border-border hover:shadow-lg"}`}>
-      <div className="aspect-[4/3] bg-gradient-to-br from-[#0d0f12] to-[#1a1d23] overflow-hidden relative group">
-        <img src={charger.image} alt={`${charger.brand} ${charger.model}`} className="w-full h-full object-contain p-4 transition-transform duration-500 group-hover:scale-105" loading="lazy" />
-        {/* Overlay badges */}
+    <Card className={`overflow-hidden transition-all duration-300 ${selected ? "ring-2 ring-primary border-primary" : "hover:border-foreground/40 hover:shadow-lg"}`}>
+      <div className="aspect-[4/3] bg-beev-black overflow-hidden relative group">
+        {hasImage ? (
+          <img src={charger.image} alt={`${charger.brand} ${charger.model}`} className="w-full h-full object-contain p-4 transition-transform duration-500 group-hover:scale-105" loading="lazy" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-beev-beige/30 text-sm italic">
+            Image à venir
+          </div>
+        )}
+        {/* Overlay badges — couleurs charte (Rose / Bleu / Violet) */}
         <div className="absolute top-2 left-2 flex flex-col gap-1.5">
-          <Badge className={`text-[10px] font-semibold border ${charger.powerKw >= 22 ? "bg-amber-500/20 text-amber-300 border-amber-500/40" : "bg-blue-500/20 text-blue-300 border-blue-500/40"}`}>
+          <Badge className={`text-[10px] font-semibold border ${charger.powerKw >= 22 ? "bg-beev-rose-30 text-beev-black border-beev-rose" : "bg-beev-bleu-30 text-beev-black border-beev-bleu"}`}>
             {charger.powerKw} kW {charger.powerKw >= 22 ? "triphasé" : "monophasé"}
           </Badge>
-          <Badge className={`text-[10px] border ${isHome ? "bg-purple-500/20 text-purple-300 border-purple-500/40" : "bg-rose-500/20 text-rose-300 border-rose-500/40"}`}>
+          <Badge className={`text-[10px] border ${isHome ? "bg-beev-violet-30 text-beev-black border-beev-violet" : "bg-beev-rose-30 text-beev-black border-beev-rose"}`}>
             {isHome ? "Domicile B2B2E" : "Site entreprise"}
           </Badge>
-          {charger.custom && <Badge className="bg-white text-black text-[10px]">Custom</Badge>}
+          {charger.custom && <Badge className="bg-beev-beige text-beev-black text-[10px]">Custom</Badge>}
         </div>
         {selected && (
-          <div className="absolute top-2 right-2 w-8 h-8 rounded-full bg-[#3e6ae1] text-white grid place-content-center text-sm font-bold shadow-lg">
+          <div className="absolute top-2 right-2 w-8 h-8 rounded-full bg-primary text-primary-foreground grid place-content-center text-sm font-bold shadow-lg">
             ✓
           </div>
         )}
         {/* Bandeau prix en bas de l'image (overlay) */}
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-3 pt-8">
-          <p className="text-[10px] text-white/70 uppercase tracking-wide">{isHome ? "Forfait clé en main HT" : "Borne HT"}</p>
-          <p className="text-xl font-bold text-white leading-tight">{fmtEur(charger.priceHt)}
-            {charger.installPriceHt > 0 && <span className="text-xs text-white/60 font-normal ml-2">+ pose ~{fmtEur(charger.installPriceHt)}</span>}
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-beev-black via-beev-black/80 to-transparent p-3 pt-8">
+          <p className="text-[10px] text-beev-beige/70 uppercase tracking-wide">{isHome ? "Forfait clé en main HT" : "Borne HT"}</p>
+          <p className="text-xl font-bold text-beev-beige leading-tight">{fmtEur(charger.priceHt)}
+            {charger.installPriceHt > 0 && <span className="text-xs text-beev-beige/60 font-normal ml-2">+ pose ~{fmtEur(charger.installPriceHt)}</span>}
           </p>
         </div>
       </div>
@@ -2094,7 +2110,7 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { char
         <ul className="text-xs text-foreground/70 space-y-1">
           {charger.features.slice(0, 4).map((f, i) => (
             <li key={i} className="flex gap-1.5 items-start">
-              <span className="text-[#3e6ae1] mt-0.5">✓</span>
+              <span className="text-primary mt-0.5">✓</span>
               <span className="leading-tight">{f}</span>
             </li>
           ))}
@@ -2103,12 +2119,12 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { char
           {onDelete && <ConfirmDeleteButton label={`${charger.brand} ${charger.model}`} onConfirm={onDelete} />}
           {onUpdate && <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)} className="text-foreground/70 hover:text-foreground hover:bg-muted">{editing ? "OK" : "Éditer"}</Button>}
         </div>
-        {/* CTA explicite Ajouter / Retirer */}
+        {/* CTA explicite Ajouter / Retirer — charte Beev */}
         <Button
           type="button"
           onClick={onToggle}
-          variant={selected ? "secondary" : "default"}
-          className={`w-full gap-2 ${selected ? "bg-zinc-700 hover:bg-zinc-600 text-white" : "bg-[#3e6ae1] hover:bg-[#2c5dd9] text-white"}`}
+          variant={selected ? "outline" : "default"}
+          className="w-full gap-2"
           size="sm"
         >
           {selected ? (<><X className="w-4 h-4" /> Retirer de la sélection</>) : (<><Plus className="w-4 h-4" /> Ajouter à la sélection</>)}
@@ -2270,8 +2286,8 @@ function FiscalWarningBadge({ vehicle, durationMonths }: { vehicle: Vehicle; dur
   if (malusTotal === 0 && tvsAnnuelle === 0) return null;
 
   return (
-    <div className="rounded-md border border-amber-500/40 bg-amber-50/60 dark:bg-amber-950/20 p-2 text-[11px] space-y-1">
-      <div className="flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-400">
+    <div className="rounded-md border border-beev-rose bg-beev-rose-20 p-2 text-[11px] space-y-1">
+      <div className="flex items-center gap-1 font-semibold text-beev-black">
         <AlertTriangle className="w-3 h-3" /> Charges fiscales à vérifier
       </div>
       {malusTotal > 0 && (
