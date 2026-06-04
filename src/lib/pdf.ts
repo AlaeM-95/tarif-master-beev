@@ -1999,7 +1999,11 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setFillColor(...BLACK);
   doc.roundedRect(cardX, mainY, cardW, mainH, 12, 12, "F");
 
-  const discounted = v.priceTtc * (1 - sv.discountPct / 100);
+  // Prix remisé = (prix catalogue + options TTC) × (1 - remise%)
+  // Les options s'ajoutent AVANT remise pour matcher le calcul AND.
+  const optionsTotalTtcCard = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0) * 1.2;
+  const priceBeforeDiscount = v.priceTtc + optionsTotalTtcCard;
+  const discounted = priceBeforeDiscount * (1 - sv.discountPct / 100);
   let py = mainY + 22;
   const rowPad = 14;
   const innerX = cardX + rowPad;
@@ -2020,7 +2024,22 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.line(innerX, py, innerR, py);
   py += 12;
 
-  // Row 2 : Remise commerciale
+  // Row 2 : Total options TTC (uniquement si des options sont saisies)
+  if (optionsTotalTtcCard > 0) {
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...GREY_LABEL_DARK);
+    doc.text("TOTAL OPTIONS TTC", innerX, py);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...BEIGE);
+    doc.text(`+ ${eur(optionsTotalTtcCard)}`, innerR, py, { align: "right" });
+    py += 9;
+    doc.line(innerX, py, innerR, py);
+    py += 12;
+  }
+
+  // Row 3 : Remise commerciale (sur catalogue + options)
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
   doc.setTextColor(...GREY_LABEL_DARK);
@@ -2051,11 +2070,13 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   py += 16;
 
   // Bloc pc-loyer : label bleu + gros chiffre + note
+  // py += 8 supplémentaires (28 au lieu de 26) pour aérer la respiration
+  // entre le sous-titre "LOYER MENSUEL TTC · X MOIS" et le gros chiffre.
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
   doc.setTextColor(...BLEU_ACCENT);
   doc.text(`${lookupText(TEXTS, "vehicles", "vehicle_monthly_label", "LOYER MENSUEL TTC")} · ${sv.durationMonths} MOIS`, innerX, py);
-  py += 26;
+  py += 32;
   // Gros chiffre 36pt + "/ mois" 12pt à côté
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(34);
@@ -2614,7 +2635,7 @@ function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
-  const intro = "Chaque véhicule est décomposé en 4 composantes : loyer LLD, coût énergie, fiscalité (TVS), malus à l'achat. Le véhicule en haut a le TCO le plus bas.";
+  const intro = "Comparaison du coût total entre les véhicules de votre sélection. Chacun est décomposé en 4 composantes : loyer LLD, coût énergie, fiscalité (TVS), malus à l'achat. Le véhicule en haut a le TCO le plus bas — le plus économique pour votre usage.";
   const introL = doc.splitTextToSize(intro, PAGE_W - M * 2);
   doc.text(introL, M, y);
   y += introL.length * 13 + 14;
@@ -2653,37 +2674,36 @@ function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
   const cheapest = rows[0];
   const mostExpensive = rows[rows.length - 1];
   const ecartTotal = mostExpensive.total - cheapest.total;
-  const ecartAnnuel = mostExpensive.annuel - cheapest.annuel;
-  const fleetAnnual = rows.reduce((s, r) => s + r.annuel * Math.max(1, r.sv.quantity), 0);
-  const fleetTotal = rows.reduce((s, r) => s + r.total * Math.max(1, r.sv.quantity), 0);
+  const ecartPct = mostExpensive.total > 0 ? (ecartTotal / mostExpensive.total) * 100 : 0;
 
-  // === 4 KPI cards en haut ===
+  // === 4 KPI cards en haut — sémantique COMPARAISON entre véhicules,
+  // pas une flotte à commander. Le client choisira UN véhicule. ===
   const cardW = (PAGE_W - M * 2 - 30) / 4;
   const cardH = 70;
   const kpis = [
     {
       label: "MEILLEUR TCO",
-      value: `${cheapest.par100km.toFixed(2)} €`,
-      sub: `${cheapest.sv.vehicle.brand} ${cheapest.sv.vehicle.model}`.slice(0, 22),
+      value: `${cheapest.par100km.toFixed(2)} €/100km`,
+      sub: `${cheapest.sv.vehicle.brand} ${cheapest.sv.vehicle.model}`.slice(0, 26),
       color: COLOR_ENERGIE,
     },
     {
-      label: "ÉCART MAX",
-      value: eur(ecartAnnuel),
-      sub: "par an entre best et worst",
+      label: "TCO LE PLUS ÉLEVÉ",
+      value: `${mostExpensive.par100km.toFixed(2)} €/100km`,
+      sub: `${mostExpensive.sv.vehicle.brand} ${mostExpensive.sv.vehicle.model}`.slice(0, 26),
+      color: COLOR_MALUS,
+    },
+    {
+      label: "ÉCART SUR CONTRAT",
+      value: eur(ecartTotal),
+      sub: "économie potentielle pire vs meilleur",
       color: COLOR_LOYER,
     },
     {
-      label: "TCO FLOTTE / AN",
-      value: eur(fleetAnnual),
-      sub: `${rows.reduce((s, r) => s + r.sv.quantity, 0)} véhicule(s)`,
+      label: "ÉCART %",
+      value: `${ecartPct.toFixed(1)} %`,
+      sub: "pire − meilleur ÷ pire",
       color: COLOR_TVS,
-    },
-    {
-      label: "TCO FLOTTE TOTAL",
-      value: eur(fleetTotal),
-      sub: "sur la durée contrat",
-      color: COLOR_MALUS,
     },
   ];
   kpis.forEach((k, i) => {
@@ -2817,23 +2837,38 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
   doc.text(introL, M, y);
   y += introL.length * 14 + 18;
 
-  // Calcule les TCO pour tous les véhicules (synced ou fallback)
+  // Calcul TCO unifié via calculateTcoFull pour TOUS les véhicules (mêmes
+  // hypothèses : prix catalogue + options - remise, barèmes 2026, etc.).
+  // Évite l'incohérence avec drawTcoDashboard qui utilisait calculateTcoFull
+  // alors que cette page utilisait un fallback différent.
   const tcos = vehicles.map((sv) => {
-    const synced = TCO_RESULTS.get(sv.vehicle.id);
-    const fallback = computeTco(sv, e);
-    const tco100 = synced?.tcoPer100km ?? fallback.tco100;
-    const lease100 = synced?.leasePer100km ?? fallback.lease100;
-    const energy100 = synced?.energyPer100km ?? fallback.energy100;
-    const tcoYear = synced?.tcoPerYear ?? (tco100 * sv.kmPerYear / 100);
-    const tcoTotal = synced?.tcoTotalContract ?? (tcoYear * sv.durationMonths / 12);
+    const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0) * 1.2;
+    const duree = sv.durationMonths / 12;
+    const kmContrat = sv.kmPerYear * duree;
+    const r = calculateTcoFull(sv.vehicle, {
+      dureeAnnees: duree,
+      kmContrat,
+      prixEssenceLitre: e.fuelPriceL,
+      prixKwhDomicile: e.kWhHome,
+      prixKwhPublic: e.kWhPublic,
+      optionsTotalTtc,
+      remisePctOverride: sv.discountPct,
+    }, sv.negotiatedMonthly);
+    const tco100 = r.tcoParKm * 100;
+    const lease100 = (r.loyerTotal / kmContrat) * 100;
+    const energy100 = (r.coutEnergie / kmContrat) * 100;
     return {
       sv,
-      synced: !!synced,
+      synced: true,
       tco100,
       lease100,
       energy100,
-      tcoYear,
-      tcoTotal,
+      tcoYear: r.tcoAnnuel,
+      tcoTotal: r.tcoTotal,
+      malus: r.malusCO2 + r.malusPoids,
+      tvsTotal: r.tvsTotal,
+      andAnnuel: r.andAnnuel,
+      aenAnnuel: r.aenAnnuel,
     };
   });
 
@@ -3019,14 +3054,47 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
   doc.setTextColor(...ACCENT);
   doc.text(eur(ecartTotalContract), chartX + 16 + 2 * colW, y + 74);
 
-  y += 100;
+  y += 110;
+
+  // === Encart "BASES DE CALCUL" : transparence sur les hypothèses ===
+  if (y < FOOTER_LIMIT - 130) {
+    doc.setFillColor(...BG);
+    doc.rect(M, y, PAGE_W - M * 2, 110, "F");
+    doc.setFillColor(...LAVENDER);
+    doc.rect(M, y, 4, 110, "F");
+
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(...LAVENDER);
+    doc.text("BASES DE CALCUL · HYPOTHÈSES BEEV 2026", M + 16, y + 18);
+
+    const fuelL = e.fuelPriceL ?? 1.75;
+    const kwhDom = e.kWhHome ?? 0.4;
+    const kwhPub = e.kWhPublic ?? 0.6;
+    const lines = [
+      `· Carburant SP95 / Diesel : ${fuelL.toFixed(2)} €/L`,
+      `· Électricité : ${kwhDom.toFixed(2)} €/kWh domicile (85 %) + ${kwhPub.toFixed(2)} €/kWh public (15 %)`,
+      `· TVS : barème 2026 (taxe CO₂ par tranche + taxe pollution 130 € essence / 650 € diesel / 0 € électrique) × durée contrat`,
+      `· Malus CO₂ à l'achat : barème 2026 (0 € < 108 g, plafonné à 80 000 € au-delà de 192 g)`,
+      `· Malus poids à l'achat : à partir de 1500 kg (abattement 100 kg hybride, 200 kg PHEV, exonération électrique)`,
+      `· AND (Avantage Non Déductible) : (prix catalogue + options TTC) − remise − batterie − plafond, amorti sur 5 ans`,
+      `· AEN (Avantage en Nature) : 50 % du loyer annuel, abattement 70 % si véhicule électrique éco-scoré`,
+    ];
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...INK);
+    lines.forEach((l, i) => {
+      doc.text(l, M + 16, y + 34 + i * 11, { maxWidth: PAGE_W - M * 2 - 32 });
+    });
+    y += 120;
+  }
 
   // Mention bas
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(7.5);
   doc.setTextColor(...SUB);
-  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_footnote", "Comparaison entre les véhicules de votre sélection uniquement. Estimation indicative basée sur les paramètres énergie & kilométrage du projet."), chartX, y, {
-    maxWidth: chartW,
+  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_footnote", "Comparaison entre les véhicules de votre sélection uniquement. Estimation indicative basée sur les paramètres énergie & kilométrage du projet."), M, y, {
+    maxWidth: PAGE_W - M * 2,
   });
 }
 
