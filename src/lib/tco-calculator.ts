@@ -266,3 +266,132 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
     tcoEmployeurComplet,
   };
 }
+
+// ============================================================================
+// TCO B2B2E — Bornes au domicile des collaborateurs
+// Compare le coût total entre 2 solutions pour une flotte de N collaborateurs :
+//  · Solution Beev : recharge à domicile + itinérance + supervision Home Charging
+//  · Solution thermique : carburant SP95/Diesel via station
+// Permet de montrer l'économie générée par l'électrification.
+// ============================================================================
+
+export type B2B2ECalculatorInput = {
+  /** Nombre de collaborateurs équipés. */
+  nbCollabs: number;
+  /** Durée du contrat (années). */
+  dureeAnnees: number;
+  /** Km/an par collaborateur (moyenne). */
+  kmParAnParCollab: number;
+  /** Consommation moyenne du véhicule électrique (kWh/100km). */
+  consoElecKWh100: number;
+  /** Consommation moyenne du véhicule thermique de référence (L/100km). */
+  consoCarbL100: number;
+  /** Prix kWh domicile (€). */
+  prixKwhDom: number;
+  /** Prix kWh public/itinérance (€). */
+  prixKwhPub: number;
+  /** Prix carburant SP95/Diesel (€/L). */
+  prixCarbL: number;
+  /** Mix recharge domicile en % (0-100). Le reste = itinérance. */
+  mixDomicilePct: number;
+  /** Investissement initial par collaborateur HT pour l'installation borne. */
+  investBorneParCollabHt: number;
+  /** Abonnement Beev Home Charging par mois par collaborateur (€). */
+  supervisionParMoisParCollab: number;
+};
+
+export type B2B2ECalculatorResult = {
+  kmTotalParCollab: number;
+  energieElecParCollab: number;
+  energieCarbParCollab: number;
+  investBorneFlotte: number;
+  investBorneAnnuelFlotte: number;
+  supervisionFlotteAnnuelle: number;
+  supervisionFlotteTotale: number;
+  energieBeevFlotteTotale: number;
+  energieBeevAnnuelle: number;
+  coutBeevFlotteTotal: number;
+  coutBeevFlotteAnnuel: number;
+  coutCarbFlotteTotal: number;
+  coutCarbFlotteAnnuel: number;
+  economieFlotteTotale: number;
+  economieFlotteAnnuelle: number;
+  economieParCollabParAn: number;
+  economiePct: number;
+  roiMois: number;
+  co2EviteTonnes: number;
+};
+
+export function calculateB2B2ETco(input: B2B2ECalculatorInput): B2B2ECalculatorResult {
+  const nb = Math.max(1, Math.round(input.nbCollabs));
+  const duree = Math.max(0.5, input.dureeAnnees);
+  const mixDom = Math.min(1, Math.max(0, input.mixDomicilePct / 100));
+  const mixPub = 1 - mixDom;
+
+  const kmTotalParCollab = input.kmParAnParCollab * duree;
+  const energieElecParCollab = (input.consoElecKWh100 / 100) * kmTotalParCollab;
+  const energieCarbParCollab = (input.consoCarbL100 / 100) * kmTotalParCollab;
+
+  const investBorneFlotte = input.investBorneParCollabHt * nb;
+  const investBorneAnnuelFlotte = investBorneFlotte / duree;
+
+  const supervisionFlotteAnnuelle = input.supervisionParMoisParCollab * 12 * nb;
+  const supervisionFlotteTotale = supervisionFlotteAnnuelle * duree;
+
+  const prixKwhMoyen = input.prixKwhDom * mixDom + input.prixKwhPub * mixPub;
+  const energieBeevParCollabTotale = energieElecParCollab * prixKwhMoyen;
+  const energieBeevFlotteTotale = energieBeevParCollabTotale * nb;
+  const energieBeevAnnuelle = energieBeevFlotteTotale / duree;
+
+  const coutCarbParCollab = energieCarbParCollab * input.prixCarbL;
+  const coutCarbFlotteTotal = coutCarbParCollab * nb;
+  const coutCarbFlotteAnnuel = coutCarbFlotteTotal / duree;
+
+  const coutBeevFlotteTotal = energieBeevFlotteTotale + supervisionFlotteTotale + investBorneFlotte;
+  const coutBeevFlotteAnnuel = coutBeevFlotteTotal / duree;
+
+  const economieFlotteTotale = coutCarbFlotteTotal - coutBeevFlotteTotal;
+  const economieFlotteAnnuelle = economieFlotteTotale / duree;
+  const economieParCollabParAn = economieFlotteAnnuelle / nb;
+  const economiePct = coutCarbFlotteTotal > 0 ? (economieFlotteTotale / coutCarbFlotteTotal) * 100 : 0;
+
+  const economieMensuelleMoyenne = economieFlotteAnnuelle / 12;
+  const roiMois = economieMensuelleMoyenne > 0 ? investBorneFlotte / economieMensuelleMoyenne : 0;
+  const co2EviteTonnes = (135 * kmTotalParCollab * nb) / 1_000_000;
+
+  return {
+    kmTotalParCollab,
+    energieElecParCollab,
+    energieCarbParCollab,
+    investBorneFlotte,
+    investBorneAnnuelFlotte,
+    supervisionFlotteAnnuelle,
+    supervisionFlotteTotale,
+    energieBeevFlotteTotale,
+    energieBeevAnnuelle,
+    coutBeevFlotteTotal,
+    coutBeevFlotteAnnuel,
+    coutCarbFlotteTotal,
+    coutCarbFlotteAnnuel,
+    economieFlotteTotale,
+    economieFlotteAnnuelle,
+    economieParCollabParAn,
+    economiePct,
+    roiMois,
+    co2EviteTonnes,
+  };
+}
+
+export const DEFAULT_B2B2E_INPUT: B2B2ECalculatorInput = {
+  nbCollabs: 10,
+  dureeAnnees: 4,
+  kmParAnParCollab: 25000,
+  consoElecKWh100: 18,
+  consoCarbL100: 6.5,
+  prixKwhDom: 0.20,
+  prixKwhPub: 0.45,
+  prixCarbL: 1.85,
+  mixDomicilePct: 85,
+  investBorneParCollabHt: 1800,
+  supervisionParMoisParCollab: 8,
+};

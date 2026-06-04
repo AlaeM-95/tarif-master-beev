@@ -41,6 +41,7 @@ export type PdfDisplayConfig = {
   showSiteFinancialRecap: boolean; // page Récap financier site
   showSitePaymentOptions: boolean; // page Options de paiement
   showValidation: boolean; // page BPA (signature)
+  showB2B2ETco: boolean; // page TCO B2B2E (Bornes domicile)
 };
 
 export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
@@ -73,6 +74,7 @@ export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
   showSiteFinancialRecap: true,
   showSitePaymentOptions: true,
   showValidation: true,
+  showB2B2ETco: true,
 };
 
 const STORAGE_KEY = "beev_pdf_config_v1";

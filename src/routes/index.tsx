@@ -20,6 +20,7 @@ import { AdminBadge } from "@/components/admin-badge";
 import { ImageUpload } from "@/components/image-upload";
 import { FileUpload } from "@/components/file-upload";
 import { TechnicianQuoteImportDialog } from "@/components/technician-quote-import-dialog";
+import { B2B2ECalculator, useB2B2EInput } from "@/components/b2b2e-calculator";
 import { MarginReviewDialog } from "@/components/margin-review-dialog";
 import { PdfConfigPanel } from "@/components/pdf-config-panel";
 import { CategoryField } from "@/components/category-field";
@@ -100,6 +101,15 @@ function App() {
   const [selectedV, setSelectedV] = useState<Record<string, SelectedVehicle>>({});
   const [selectedC, setSelectedC] = useState<Record<string, SelectedCharger>>({});
   const [presenting, setPresenting] = useState(false);
+  // Calculateur TCO B2B2E (Bornes domicile) — toggle d'inclusion PDF persisté
+  const { input: b2b2eInput, update: setB2B2EInput, reset: resetB2B2EInput } = useB2B2EInput();
+  const [b2b2eIncludeInPdf, setB2B2EIncludeInPdf] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try { return localStorage.getItem("beev_b2b2e_include_pdf") === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("beev_b2b2e_include_pdf", b2b2eIncludeInPdf ? "1" : "0"); } catch { /* ignore */ }
+  }, [b2b2eIncludeInPdf]);
   const [client, setClient] = useState({
     company: "", contact: "", email: "",
     salesRep: "", salesRepEmail: "", salesRepPhone: "",
@@ -445,6 +455,7 @@ function App() {
           vehicles: vehiclesForPdf,
           chargers: freshChargers,
           pdfConfig: tcoFocusedConfig,
+          b2b2eInput: projectType === "home" && b2b2eIncludeInPdf ? b2b2eInput : undefined,
         }),
         timeout,
       ]);
@@ -890,6 +901,19 @@ function App() {
                 ))}
               </div>
             </CatalogSection>
+          )}
+
+          {/* Calculateur TCO B2B2E — apparaît en mode Bornes domicile, juste
+              après le catalogue des bornes. Le commercial saisit ses paramètres
+              et toggle "Inclure PDF" pour insérer une page dédiée. */}
+          {projectType === "home" && (
+            <B2B2ECalculator
+              input={b2b2eInput}
+              update={setB2B2EInput}
+              reset={resetB2B2EInput}
+              includeInPdf={b2b2eIncludeInPdf}
+              setIncludeInPdf={setB2B2EIncludeInPdf}
+            />
           )}
 
           {projectType === "site" && (

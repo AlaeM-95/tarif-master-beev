@@ -6,7 +6,7 @@ import { DEFAULT_PDF_CONFIG, type PdfDisplayConfig } from "./pdf-config";
 import { fetchTcoResultsForVehicles, type TcoResult } from "./tco-results";
 import { loadBeevPillars, type BeevPillar } from "./beev-pillars";
 import { loadPdfTexts, buildPdfTextMap, lookupText, lookupList, type PdfTextMap } from "./pdf-texts";
-import { calculateTcoFull } from "./tco-calculator";
+import { calculateTcoFull, calculateB2B2ETco, type B2B2ECalculatorInput } from "./tco-calculator";
 import type { EnergyParams } from "./store";
 
 export type ClientInfo = {
@@ -356,8 +356,10 @@ export async function generateProposalPdf(opts: {
   chargers: SelectedCharger[];
   energy: EnergyParams;
   pdfConfig?: PdfDisplayConfig;
+  /** Si fourni ET projet "home", insère la page TCO B2B2E dans le PDF. */
+  b2b2eInput?: B2B2ECalculatorInput;
 }) {
-  const { projectType, client, vehicles, chargers, energy, pdfConfig } = opts;
+  const { projectType, client, vehicles, chargers, energy, pdfConfig, b2b2eInput } = opts;
   const cfg: PdfDisplayConfig = pdfConfig ?? DEFAULT_PDF_CONFIG;
   PDF_CFG = cfg; // expose la config pour les fonctions draw*
   const doc = new jsPDF({ unit: "pt", format: "a4" });
@@ -491,6 +493,15 @@ export async function generateProposalPdf(opts: {
     drawHeader(doc, client, "home");
     await drawChargerPage(doc, chargersHome[i], "home", i + 1, chargersHome.length, client);
   }
+
+  // Page TCO B2B2E (Bornes domicile) — incluse si projet "home", calculateur
+  // activé côté UI, et au moins 1 borne domicile sélectionnée.
+  if (effectiveType === "home" && b2b2eInput && chargersHome.length > 0 && cfg.showB2B2ETco !== false) {
+    doc.addPage();
+    drawHeader(doc, client, "home");
+    drawB2B2ETco(doc, b2b2eInput);
+  }
+
   for (let i = 0; i < chargersSite.length; i++) {
     doc.addPage();
     drawHeader(doc, client, "site");
@@ -2820,6 +2831,215 @@ function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
     y,
     { maxWidth: PAGE_W - M * 2 },
   );
+}
+
+// ============ TCO B2B2E — Bornes au domicile des collaborateurs ============
+// Page dédiée pour les projets "Bornes domicile". Compare le coût total
+// entre la solution Beev (recharge domicile + itinérance + supervision)
+// et la solution thermique de référence (carburant SP95/Diesel).
+function drawB2B2ETco(doc: jsPDF, input: B2B2ECalculatorInput) {
+  const PINK: [number, number, number] = [244, 184, 170];
+  const EMERALD: [number, number, number] = [16, 185, 129]; // #10B981
+  const AMBER: [number, number, number] = [217, 119, 6];
+
+  const result = calculateB2B2ETco(input);
+
+  let y = 116;
+  // Eyebrow + titre
+  doc.setFillColor(...PINK);
+  doc.rect(M, y - 8, 22, 2, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text("ANALYSE TCO · BORNES DOMICILE COLLABORATEURS", M + 30, y - 4);
+  y += 14;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(26);
+  doc.setTextColor(...INK);
+  doc.text("Combien votre flotte économisera-t-elle ?", M, y + 18);
+  y += 50;
+
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...SUB);
+  const intro = `Comparaison directe entre la solution Beev (recharge à domicile + itinérance + supervision Beev Home Charging) et la solution thermique de référence (carburant) pour ${input.nbCollabs} collaborateur${input.nbCollabs > 1 ? "s" : ""} sur ${input.dureeAnnees} an${input.dureeAnnees > 1 ? "s" : ""}.`;
+  const introL = doc.splitTextToSize(intro, PAGE_W - M * 2);
+  doc.text(introL, M, y);
+  y += introL.length * 13 + 18;
+
+  // === Bandeau ÉCONOMIE (la valeur reine) ===
+  doc.setFillColor(...LAVENDER);
+  doc.roundedRect(M, y, PAGE_W - M * 2, 100, 8, 8, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(255, 255, 255);
+  doc.text("ÉCONOMIE TOTALE SUR CONTRAT", M + 16, y + 20);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(34);
+  doc.setTextColor(255, 255, 255);
+  doc.text(eur(result.economieFlotteTotale), M + 16, y + 60);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(220, 220, 255);
+  doc.text(
+    `soit ${eur(result.economieFlotteAnnuelle)} / an · ${eur(result.economieParCollabParAn)} par collaborateur / an · ${result.economiePct.toFixed(1)} % moins cher que le thermique`,
+    M + 16, y + 80,
+  );
+  y += 112;
+
+  // === 4 KPIs colorés ===
+  const kpiW = (PAGE_W - M * 2 - 30) / 4;
+  const kpiH = 80;
+  const kpis = [
+    { label: "ÉCONOMIE / COLLAB / AN", value: eur(result.economieParCollabParAn), color: EMERALD, sub: "vs solution thermique" },
+    { label: "ROI BORNE", value: result.roiMois > 0 && result.roiMois < 120 ? `${result.roiMois.toFixed(0)} mois` : "—", color: LAVENDER, sub: "avant amortissement complet" },
+    { label: "CO₂ ÉVITÉ", value: `${result.co2EviteTonnes.toFixed(1)} t`, color: EMERALD, sub: `sur ${input.dureeAnnees} ans (135 g/km évité)` },
+    { label: "KM CONTRAT / COLLAB", value: `${(result.kmTotalParCollab / 1000).toFixed(0)} k km`, color: AMBER, sub: `${input.kmParAnParCollab.toLocaleString("fr-FR")} km/an` },
+  ];
+  kpis.forEach((k, i) => {
+    const cx = M + i * (kpiW + 10);
+    doc.setFillColor(...BG);
+    doc.roundedRect(cx, y, kpiW, kpiH, 6, 6, "F");
+    doc.setFillColor(...k.color);
+    doc.rect(cx, y, kpiW, 3, "F");
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(...SUB);
+    doc.text(k.label, cx + 10, y + 18);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(17);
+    doc.setTextColor(...INK);
+    doc.text(k.value, cx + 10, y + 44);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...SUB);
+    const subL = doc.splitTextToSize(k.sub, kpiW - 20);
+    doc.text(subL.slice(0, 2), cx + 10, y + 60);
+  });
+  y += kpiH + 20;
+
+  // === Décomposition 2 colonnes : Beev vs Thermique ===
+  const colW = (PAGE_W - M * 2 - 20) / 2;
+
+  // Colonne gauche : Beev
+  const colH = 200;
+  doc.setFillColor(56, 9, 234, 0.08 as any);
+  // Note : roundedRect avec fillStyle "F" et opacity n'est pas natif jsPDF.
+  // On dessine un rect plein lavande très clair via mix.
+  doc.setFillColor(238, 232, 254); // #EEE8FE
+  doc.roundedRect(M, y, colW, colH, 8, 8, "F");
+  // Header
+  doc.setFillColor(...LAVENDER);
+  doc.roundedRect(M, y, colW, 28, 8, 8, "F");
+  doc.rect(M, y + 14, colW, 14, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(255, 255, 255);
+  doc.text("SOLUTION BEEV", M + 14, y + 18);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8);
+  doc.text("Recharge domicile + itinérance + supervision Home Charging", M + 14, y + 38);
+
+  // Lignes décomposition Beev
+  const beevLines = [
+    { l: "Énergie électrique (mix domicile + itinérance)", v: eur(result.energieBeevFlotteTotale) },
+    { l: "Supervision Beev Home Charging", v: eur(result.supervisionFlotteTotale) },
+    { l: "Investissement bornes installées", v: eur(result.investBorneFlotte) },
+  ];
+  let by = y + 64;
+  beevLines.forEach((line) => {
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...SUB);
+    doc.text(line.l, M + 14, by, { maxWidth: colW - 100 });
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...INK);
+    doc.text(line.v, M + colW - 14, by, { align: "right" });
+    by += 22;
+    doc.setDrawColor(...RULE);
+    doc.line(M + 14, by - 4, M + colW - 14, by - 4);
+  });
+  // Total Beev
+  by += 8;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...LAVENDER);
+  doc.text("COÛT TOTAL BEEV", M + 14, by);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(16);
+  doc.setTextColor(...LAVENDER);
+  doc.text(eur(result.coutBeevFlotteTotal), M + colW - 14, by + 4, { align: "right" });
+
+  // Colonne droite : Thermique
+  const rx = M + colW + 20;
+  doc.setFillColor(254, 243, 199); // #FEF3C7 - amber-100
+  doc.roundedRect(rx, y, colW, colH, 8, 8, "F");
+  doc.setFillColor(...AMBER);
+  doc.roundedRect(rx, y, colW, 28, 8, 8, "F");
+  doc.rect(rx, y + 14, colW, 14, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(255, 255, 255);
+  doc.text("SOLUTION THERMIQUE (RÉFÉRENCE)", rx + 14, y + 18);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8);
+  doc.text(`Carburant SP95 / Diesel via station-service (${input.consoCarbL100} L/100 km)`, rx + 14, y + 38);
+
+  const carbLines = [
+    { l: `Carburant (${input.prixCarbL.toFixed(2)} €/L × ${(result.energieCarbParCollab * input.nbCollabs).toFixed(0)} L)`, v: eur(result.coutCarbFlotteTotal) },
+    { l: "—", v: "—" },
+    { l: "—", v: "—" },
+  ];
+  let cy = y + 64;
+  carbLines.forEach((line) => {
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...SUB);
+    doc.text(line.l, rx + 14, cy, { maxWidth: colW - 100 });
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(line.v === "—" ? SUB[0] : INK[0], line.v === "—" ? SUB[1] : INK[1], line.v === "—" ? SUB[2] : INK[2]);
+    doc.text(line.v, rx + colW - 14, cy, { align: "right" });
+    cy += 22;
+    doc.setDrawColor(...RULE);
+    doc.line(rx + 14, cy - 4, rx + colW - 14, cy - 4);
+  });
+  cy += 8;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...AMBER);
+  doc.text("COÛT TOTAL THERMIQUE", rx + 14, cy);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(16);
+  doc.setTextColor(...AMBER);
+  doc.text(eur(result.coutCarbFlotteTotal), rx + colW - 14, cy + 4, { align: "right" });
+
+  y += colH + 20;
+
+  // === Encart Bases de calcul (transparence) ===
+  if (y < FOOTER_LIMIT - 90) {
+    doc.setFillColor(...BG);
+    doc.rect(M, y, PAGE_W - M * 2, 80, "F");
+    doc.setFillColor(...LAVENDER);
+    doc.rect(M, y, 4, 80, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...LAVENDER);
+    doc.text("BASES DE CALCUL · HYPOTHÈSES", M + 14, y + 16);
+
+    const lines = [
+      `· ${input.nbCollabs} collaborateurs · ${input.kmParAnParCollab.toLocaleString("fr-FR")} km/an · ${input.dureeAnnees} ans`,
+      `· Énergie : conso élec ${input.consoElecKWh100} kWh/100 (${input.mixDomicilePct}% domicile à ${input.prixKwhDom.toFixed(2)} €/kWh + ${100 - input.mixDomicilePct}% itinérance à ${input.prixKwhPub.toFixed(2)} €/kWh)`,
+      `· Référence thermique : conso ${input.consoCarbL100} L/100 · prix carburant ${input.prixCarbL.toFixed(2)} €/L (SP95 ou Diesel)`,
+      `· Supervision Beev Home Charging : ${input.supervisionParMoisParCollab} €/mois/collab · installation borne ${input.investBorneParCollabHt} € HT/collab amorti sur ${input.dureeAnnees} ans`,
+      `· CO₂ évité estimé sur la base de 135 g CO₂/km émis en moyenne par un véhicule thermique équivalent`,
+    ];
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...INK);
+    lines.forEach((l, i) => doc.text(l, M + 14, y + 30 + i * 10, { maxWidth: PAGE_W - M * 2 - 28 }));
+  }
 }
 
 function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams) {
