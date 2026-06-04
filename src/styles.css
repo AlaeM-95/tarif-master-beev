@@ -4,7 +4,13 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Tesla-style design system: dark premium, massive typography, full-bleed */
+/* Beev design system — light cream premium
+ * Charte officielle synchronisée avec pdf_settings (admin) :
+ *   Lavender   #3809EA  (primaire)
+ *   Accent     #35DA76  (vert)
+ *   Pink/Rose  #F4B8AA  (accent secondaire pêche)
+ *   BG cream   #FAF8F4  (fond)
+ *   Ink        #111111  (texte) */
 @theme inline {
   --font-display: "Inter", system-ui, sans-serif;
   --font-sans: "Inter", system-ui, sans-serif;
@@ -32,69 +38,71 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-tesla-blue: var(--tesla-blue);
-  --color-tesla-gray: var(--tesla-gray);
-  --color-tesla-surface: var(--tesla-surface);
+  --color-beev-lavender: var(--beev-lavender);
+  --color-beev-pink: var(--beev-pink);
+  --color-beev-emerald: var(--beev-emerald);
   --shadow-soft: 0 1px 2px oklch(0 0 0 / 0.04), 0 4px 16px oklch(0 0 0 / 0.06);
   --shadow-elevated: 0 12px 40px -12px oklch(0 0 0 / 0.18);
 }
 
 :root {
-  --radius: 0.25rem;
-  /* Tesla dark palette */
-  --background: #000000;
-  --foreground: #ffffff;
-  --tesla-gray: #393c41;
-  --tesla-surface: #171a20;
-  --card: #171a20;
-  --card-foreground: #ffffff;
-  --popover: #171a20;
-  --popover-foreground: #ffffff;
-  /* Tesla blue accent */
-  --primary: #ffffff;
-  --primary-foreground: #000000;
-  --secondary: #171a20;
-  --secondary-foreground: #ffffff;
-  --muted: #171a20;
-  --muted-foreground: #777777;
-  --accent: #3e6ae1;
-  --accent-foreground: #ffffff;
-  --destructive: #e82127;
-  --destructive-foreground: #ffffff;
-  --border: #393c41;
-  --input: #393c41;
-  --ring: #3e6ae1;
-  --tesla-blue: #3e6ae1;
-  --sidebar: #000000;
-  --sidebar-foreground: #ffffff;
-  --sidebar-primary: #ffffff;
-  --sidebar-primary-foreground: #000000;
-  --sidebar-accent: #171a20;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #393c41;
-  --sidebar-ring: #3e6ae1;
+  --radius: 0.5rem;
+  /* Beev light palette */
+  --background: #FAF8F4;      /* cream principal */
+  --foreground: #111111;      /* texte noir */
+  --card: #FFFFFF;             /* cards blanches sur fond cream */
+  --card-foreground: #111111;
+  --popover: #FFFFFF;
+  --popover-foreground: #111111;
+  /* Primaire = lavande Beev */
+  --primary: #3809EA;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F4EFE7;        /* cream foncé pour zones secondaires */
+  --secondary-foreground: #111111;
+  --muted: #F4EFE7;
+  --muted-foreground: #5F5F64; /* gris secondaire (cf. SUB du PDF) */
+  --accent: #35DA76;           /* vert Beev */
+  --accent-foreground: #FFFFFF;
+  --destructive: #DC2626;      /* rouge alerte standard */
+  --destructive-foreground: #FFFFFF;
+  --border: #DCDAD4;           /* filet beige clair (cf. RULE du PDF) */
+  --input: #DCDAD4;
+  --ring: #3809EA;
+  /* Couleurs Beev spécifiques (utilisables via bg-beev-lavender etc.) */
+  --beev-lavender: #3809EA;
+  --beev-pink: #F4B8AA;
+  --beev-emerald: #35DA76;
+  --sidebar: #FAF8F4;
+  --sidebar-foreground: #111111;
+  --sidebar-primary: #3809EA;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #F4EFE7;
+  --sidebar-accent-foreground: #111111;
+  --sidebar-border: #DCDAD4;
+  --sidebar-ring: #3809EA;
 }
 
 .dark {
-  --background: #000000;
-  --foreground: #ffffff;
-  --card: #171a20;
-  --card-foreground: #ffffff;
-  --popover: #171a20;
-  --popover-foreground: #ffffff;
-  --primary: #ffffff;
-  --primary-foreground: #000000;
-  --secondary: #171a20;
-  --secondary-foreground: #ffffff;
-  --muted: #171a20;
-  --muted-foreground: #777777;
-  --accent: #3e6ae1;
-  --accent-foreground: #ffffff;
-  --destructive: #e82127;
-  --destructive-foreground: #ffffff;
-  --border: #393c41;
-  --input: #393c41;
-  --ring: #3e6ae1;
+  /* Mode sombre conservé pour le futur — pour l'instant identique au light Beev
+   * pour éviter qu'un toggle .dark accidentel ne rebascule en thème Tesla noir.
+   * Si vous voulez ré-activer un dark mode, copiez ici la palette inversée. */
+  --background: #FAF8F4;
+  --foreground: #111111;
+  --card: #FFFFFF;
+  --card-foreground: #111111;
+  --primary: #3809EA;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F4EFE7;
+  --secondary-foreground: #111111;
+  --muted: #F4EFE7;
+  --muted-foreground: #5F5F64;
+  --accent: #35DA76;
+  --accent-foreground: #FFFFFF;
+  --destructive: #DC2626;
+  --destructive-foreground: #FFFFFF;
+  --border: #DCDAD4;
+  --input: #DCDAD4;
+  --ring: #3809EA;
 }
 
 @layer base {
@@ -113,19 +121,13 @@
   }
 }
 
-/* Tesla smooth scroll + snap */
-html {
-  scroll-behavior: smooth;
-}
+html { scroll-behavior: smooth; }
 
-/* Custom scrollbar — minimal Tesla style */
-::-webkit-scrollbar {
-  width: 4px;
-}
-::-webkit-scrollbar-track {
-  background: #000000;
-}
+/* Scrollbar discrète sur fond cream */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--color-background); }
 ::-webkit-scrollbar-thumb {
-  background: #393c41;
-  border-radius: 2px;
+  background: var(--color-border);
+  border-radius: 3px;
 }
+::-webkit-scrollbar-thumb:hover { background: var(--color-muted-foreground); }

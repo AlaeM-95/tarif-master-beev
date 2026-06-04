@@ -676,34 +676,34 @@ function App() {
         }}
         onConfirm={doGeneratePdf}
       />
-      <header className="fixed top-0 left-0 right-0 z-50 bg-black/60 backdrop-blur-md border-b border-white/5">
+      <header className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-md border-b border-border">
         <div className="container mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-white text-black font-bold text-lg tracking-tight">B</div>
             <div>
-              <h1 className="text-base font-semibold leading-tight tracking-tight text-white">Beev</h1>
-              <p className="text-[10px] text-[#777777] tracking-wide uppercase">Offre commerciale grand compte</p>
+              <h1 className="text-base font-semibold leading-tight tracking-tight text-foreground">Beev</h1>
+              <p className="text-[10px] text-muted-foreground tracking-wide uppercase">Offre commerciale grand compte</p>
             </div>
           </div>
           <div className="flex items-center gap-1.5">
             <RefreshButton />
             <AdminBadge />
-            <Badge variant="outline" className="hidden sm:inline-flex border-[#393c41] text-[#aaaaaa] bg-transparent text-[10px]">{visibleCount} sélection(s)</Badge>
-            <Button asChild variant="ghost" size="sm" className="gap-1.5 text-[#aaaaaa] hover:text-white hover:bg-white/5">
+            <Badge variant="outline" className="hidden sm:inline-flex border-border text-foreground/70 bg-transparent text-[10px]">{visibleCount} sélection(s)</Badge>
+            <Button asChild variant="ghost" size="sm" className="gap-1.5 text-foreground/70 hover:text-foreground hover:bg-muted">
               <a href="/proposals"><FolderOpen className="w-3.5 h-3.5" /> Propositions</a>
             </Button>
             {isOps && (
-              <Button asChild variant="ghost" size="sm" className="gap-1.5 text-[#aaaaaa] hover:text-white hover:bg-white/5" title="Éditer véhicules + offres loueurs">
+              <Button asChild variant="ghost" size="sm" className="gap-1.5 text-foreground/70 hover:text-foreground hover:bg-muted" title="Éditer véhicules + offres loueurs">
                 <a href="/admin/vehicles"><Car className="w-3.5 h-3.5" /> Véhicules</a>
               </Button>
             )}
             {isOps && (
-              <Button asChild variant="ghost" size="sm" className="gap-1.5 text-[#aaaaaa] hover:text-white hover:bg-white/5" title="Personnaliser le PDF généré">
+              <Button asChild variant="ghost" size="sm" className="gap-1.5 text-foreground/70 hover:text-foreground hover:bg-muted" title="Personnaliser le PDF généré">
                 <a href="/admin/pdf"><Settings2 className="w-3.5 h-3.5" /> PDF</a>
               </Button>
             )}
             {isAdmin && (
-              <Button asChild variant="ghost" size="sm" className="gap-1.5 text-[#aaaaaa] hover:text-white hover:bg-white/5" title="Inviter et gérer les rôles utilisateurs">
+              <Button asChild variant="ghost" size="sm" className="gap-1.5 text-foreground/70 hover:text-foreground hover:bg-muted" title="Inviter et gérer les rôles utilisateurs">
                 <a href="/admin/users"><Users className="w-3.5 h-3.5" /> Utilisateurs</a>
               </Button>
             )}
@@ -711,7 +711,7 @@ function App() {
               variant="ghost"
               size="sm"
               onClick={() => setPickTplDialog(true)}
-              className="gap-1.5 text-[#aaaaaa] hover:text-white hover:bg-white/5"
+              className="gap-1.5 text-foreground/70 hover:text-foreground hover:bg-muted"
               title="Démarrer depuis un template"
             >
               <FileText className="w-3.5 h-3.5" /> Templates
@@ -722,7 +722,7 @@ function App() {
                 size="sm"
                 onClick={() => setSaveTplDialog({ open: true, name: "", description: "" })}
                 disabled={visibleCount === 0}
-                className="gap-1.5 text-[#aaaaaa] hover:text-white hover:bg-white/5"
+                className="gap-1.5 text-foreground/70 hover:text-foreground hover:bg-muted"
                 title="Sauver comme template"
               >
                 <Save className="w-3.5 h-3.5" /> Sauver
@@ -734,7 +734,7 @@ function App() {
                 size="sm"
                 onClick={handleSaveProposal}
                 disabled={visibleCount === 0 || isSavingProposal}
-                className="gap-1.5 border-[#393c41] text-white hover:bg-white/5 hover:border-[#5c5f66]"
+                className="gap-1.5 border-border text-foreground hover:bg-muted hover:border-border"
               >
                 {isSavingProposal ? (
                   <><RotateCcw className="w-3.5 h-3.5 animate-spin" /> ...</>
@@ -743,12 +743,12 @@ function App() {
                 )}
               </Button>
               {lastSavedAt && (
-                <span className="text-[9px] text-[#777777] hidden md:inline" title={lastSavedAt.toISOString()}>
+                <span className="text-[9px] text-muted-foreground hidden md:inline" title={lastSavedAt.toISOString()}>
                   {lastSavedAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
                 </span>
               )}
             </div>
-            <Button variant="outline" size="sm" onClick={() => setPresenting(true)} disabled={visibleCount === 0} className="gap-1.5 border-[#393c41] text-white hover:bg-white/5 hover:border-[#5c5f66]">
+            <Button variant="outline" size="sm" onClick={() => setPresenting(true)} disabled={visibleCount === 0} className="gap-1.5 border-border text-foreground hover:bg-muted hover:border-border">
               <Presentation className="w-3.5 h-3.5" /> Présenter
             </Button>
             <Button size="sm" onClick={exportPdf} disabled={visibleCount === 0 || isGenerating} className="gap-1.5 bg-white text-black hover:bg-[#e0e0e0]">
@@ -1046,11 +1046,11 @@ function ProjectTypeSelector({ value, onChange }: { value: ProjectTab; onChange:
             key={o.id}
             type="button"
             onClick={() => onChange(o.id)}
-            className={`text-left rounded-xl border p-5 transition-all duration-300 ${active ? "border-white/30 bg-white/5 ring-1 ring-white/20" : "border-[#393c41]/50 bg-[#171a20] hover:border-[#5c5f66] hover:bg-[#1e2128]"}`}
+            className={`text-left rounded-xl border p-5 transition-all duration-300 ${active ? "border-primary bg-muted ring-1 ring-primary/20" : "border-border/50 bg-card hover:border-border hover:bg-card"}`}
           >
-            <div className={`w-10 h-10 rounded-lg grid place-content-center mb-4 ${active ? "bg-white text-black" : "bg-[#393c41]/40 text-[#aaaaaa]"}`}>{o.icon}</div>
-            <p className="font-semibold text-sm leading-tight text-white">{o.title}</p>
-            <p className="text-xs text-[#777777] mt-2 leading-relaxed">{o.desc}</p>
+            <div className={`w-10 h-10 rounded-lg grid place-content-center mb-4 ${active ? "bg-white text-black" : "bg-muted text-foreground/70"}`}>{o.icon}</div>
+            <p className="font-semibold text-sm leading-tight text-foreground">{o.title}</p>
+            <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{o.desc}</p>
           </button>
         );
       })}
@@ -1198,7 +1198,7 @@ function ClientCard({ client, setClient }: { client: any; setClient: (c: any) =>
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-        <CardTitle className="text-base text-white">Informations client & commercial</CardTitle>
+        <CardTitle className="text-base text-foreground">Informations client & commercial</CardTitle>
         {hasAnyField && (
           <Button
             variant="ghost"
@@ -1836,7 +1836,7 @@ function EnergyCard({ energy, setEnergy, reset }: { energy: EnergyParams; setEne
 }
 
 function Field({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
-  return <div className={`space-y-1.5 ${className}`}><Label className="text-xs text-[#777777]">{label}</Label>{children}</div>;
+  return <div className={`space-y-1.5 ${className}`}><Label className="text-xs text-muted-foreground">{label}</Label>{children}</div>;
 }
 
 function ConfirmDeleteButton({ label, onConfirm }: { label: string; onConfirm: () => void }) {
@@ -1879,7 +1879,7 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
     ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
     : "bg-zinc-500/20 text-zinc-300 border-zinc-500/40";
   return (
-    <Card className={`overflow-hidden transition-all duration-300 ${selected ? "ring-2 ring-[#3e6ae1]/60 border-[#3e6ae1]" : "hover:border-[#5c5f66] hover:shadow-lg"}`}>
+    <Card className={`overflow-hidden transition-all duration-300 ${selected ? "ring-2 ring-[#3e6ae1]/60 border-[#3e6ae1]" : "hover:border-border hover:shadow-lg"}`}>
       <div className="aspect-[4/3] bg-gradient-to-br from-[#0d0f12] to-[#1a1d23] overflow-hidden relative group">
         <img src={vehicle.image} alt={`${vehicle.brand} ${vehicle.model}`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
         {/* Overlay badges en haut */}
@@ -1905,23 +1905,23 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
       <CardContent className="p-4 space-y-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <h3 className="font-bold leading-tight text-white text-base truncate">{vehicle.brand} {vehicle.model}</h3>
-            <p className="text-xs text-[#777777] truncate mt-0.5">{vehicle.version}</p>
+            <h3 className="font-bold leading-tight text-foreground text-base truncate">{vehicle.brand} {vehicle.model}</h3>
+            <p className="text-xs text-muted-foreground truncate mt-0.5">{vehicle.version}</p>
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-2 text-[11px] text-[#aaaaaa]">
+        <div className="grid grid-cols-3 gap-2 text-[11px] text-foreground/70">
           <Spec icon={<Gauge className="w-3 h-3" />} v={vehicle.rangeWltp ? `${vehicle.rangeWltp} km` : `${vehicle.co2} g/km`} />
           <Spec icon={<Battery className="w-3 h-3" />} v={vehicle.batteryKwh ? `${vehicle.batteryKwh} kWh` : "—"} />
           <Spec icon={<Zap className="w-3 h-3" />} v={`${vehicle.powerHp} ch`} />
         </div>
-        <div className="flex items-end justify-between pt-1 border-t border-[#393c41]/50 pt-3">
+        <div className="flex items-end justify-between pt-1 border-t border-border/50 pt-3">
           <div>
-            <p className="text-[10px] text-[#777777] uppercase tracking-wide">Prix catalogue TTC</p>
-            <p className="font-semibold text-white text-sm">{fmtEur(vehicle.priceTtc)}</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Prix catalogue TTC</p>
+            <p className="font-semibold text-foreground text-sm">{fmtEur(vehicle.priceTtc)}</p>
           </div>
           <div className="flex items-center gap-1">
             {onDelete && <ConfirmDeleteButton label={`${vehicle.brand} ${vehicle.model}`} onConfirm={onDelete} />}
-            {onUpdate && <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)} className="text-[#aaaaaa] hover:text-white hover:bg-white/5">{editing ? "OK" : "Éditer"}</Button>}
+            {onUpdate && <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)} className="text-foreground/70 hover:text-foreground hover:bg-muted">{editing ? "OK" : "Éditer"}</Button>}
           </div>
         </div>
         {/* CTA explicite Ajouter/Retirer */}
@@ -1936,7 +1936,7 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
         </Button>
         {/* Badges loueurs : 1 par offre disponible (durée / km / mensuel) */}
         {leaserOffers.length > 0 && (
-          <div className="flex flex-wrap gap-1 pt-2 border-t border-[#393c41]/50">
+          <div className="flex flex-wrap gap-1 pt-2 border-t border-border/50">
             {leaserOffers.map((o) => (
               <span
                 key={o.id}
@@ -1955,7 +1955,7 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
           <TripartiteViewerButton url={vehicle.tripartitePdfUrl} vehicleLabel={`${vehicle.brand} ${vehicle.model}`} />
         )}
         {editing && onUpdate && (
-          <div className="space-y-2 pt-2 border-t border-[#393c41]/50">
+          <div className="space-y-2 pt-2 border-t border-border/50">
             <div className="grid grid-cols-2 gap-2">
               <TxtField label="Marque" value={vehicle.brand} onChange={(s) => onUpdate({ brand: s })} />
               <TxtField label="Modèle" value={vehicle.model} onChange={(s) => onUpdate({ model: s })} />
@@ -1971,22 +1971,22 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
               <NumField label="Poids vide (kg)" value={vehicle.poidsVide ?? 0} onChange={(n) => onUpdate({ poidsVide: n })} />
               <NumField label="Remise %" value={vehicle.remise ?? 0} onChange={(n) => onUpdate({ remise: n })} step={0.5} />
               <div className="space-y-1">
-                <Label className="text-[10px] text-[#777777] uppercase">Éco-score (AEN -70%)</Label>
+                <Label className="text-[10px] text-muted-foreground uppercase">Éco-score (AEN -70%)</Label>
                 <select
                   value={vehicle.ecoScoreBool ? "yes" : "no"}
                   onChange={(e) => onUpdate({ ecoScoreBool: e.target.value === "yes" })}
-                  className="h-8 w-full rounded-md border border-[#393c41] bg-[#171a20] px-2 text-xs text-white"
+                  className="h-8 w-full rounded-md border border-border bg-card px-2 text-xs text-foreground"
                 >
                   <option value="no">Non</option>
                   <option value="yes">Oui</option>
                 </select>
               </div>
               <div className="space-y-1">
-                <Label className="text-[10px] text-[#777777] uppercase">Énergie</Label>
+                <Label className="text-[10px] text-muted-foreground uppercase">Énergie</Label>
                 <select
                   value={vehicle.energy}
                   onChange={(e) => onUpdate({ energy: e.target.value as Vehicle["energy"] })}
-                  className="h-8 w-full rounded-md border border-[#393c41] bg-[#171a20] px-2 text-xs text-white"
+                  className="h-8 w-full rounded-md border border-border bg-card px-2 text-xs text-foreground"
                 >
                   <option value="Électrique">Électrique</option>
                   <option value="Hybride Rechargeable">Hybride Rechargeable</option>
@@ -2028,7 +2028,7 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { char
   const [editing, setEditing] = useState(false);
   const isHome = charger.deployment === "domicile";
   return (
-    <Card className={`overflow-hidden transition-all duration-300 ${selected ? "ring-2 ring-[#3e6ae1]/60 border-[#3e6ae1]" : "hover:border-[#5c5f66] hover:shadow-lg"}`}>
+    <Card className={`overflow-hidden transition-all duration-300 ${selected ? "ring-2 ring-[#3e6ae1]/60 border-[#3e6ae1]" : "hover:border-border hover:shadow-lg"}`}>
       <div className="aspect-[4/3] bg-gradient-to-br from-[#0d0f12] to-[#1a1d23] overflow-hidden relative group">
         <img src={charger.image} alt={`${charger.brand} ${charger.model}`} className="w-full h-full object-contain p-4 transition-transform duration-500 group-hover:scale-105" loading="lazy" />
         {/* Overlay badges */}
@@ -2057,11 +2057,11 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { char
       <CardContent className="p-4 space-y-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <h3 className="font-bold leading-tight text-white text-base truncate">{charger.brand} {charger.model}</h3>
-            <p className="text-xs text-[#777777] truncate mt-0.5">{charger.type}</p>
+            <h3 className="font-bold leading-tight text-foreground text-base truncate">{charger.brand} {charger.model}</h3>
+            <p className="text-xs text-muted-foreground truncate mt-0.5">{charger.type}</p>
           </div>
         </div>
-        <ul className="text-xs text-[#aaaaaa] space-y-1">
+        <ul className="text-xs text-foreground/70 space-y-1">
           {charger.features.slice(0, 4).map((f, i) => (
             <li key={i} className="flex gap-1.5 items-start">
               <span className="text-[#3e6ae1] mt-0.5">✓</span>
@@ -2069,9 +2069,9 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { char
             </li>
           ))}
         </ul>
-        <div className="flex items-center justify-end gap-1 pt-1 border-t border-[#393c41]/50 pt-3">
+        <div className="flex items-center justify-end gap-1 pt-1 border-t border-border/50 pt-3">
           {onDelete && <ConfirmDeleteButton label={`${charger.brand} ${charger.model}`} onConfirm={onDelete} />}
-          {onUpdate && <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)} className="text-[#aaaaaa] hover:text-white hover:bg-white/5">{editing ? "OK" : "Éditer"}</Button>}
+          {onUpdate && <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)} className="text-foreground/70 hover:text-foreground hover:bg-muted">{editing ? "OK" : "Éditer"}</Button>}
         </div>
         {/* CTA explicite Ajouter / Retirer */}
         <Button
@@ -2084,7 +2084,7 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { char
           {selected ? (<><X className="w-4 h-4" /> Retirer de la sélection</>) : (<><Plus className="w-4 h-4" /> Ajouter à la sélection</>)}
         </Button>
         {editing && onUpdate && (
-          <div className="space-y-2 pt-2 border-t border-[#393c41]/50">
+          <div className="space-y-2 pt-2 border-t border-border/50">
             <div className="grid grid-cols-2 gap-2">
               <TxtField label="Marque (titre)" value={charger.brand} onChange={(s) => onUpdate({ brand: s })} />
               <TxtField label="Modèle (titre)" value={charger.model} onChange={(s) => onUpdate({ model: s })} />
@@ -2094,11 +2094,11 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { char
               <NumField label="Puissance kW" value={charger.powerKw} onChange={(n) => onUpdate({ powerKw: n })} step={0.1} />
               <TxtField label="Type (sous-titre)" value={charger.type} onChange={(s) => onUpdate({ type: s })} />
               <div className="space-y-1 col-span-2">
-                <Label className="text-[10px] text-[#777777] uppercase">Déploiement</Label>
+                <Label className="text-[10px] text-muted-foreground uppercase">Déploiement</Label>
                 <select
                   value={charger.deployment}
                   onChange={(e) => onUpdate({ deployment: e.target.value as "domicile" | "site" })}
-                  className="h-8 w-full rounded-md border border-[#393c41] bg-[#171a20] px-2 text-xs text-white"
+                  className="h-8 w-full rounded-md border border-border bg-card px-2 text-xs text-foreground"
                 >
                   <option value="domicile">Domicile collaborateur (B2B2E)</option>
                   <option value="site">Site entreprise</option>
