@@ -39,6 +39,10 @@ export type TcoFullResult = {
   tcoParKm: number;
   tcoTotal: number;
   emissionsContrat: number;
+  /** TCO employeur complet : tcoTotal + (AND × durée) + (AEN part employeur × durée).
+   *  Représente le coût total de possession du point de vue de l'entreprise,
+   *  incluant les charges fiscales annexes habituellement présentées séparément. */
+  tcoEmployeurComplet: number;
 };
 
 const DEFAULT_COUT_ESSENCE_LITRE = 1.75;
@@ -207,6 +211,8 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
   const tcoAnnuel = tcoTotal / contract.dureeAnnees;
   const tcoMensuel = tcoAnnuel / 12;
   const tcoParKm = contract.kmContrat > 0 ? tcoTotal / contract.kmContrat : 0;
+  // Coût employeur complet : ajoute AND et part employeur AEN sur la durée
+  const tcoEmployeurComplet = tcoTotal + andAnnuel * contract.dureeAnnees + partEmployeurAnnuelle * contract.dureeAnnees;
 
   return {
     loyerTotal,
@@ -230,5 +236,6 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
     tcoParKm,
     tcoTotal,
     emissionsContrat,
+    tcoEmployeurComplet,
   };
 }

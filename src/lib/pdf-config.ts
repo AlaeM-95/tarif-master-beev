@@ -27,6 +27,20 @@ export type PdfDisplayConfig = {
   showChargerFeatures: boolean;
   showChargerLineItems: boolean;
   showChargerInclusionNote: boolean;
+
+  // ===== Pages dédiées site entreprise (rapport visite technique) =====
+  showSiteCover: boolean; // couverture (toujours forcée si false → désactivable)
+  showSiteOverview: boolean; // page Vue d'ensemble
+  showSiteGuarantees: boolean; // page Garanties (RC, IRVE, conformité)
+  showSiteProjectSynthesis: boolean; // page Synthèse projet
+  showSiteInfrastructure: boolean; // page Infrastructure / Travaux
+  showSiteEquipments: boolean; // page Équipements (bornes table)
+  showSiteProductSheet: boolean; // pages Fiche produit (1 par modèle)
+  showSiteSupervision: boolean; // page Supervision (Connect / Home Charging)
+  showSiteCompliance: boolean; // page Conformité réglementaire
+  showSiteFinancialRecap: boolean; // page Récap financier site
+  showSitePaymentOptions: boolean; // page Options de paiement
+  showValidation: boolean; // page BPA (signature)
 };
 
 export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
@@ -47,6 +61,18 @@ export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
   showChargerFeatures: true,
   showChargerLineItems: true,
   showChargerInclusionNote: true,
+  showSiteCover: true,
+  showSiteOverview: true,
+  showSiteGuarantees: true,
+  showSiteProjectSynthesis: true,
+  showSiteInfrastructure: true,
+  showSiteEquipments: true,
+  showSiteProductSheet: true,
+  showSiteSupervision: true,
+  showSiteCompliance: true,
+  showSiteFinancialRecap: true,
+  showSitePaymentOptions: true,
+  showValidation: true,
 };
 
 const STORAGE_KEY = "beev_pdf_config_v1";
@@ -125,6 +151,28 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
       { key: "showChargerFeatures", label: "Caractéristiques techniques" },
       { key: "showChargerLineItems", label: "Lignes de chiffrage détaillées" },
       { key: "showChargerInclusionNote", label: "Encart 'Inclus dans la prestation'" },
+    ],
+  },
+  {
+    title: "Rapport visite technique (site entreprise)",
+    appliesTo: ["site"],
+    items: [
+      { key: "showSiteOverview", label: "Vue d'ensemble", description: "Page 1 du rapport, intro + contacts" },
+      { key: "showSiteGuarantees", label: "Garanties", description: "3 cartes : IRVE, RC Décennale, Conformité" },
+      { key: "showSiteProjectSynthesis", label: "Synthèse projet", description: "Lecture rapide du chantier" },
+      { key: "showSiteInfrastructure", label: "Infrastructure / Travaux", description: "Travaux à réaliser + génie civil" },
+      { key: "showSiteEquipments", label: "Équipements", description: "Table bornes + caractéristiques" },
+      { key: "showSiteProductSheet", label: "Fiches produit", description: "1 page par modèle de borne" },
+      { key: "showSiteSupervision", label: "Supervision", description: "Beev Connect ou Home Charging" },
+      { key: "showSiteCompliance", label: "Conformité réglementaire", description: "Bureau Contrôle + Maintenance" },
+      { key: "showSiteFinancialRecap", label: "Récap financier", description: "Tableau Poste/Fournisseur/Montant HT" },
+      { key: "showSitePaymentOptions", label: "Options de paiement", description: "Comptant / 50-50 / Leasing" },
+    ],
+  },
+  {
+    title: "Pages finales",
+    items: [
+      { key: "showValidation", label: "BPA (signature)", description: "Page Bon Pour Accord + signatures" },
     ],
   },
 ];

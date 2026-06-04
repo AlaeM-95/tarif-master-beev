@@ -404,53 +404,70 @@ export async function generateProposalPdf(opts: {
   // Suite : Vue d'ensemble + Synthèse projet + Infrastructure + Équipements
   // + Fiche produit, entre la couverture et 'Pourquoi Beev'.
   if (effectiveType === "site" && c.length > 0) {
-    doc.addPage();
-    drawHeader(doc, client, effectiveType);
-    drawSiteOverview(doc, client, c);
-    doc.addPage();
-    drawHeader(doc, client, effectiveType);
-    drawSiteGuarantees(doc);
-    doc.addPage();
-    drawHeader(doc, client, effectiveType);
-    drawSiteProjectSynthesis(doc, client, c);
-    doc.addPage();
-    drawHeader(doc, client, effectiveType);
-    drawSiteInfrastructure(doc, c);
-    doc.addPage();
-    drawHeader(doc, client, effectiveType);
-    drawSiteEquipments(doc, c);
-    // Fiche produit par modèle unique de borne
-    const uniqueChargers = new Map<string, typeof c[0]>();
-    for (const sc of c) {
-      const key = `${sc.charger.brand}-${sc.charger.model}`;
-      if (!uniqueChargers.has(key)) uniqueChargers.set(key, sc);
-    }
-    for (const sc of uniqueChargers.values()) {
+    if (cfg.showSiteOverview) {
       doc.addPage();
       drawHeader(doc, client, effectiveType);
-      await drawSiteProductSheet(doc, sc);
+      drawSiteOverview(doc, client, c);
     }
-    // Page Supervision : Beev Connect ou Beev Home Charging selon le choix
-    // du commercial dans le panneau droit (sc.siteSpecs.supervisionPlan).
-    const supSpecs = c.map((sc) => sc.siteSpecs?.supervisionPlan).filter(Boolean) as string[];
-    const supPlan = (supSpecs[0] as "beev_connect" | "beev_home_charging" | "none" | undefined);
-    if (supPlan && supPlan !== "none") {
+    if (cfg.showSiteGuarantees) {
       doc.addPage();
       drawHeader(doc, client, effectiveType);
-      drawSiteSupervision(doc, supPlan);
+      drawSiteGuarantees(doc);
     }
-    // Conformité réglementaire (Bureau Contrôle / Consuel / Maintenance)
-    doc.addPage();
-    drawHeader(doc, client, effectiveType);
-    drawSiteCompliance(doc, c);
-    // Récap financier site enrichi (table Poste/Fournisseur/Montant HT)
-    doc.addPage();
-    drawHeader(doc, client, effectiveType);
-    drawSiteFinancialRecap(doc, c);
-    // Options de paiement
-    doc.addPage();
-    drawHeader(doc, client, effectiveType);
-    drawSitePaymentOptions(doc, c);
+    if (cfg.showSiteProjectSynthesis) {
+      doc.addPage();
+      drawHeader(doc, client, effectiveType);
+      drawSiteProjectSynthesis(doc, client, c);
+    }
+    if (cfg.showSiteInfrastructure) {
+      doc.addPage();
+      drawHeader(doc, client, effectiveType);
+      drawSiteInfrastructure(doc, c);
+    }
+    if (cfg.showSiteEquipments) {
+      doc.addPage();
+      drawHeader(doc, client, effectiveType);
+      drawSiteEquipments(doc, c);
+    }
+    if (cfg.showSiteProductSheet) {
+      // Fiche produit par modèle unique de borne
+      const uniqueChargers = new Map<string, typeof c[0]>();
+      for (const sc of c) {
+        const key = `${sc.charger.brand}-${sc.charger.model}`;
+        if (!uniqueChargers.has(key)) uniqueChargers.set(key, sc);
+      }
+      for (const sc of uniqueChargers.values()) {
+        doc.addPage();
+        drawHeader(doc, client, effectiveType);
+        await drawSiteProductSheet(doc, sc);
+      }
+    }
+    if (cfg.showSiteSupervision) {
+      // Page Supervision : Beev Connect ou Beev Home Charging selon le choix
+      // du commercial dans le panneau droit (sc.siteSpecs.supervisionPlan).
+      const supSpecs = c.map((sc) => sc.siteSpecs?.supervisionPlan).filter(Boolean) as string[];
+      const supPlan = (supSpecs[0] as "beev_connect" | "beev_home_charging" | "none" | undefined);
+      if (supPlan && supPlan !== "none") {
+        doc.addPage();
+        drawHeader(doc, client, effectiveType);
+        drawSiteSupervision(doc, supPlan);
+      }
+    }
+    if (cfg.showSiteCompliance) {
+      doc.addPage();
+      drawHeader(doc, client, effectiveType);
+      drawSiteCompliance(doc, c);
+    }
+    if (cfg.showSiteFinancialRecap) {
+      doc.addPage();
+      drawHeader(doc, client, effectiveType);
+      drawSiteFinancialRecap(doc, c);
+    }
+    if (cfg.showSitePaymentOptions) {
+      doc.addPage();
+      drawHeader(doc, client, effectiveType);
+      drawSitePaymentOptions(doc, c);
+    }
   }
 
   if (cfg.showWhyBeev) {
@@ -520,9 +537,11 @@ export async function generateProposalPdf(opts: {
     drawExecutiveSummary(doc, effectiveType, client, v, c, energy);
   }
 
-  doc.addPage();
-  drawHeader(doc, client, effectiveType);
-  drawValidation(doc, effectiveType, client);
+  if (cfg.showValidation) {
+    doc.addPage();
+    drawHeader(doc, client, effectiveType);
+    drawValidation(doc, effectiveType, client);
+  }
 
   const pages = doc.getNumberOfPages();
   for (let i = 2; i <= pages; i++) {
@@ -2202,8 +2221,10 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       doc.text(kpi.value, kx, kpiY + 18);
     });
 
-    // Si TCO sync : ligne supplémentaire avec détails fiscaux
-    if (synced) {
+    // Charges fiscales annexes : on calcule à la volée via calculateTcoFull
+    // (calcul officiel beev-tco-2026). synced (depuis la DB tco_results) sert
+    // de fallback pour rétro-compat.
+    if (synced || sv.includeTco) {
       const fiscalY = y + 80;
       doc.setDrawColor(...RULE);
       doc.setLineWidth(0.4);
@@ -2212,29 +2233,89 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(7);
       doc.setTextColor(...LAVENDER);
-      doc.text(lookupText(TEXTS, "vehicles", "vehicle_tco_fiscal_title", "DÉTAILS FISCAUX (CALCUL BEEV 2026)"), M + 16, fiscalY + 12);
+      doc.text(lookupText(TEXTS, "vehicles", "vehicle_tco_fiscal_title", "CHARGES FISCALES ANNEXES (CALCUL BEEV 2026)"), M + 16, fiscalY + 12);
 
-      // 3 colonnes de stats fiscales (sans TCO mensuel car déjà dans les KPIs du haut)
-      const fiscalCols = [
-        { label: "Malus CO₂", value: eur(synced.malusCo2) },
-        { label: "Malus poids", value: eur(synced.malusPoids) },
-        { label: "TCO total contrat", value: eur(tcoTotal) },
+      // Calcul TCO complet à la volée
+      const duree = sv.durationMonths / 12;
+      const tcoFull = calculateTcoFull(sv.vehicle, {
+        dureeAnnees: duree,
+        kmContrat: sv.kmPerYear * duree,
+        prixEssenceLitre: e.fuelPriceL ?? 1.75,
+        prixKwhDomicile: e.kWhHome ?? 0.4,
+        prixKwhPublic: e.kWhPublic ?? 0.6,
+      }, sv.negotiatedMonthly);
+      const tvsTotal = tcoFull.tvsTotal;
+      const andAnnuel = tcoFull.andAnnuel;
+      const aenAnnuel = tcoFull.aenAnnuel;
+      const partEmpAnnuelle = tcoFull.partEmployeurAnnuelle;
+      // Coût employeur complet = tcoTotal officiel (synced ou local) + AND + AEN
+      // sur la durée du contrat. Garantit la cohérence avec le tcoTotal affiché.
+      const tcoEmployeur = tcoTotal + andAnnuel * duree + partEmpAnnuelle * duree;
+
+      // Ligne 1 : 3 colonnes (Malus CO₂, Malus poids, TVS contrat)
+      const row1Y = fiscalY + 22;
+      const row1 = [
+        { label: "MALUS CO₂", value: eur(tcoFull.malusCO2) },
+        { label: "MALUS POIDS", value: eur(tcoFull.malusPoids) },
+        { label: `TVS (${duree} ANS)`, value: eur(tvsTotal) },
       ];
-      const fcW = (PAGE_W - M * 2 - 32) / fiscalCols.length;
-      fiscalCols.forEach((col, i) => {
-        const cx = M + 16 + i * fcW;
+      const colW = (PAGE_W - M * 2 - 32) / 3;
+      row1.forEach((col, i) => {
+        const cx = M + 16 + i * colW;
         doc.setFont(BRAND_FONT, "normal");
-        doc.setFontSize(7);
+        doc.setFontSize(6.5);
         doc.setTextColor(...SUB);
-        doc.text(col.label.toUpperCase(), cx, fiscalY + 24);
+        doc.text(col.label, cx, row1Y);
         doc.setFont(BRAND_FONT, "bold");
         doc.setFontSize(11);
         doc.setTextColor(...INK);
-        doc.text(col.value, cx, fiscalY + 38);
+        doc.text(col.value, cx, row1Y + 14);
       });
+
+      // Ligne 2 : 3 colonnes (AND annuel, AEN annuel, Part employeur AEN)
+      const row2Y = row1Y + 32;
+      const row2 = [
+        { label: "AND / AN", value: eur(andAnnuel) },
+        { label: "AEN ANNUEL", value: eur(aenAnnuel) },
+        { label: "PART EMPLOYEUR AEN / AN", value: eur(partEmpAnnuelle) },
+      ];
+      row2.forEach((col, i) => {
+        const cx = M + 16 + i * colW;
+        doc.setFont(BRAND_FONT, "normal");
+        doc.setFontSize(6.5);
+        doc.setTextColor(...SUB);
+        doc.text(col.label, cx, row2Y);
+        doc.setFont(BRAND_FONT, "bold");
+        doc.setFontSize(11);
+        doc.setTextColor(...INK);
+        doc.text(col.value, cx, row2Y + 14);
+      });
+
+      // Ligne récap : TCO total contrat + TCO employeur complet
+      const recapY = row2Y + 28;
+      doc.setDrawColor(...RULE);
+      doc.line(M + 16, recapY, PAGE_W - M - 16, recapY);
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(7);
+      doc.setTextColor(...SUB);
+      doc.text("TCO TOTAL CONTRAT", M + 16, recapY + 14);
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(13);
+      doc.setTextColor(...INK);
+      doc.text(eur(tcoTotal), M + 16, recapY + 30);
+
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(7);
+      doc.setTextColor(...LAVENDER);
+      doc.text("COÛT EMPLOYEUR COMPLET (TCO + AND + AEN)", PAGE_W - M - 16, recapY + 14, { align: "right" });
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(13);
+      doc.setTextColor(...LAVENDER);
+      doc.text(eur(tcoEmployeur), PAGE_W - M - 16, recapY + 30, { align: "right" });
     }
 
-    y += cardH + 12;
+    // Hauteur de carte étendue pour accueillir les 2 lignes + récap
+    y += (synced ? cardH + 120 : cardH) + 12;
   }
 
   const body: any[] = [];

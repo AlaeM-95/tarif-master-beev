@@ -81,15 +81,44 @@ export function PdfConfigPanel({ config, update, reset, projectType }: Props) {
             );
           })}
 
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={reset}
-            className="w-full gap-2 h-7 text-xs"
-          >
-            <RotateCcw className="w-3 h-3" /> Tout réactiver
-          </Button>
+          <div className="grid grid-cols-3 gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const all: Record<string, boolean> = {};
+                for (const k of Object.keys(config)) all[k] = true;
+                update(all as Partial<PdfDisplayConfig>);
+              }}
+              className="gap-1 h-7 text-xs"
+            >
+              Tout cocher
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const all: Record<string, boolean> = {};
+                for (const k of Object.keys(config)) all[k] = false;
+                update(all as Partial<PdfDisplayConfig>);
+              }}
+              className="gap-1 h-7 text-xs"
+            >
+              Tout décocher
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={reset}
+              className="gap-1 h-7 text-xs"
+              title="Revenir aux valeurs par défaut"
+            >
+              <RotateCcw className="w-3 h-3" /> Défaut
+            </Button>
+          </div>
         </div>
       )}
     </div>
