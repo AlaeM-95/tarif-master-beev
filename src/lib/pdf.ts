@@ -477,11 +477,8 @@ export async function generateProposalPdf(opts: {
       drawHeader(doc, client, effectiveType);
       drawSiteFinancialRecap(doc, c);
     }
-    if (cfg.showSitePaymentOptions) {
-      doc.addPage();
-      drawHeader(doc, client, effectiveType);
-      drawSitePaymentOptions(doc, c);
-    }
+    // Paiement déplacé en fin de document, juste avant Journey
+    // (cf. bloc plus bas dans cette fonction).
   }
 
   if (cfg.showWhyBeev) {
@@ -573,7 +570,15 @@ export async function generateProposalPdf(opts: {
     drawGuarantees(doc, effectiveType);
   }
 
-  // Parcours client (toggleable)
+  // Options de paiement (mode site) : déplacée ici sur demande utilisateur
+  // pour être l'AVANT-DERNIÈRE page utile, juste avant le parcours client.
+  if (effectiveType === "site" && c.length > 0 && cfg.showSitePaymentOptions) {
+    doc.addPage();
+    drawHeader(doc, client, effectiveType);
+    drawSitePaymentOptions(doc, c);
+  }
+
+  // Parcours client (toggleable) — dernière page avant le BPA
   if (cfg.showJourney) {
     doc.addPage();
     drawHeader(doc, client, effectiveType);
@@ -874,6 +879,10 @@ function drawSiteOverview(doc: jsPDF, client: ClientInfo, chargers: SelectedChar
   let ly = y;
   doc.setDrawColor(...RULE);
   doc.setLineWidth(0.4);
+  // Hauteur minimum de row uniforme pour garantir l'alignement vertical
+  // (label baseline + valeur + filet à hauteurs cohérentes même si la valeur
+  // tient sur 1 seule ligne).
+  const ROW_MIN_H = 36;
   rows.forEach((row) => {
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(8.5);
@@ -884,9 +893,10 @@ function drawSiteOverview(doc: jsPDF, client: ClientInfo, chargers: SelectedChar
     doc.setTextColor(...INK);
     const valLines = doc.splitTextToSize(row.value, colW - 4).slice(0, 2);
     doc.text(valLines, leftX, ly + 14);
-    ly += 14 + valLines.length * 12 + 6;
-    doc.line(leftX, ly - 2, leftX + colW - 8, ly - 2);
-    ly += 4;
+    // Avance Y = max entre la hauteur calculée et la hauteur min (36px)
+    const advance = Math.max(ROW_MIN_H, 14 + valLines.length * 12 + 10);
+    ly += advance;
+    doc.line(leftX, ly - 6, leftX + colW - 8, ly - 6);
   });
 
   // === Colonne droite : contacts Beev (card noire) ===
@@ -1281,10 +1291,10 @@ async function drawSiteProductSheet(doc: jsPDF, sc: SelectedCharger) {
   // Table specs
   const specs = [
     { label: "Puissance", value: `${v.powerKw} kW${v.powerKw >= 22 ? " triphasé" : " monophasé"}` },
-    { label: "Connectivité", value: "Prise Type 2 intégrée · Lecteur RFID · Connectivité WiFi/4G" },
-    { label: "Communication", value: "OCPP 1.6 et 2.0 · Supervision compatible" },
-    { label: "Smart Charging", value: "Délestage dynamique · Équilibrage actif" },
-    { label: "Qualité et Garantie", value: "IP54 · IK10 · Garantie constructeur 3 ans (extensible 6 ans)" },
+    { label: "Connectivité", value: lookupText(TEXTS, "site", "site_product_connectivity", "Prise Type 2 intégrée · Lecteur RFID · Connectivité WiFi/4G") },
+    { label: "Communication", value: lookupText(TEXTS, "site", "site_product_communication", "OCPP 1.6 et 2.0 · Supervision compatible") },
+    { label: "Smart Charging", value: lookupText(TEXTS, "site", "site_product_smart_charging", "Délestage dynamique · Équilibrage actif") },
+    { label: "Qualité et Garantie", value: lookupText(TEXTS, "site", "site_product_warranty", "IP54 · IK10 · Garantie constructeur 3 ans (extensible 6 ans)") },
   ];
   let ty = y;
   doc.setDrawColor(...RULE);

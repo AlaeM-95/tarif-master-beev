@@ -3061,7 +3061,26 @@ function SiteSpecsEditor({ sc, onChange }: { sc: SelectedCharger; onChange: (p: 
             </Label>
             <Textarea
               value={(specs.worksList ?? []).join("\n")}
-              onChange={(e) => setSpec({ worksList: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 20) })}
+              onChange={(e) => {
+                // Split + filtre standard
+                const raw = e.target.value.split("\n").map((s) => s.trim()).filter(Boolean);
+                // Fusion des fragments orphelins : si une ligne précédente finit
+                // par une préposition de liaison (de, du, à, en, le, la, les,
+                // d', l', un, une, sur, sous, dans, vers, par, pour, avec, et,
+                // ou) et la ligne suivante est courte (< 40 chars), on fusionne
+                // car c'est probablement un retour à la ligne accidentel.
+                const stopWords = /\b(de|du|à|en|le|la|les|d'|l'|un|une|sur|sous|dans|vers|par|pour|avec|et|ou|à la|au)$/i;
+                const merged: string[] = [];
+                for (const line of raw) {
+                  const prev = merged[merged.length - 1];
+                  if (prev && stopWords.test(prev) && line.length < 40) {
+                    merged[merged.length - 1] = `${prev} ${line}`;
+                  } else {
+                    merged.push(line);
+                  }
+                }
+                setSpec({ worksList: merged.slice(0, 20) });
+              }}
               placeholder="Mise à niveau câble principal 150mm² → 240mm² alu (40m)&#10;NSX400F + INS320&#10;Fouilles 65m sur terre végétale et graviers&#10;..."
               className="min-h-[100px] text-xs"
             />
