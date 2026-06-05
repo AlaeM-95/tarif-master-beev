@@ -677,14 +677,14 @@ function App() {
         }}
         onConfirm={doGeneratePdf}
       />
-      <header className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-md border-b border-border">
-        <div className="container mx-auto px-6 py-3 flex items-center justify-between gap-3 flex-nowrap overflow-x-auto">
+      <header className="fixed top-0 left-0 right-0 z-50 h-16 bg-background/95 backdrop-blur-md border-b border-border">
+        <div className="container mx-auto px-6 h-full flex items-center justify-between gap-3 flex-nowrap overflow-x-auto">
           {/* ─── Identité Beev (gauche) ─── */}
           <div className="flex items-center gap-3 flex-shrink-0">
             <img
               src="/images/logo-beev-noir.png"
               alt="Beev"
-              className="h-10 w-auto object-contain"
+              className="h-8 w-auto object-contain"
               onError={(ev) => {
                 // Fallback : si le logo ne charge pas, on affiche un placeholder lavande
                 const img = ev.currentTarget as HTMLImageElement;
@@ -792,7 +792,7 @@ function App() {
         </div>
       </header>
 
-      <main className="container mx-auto px-6 pt-32 pb-8 grid gap-8 lg:grid-cols-[1fr_380px]">
+      <main className="container mx-auto px-6 pt-20 pb-8 grid gap-8 lg:grid-cols-[1fr_380px]">
         <div className="space-y-8">
           <ProjectTypeSelector value={activeTab} onChange={switchProject} />
           <ClientCard client={client} setClient={setClient} />
@@ -1913,11 +1913,11 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
   const hasImage = Boolean(vehicle.image && vehicle.image.trim() !== "");
   return (
     <Card className={`overflow-hidden transition-all duration-300 ${selected ? "ring-2 ring-primary border-primary" : "hover:border-foreground/40 hover:shadow-lg"}`}>
-      <div className="aspect-[4/3] bg-beev-black overflow-hidden relative group">
+      <div className="aspect-[4/3] bg-beev-violet-20 overflow-hidden relative group">
         {hasImage ? (
           <img src={vehicle.image} alt={`${vehicle.brand} ${vehicle.model}`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-beev-beige/30 text-sm italic">
+          <div className="w-full h-full flex items-center justify-center text-beev-black/40 text-sm italic">
             Image à venir
           </div>
         )}
@@ -2069,11 +2069,11 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { char
   const hasImage = Boolean(charger.image && charger.image.trim() !== "");
   return (
     <Card className={`overflow-hidden transition-all duration-300 ${selected ? "ring-2 ring-primary border-primary" : "hover:border-foreground/40 hover:shadow-lg"}`}>
-      <div className="aspect-[4/3] bg-beev-black overflow-hidden relative group">
+      <div className="aspect-[4/3] bg-beev-violet-20 overflow-hidden relative group">
         {hasImage ? (
           <img src={charger.image} alt={`${charger.brand} ${charger.model}`} className="w-full h-full object-contain p-4 transition-transform duration-500 group-hover:scale-105" loading="lazy" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-beev-beige/30 text-sm italic">
+          <div className="w-full h-full flex items-center justify-center text-beev-black/40 text-sm italic">
             Image à venir
           </div>
         )}
@@ -2979,6 +2979,7 @@ type Slide =
   | { kind: "cover" }
   | { kind: "vehicle"; sv: SelectedVehicle }
   | { kind: "charger"; sc: SelectedCharger }
+  | { kind: "tco" }
   | { kind: "journey" };
 
 function PresentationMode({ projectType, client, energy, vehicles, chargers, onClose, onExport }: {
@@ -2991,6 +2992,9 @@ function PresentationMode({ projectType, client, energy, vehicles, chargers, onC
     const s: Slide[] = [{ kind: "cover" }];
     if (projectType === "vehicles") {
       vehicles.forEach((sv) => s.push({ kind: "vehicle", sv }));
+      // Slide TCO comparative si ≥ 2 véhicules avec includeTco
+      const tcoVehicles = vehicles.filter((sv) => sv.includeTco);
+      if (tcoVehicles.length >= 2) s.push({ kind: "tco" });
     } else {
       chargers.forEach((sc) => s.push({ kind: "charger", sc }));
     }
@@ -3048,6 +3052,7 @@ function PresentationMode({ projectType, client, energy, vehicles, chargers, onC
         {slide.kind === "cover" && <CoverSlide projectType={projectType} client={client} nbV={nbV} nbC={nbC} />}
         {slide.kind === "vehicle" && <VehicleSlide sv={slide.sv} energy={energy} />}
         {slide.kind === "charger" && <ChargerSlide sc={slide.sc} projectType={projectType} />}
+        {slide.kind === "tco" && <TcoSlide vehicles={vehicles} energy={energy} />}
         {slide.kind === "journey" && <JourneySlide projectType={projectType} />}
       </main>
     </div>
@@ -3219,6 +3224,106 @@ function KV({ k, v }: { k: string; v: string }) {
 }
 function KPI({ k, v, highlight }: { k: string; v: string; highlight?: boolean }) {
   return <div><p className="text-[10px] uppercase text-muted-foreground">{k}</p><p className={`font-bold ${highlight ? "text-2xl text-primary" : "text-xl"}`}>{v}</p></div>;
+}
+
+// Slide TCO en mode présentation : comparaison décomposée par véhicule
+// + KPIs (meilleur TCO, pire TCO, écart). Affiché uniquement si au moins
+// 2 véhicules ont includeTco=true.
+function TcoSlide({ vehicles, energy }: { vehicles: SelectedVehicle[]; energy: EnergyParams }) {
+  const tcoVehicles = vehicles.filter((sv) => sv.includeTco);
+  const rows = tcoVehicles.map((sv) => {
+    const duree = sv.durationMonths / 12;
+    const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
+    const r = calculateTcoFull(sv.vehicle, {
+      dureeAnnees: duree,
+      kmContrat: sv.kmPerYear * duree,
+      prixEssenceLitre: energy.fuelPriceL,
+      prixKwhDomicile: energy.kWhHome,
+      prixKwhPublic: energy.kWhPublic,
+      optionsTotalTtc,
+      remisePctOverride: sv.discountPct,
+    }, sv.negotiatedMonthly);
+    return { sv, r, tco100: r.tcoParKm * 100 };
+  }).sort((a, b) => a.tco100 - b.tco100);
+
+  if (rows.length === 0) {
+    return (
+      <div className="max-w-4xl mx-auto py-12">
+        <p className="text-muted-foreground">Aucun véhicule avec TCO activé.</p>
+      </div>
+    );
+  }
+
+  const best = rows[0];
+  const worst = rows[rows.length - 1];
+  const ecartTotal = worst.r.tcoTotal - best.r.tcoTotal;
+  const ecartPct = worst.r.tcoTotal > 0 ? (ecartTotal / worst.r.tcoTotal) * 100 : 0;
+  const maxTotal = worst.r.tcoTotal || 1;
+
+  return (
+    <div className="max-w-5xl mx-auto py-8 space-y-8">
+      <div>
+        <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Analyse TCO · Comparaison</p>
+        <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
+          Quel véhicule offre le meilleur coût total ?
+        </h1>
+        <p className="text-base text-muted-foreground">
+          Comparaison du coût total de possession entre les véhicules de la sélection. Inclut loyer LLD, énergie, TVS, malus à l'achat, AND et AEN.
+        </p>
+      </div>
+
+      {/* 4 KPIs */}
+      <div className="grid sm:grid-cols-4 gap-4">
+        <div className="rounded-2xl bg-beev-rose-20 p-5 border border-beev-rose">
+          <p className="text-[10px] uppercase text-muted-foreground tracking-wide font-semibold">Meilleur TCO</p>
+          <p className="text-2xl font-bold mt-2">{best.tco100.toFixed(2)} €<span className="text-sm font-normal text-muted-foreground">/100 km</span></p>
+          <p className="text-xs text-muted-foreground mt-1 truncate">{best.sv.vehicle.brand} {best.sv.vehicle.model}</p>
+        </div>
+        <div className="rounded-2xl bg-beev-violet-20 p-5 border border-beev-violet">
+          <p className="text-[10px] uppercase text-muted-foreground tracking-wide font-semibold">TCO le plus élevé</p>
+          <p className="text-2xl font-bold mt-2">{worst.tco100.toFixed(2)} €<span className="text-sm font-normal text-muted-foreground">/100 km</span></p>
+          <p className="text-xs text-muted-foreground mt-1 truncate">{worst.sv.vehicle.brand} {worst.sv.vehicle.model}</p>
+        </div>
+        <div className="rounded-2xl bg-beev-bleu-20 p-5 border border-beev-bleu">
+          <p className="text-[10px] uppercase text-muted-foreground tracking-wide font-semibold">Écart sur contrat</p>
+          <p className="text-2xl font-bold mt-2">{fmtEur(ecartTotal)}</p>
+          <p className="text-xs text-muted-foreground mt-1">économie potentielle</p>
+        </div>
+        <div className="rounded-2xl bg-primary text-primary-foreground p-5">
+          <p className="text-[10px] uppercase opacity-80 tracking-wide font-semibold">Gain</p>
+          <p className="text-2xl font-bold mt-2">{ecartPct.toFixed(1)} %</p>
+          <p className="text-xs opacity-70 mt-1">pire − meilleur ÷ pire</p>
+        </div>
+      </div>
+
+      {/* Barres comparatives */}
+      <div className="space-y-3">
+        {rows.map((row, idx) => {
+          const widthPct = (row.r.tcoTotal / maxTotal) * 100;
+          const isBest = idx === 0;
+          return (
+            <div key={row.sv.vehicle.id} className="space-y-1.5">
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-3">
+                  <span className={`w-6 h-6 rounded-full grid place-content-center text-xs font-bold ${isBest ? "bg-beev-rose text-beev-black" : "bg-muted text-foreground"}`}>{idx + 1}</span>
+                  <span className="font-semibold">{row.sv.vehicle.brand} {row.sv.vehicle.model}</span>
+                  <span className="text-xs text-muted-foreground">{row.tco100.toFixed(2)} €/100 km</span>
+                </div>
+                <span className={`font-bold ${isBest ? "text-beev-black" : "text-foreground"}`}>{fmtEur(row.r.tcoTotal)}</span>
+              </div>
+              <div className="h-3 rounded-full bg-muted overflow-hidden">
+                <div className={`h-full rounded-full transition-all duration-700 ${isBest ? "bg-beev-rose" : "bg-foreground/40"}`} style={{ width: `${widthPct}%` }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="text-xs text-muted-foreground border-t pt-4">
+        Estimation Beev 2026 : loyer × durée + énergie sur km contrat + TVS annualisée + malus à l'achat + AND amorti 5 ans + AEN employeur. Valeurs indicatives à confirmer auprès du loueur retenu.
+      </p>
+    </div>
+  );
 }
 
 function JourneySlide({ projectType }: { projectType: ProjectType }) {

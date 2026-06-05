@@ -2867,33 +2867,37 @@ function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: Energy
       "ÉNERGIE",
       "TVS\n(×durée)",
       "MALUS\n(achat)",
-      "FISCALITÉ\n(AND+AEN)",
+      "AND\n(×durée)",
+      "AEN EMPL.\n(×durée)",
       "COÛT EMPL.\nCOMPLET",
     ]],
     body: rows.map(({ sv, r, duree }) => {
       const malusTotal = r.malusCO2 + r.malusPoids;
-      const fiscaliteTotal = r.andAnnuel * duree + r.partEmployeurAnnuelle * duree;
+      const andTotal = r.andAnnuel * duree;
+      const aenTotal = r.partEmployeurAnnuelle * duree;
       return [
         { content: `${sv.vehicle.brand} ${sv.vehicle.model}\n${sv.durationMonths} mois · ${(sv.kmPerYear / 1000).toFixed(0)}k km/an`, styles: { fontStyle: "bold" as any, fontSize: 8.5 } },
         { content: eur(r.loyerTotal), styles: { halign: "right" as any } },
         { content: eur(r.coutEnergie), styles: { halign: "right" as any } },
         { content: eur(r.tvsTotal), styles: { halign: "right" as any, textColor: r.tvsTotal > 0 ? LAVENDER : SUB, fontStyle: r.tvsTotal > 0 ? "bold" as any : "normal" as any } },
         { content: eur(malusTotal), styles: { halign: "right" as any, textColor: malusTotal > 0 ? LAVENDER : SUB, fontStyle: malusTotal > 0 ? "bold" as any : "normal" as any } },
-        { content: eur(fiscaliteTotal), styles: { halign: "right" as any } },
+        { content: eur(andTotal), styles: { halign: "right" as any } },
+        { content: eur(aenTotal), styles: { halign: "right" as any } },
         { content: eur(r.tcoEmployeurComplet), styles: { halign: "right" as any, fontStyle: "bold" as any, textColor: LAVENDER, fontSize: 10 } },
       ];
     }),
-    headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 8, fontStyle: "bold", font: BRAND_FONT, cellPadding: 6, halign: "center" as any, valign: "middle" as any },
-    bodyStyles: { fontSize: 9, cellPadding: 7, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
+    headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 7.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 5, halign: "center" as any, valign: "middle" as any },
+    bodyStyles: { fontSize: 8.5, cellPadding: 6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
     alternateRowStyles: { fillColor: BG },
     columnStyles: {
-      0: { cellWidth: 130 },
-      1: { cellWidth: 65 },
-      2: { cellWidth: 55 },
-      3: { cellWidth: 55 },
-      4: { cellWidth: 60 },
-      5: { cellWidth: 60 },
-      6: { cellWidth: "auto" },
+      0: { cellWidth: 110 },
+      1: { cellWidth: 55 },
+      2: { cellWidth: 50 },
+      3: { cellWidth: 50 },
+      4: { cellWidth: 50 },
+      5: { cellWidth: 50 },
+      6: { cellWidth: 60 },
+      7: { cellWidth: "auto" },
     },
     margin: { left: M, right: M },
   });
