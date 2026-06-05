@@ -156,10 +156,24 @@ function App() {
   }, [client]);
 
   // Sync catalogue → panneau droit : quand un ops édite un véhicule ou une
-  // borne dans le catalogue (via Éditer dans la card), on resync l'instance
-  // dans selectedV / selectedC pour que les modifications (prix, image,
-  // description, etc.) se propagent automatiquement au panneau de droite
-  // sans avoir à re-cocher. Évite la duplication d'info.
+  // borne dans le catalogue (via Éditer dans la card OU via Realtime sync
+  // depuis un autre commercial), on resync l'instance dans selectedV /
+  // selectedC pour que les modifications se propagent automatiquement au
+  // panneau de droite sans avoir à re-cocher.
+  //
+  // Champs spécifiques au devis préservés : quantity, includeTco, services,
+  // options, additionalConfigs, negotiatedMonthly, siteSpecs, lineItems.
+  // Champs catalogue propagés : v.image, v.priceTtc, v.remise, v.monthlyLld,
+  // v.batteryKwh, v.co2, etc.
+  //
+  // Cas particulier de la REMISE :
+  // - sv.discountPct est initialisé à v.remise au moment du toggle (cf.
+  //   toggleV plus bas).
+  // - Si l'ops change v.remise dans le catalogue → on propage à sv.discountPct
+  //   UNIQUEMENT si le commercial n'a pas explicitement override
+  //   (champ discountPctOverridden = false ou absent).
+  // - Quand le commercial modifie discountPct via le panneau droit, on set
+  //   automatiquement discountPctOverridden=true (cf. setSelectedV).
   useEffect(() => {
     if (!hydratedRef.current || vehicles.length === 0) return;
     setSelectedV((prev) => {
@@ -168,7 +182,23 @@ function App() {
       for (const [id, sv] of Object.entries(prev)) {
         const fresh = vehicles.find((v) => v.id === id);
         if (fresh && fresh !== sv.vehicle) {
-          next[id] = { ...sv, vehicle: fresh };
+          // Propagation conditionnelle de la remise : seulement si pas
+          // explicitement modifiée par le commercial.
+          const freshRemise = fresh.remise ?? 0;
+          const propagatedDiscount = (sv as any).discountPctOverridden
+            ? sv.discountPct
+            : freshRemise;
+          // Propagation conditionnelle du loyer mensuel : pareil, on garde
+          // le loyer négocié si le commercial l'a touché.
+          const propagatedMonthly = (sv as any).negotiatedMonthlyOverridden
+            ? sv.negotiatedMonthly
+            : (fresh.monthlyLld ?? sv.negotiatedMonthly);
+          next[id] = {
+            ...sv,
+            vehicle: fresh,
+            discountPct: propagatedDiscount,
+            negotiatedMonthly: propagatedMonthly,
+          };
           changed = true;
         } else {
           next[id] = sv;
@@ -2438,8 +2468,11 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove }: { sv: SelectedVe
       </div>
       <div className="grid grid-cols-2 gap-2">
         <NumField label="Quantité" value={sv.quantity} onChange={(n) => onChange({ quantity: n })} />
-        <NumField label="Remise %" value={sv.discountPct} onChange={(n) => onChange({ discountPct: n })} step={0.5} />
-        <NumField label="Loyer TTC/mois" value={sv.negotiatedMonthly} onChange={(n) => onChange({ negotiatedMonthly: n })} />
+        {/* Quand le commercial modifie la remise dans le panneau droit,
+            on set discountPctOverridden=true pour empêcher le useEffect
+            sync catalogue d'écraser sa valeur custom. */}
+        <NumField label="Remise %" value={sv.discountPct} onChange={(n) => onChange({ discountPct: n, discountPctOverridden: true } as any)} step={0.5} />
+        <NumField label="Loyer TTC/mois" value={sv.negotiatedMonthly} onChange={(n) => onChange({ negotiatedMonthly: n, negotiatedMonthlyOverridden: true } as any)} />
         <NumField label="Durée (mois)" value={sv.durationMonths} onChange={(n) => onChange({ durationMonths: n })} />
         <NumField label="Km / an" value={sv.kmPerYear} onChange={(n) => onChange({ kmPerYear: n })} />
         <div className="flex items-end gap-2 pb-1">
