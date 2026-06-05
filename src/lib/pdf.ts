@@ -543,6 +543,12 @@ export async function generateProposalPdf(opts: {
     doc.addPage();
     drawHeader(doc, client, "vehicles");
     drawTcoComparison(doc, v, energy);
+    // 3) Page Bilan carbone — argument RSE
+    if (cfg.showCarbonImpact) {
+      doc.addPage();
+      drawHeader(doc, client, "vehicles");
+      drawCarbonImpact(doc, v, energy);
+    }
   }
 
   // Page synthèse financière (toggleable)
@@ -759,7 +765,11 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
     M,
     PAGE_H - 30,
   );
-  doc.text(`Réf. ${ref} · contact@beev.co`, PAGE_W - M, PAGE_H - 30, { align: "right" });
+  const refText = `Réf. ${ref} · contact@beev.co`;
+  doc.text(refText, PAGE_W - M, PAGE_H - 30, { align: "right" });
+  // Lien cliquable sur la mention email du footer couverture
+  const refW = doc.getTextWidth(refText);
+  doc.link(PAGE_W - M - refW, PAGE_H - 36, refW, 10, { url: "mailto:contact@beev.co" });
 }
 
 // ============ POURQUOI BEEV (varie par type) ============
@@ -1809,7 +1819,11 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
   doc.setFontSize(10);
   doc.setTextColor(200, 200, 200);
   doc.text(`${t("site_pay_acompte_label", "Acompte 50 % à la commande")} : ${eur(acompte50)} TTC`, M + 16, y + 70);
-  doc.text(t("site_pay_cta", "Signez le devis en ligne · contact@beev.co"), M + 16, y + 86);
+  const cta = t("site_pay_cta", "Signez le devis en ligne · contact@beev.co");
+  doc.text(cta, M + 16, y + 86);
+  // Lien cliquable sur la zone du CTA → ouvre le mailer du client
+  const ctaW = doc.getTextWidth(cta);
+  doc.link(M + 16, y + 76, ctaW, 14, { url: "mailto:contact@beev.co?subject=Signature%20devis%20Beev" });
 }
 
 function drawWhyBeev(doc: jsPDF, type: ProjectType) {
@@ -3157,6 +3171,142 @@ function drawB2B2ETco(doc: jsPDF, input: B2B2ECalculatorInput) {
     doc.setTextColor(...INK);
     lines.forEach((l, i) => doc.text(l, M + 14, y + 30 + i * 10, { maxWidth: PAGE_W - M * 2 - 28 }));
   }
+}
+
+// ============ BILAN CARBONE — Page dédiée RSE ============
+// Argument vente RSE : montre les émissions CO2 évitées par la flotte
+// électrique vs un équivalent thermique de référence. Affichage en
+// équivalences concrètes (allers-retours, arbres) pour parler à un
+// décideur non-technique.
+function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams) {
+  let y = 116;
+  const ROSE: [number, number, number] = [244, 184, 170];
+  doc.setFillColor(...ROSE);
+  doc.rect(M, y - 8, 22, 2, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text("BILAN CARBONE · IMPACT RSE", M + 30, y - 4);
+  y += 14;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(26);
+  doc.setTextColor(...INK);
+  doc.text("Votre flotte évite des émissions de CO2.", M, y + 18);
+  y += 50;
+
+  // Hypothèses : véhicule thermique de référence émet 135 g CO2/km
+  const refCO2gKm = 135;
+  let kmTotalFlotte = 0;
+  let co2EmisFlotteKg = 0;
+  let co2EviteFlotteKg = 0;
+  vehicles.forEach((sv) => {
+    const duree = sv.durationMonths / 12;
+    const kmContrat = sv.kmPerYear * duree * (sv.quantity || 1);
+    kmTotalFlotte += kmContrat;
+    const co2Vehicule = ((sv.vehicle.co2 ?? 0) * kmContrat) / 1000; // kg
+    co2EmisFlotteKg += co2Vehicule;
+    const co2Ref = (refCO2gKm * kmContrat) / 1000; // kg
+    co2EviteFlotteKg += co2Ref - co2Vehicule;
+  });
+  const co2EviteFlotteTonnes = co2EviteFlotteKg / 1000;
+  // Équivalences pour rendre concret le chiffre
+  const arRedAvionParisMarseille = co2EviteFlotteKg / 270; // 270 kg CO2/passager A/R
+  const arbresPlantes = co2EviteFlotteKg / 25; // 1 arbre absorbe ~25 kg CO2/an
+  const ttKmEquivalents = co2EviteFlotteKg / 0.135; // km thermiques évités
+
+  // Intro
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...SUB);
+  const intro = `Sur la durée des contrats, votre sélection ${vehicles.length > 1 ? "de véhicules électriques" : "véhicule électrique"} parcourra ${(kmTotalFlotte / 1000).toFixed(0)} k km. Comparé à un parc thermique équivalent (${refCO2gKm} g CO2 / km en moyenne), l'économie d'émissions est significative.`;
+  const introL = doc.splitTextToSize(intro, PAGE_W - M * 2);
+  doc.text(introL, M, y);
+  y += introL.length * 13 + 20;
+
+  // Bandeau ÉCONOMIE CO2 GÉANT (style B2B2E)
+  doc.setFillColor(...INK);
+  doc.roundedRect(M, y, PAGE_W - M * 2, 110, 8, 8, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...ROSE);
+  doc.text("CO2 ÉVITÉ SUR LA DURÉE DES CONTRATS", M + 20, y + 22);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(40);
+  doc.setTextColor(...BG);
+  doc.text(`${co2EviteFlotteTonnes.toFixed(1)} tonnes`, M + 20, y + 66);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(220, 220, 220);
+  doc.text(`soit ${co2EviteFlotteKg.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} kg CO2 vs un parc thermique de référence (${refCO2gKm} g CO2 / km)`, M + 20, y + 86);
+  y += 122;
+
+  // 3 équivalences concrètes
+  const eqWidth = (PAGE_W - M * 2 - 20) / 3;
+  const equivalences = [
+    { label: "VOLS A/R PARIS-MARSEILLE", value: arRedAvionParisMarseille.toFixed(0), unit: "passagers", color: ROSE },
+    { label: "ARBRES PLANTÉS / AN", value: arbresPlantes.toFixed(0), unit: "arbres", color: [165, 210, 255] as [number, number, number] },
+    { label: "KM THERMIQUES ÉVITÉS", value: `${(ttKmEquivalents / 1000).toFixed(0)} k`, unit: "km", color: [211, 204, 216] as [number, number, number] },
+  ];
+  equivalences.forEach((eq, i) => {
+    const cx = M + i * (eqWidth + 10);
+    doc.setFillColor(...BG);
+    doc.roundedRect(cx, y, eqWidth, 90, 8, 8, "F");
+    doc.setFillColor(...eq.color);
+    doc.rect(cx, y, eqWidth, 4, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...SUB);
+    doc.text(eq.label, cx + 12, y + 22);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(22);
+    doc.setTextColor(...INK);
+    doc.text(String(eq.value), cx + 12, y + 56);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...SUB);
+    doc.text(eq.unit, cx + 12, y + 74);
+  });
+  y += 110;
+
+  // Détail par véhicule (table)
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(...SUB);
+  doc.text("DÉTAIL PAR VÉHICULE", M, y);
+  y += 6;
+  autoTable(doc, {
+    startY: y + 4,
+    theme: "plain",
+    head: [["Véhicule", "Km contrat", "Émissions g/km", "CO2 émis", "CO2 évité"]],
+    body: vehicles.map((sv) => {
+      const duree = sv.durationMonths / 12;
+      const km = sv.kmPerYear * duree * (sv.quantity || 1);
+      const co2Emi = ((sv.vehicle.co2 ?? 0) * km) / 1000;
+      const co2Ref = (refCO2gKm * km) / 1000;
+      return [
+        `${sv.vehicle.brand} ${sv.vehicle.model}${(sv.quantity || 1) > 1 ? ` × ${sv.quantity}` : ""}`,
+        `${(km / 1000).toFixed(0)} k km`,
+        `${sv.vehicle.co2 ?? 0} g`,
+        `${co2Emi.toFixed(0)} kg`,
+        { content: `${(co2Ref - co2Emi).toFixed(0)} kg`, styles: { fontStyle: "bold" as any, textColor: ROSE } },
+      ];
+    }),
+    headStyles: { fillColor: INK, textColor: 255, fontSize: 8.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 6 },
+    bodyStyles: { fontSize: 9, cellPadding: 6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
+    alternateRowStyles: { fillColor: BG },
+    columnStyles: { 1: { halign: "right" as any }, 2: { halign: "right" as any }, 3: { halign: "right" as any }, 4: { halign: "right" as any } },
+    margin: { left: M, right: M },
+  });
+  const y2 = (doc as any).lastAutoTable.finalY + 16;
+
+  // Note méthodologique
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...SUB);
+  doc.text(
+    "Estimation Beev 2026 · Référence thermique 135 g CO2/km (moyenne véhicules essence + diesel parc France). 1 arbre absorbe en moyenne 25 kg CO2/an (chêne adulte, ADEME). 1 A/R Paris-Marseille en avion = 270 kg CO2/passager.",
+    M, y2, { maxWidth: PAGE_W - M * 2 },
+  );
 }
 
 function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams) {

@@ -44,6 +44,7 @@ export type PdfDisplayConfig = {
   showB2B2ETco: boolean; // page TCO B2B2E (Bornes domicile)
   showSupervisionHome: boolean; // slide Supervision Beev Home Charging (B2B2E)
   showSupervisionConnect: boolean; // slide Supervision Beev Connect (site entreprise)
+  showCarbonImpact: boolean; // page Bilan carbone (argument RSE)
 };
 
 export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
@@ -79,6 +80,7 @@ export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
   showB2B2ETco: true,
   showSupervisionHome: false, // activé manuellement via le panneau Configuration PDF du devis
   showSupervisionConnect: false,
+  showCarbonImpact: true, // page Bilan carbone affichée par défaut (argument RSE fort)
 };
 
 const STORAGE_KEY = "beev_pdf_config_v1";
@@ -131,6 +133,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
       { key: "showWhyBeev", label: "Page Pourquoi Beev", description: "Intro, proposition de valeur" },
       { key: "showSocialProof", label: "Chiffres clés + témoignage", description: "Encart noir + citation client" },
       { key: "showTcoComparison", label: "Comparaison TCO flotte", description: "Page synthèse si 2+ véhicules", appliesTo: ["vehicles"] as unknown as string[] } as any,
+      { key: "showCarbonImpact", label: "Bilan carbone (RSE)", description: "Page CO2 évité + équivalences (avion, arbres, km)", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showFinancialSummary", label: "Synthèse HT / TVA / TTC", description: "Tableau récap financier" },
       { key: "showGuarantees", label: "Garanties Beev", description: "3 piliers d'engagement" },
       { key: "showJourney", label: "Parcours client", description: "Frise + 5 étapes" },
