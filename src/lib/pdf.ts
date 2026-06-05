@@ -2043,7 +2043,10 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.text(pillText, pillX + pillW / 2, pillY + 12, { align: "center" });
 
   // ─── Photo + price card côte à côte ───
-  const mainY = 175;
+  // mainY décalé vers le bas si l'encart d'alerte fiscale est présent
+  // (sinon il chevaucherait avec le bloc photo/prix).
+  const hasFiscalAlert = malusTotal > 0 || tvsAnnuelle > 0;
+  const mainY = hasFiscalAlert ? 200 : 175;
   const mainH = 190;
   const photoW = (PAGE_W - M * 2 - 16) * 0.54;
   const cardX = M + photoW + 16;
