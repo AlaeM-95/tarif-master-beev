@@ -71,9 +71,17 @@ export type SiteSpecs = {
   locationDescription?: string;
   /** Local TGBT et cheminement câble */
   tgbtRoom?: string;
-  /** Liste des travaux à réaliser (1 bullet = 1 ligne) — remplace la
-   *  liste par défaut dans la page Infrastructure électrique du PDF. */
+  /** Liste des travaux à réaliser (1 bullet = 1 ligne, jusqu'à 20) —
+   *  remplace la liste par défaut dans la page Infrastructure électrique. */
   worksList?: string[];
+  /** Type de câble triphasé (22 kW) — preset ou personnalisé. */
+  cable22Type?: string;
+  /** Type de câble monophasé (7,4 kW) — preset ou personnalisé. */
+  cable74Type?: string;
+  /** Nombre de points de charge par borne (1 ou 2). */
+  pointsParBorne?: 1 | 2;
+  /** Inclure la maintenance annuelle dans le PDF (case à cocher commercial). */
+  includeMaintenance?: boolean;
   /** Plan de supervision : Beev Connect (site entreprise) ou Beev Home Charging
    *  (B2B2E domicile collaborateur). 'none' = pas de bloc supervision. */
   supervisionPlan?: "beev_connect" | "beev_home_charging" | "none";
@@ -796,6 +804,10 @@ function aggregateSiteSpecs(chargers: SelectedCharger[]): SiteSpecs {
     if (!merged.locationDescription && s.locationDescription) merged.locationDescription = s.locationDescription;
     if (!merged.tgbtRoom && s.tgbtRoom) merged.tgbtRoom = s.tgbtRoom;
     if (!merged.worksList && s.worksList && s.worksList.length > 0) merged.worksList = s.worksList;
+    if (!merged.cable22Type && s.cable22Type) merged.cable22Type = s.cable22Type;
+    if (!merged.cable74Type && s.cable74Type) merged.cable74Type = s.cable74Type;
+    if (merged.pointsParBorne === undefined && s.pointsParBorne) merged.pointsParBorne = s.pointsParBorne;
+    if (merged.includeMaintenance === undefined && s.includeMaintenance !== undefined) merged.includeMaintenance = s.includeMaintenance;
     if (!merged.supervisionPlan && s.supervisionPlan) merged.supervisionPlan = s.supervisionPlan;
   }
   return merged;
@@ -948,22 +960,31 @@ function drawSiteProjectSynthesis(doc: jsPDF, client: ClientInfo, chargers: Sele
   const totalChargers = chargers.reduce((s, sc) => s + sc.quantity, 0);
   const breakdown = chargers.map((sc) => `${sc.quantity} × ${sc.charger.powerKw} kW`).join(" + ");
   const hasHighPower = chargers.some((sc) => sc.charger.powerKw >= 22);
-  const cable22 = hasHighPower ? "U1000 R2V 5G16 mm²" : "—";
   const hasLowPower = chargers.some((sc) => sc.charger.powerKw < 22);
-  const cable74 = hasLowPower ? "U1000 R2V 3G10 mm²" : "—";
   const specs = aggregateSiteSpecs(chargers);
+  // Câbles : valeur custom du commercial (siteSpecs) en priorité, sinon défaut
+  const cable22 = specs.cable22Type || (hasHighPower ? "U1000 R2V 5G16 mm²" : "—");
+  const cable74 = specs.cable74Type || (hasLowPower ? "U1000 R2V 3G10 mm²" : "—");
+  // Nombre de points de charge par borne (1 ou 2). Détermine le total réel.
+  const ppb = specs.pointsParBorne ?? 1;
+  const totalPdc = totalChargers * ppb;
 
   // Table 2 colonnes : libellé / valeur. Surcharge via sc.siteSpecs.
-  const rows = [
-    { label: "Points de recharge", value: `${totalChargers} borne${totalChargers > 1 ? "s" : ""} (${breakdown})` },
+  const rows: Array<{ label: string; value: string }> = [
+    { label: "Points de recharge", value: `${totalPdc} PDC (${totalChargers} borne${totalChargers > 1 ? "s" : ""} × ${ppb} point${ppb > 1 ? "s" : ""})` },
     { label: "Distance TGBT → Bornes", value: specs.distanceTgbt || "À confirmer après visite technique" },
     { label: "Emplacement", value: specs.locationDescription || chargers[0]?.siteAddress || "Parking site entreprise" },
     { label: "Puissance abonnement EDF", value: specs.edfPower || "À confirmer (abonnement client)" },
-    { label: "Type câble 22 kW", value: cable22 },
-    { label: "Type câble 7,4 kW", value: cable74 },
+  ];
+  // Câble 22 kW : affiché seulement si au moins 1 borne triphasée
+  if (hasHighPower) rows.push({ label: "Type câble 22 kW (triphasé)", value: cable22 });
+  // Câble 7,4 kW : affiché seulement si TOUTES les bornes sont monophasées
+  // (si une seule est triphasée, le 7,4 n'a pas de sens d'apparaître)
+  if (hasLowPower && !hasHighPower) rows.push({ label: "Type câble 7,4 kW (monophasé)", value: cable74 });
+  rows.push(
     { label: "Délai estimé", value: specs.estimatedDelay || "3 à 5 semaines après validation" },
     { label: "Local TGBT et cheminement", value: specs.tgbtRoom || "Cheminement à valider lors de la visite technique" },
-  ];
+  );
 
   doc.setDrawColor(...RULE);
   doc.setLineWidth(0.4);
@@ -1004,7 +1025,6 @@ function drawSiteProjectSynthesis(doc: jsPDF, client: ClientInfo, chargers: Sele
 // bandeau bas 'GÉNIE CIVIL TOTAL' et 'MASSIFS BÉTON'.
 function drawSiteInfrastructure(doc: jsPDF, chargers: SelectedCharger[]) {
   const PINK: [number, number, number] = [244, 184, 170];
-  const PINK_LIGHT: [number, number, number] = [253, 241, 238]; // rose-20 fond bandeau
 
   let y = 116;
   doc.setFillColor(...PINK);
@@ -1071,33 +1091,9 @@ function drawSiteInfrastructure(doc: jsPDF, chargers: SelectedCharger[]) {
     return by;
   };
   const leftEnd = drawBullets(leftBullets, leftX);
-  const rightEnd = drawBullets(rightBullets, rightX);
-  y = Math.max(leftEnd, rightEnd) + 20;
-
-  // Bandeau bas : génie civil total + massifs béton
-  doc.setFillColor(...PINK_LIGHT);
-  doc.roundedRect(M, y, PAGE_W - M * 2, 70, 8, 8, "F");
-  const stripCols = 2;
-  const stripColW = (PAGE_W - M * 2 - 32) / stripCols;
-  const stripData = [
-    { label: "GÉNIE CIVIL TOTAL", value: "À chiffrer après visite", sub: "fouilles selon cheminement" },
-    { label: "MASSIFS BÉTON", value: `${totalBornes} unités`, sub: "1 par borne sur pied" },
-  ];
-  stripData.forEach((s, i) => {
-    const sx = M + 16 + i * stripColW;
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(7.5);
-    doc.setTextColor(...SUB);
-    doc.text(s.label, sx, y + 18);
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(18);
-    doc.setTextColor(...INK);
-    doc.text(s.value, sx, y + 42);
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(...SUB);
-    doc.text(s.sub, sx, y + 58);
-  });
+  drawBullets(rightBullets, rightX);
+  // Bandeau GÉNIE CIVIL TOTAL / MASSIFS BÉTON retiré sur demande utilisateur
+  // (info redondante avec les bullets travaux + chiffrage commercial).
 }
 
 // ============ RAPPORT SITE — ÉQUIPEMENTS BEEV ============
@@ -1121,11 +1117,20 @@ function drawSiteEquipments(doc: jsPDF, chargers: SelectedCharger[]) {
   doc.text(lookupText(TEXTS, "site", "site_equip_title", "Les bornes de recharge"), M, y + 18);
   y += 50;
 
-  // Table récapitulative : 1 ligne par modèle agrégé
+  // Table récapitulative : 1 ligne par modèle agrégé.
+  // IMPORTANT : on affiche le PRIX DE VENTE CLIENT (avec marge appliquée
+  // via lineItemClientUnit), JAMAIS le prix d'achat catalogue (priceBuyHt).
+  // Le client ne doit voir que ce qui lui est facturé.
   const byModel = new Map<string, { brand: string; model: string; powerKw: number; quantity: number; unitHt: number }>();
   for (const sc of chargers) {
     const key = `${sc.charger.brand}-${sc.charger.model}`;
-    const unitHt = sc.lineItems[0]?.unitHt ?? sc.charger.priceHt ?? 0;
+    // Prix de vente client = unitHt avec marge appliquée (cf. lineItemClientUnit
+    // dans pdf.ts) ; fallback sur priceHt (prix catalogue de vente, pas
+    // priceBuyHt qui est le prix d'achat ops).
+    const firstLi = sc.lineItems[0];
+    const unitHt = firstLi
+      ? lineItemClientUnit(firstLi)
+      : sc.charger.priceHt ?? 0;
     if (byModel.has(key)) {
       byModel.get(key)!.quantity += sc.quantity;
     } else {
@@ -1521,6 +1526,10 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
   const totalBornes = chargers.reduce((s, sc) => s + sc.quantity, 0);
   const maintenanceUnit = Math.max(0, parseFloat(t("site_comp_maint_unit_eur", "150")) || 150);
   const maintenanceTotal = totalBornes * maintenanceUnit;
+  // La maintenance est affichée uniquement si le commercial coche la case
+  // dans le panneau droit (SiteSpecsEditor → includeMaintenance).
+  const aggregated = aggregateSiteSpecs(chargers);
+  const showMaintenance = aggregated.includeMaintenance === true;
 
   let y = 116;
   doc.setFillColor(...PINK);
@@ -1536,7 +1545,9 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
   doc.text(t("site_comp_title", "Contrôles obligatoires et maintenance"), M, y + 18);
   y += 50;
 
-  const colW = (PAGE_W - M * 2 - 20) / 2;
+  // Si maintenance non incluse : colonne gauche pleine largeur.
+  // Sinon : 2 colonnes équilibrées.
+  const colW = showMaintenance ? (PAGE_W - M * 2 - 20) / 2 : PAGE_W - M * 2;
 
   // Colonne gauche : Bureau de Contrôle + Consuel
   doc.setFillColor(...PINK_LIGHT);
@@ -1585,51 +1596,55 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
     { maxWidth: colW - 28 },
   );
 
-  // Colonne droite : Maintenance annuelle
-  const rx = M + colW + 20;
-  doc.setFillColor(29, 29, 29);
-  doc.roundedRect(rx, y, colW, 280, 8, 8, "F");
-  let ry = y + 22;
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(11);
-  doc.setTextColor(...PINK);
-  doc.text(t("site_comp_maint_title", "Maintenance annuelle"), rx + 14, ry);
-  ry += 22;
-  const lines = [
-    { l: t("site_comp_maint_unit_label", "Forfait préventif"), v: t("site_comp_maint_unit_value", `${maintenanceUnit} € HT / PDC / an`) },
-    { l: t("site_comp_maint_pdc_label", "Points de recharge"), v: `${totalBornes} PDC` },
-    { l: t("site_comp_maint_total_label", "Total maintenance / an"), v: `${eur(maintenanceTotal)} HT` },
-  ];
-  lines.forEach((line, i) => {
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(200, 200, 200);
-    doc.text(line.l, rx + 14, ry);
-    doc.setFont(BRAND_FONT, i === 2 ? "bold" : "normal");
-    doc.setFontSize(i === 2 ? 14 : 11);
-    doc.setTextColor(i === 2 ? PINK[0] : 252, i === 2 ? PINK[1] : 249, i === 2 ? PINK[2] : 242);
-    doc.text(line.v, rx + colW - 14, ry, { align: "right" });
-    ry += 24;
-    if (i < 2) {
-      doc.setDrawColor(70, 67, 62);
-      doc.line(rx + 14, ry - 6, rx + colW - 14, ry - 6);
-    }
-  });
-  ry += 16;
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(9);
-  doc.setTextColor(...PINK);
-  doc.text(t("site_comp_maint_subtitle", "VISITE ANNUELLE SUR SITE"), rx + 14, ry);
-  ry += 14;
-  doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(9.5);
-  doc.setTextColor(252, 249, 242);
-  tl("site_comp_maint_items", ["Entretien général", "Vérification électrique", "Rapport de maintenance détaillé"]).forEach((it) => {
-    doc.setFillColor(...PINK);
-    doc.circle(rx + 18, ry + 4, 2, "F");
-    doc.text(it, rx + 26, ry + 7);
+  // Colonne droite : Maintenance annuelle — affichée uniquement si le
+  // commercial a coché "Inclure la maintenance annuelle" dans le panneau
+  // droit (SiteSpecs.includeMaintenance).
+  if (showMaintenance) {
+    const rx = M + colW + 20;
+    doc.setFillColor(29, 29, 29);
+    doc.roundedRect(rx, y, colW, 280, 8, 8, "F");
+    let ry = y + 22;
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...PINK);
+    doc.text(t("site_comp_maint_title", "Maintenance annuelle"), rx + 14, ry);
+    ry += 22;
+    const lines = [
+      { l: t("site_comp_maint_unit_label", "Forfait préventif"), v: t("site_comp_maint_unit_value", `${maintenanceUnit} € HT / PDC / an`) },
+      { l: t("site_comp_maint_pdc_label", "Points de recharge"), v: `${totalBornes} PDC` },
+      { l: t("site_comp_maint_total_label", "Total maintenance / an"), v: `${eur(maintenanceTotal)} HT` },
+    ];
+    lines.forEach((line, i) => {
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(200, 200, 200);
+      doc.text(line.l, rx + 14, ry);
+      doc.setFont(BRAND_FONT, i === 2 ? "bold" : "normal");
+      doc.setFontSize(i === 2 ? 14 : 11);
+      doc.setTextColor(i === 2 ? PINK[0] : 252, i === 2 ? PINK[1] : 249, i === 2 ? PINK[2] : 242);
+      doc.text(line.v, rx + colW - 14, ry, { align: "right" });
+      ry += 24;
+      if (i < 2) {
+        doc.setDrawColor(70, 67, 62);
+        doc.line(rx + 14, ry - 6, rx + colW - 14, ry - 6);
+      }
+    });
     ry += 16;
-  });
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(...PINK);
+    doc.text(t("site_comp_maint_subtitle", "VISITE ANNUELLE SUR SITE"), rx + 14, ry);
+    ry += 14;
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(252, 249, 242);
+    tl("site_comp_maint_items", ["Entretien général", "Vérification électrique", "Rapport de maintenance détaillé"]).forEach((it) => {
+      doc.setFillColor(...PINK);
+      doc.circle(rx + 18, ry + 4, 2, "F");
+      doc.text(it, rx + 26, ry + 7);
+      ry += 16;
+    });
+  }
 }
 
 // ============ RAPPORT SITE — RÉCAP FINANCIER ENRICHI ============
@@ -1648,7 +1663,11 @@ function drawSiteFinancialRecap(doc: jsPDF, chargers: SelectedCharger[]) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(26);
   doc.setTextColor(...INK);
-  doc.text(t("site_fin_title", "Votre budget projet"), M, y + 18);
+  // Titre retiré sur demande utilisateur — l'eyebrow "6 · RÉCAPITULATIF
+  // FINANCIER" suffit. Si vous voulez le restaurer : éditer site_fin_title
+  // depuis /admin/pdf > onglet Site > catégorie récap financier.
+  const finTitle = t("site_fin_title", "");
+  if (finTitle.trim()) doc.text(finTitle, M, y + 18);
   y += 50;
 
   // Agrégation par fournisseur
@@ -4141,7 +4160,7 @@ function drawFinancialSummary(
     doc.setFontSize(9);
     doc.setTextColor(...INK);
     const modalities = [
-      "30 % à la commande, 60 % à la pose, 10 % à la mise en service.",
+      "50 % à la commande, 50 % à la mise en service.",
       "Acompte facturé sous 8 jours. Solde sous 30 jours après PV de réception.",
       "TVA 20 % facturée selon le régime applicable à votre entreprise.",
     ];
@@ -4205,7 +4224,9 @@ function drawJourney(doc: jsPDF, type: ProjectType, _client: ClientInfo) {
   // cards au-dessus et en-dessous).
   const steps = j.steps.slice(0, 5);
   const nbSteps = steps.length;
-  const timelineY = y + 200; // centre vertical disponible
+  // timelineY = y + 240 (au lieu de 200) pour éviter le chevauchement des
+  // cards above avec l'intro multi-lignes (3+ lignes possible).
+  const timelineY = y + 240;
   const lineX1 = M + 30;
   const lineX2 = PAGE_W - M - 30;
   const lineW = lineX2 - lineX1;

@@ -3057,11 +3057,11 @@ function SiteSpecsEditor({ sc, onChange }: { sc: SelectedCharger; onChange: (p: 
 
           <div className="space-y-1">
             <Label className="text-[10px] text-muted-foreground uppercase">
-              Travaux à réaliser (1 par ligne, max 10)
+              Travaux à réaliser (1 par ligne, max 20)
             </Label>
             <Textarea
               value={(specs.worksList ?? []).join("\n")}
-              onChange={(e) => setSpec({ worksList: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 10) })}
+              onChange={(e) => setSpec({ worksList: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 20) })}
               placeholder="Mise à niveau câble principal 150mm² → 240mm² alu (40m)&#10;NSX400F + INS320&#10;Fouilles 65m sur terre végétale et graviers&#10;..."
               className="min-h-[100px] text-xs"
             />
@@ -3070,6 +3070,70 @@ function SiteSpecsEditor({ sc, onChange }: { sc: SelectedCharger; onChange: (p: 
               Si vide, une liste générique sera utilisée.
             </p>
           </div>
+
+          {/* Type câble 22 kW : preset ou personnalisable */}
+          <div className="space-y-1">
+            <Label className="text-[10px] text-muted-foreground uppercase">Type câble 22 kW (triphasé)</Label>
+            <div className="flex gap-1.5">
+              {["U1000 R2V 5G10 mm²", "U1000 R2V 5G16 mm²"].map((preset) => (
+                <Button
+                  key={preset}
+                  size="sm"
+                  variant={specs.cable22Type === preset ? "default" : "outline"}
+                  onClick={() => setSpec({ cable22Type: preset })}
+                  className="h-7 text-[10px] flex-1"
+                >
+                  {preset}
+                </Button>
+              ))}
+            </div>
+            <Input
+              value={specs.cable22Type && !["U1000 R2V 5G10 mm²", "U1000 R2V 5G16 mm²"].includes(specs.cable22Type) ? specs.cable22Type : ""}
+              onChange={(e) => setSpec({ cable22Type: e.target.value })}
+              placeholder="Ou personnalisé..."
+              className="h-7 text-xs"
+            />
+          </div>
+
+          {/* Type câble 7,4 kW : preset ou personnalisable */}
+          <div className="space-y-1">
+            <Label className="text-[10px] text-muted-foreground uppercase">Type câble 7,4 kW (monophasé)</Label>
+            <Input
+              value={specs.cable74Type ?? ""}
+              onChange={(e) => setSpec({ cable74Type: e.target.value })}
+              placeholder="Ex : U1000 R2V 3G10 mm²"
+              className="h-7 text-xs"
+            />
+          </div>
+
+          {/* Points de charge par borne */}
+          <div className="space-y-1">
+            <Label className="text-[10px] text-muted-foreground uppercase">Points de charge par borne</Label>
+            <div className="flex gap-1.5">
+              {[1, 2].map((n) => (
+                <Button
+                  key={n}
+                  size="sm"
+                  variant={(specs.pointsParBorne ?? 1) === n ? "default" : "outline"}
+                  onClick={() => setSpec({ pointsParBorne: n as 1 | 2 })}
+                  className="h-7 text-xs flex-1"
+                >
+                  {n} point{n > 1 ? "s" : ""} de charge
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {/* Inclure la maintenance annuelle dans le PDF */}
+          <label className="flex items-center gap-2 cursor-pointer p-2 rounded-md hover:bg-muted">
+            <input
+              type="checkbox"
+              checked={specs.includeMaintenance ?? false}
+              onChange={(e) => setSpec({ includeMaintenance: e.target.checked })}
+              className="h-4 w-4"
+            />
+            <span className="text-xs">Inclure la maintenance annuelle dans le PDF</span>
+          </label>
 
           <div className="space-y-1">
             <Label className="text-[10px] text-muted-foreground uppercase">Supervision (page dédiée du PDF)</Label>
