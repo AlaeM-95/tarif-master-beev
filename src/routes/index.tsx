@@ -58,7 +58,7 @@ export const Route = createFileRoute("/")({
 });
 
 function App() {
-  const { isAdmin, isOps } = useAuth();
+  const { isAdmin, isOps, signOut } = useAuth();
   // Pour la majorité des gates d'écriture (catalogue, pricing, templates PDF)
   // on utilise isOps (admin OU ops). isAdmin reste réservé aux actions
   // super-admin (gestion utilisateurs, etc. — pas exposées dans cette page).
@@ -303,6 +303,10 @@ function App() {
   const [vehicleSearch, setVehicleSearch] = useState("");
   const [vehicleEnergyFilter, setVehicleEnergyFilter] = useState<string>("all");
   const [vehiclePriceMax, setVehiclePriceMax] = useState<number | null>(null);
+  // Nouveaux filtres demandés : loyer mensuel max, durée préférée, km/an cible
+  const [vehicleMonthlyMax, setVehicleMonthlyMax] = useState<number | null>(null);
+  const [vehicleDurationFilter, setVehicleDurationFilter] = useState<number | null>(null);
+  const [vehicleKmFilter, setVehicleKmFilter] = useState<number | null>(null);
 
   // Catégories existantes (extraites du catalogue) pour le dropdown admin
   const existingCategories = useMemo(
@@ -316,9 +320,23 @@ function App() {
       if (q && !`${v.brand} ${v.model} ${v.version} ${v.category}`.toLowerCase().includes(q)) return false;
       if (vehicleEnergyFilter !== "all" && v.energy !== vehicleEnergyFilter) return false;
       if (vehiclePriceMax !== null && v.priceTtc > vehiclePriceMax) return false;
+      // Loyer mensuel max : on filtre sur monthlyLld (le loyer catalogue),
+      // pas le loyer négocié (qui s'applique seulement après sélection).
+      if (vehicleMonthlyMax !== null && (v.monthlyLld ?? 0) > vehicleMonthlyMax) return false;
+      // Durée / km : on regarde si une offre loueur correspond
+      if (vehicleDurationFilter !== null || vehicleKmFilter !== null) {
+        const offers = leaserOffers.filter((o) => o.vehicleId === v.id);
+        if (offers.length > 0) {
+          const matchesDuration = vehicleDurationFilter === null ||
+            offers.some((o) => o.durationMonths === vehicleDurationFilter);
+          const matchesKm = vehicleKmFilter === null ||
+            offers.some((o) => o.kmTotal >= vehicleKmFilter);
+          if (!matchesDuration || !matchesKm) return false;
+        }
+      }
       return true;
     });
-  }, [vehicles, vehicleSearch, vehicleEnergyFilter, vehiclePriceMax]);
+  }, [vehicles, vehicleSearch, vehicleEnergyFilter, vehiclePriceMax, vehicleMonthlyMax, vehicleDurationFilter, vehicleKmFilter, leaserOffers]);
 
   // visibleCount = TOUTES les sélections (véhicules + bornes), pour permettre
   // au commercial de générer un PDF même si la sélection mélange plusieurs types.
@@ -753,6 +771,10 @@ function App() {
                     )}
                   </>
                 )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => signOut()} className="cursor-pointer text-destructive focus:text-destructive">
+                  <X className="w-4 h-4 mr-2" /> Déconnexion
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -865,11 +887,52 @@ function App() {
                   />
                   <span>€</span>
                 </div>
-                {(vehicleSearch || vehicleEnergyFilter !== "all" || vehiclePriceMax !== null) && (
+                {/* Nouveau : Loyer mensuel max */}
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="whitespace-nowrap">Loyer max</span>
+                  <Input
+                    type="number"
+                    value={vehicleMonthlyMax ?? ""}
+                    onChange={(e) => setVehicleMonthlyMax(e.target.value ? Number(e.target.value) : null)}
+                    placeholder="—"
+                    className="h-8 w-24 text-xs"
+                  />
+                  <span>€/mois</span>
+                </div>
+                {/* Nouveau : Durée préférée */}
+                <div className="flex items-center gap-1">
+                  {[36, 48, 60].map((d) => (
+                    <Button
+                      key={d}
+                      size="sm"
+                      variant={vehicleDurationFilter === d ? "default" : "outline"}
+                      onClick={() => setVehicleDurationFilter(vehicleDurationFilter === d ? null : d)}
+                      className="h-8 text-xs"
+                    >
+                      {d} mois
+                    </Button>
+                  ))}
+                </div>
+                {/* Nouveau : Km/an minimum (basé sur kmTotal des offres loueurs) */}
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="whitespace-nowrap">Km min</span>
+                  <Input
+                    type="number"
+                    value={vehicleKmFilter ?? ""}
+                    onChange={(e) => setVehicleKmFilter(e.target.value ? Number(e.target.value) : null)}
+                    placeholder="—"
+                    className="h-8 w-24 text-xs"
+                    step={10000}
+                  />
+                </div>
+                {(vehicleSearch || vehicleEnergyFilter !== "all" || vehiclePriceMax !== null || vehicleMonthlyMax !== null || vehicleDurationFilter !== null || vehicleKmFilter !== null) && (
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => { setVehicleSearch(""); setVehicleEnergyFilter("all"); setVehiclePriceMax(null); }}
+                    onClick={() => {
+                      setVehicleSearch(""); setVehicleEnergyFilter("all"); setVehiclePriceMax(null);
+                      setVehicleMonthlyMax(null); setVehicleDurationFilter(null); setVehicleKmFilter(null);
+                    }}
                     className="h-8 text-xs gap-1"
                   >
                     <X className="w-3 h-3" /> Effacer
@@ -2992,9 +3055,10 @@ function PresentationMode({ projectType, client, energy, vehicles, chargers, onC
     const s: Slide[] = [{ kind: "cover" }];
     if (projectType === "vehicles") {
       vehicles.forEach((sv) => s.push({ kind: "vehicle", sv }));
-      // Slide TCO comparative si ≥ 2 véhicules avec includeTco
-      const tcoVehicles = vehicles.filter((sv) => sv.includeTco);
-      if (tcoVehicles.length >= 2) s.push({ kind: "tco" });
+      // Slide TCO comparative dès qu'au moins 2 véhicules sont sélectionnés.
+      // (Plus de filtrage sur includeTco — la slide affiche le calcul même
+      // si le toggle "Inclure TCO" du panneau droit n'a pas été activé.)
+      if (vehicles.length >= 2) s.push({ kind: "tco" });
     } else {
       chargers.forEach((sc) => s.push({ kind: "charger", sc }));
     }
@@ -3230,8 +3294,10 @@ function KPI({ k, v, highlight }: { k: string; v: string; highlight?: boolean })
 // + KPIs (meilleur TCO, pire TCO, écart). Affiché uniquement si au moins
 // 2 véhicules ont includeTco=true.
 function TcoSlide({ vehicles, energy }: { vehicles: SelectedVehicle[]; energy: EnergyParams }) {
-  const tcoVehicles = vehicles.filter((sv) => sv.includeTco);
-  const rows = tcoVehicles.map((sv) => {
+  // On utilise TOUS les véhicules sélectionnés (pas seulement includeTco)
+  // car la slide TCO de présentation est une comparaison globale qui aide
+  // le client à choisir, sans dépendre du toggle individuel.
+  const rows = vehicles.map((sv) => {
     const duree = sv.durationMonths / 12;
     const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
     const r = calculateTcoFull(sv.vehicle, {

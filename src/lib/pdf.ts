@@ -3931,98 +3931,84 @@ function drawJourney(doc: jsPDF, type: ProjectType, _client: ClientInfo) {
   doc.text(intro, M, y);
   y += intro.length * 13 + 20;
 
-  // Step cards verticales
-  const cardH = 90;
-  const cardGap = 8;
-  const badgeR = 16; // rayon du cercle numéroté
+  // Timeline horizontal — style charte Beev 2026 (inspiré du document
+  // de référence transmis : ligne centrale + points colorés alternés +
+  // cards au-dessus et en-dessous).
+  const steps = j.steps.slice(0, 5);
+  const nbSteps = steps.length;
+  const timelineY = y + 200; // centre vertical disponible
+  const lineX1 = M + 30;
+  const lineX2 = PAGE_W - M - 30;
+  const lineW = lineX2 - lineX1;
 
-  j.steps.slice(0, 5).forEach((s, i) => {
-    const cardY = y;
-    const bg = stepBgs[Math.min(i, stepBgs.length - 1)];
+  // Ligne horizontale principale
+  doc.setDrawColor(...INK);
+  doc.setLineWidth(1.2);
+  doc.line(lineX1, timelineY, lineX2, timelineY);
 
-    // Fond carte
-    doc.setFillColor(...bg);
-    doc.roundedRect(M, cardY, PAGE_W - M * 2, cardH, 8, 8, "F");
-    // Si dernière carte blanche, ajout d'un border subtil
-    if (i === 4) {
-      doc.setDrawColor(...RULE);
-      doc.setLineWidth(0.6);
-      doc.roundedRect(M, cardY, PAGE_W - M * 2, cardH, 8, 8, "S");
-    }
+  // Couleurs alternées charte (Rose / Bleu / Violet)
+  const stepColors: Array<[number, number, number]> = [
+    ROSE, [165, 210, 255], VIOLET, ROSE, [165, 210, 255],
+  ];
 
-    // Badge cercle numéroté (positionné gauche, centré verticalement)
-    const badgeX = M + 24;
-    const badgeY = cardY + cardH / 2;
-    doc.setFillColor(255, 255, 255);
-    doc.circle(badgeX, badgeY, badgeR, "F");
+  // Positions équiréparties des points sur la ligne
+  const stepX = (i: number) => lineX1 + ((i + 0.5) * lineW) / nbSteps;
+
+  steps.forEach((s, i) => {
+    const cx = stepX(i);
+    const above = i % 2 === 0; // alternance haut/bas
+    const color = stepColors[i % stepColors.length];
+
+    // Trait de connexion vertical entre point et carte
+    doc.setDrawColor(...color);
+    doc.setLineWidth(1);
+    const connEnd = above ? timelineY - 90 : timelineY + 90;
+    doc.line(cx, timelineY, cx, connEnd);
+
+    // Cercle point principal sur la ligne (cercle plein couleur)
+    doc.setFillColor(...color);
+    doc.circle(cx, timelineY, 7, "F");
+    // Anneau intérieur INK pour donner le style ponctuation
     doc.setDrawColor(...INK);
-    doc.setLineWidth(1.2);
-    doc.circle(badgeX, badgeY, badgeR, "S");
+    doc.setLineWidth(1);
+    doc.circle(cx, timelineY, 7, "S");
+
+    // Carte étape positionnée au-dessus ou en-dessous
+    const cardW = lineW / nbSteps - 8;
+    const cardH = 90;
+    const cardX = cx - cardW / 2;
+    const cardY = above ? timelineY - 100 - cardH : timelineY + 100;
+
+    // Numéro étape en gros, couleur charte
     doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(15);
-    doc.setTextColor(...INK);
-    doc.text(s.n, badgeX, badgeY + 5, { align: "center" });
+    doc.setFontSize(24);
+    doc.setTextColor(...color);
+    const numStr = String(i + 1).padStart(2, "0");
+    doc.text(numStr, cardX, cardY + 22);
 
-    // Bloc droit : titre + chip durée + détails
-    const contentX = M + 60;
-    const contentW = PAGE_W - M - contentX - 14;
-
-    // Ligne 1 : titre gauche + chip durée droite
+    // Titre étape (sous le numéro)
     doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(11);
+    doc.setFontSize(10);
     doc.setTextColor(...INK);
-    const titleL = doc.splitTextToSize(s.title, contentW - 80);
-    doc.text(titleL[0], contentX, cardY + 18);
+    const titleLines = doc.splitTextToSize(s.title, cardW).slice(0, 2);
+    doc.text(titleLines, cardX, cardY + 38);
 
+    // Résumé (plus petit, gris secondaire)
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...SUB);
+    const sumStart = cardY + 38 + titleLines.length * 11 + 4;
+    const sumLines = doc.splitTextToSize(s.summary || "", cardW).slice(0, 4);
+    doc.text(sumLines, cardX, sumStart);
+
+    // Durée (en bas de carte)
     if (s.duration) {
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(7);
-      doc.setTextColor(...SUB);
-      const durText = s.duration.toUpperCase();
-      const durW = doc.getTextWidth(durText);
-      doc.text(durText, PAGE_W - M - 14, cardY + 18, { align: "right" });
-      // Pas de pill graphique : juste le texte, sobre
+      doc.setTextColor(...color);
+      const durY = above ? cardY + cardH - 4 : sumStart + sumLines.length * 9 + 6;
+      doc.text(s.duration.toUpperCase(), cardX, durY);
     }
-
-    // Ligne 2 : résumé
-    let yy = cardY + 32;
-    if (s.summary) {
-      doc.setFont(BRAND_FONT, "normal");
-      doc.setFontSize(8.5);
-      doc.setTextColor(...SUB);
-      const sumL = doc.splitTextToSize(s.summary, contentW).slice(0, 1);
-      doc.text(sumL, contentX, yy);
-      yy += 11;
-    }
-
-    // Ligne 3 : "Beev" + "Client" inline, séparés par ·
-    const beevList = s.beev.slice(0, 2).join(" · ");
-    const clientList = s.client.slice(0, 2).join(" · ");
-
-    // Beev (rose accent badge inline)
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(7);
-    doc.setTextColor(...ROSE);
-    doc.text(lookupText(TEXTS, "common", "bpa_beev_label", "BEEV"), contentX, yy + 6);
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(...INK);
-    const beevText = doc.splitTextToSize(beevList, contentW - 30).slice(0, 1);
-    doc.text(beevText, contentX + 30, yy + 6);
-    yy += 14;
-
-    // Client
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(7);
-    doc.setTextColor(...SUB);
-    doc.text(lookupText(TEXTS, "common", "bpa_client_label", "CLIENT"), contentX, yy + 6);
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(...INK);
-    const clientText = doc.splitTextToSize(clientList, contentW - 30).slice(0, 1);
-    doc.text(clientText, contentX + 30, yy + 6);
-
-    y += cardH + cardGap;
   });
 }
 

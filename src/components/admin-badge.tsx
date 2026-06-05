@@ -1,41 +1,35 @@
 import { Link } from "@tanstack/react-router";
-import { LogIn, LogOut, ShieldCheck, FileText } from "lucide-react";
+import { LogIn, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth";
 
+// Badge compact dans le header — icon-only pour éviter de saturer la barre.
+// Les actions "Éditer le PDF" et "Déconnexion" sont dans le Menu déroulant
+// du header principal (cf. index.tsx).
 export function AdminBadge() {
-  const { user, isAdmin, signOut, loading } = useAuth();
+  const { user, isAdmin, loading } = useAuth();
 
   if (loading) return null;
 
   if (!user) {
     return (
-      <Button asChild variant="ghost" size="sm" className="gap-2">
+      <Button asChild variant="ghost" size="sm" className="gap-1.5">
         <Link to="/login">
-          <LogIn className="w-4 h-4" /> Connexion admin
+          <LogIn className="w-3.5 h-3.5" /> Connexion
         </Link>
       </Button>
     );
   }
 
+  if (!isAdmin) return null;
+
+  // Icon-only avec tooltip natif (title) pour le user connecté
   return (
-    <div className="flex items-center gap-2">
-      {isAdmin && (
-        <>
-          <Badge className="gap-1 bg-[#35DA76] text-[#111111] hover:bg-[#35DA76]">
-            <ShieldCheck className="w-3 h-3" /> Admin
-          </Badge>
-          <Button asChild variant="ghost" size="sm" className="gap-2">
-            <Link to="/admin/pdf">
-              <FileText className="w-4 h-4" /> Éditer le PDF
-            </Link>
-          </Button>
-        </>
-      )}
-      <Button variant="ghost" size="sm" onClick={() => signOut()} className="gap-2" title={user.email ?? ""}>
-        <LogOut className="w-4 h-4" /> Déconnexion
-      </Button>
+    <div
+      className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-accent text-accent-foreground"
+      title={`Admin · ${user.email ?? ""}`}
+    >
+      <ShieldCheck className="w-4 h-4" />
     </div>
   );
 }

@@ -48,10 +48,10 @@ export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
   showWhyBeev: true,
   showSocialProof: true,
   showTcoComparison: true,
-  showFinancialSummary: true,
+  showFinancialSummary: false, // retirée sur demande utilisateur (info déjà dans le récap site)
   showGuarantees: true,
   showJourney: true,
-  showExecutiveSummary: true,
+  showExecutiveSummary: false, // retirée sur demande utilisateur (redondant avec couverture)
   showVehicleConsumption: true,
   showVehicleCo2: true,
   showVehicleFiscalHp: true,
