@@ -6,7 +6,7 @@ import { DEFAULT_PDF_CONFIG, type PdfDisplayConfig } from "./pdf-config";
 import { fetchTcoResultsForVehicles, type TcoResult } from "./tco-results";
 import { loadBeevPillars, type BeevPillar } from "./beev-pillars";
 import { loadPdfTexts, buildPdfTextMap, lookupText, lookupList, type PdfTextMap } from "./pdf-texts";
-import { calculateTcoFull, calculateB2B2ETco, type B2B2ECalculatorInput } from "./tco-calculator";
+import { calculateTcoFull, calculateB2B2ETco, calculateMalusCO2, calculateMalusPoids, type B2B2ECalculatorInput } from "./tco-calculator";
 import type { EnergyParams } from "./store";
 
 export type ClientInfo = {
@@ -1989,6 +1989,46 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setTextColor(...SUB);
   doc.text(`${v.version} · ${v.category} · ${v.energy}`, M, 158);
 
+  // ─── Encart ALERTE FISCALE — visible si le véhicule génère un malus
+  // à l'achat ou une TVS. Permet au client de prendre conscience de la
+  // charge fiscale du véhicule au moment de l'arbitrage.
+  // Calcul rapide TVS annuelle (taxe CO2 + pollution)
+  const malusCo2 = calculateMalusCO2(v.co2 ?? 0);
+  const malusPoids = calculateMalusPoids(v.poidsVide ?? 0, v.energy);
+  const malusTotal = malusCo2 + malusPoids;
+  let taxeCO2Annuelle = 0;
+  const co2v = v.co2 ?? 0;
+  if (co2v > 4 && v.energy !== "Électrique") {
+    const brackets: [number, number, number][] = [[5,45,1],[46,53,2],[54,85,3],[86,105,4],[106,125,10],[126,145,50],[146,165,60],[166,9999,65]];
+    for (const [min, max, rate] of brackets) {
+      if (co2v >= min) taxeCO2Annuelle += (Math.min(co2v, max) - min + 1) * rate;
+    }
+  }
+  const taxePollution = v.energy === "Électrique" ? 0 : v.energy === "Diesel" ? 650 : 130;
+  const tvsAnnuelle = taxeCO2Annuelle + taxePollution;
+  // Barre d'alerte fiscale (sous le sous-titre)
+  if (malusTotal > 0 || tvsAnnuelle > 0) {
+    const ROSE_LIGHT: [number, number, number] = [253, 241, 238]; // Rose 20% charte
+    const ROSE_ACCENT: [number, number, number] = [244, 184, 170]; // Rose charte
+    const alertY = 168;
+    const alertH = 22;
+    const alertW = PAGE_W - M * 2 - 120; // laisse place au pill "TARIFICATION LLD" droite
+    doc.setFillColor(...ROSE_LIGHT);
+    doc.roundedRect(M, alertY, alertW, alertH, 4, 4, "F");
+    doc.setFillColor(...ROSE_ACCENT);
+    doc.rect(M, alertY, 3, alertH, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...INK);
+    doc.text("CHARGES FISCALES À VÉRIFIER", M + 10, alertY + 9);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8);
+    const parts: string[] = [];
+    if (malusTotal > 0) parts.push(`Malus achat : ${eur(malusTotal)}`);
+    if (tvsAnnuelle > 0) parts.push(`TVS : ${eur(tvsAnnuelle)} / an`);
+    doc.text(parts.join("  ·  "), M + 10, alertY + 18);
+  }
+
   // Pill "Tarification LLD" à droite (radius pill, fond bleu A5D2FF)
   const pillText = lookupText(TEXTS, "vehicles", "vehicle_tariff_chip", "TARIFICATION LLD");
   doc.setFont(BRAND_FONT, "bold");
@@ -3195,7 +3235,12 @@ function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
   y += 50;
 
   // Hypothèses : véhicule thermique de référence émet 135 g CO2/km
+  // Pour les véhicules ÉLECTRIQUES, on force 0 g/km en usage (zéro émission
+  // directe à l'échappement) même si la DB peut contenir une valeur résiduelle
+  // (parfois 22 g/km par convention WLTP).
   const refCO2gKm = 135;
+  const co2OfVehicle = (v: typeof vehicles[0]["vehicle"]) =>
+    v.energy === "Électrique" ? 0 : (v.co2 ?? 0);
   let kmTotalFlotte = 0;
   let co2EmisFlotteKg = 0;
   let co2EviteFlotteKg = 0;
@@ -3203,7 +3248,7 @@ function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
     const duree = sv.durationMonths / 12;
     const kmContrat = sv.kmPerYear * duree * (sv.quantity || 1);
     kmTotalFlotte += kmContrat;
-    const co2Vehicule = ((sv.vehicle.co2 ?? 0) * kmContrat) / 1000; // kg
+    const co2Vehicule = (co2OfVehicle(sv.vehicle) * kmContrat) / 1000; // kg
     co2EmisFlotteKg += co2Vehicule;
     const co2Ref = (refCO2gKm * kmContrat) / 1000; // kg
     co2EviteFlotteKg += co2Ref - co2Vehicule;
@@ -3281,13 +3326,15 @@ function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
     body: vehicles.map((sv) => {
       const duree = sv.durationMonths / 12;
       const km = sv.kmPerYear * duree * (sv.quantity || 1);
-      const co2Emi = ((sv.vehicle.co2 ?? 0) * km) / 1000;
+      const co2gKm = co2OfVehicle(sv.vehicle); // 0 si électrique
+      const co2Emi = (co2gKm * km) / 1000;
       const co2Ref = (refCO2gKm * km) / 1000;
+      const isElec = sv.vehicle.energy === "Électrique";
       return [
         `${sv.vehicle.brand} ${sv.vehicle.model}${(sv.quantity || 1) > 1 ? ` × ${sv.quantity}` : ""}`,
         `${(km / 1000).toFixed(0)} k km`,
-        `${sv.vehicle.co2 ?? 0} g`,
-        `${co2Emi.toFixed(0)} kg`,
+        isElec ? "0 g (EL)" : `${co2gKm} g`,
+        isElec ? "0 kg" : `${co2Emi.toFixed(0)} kg`,
         { content: `${(co2Ref - co2Emi).toFixed(0)} kg`, styles: { fontStyle: "bold" as any, textColor: ROSE } },
       ];
     }),
