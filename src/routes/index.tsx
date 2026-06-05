@@ -3154,6 +3154,63 @@ function SiteSpecsEditor({ sc, onChange }: { sc: SelectedCharger; onChange: (p: 
             <span className="text-xs">Inclure la maintenance annuelle dans le PDF</span>
           </label>
 
+          {/* Taux de TVA applicable (5,5 % réduit ou 20 % standard) */}
+          <div className="space-y-1">
+            <Label className="text-[10px] text-muted-foreground uppercase">Taux de TVA</Label>
+            <div className="flex gap-1.5">
+              {[20, 5.5].map((r) => (
+                <Button
+                  key={r}
+                  size="sm"
+                  variant={(specs.tvaRate ?? 20) === r ? "default" : "outline"}
+                  onClick={() => setSpec({ tvaRate: r as 5.5 | 20 })}
+                  className="h-7 text-xs flex-1"
+                >
+                  {r === 20 ? "20 % (standard)" : "5,5 % (réduit)"}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {/* Photos du chantier (multi-upload) */}
+          <div className="space-y-1">
+            <Label className="text-[10px] text-muted-foreground uppercase">
+              Photos du chantier ({(specs.chantierPhotos ?? []).length} / 6)
+            </Label>
+            <p className="text-[10px] text-muted-foreground">
+              Affichées sous la liste "Travaux à réaliser" dans le PDF. Max 6 photos. JPG/PNG.
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {(specs.chantierPhotos ?? []).map((url, i) => (
+                <div key={i} className="relative aspect-[4/3] rounded-md overflow-hidden bg-muted">
+                  <img src={url} alt={`Photo chantier ${i + 1}`} className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = (specs.chantierPhotos ?? []).filter((_, idx) => idx !== i);
+                      setSpec({ chantierPhotos: next });
+                    }}
+                    className="absolute top-1 right-1 w-5 h-5 rounded-full bg-destructive text-destructive-foreground text-xs flex items-center justify-center"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              {(specs.chantierPhotos ?? []).length < 6 && (
+                <ImageUpload
+                  currentUrl=""
+                  onChange={(url) => {
+                    if (!url) return;
+                    const next = [...(specs.chantierPhotos ?? []), url];
+                    setSpec({ chantierPhotos: next.slice(0, 6) });
+                  }}
+                  folder="chantier-photos"
+                  label=""
+                />
+              )}
+            </div>
+          </div>
+
           <div className="space-y-1">
             <Label className="text-[10px] text-muted-foreground uppercase">Supervision (page dédiée du PDF)</Label>
             <select

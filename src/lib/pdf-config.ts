@@ -70,7 +70,7 @@ export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
   showSiteGuarantees: true,
   showSiteProjectSynthesis: true,
   showSiteInfrastructure: true,
-  showSiteEquipments: true,
+  showSiteEquipments: false, // désactivé par défaut : redondant avec fiche produit + récap financier (doublon Total HT)
   showSiteProductSheet: true,
   showSiteSupervision: true,
   showSiteCompliance: true,

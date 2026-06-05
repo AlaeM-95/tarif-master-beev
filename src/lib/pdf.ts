@@ -82,6 +82,12 @@ export type SiteSpecs = {
   pointsParBorne?: 1 | 2;
   /** Inclure la maintenance annuelle dans le PDF (case à cocher commercial). */
   includeMaintenance?: boolean;
+  /** Photos du chantier uploadées par le commercial — affichées sous la
+   *  liste des travaux à réaliser dans le PDF "Infrastructure électrique". */
+  chantierPhotos?: string[];
+  /** Taux de TVA applicable (5,5 % ou 20 %) — utilisé dans le récap
+   *  financier pour calculer le total TTC. */
+  tvaRate?: 5.5 | 20;
   /** Plan de supervision : Beev Connect (site entreprise) ou Beev Home Charging
    *  (B2B2E domicile collaborateur). 'none' = pas de bloc supervision. */
   supervisionPlan?: "beev_connect" | "beev_home_charging" | "none";
@@ -436,7 +442,7 @@ export async function generateProposalPdf(opts: {
     if (cfg.showSiteInfrastructure) {
       doc.addPage();
       drawHeader(doc, client, effectiveType);
-      drawSiteInfrastructure(doc, c);
+      await drawSiteInfrastructure(doc, c);
     }
     if (cfg.showSiteEquipments) {
       doc.addPage();
@@ -813,6 +819,8 @@ function aggregateSiteSpecs(chargers: SelectedCharger[]): SiteSpecs {
     if (!merged.cable74Type && s.cable74Type) merged.cable74Type = s.cable74Type;
     if (merged.pointsParBorne === undefined && s.pointsParBorne) merged.pointsParBorne = s.pointsParBorne;
     if (merged.includeMaintenance === undefined && s.includeMaintenance !== undefined) merged.includeMaintenance = s.includeMaintenance;
+    if (!merged.chantierPhotos && s.chantierPhotos && s.chantierPhotos.length > 0) merged.chantierPhotos = s.chantierPhotos;
+    if (!merged.tvaRate && s.tvaRate) merged.tvaRate = s.tvaRate;
     if (!merged.supervisionPlan && s.supervisionPlan) merged.supervisionPlan = s.supervisionPlan;
   }
   return merged;
@@ -1033,7 +1041,7 @@ function drawSiteProjectSynthesis(doc: jsPDF, client: ClientInfo, chargers: Sele
 // Page 'Travaux à réaliser · devis installation' inspirée Château la Commaraine.
 // 2 colonnes de bullets (gros œuvre / équipements + raccordement) avec un
 // bandeau bas 'GÉNIE CIVIL TOTAL' et 'MASSIFS BÉTON'.
-function drawSiteInfrastructure(doc: jsPDF, chargers: SelectedCharger[]) {
+async function drawSiteInfrastructure(doc: jsPDF, chargers: SelectedCharger[]) {
   const PINK: [number, number, number] = [244, 184, 170];
 
   let y = 116;
@@ -1101,9 +1109,37 @@ function drawSiteInfrastructure(doc: jsPDF, chargers: SelectedCharger[]) {
     return by;
   };
   const leftEnd = drawBullets(leftBullets, leftX);
-  drawBullets(rightBullets, rightX);
-  // Bandeau GÉNIE CIVIL TOTAL / MASSIFS BÉTON retiré sur demande utilisateur
-  // (info redondante avec les bullets travaux + chiffrage commercial).
+  const rightEnd = drawBullets(rightBullets, rightX);
+  // Photos chantier — affichées sous les bullets si le commercial en a uploadé.
+  // Grille 2 ou 3 colonnes selon nombre de photos. Max 6 photos.
+  if (specs.chantierPhotos && specs.chantierPhotos.length > 0) {
+    const photosY = Math.max(leftEnd, rightEnd) + 20;
+    if (photosY < PAGE_H - 200) {
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(...SUB);
+      doc.text("PHOTOS DU CHANTIER", M, photosY);
+      const photos = specs.chantierPhotos.slice(0, 6);
+      const cols = photos.length <= 2 ? 2 : 3;
+      const gap = 8;
+      const photoW = (PAGE_W - M * 2 - gap * (cols - 1)) / cols;
+      const photoH = 90;
+      for (let i = 0; i < photos.length; i++) {
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+        const px = M + col * (photoW + gap);
+        const py = photosY + 8 + row * (photoH + gap);
+        if (py + photoH > PAGE_H - 60) break; // évite débordement footer
+        try {
+          await drawImageContain(doc, photos[i], px, py, photoW, photoH);
+        } catch {
+          // Photo indisponible : on dessine un placeholder discret
+          doc.setFillColor(...BG);
+          doc.rect(px, py, photoW, photoH, "F");
+        }
+      }
+    }
+  }
 }
 
 // ============ RAPPORT SITE — ÉQUIPEMENTS BEEV ============
@@ -1155,34 +1191,33 @@ function drawSiteEquipments(doc: jsPDF, chargers: SelectedCharger[]) {
   }
   const aggregated = Array.from(byModel.values());
   const totalQty = aggregated.reduce((s, r) => s + r.quantity, 0);
-  const totalHt = aggregated.reduce((s, r) => s + r.quantity * r.unitHt, 0);
 
+  // Pas de colonne "TOTAL HT" ni de footer prix : le Total HT par site est
+  // affiché UNIQUEMENT sur la slide récap financier (drawSiteFinancialRecap)
+  // pour éviter les doublons sur le PDF client.
   autoTable(doc, {
     startY: y,
     theme: "plain",
-    head: [["MODÈLE", "QTÉ", "P.U. HT", "TOTAL HT"]],
+    head: [["MODÈLE", "QTÉ", "PUISSANCE"]],
     body: [
       ...aggregated.map((r) => [
-        `${r.brand} ${r.model} · ${r.powerKw} kW`,
+        `${r.brand} ${r.model}`,
         String(r.quantity),
-        eur(r.unitHt),
-        { content: eur(r.quantity * r.unitHt), styles: { fontStyle: "bold", halign: "right" } },
+        `${r.powerKw} kW`,
       ]),
     ],
     foot: [[
       { content: `Total bornes`, styles: { fontStyle: "bold", textColor: INK, fillColor: BG, cellPadding: 8 } },
       { content: String(totalQty), styles: { halign: "center", fontStyle: "bold", textColor: INK, fillColor: BG, cellPadding: 8 } },
       { content: "", styles: { fillColor: BG, cellPadding: 8 } },
-      { content: eur(totalHt), styles: { halign: "right", fontStyle: "normal", textColor: LAVENDER, fillColor: BG, cellPadding: 8, fontSize: 12, font: BRAND_FONT } },
     ]],
     headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT, cellPadding: 7 },
     bodyStyles: { fontSize: 10, cellPadding: 7, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
     footStyles: { font: BRAND_FONT },
     columnStyles: {
       0: { cellWidth: "auto" },
-      1: { halign: "center", cellWidth: 50 },
-      2: { halign: "right", cellWidth: 80 },
-      3: { halign: "right", cellWidth: 100, fontStyle: "bold" },
+      1: { halign: "center", cellWidth: 60 },
+      2: { halign: "right", cellWidth: 100 },
     },
     margin: { left: M, right: M },
   });
@@ -1624,16 +1659,21 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
       { l: t("site_comp_maint_pdc_label", "Points de recharge"), v: `${totalBornes} PDC` },
       { l: t("site_comp_maint_total_label", "Total maintenance / an"), v: `${eur(maintenanceTotal)} HT` },
     ];
+    // Alignement vertical : on utilise la même fontSize pour label et valeur
+    // (10pt), seul le poids change. Évite le décalage visuel entre la valeur
+    // grande (14pt total) et son label petit (9pt). Le total est mis en avant
+    // par le BOLD + la couleur PINK, pas par une taille plus grande.
     lines.forEach((line, i) => {
-      doc.setFont(BRAND_FONT, "normal");
-      doc.setFontSize(9);
-      doc.setTextColor(200, 200, 200);
+      const isTotal = i === 2;
+      doc.setFont(BRAND_FONT, isTotal ? "bold" : "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(isTotal ? PINK[0] : 200, isTotal ? PINK[1] : 200, isTotal ? PINK[2] : 200);
       doc.text(line.l, rx + 14, ry);
-      doc.setFont(BRAND_FONT, i === 2 ? "bold" : "normal");
-      doc.setFontSize(i === 2 ? 14 : 11);
-      doc.setTextColor(i === 2 ? PINK[0] : 252, i === 2 ? PINK[1] : 249, i === 2 ? PINK[2] : 242);
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(isTotal ? PINK[0] : 252, isTotal ? PINK[1] : 249, isTotal ? PINK[2] : 242);
       doc.text(line.v, rx + colW - 14, ry, { align: "right" });
-      ry += 24;
+      ry += 22;
       if (i < 2) {
         doc.setDrawColor(70, 67, 62);
         doc.line(rx + 14, ry - 6, rx + colW - 14, ry - 6);
@@ -1695,7 +1735,10 @@ function drawSiteFinancialRecap(doc: jsPDF, chargers: SelectedCharger[]) {
   const totalChargersOnly = chargerItems.reduce((a, b) => a + b, 0);
   const bureauControle = Math.max(0, parseFloat(t("site_pay_bureau_ht", "700")) || 700);
   const totalHt = totalInstall + totalChargersOnly + bureauControle;
-  const tva = totalHt * 0.2;
+  // Taux TVA configurable : 5,5 % (TVA réduite particulier) ou 20 % (standard B2B)
+  const specsTVA = aggregateSiteSpecs(chargers);
+  const tvaRate = specsTVA.tvaRate ?? 20;
+  const tva = totalHt * (tvaRate / 100);
   const totalTtc = totalHt + tva;
   const supSpecs = chargers.map((sc) => sc.siteSpecs?.supervisionPlan).filter(Boolean);
   const hasSupervision = supSpecs.length > 0 && supSpecs[0] !== "none";
@@ -1716,7 +1759,7 @@ function drawSiteFinancialRecap(doc: jsPDF, chargers: SelectedCharger[]) {
     ],
     foot: [
       [{ content: t("site_fin_total_ht_label", "Total projet HT"), colSpan: 2, styles: { halign: "right", fontStyle: "bold", textColor: INK, fillColor: BG } }, { content: eur(totalHt), styles: { halign: "right", fontStyle: "bold", textColor: INK, fillColor: BG } }],
-      [{ content: t("site_fin_tva_label", "TVA 20 %"), colSpan: 2, styles: { halign: "right", textColor: SUB, fillColor: BG } }, { content: eur(tva), styles: { halign: "right", textColor: SUB, fillColor: BG } }],
+      [{ content: `TVA ${tvaRate.toString().replace(".", ",")} %`, colSpan: 2, styles: { halign: "right", textColor: SUB, fillColor: BG } }, { content: eur(tva), styles: { halign: "right", textColor: SUB, fillColor: BG } }],
       [{ content: t("site_fin_total_ttc_label", "Total TTC"), colSpan: 2, styles: { halign: "right", fontStyle: "bold", textColor: LAVENDER, fillColor: BG, fontSize: 12 } }, { content: eur(totalTtc), styles: { halign: "right", fontStyle: "normal", textColor: LAVENDER, fillColor: BG, fontSize: 12, font: BRAND_FONT } }],
     ],
     headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT, cellPadding: 7 },
@@ -1843,11 +1886,12 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(24);
   doc.setTextColor(252, 249, 242);
-  doc.text(`${eur(total)} HT · ${eur(ttc)} TTC`, M + 16, y + 50);
+  // Total HT seulement (sur demande utilisateur — pas de TTC ici)
+  doc.text(`${eur(total)} HT`, M + 16, y + 50);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(200, 200, 200);
-  doc.text(`${t("site_pay_acompte_label", "Acompte 50 % à la commande")} : ${eur(acompte50)} TTC`, M + 16, y + 70);
+  doc.text(`${t("site_pay_acompte_label", "Acompte 50 % à la commande")} : ${eur(acompte50 / 1.2)} HT`, M + 16, y + 70);
   const cta = t("site_pay_cta", "Signez le devis en ligne · contact@beev.co");
   doc.text(cta, M + 16, y + 86);
   // Lien cliquable sur la zone du CTA → ouvre le mailer du client
@@ -4273,9 +4317,11 @@ function drawJourney(doc: jsPDF, type: ProjectType, _client: ClientInfo) {
     doc.setLineWidth(1);
     doc.circle(cx, timelineY, 7, "S");
 
-    // Carte étape positionnée au-dessus ou en-dessous
+    // Carte étape positionnée au-dessus ou en-dessous.
+    // Hauteur étendue à 130 pour accueillir titre + résumé 3 lignes + durée
+    // sans chevauchement.
     const cardW = lineW / nbSteps - 8;
-    const cardH = 90;
+    const cardH = 130;
     const cardX = cx - cardW / 2;
     const cardY = above ? timelineY - 100 - cardH : timelineY + 100;
 
@@ -4293,20 +4339,22 @@ function drawJourney(doc: jsPDF, type: ProjectType, _client: ClientInfo) {
     const titleLines = doc.splitTextToSize(s.title, cardW).slice(0, 2);
     doc.text(titleLines, cardX, cardY + 38);
 
-    // Résumé (plus petit, gris secondaire)
+    // Résumé (3 lignes max — au-delà tronqué) — fontSize + line-height 11
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(8);
     doc.setTextColor(...SUB);
-    const sumStart = cardY + 38 + titleLines.length * 11 + 4;
-    const sumLines = doc.splitTextToSize(s.summary || "", cardW).slice(0, 4);
+    const sumStart = cardY + 38 + titleLines.length * 12 + 4;
+    const sumLines = doc.splitTextToSize(s.summary || "", cardW).slice(0, 3);
     doc.text(sumLines, cardX, sumStart);
 
-    // Durée (en bas de carte)
+    // Durée affichée APRÈS le résumé, jamais au milieu du texte.
+    // Position calculée = end du résumé + marge 8px.
     if (s.duration) {
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(7);
       doc.setTextColor(...color);
-      const durY = above ? cardY + cardH - 4 : sumStart + sumLines.length * 9 + 6;
+      const sumEnd = sumStart + sumLines.length * 10;
+      const durY = Math.min(cardY + cardH - 4, sumEnd + 12);
       doc.text(s.duration.toUpperCase(), cardX, durY);
     }
   });
