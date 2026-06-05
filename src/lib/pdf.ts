@@ -506,10 +506,25 @@ export async function generateProposalPdf(opts: {
     drawB2B2ETco(doc, b2b2eInput);
   }
 
+  // Slide Supervision Beev Home Charging (toggle PDF config) — activée
+  // manuellement par le commercial dans la Configuration PDF du devis.
+  if (cfg.showSupervisionHome) {
+    doc.addPage();
+    drawHeader(doc, client, "home");
+    drawSiteSupervision(doc, "beev_home_charging");
+  }
+
   for (let i = 0; i < chargersSite.length; i++) {
     doc.addPage();
     drawHeader(doc, client, "site");
     await drawChargerPage(doc, chargersSite[i], "site", i + 1, chargersSite.length, client);
+  }
+
+  // Slide Supervision Beev Connect (site entreprise) — toggle PDF config.
+  if (cfg.showSupervisionConnect) {
+    doc.addPage();
+    drawHeader(doc, client, "site");
+    drawSiteSupervision(doc, "beev_connect");
   }
 
   // Page comparaison TCO multi-véhicules (toggleable) — toujours si 2+ véhicules

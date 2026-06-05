@@ -42,6 +42,8 @@ export type PdfDisplayConfig = {
   showSitePaymentOptions: boolean; // page Options de paiement
   showValidation: boolean; // page BPA (signature)
   showB2B2ETco: boolean; // page TCO B2B2E (Bornes domicile)
+  showSupervisionHome: boolean; // slide Supervision Beev Home Charging (B2B2E)
+  showSupervisionConnect: boolean; // slide Supervision Beev Connect (site entreprise)
 };
 
 export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
@@ -75,6 +77,8 @@ export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
   showSitePaymentOptions: true,
   showValidation: true,
   showB2B2ETco: true,
+  showSupervisionHome: false, // activé manuellement via le panneau Configuration PDF du devis
+  showSupervisionConnect: false,
 };
 
 const STORAGE_KEY = "beev_pdf_config_v1";
@@ -169,6 +173,13 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
       { key: "showSiteCompliance", label: "Conformité réglementaire", description: "Bureau Contrôle + Maintenance" },
       { key: "showSiteFinancialRecap", label: "Récap financier", description: "Tableau Poste/Fournisseur/Montant HT" },
       { key: "showSitePaymentOptions", label: "Options de paiement", description: "Comptant / 50-50 / Leasing" },
+    ],
+  },
+  {
+    title: "Supervision Beev (modules optionnels)",
+    items: [
+      { key: "showSupervisionHome", label: "Beev Home Charging (B2B2E)", description: "Slide dédiée à la supervision recharge domicile collaborateurs : refacturation kWh, app mobile, conformité URSSAF" },
+      { key: "showSupervisionConnect", label: "Beev Connect (site entreprise)", description: "Slide dédiée à la supervision parc site : pilotage à distance, RFID, alerting, reporting" },
     ],
   },
   {
