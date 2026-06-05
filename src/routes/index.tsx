@@ -21,6 +21,7 @@ import { ImageUpload } from "@/components/image-upload";
 import { FileUpload } from "@/components/file-upload";
 import { TechnicianQuoteImportDialog } from "@/components/technician-quote-import-dialog";
 import { B2B2ECalculator, useB2B2EInput } from "@/components/b2b2e-calculator";
+import { LiveIndicator } from "@/components/live-indicator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MarginReviewDialog } from "@/components/margin-review-dialog";
 import { PdfConfigPanel } from "@/components/pdf-config-panel";
@@ -757,6 +758,7 @@ function App() {
               <p className="text-[10px] text-muted-foreground tracking-wide uppercase font-medium">Offre commerciale grand compte</p>
             </div>
             <Badge variant="outline" className="hidden md:inline-flex border-primary/30 bg-primary/5 text-primary text-[10px] font-semibold ml-2">{visibleCount} sélection(s)</Badge>
+            <LiveIndicator />
           </div>
 
           {/* ─── Actions (droite) — regroupées par hiérarchie ─── */}
