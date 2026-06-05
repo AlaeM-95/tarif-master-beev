@@ -2293,6 +2293,17 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { char
               placeholder={"OCPP 1.6\nMID + RFID\n..."}
               minHeight="80px"
             />
+            {/* Garantie spécifique au modèle, affichée sur la fiche produit
+                du PDF site entreprise (ligne "Qualité et Garantie"). Permet
+                d'avoir une garantie distincte par marque/modèle plutôt qu'un
+                texte global pdf_texts. */}
+            <LongTxtField
+              label="Garantie (fiche produit PDF)"
+              value={charger.warranty ?? ""}
+              onChange={(s) => onUpdate({ warranty: s })}
+              placeholder="IP54 · IK10 · Garantie constructeur 3 ans (extensible 6 ans)"
+              minHeight="60px"
+            />
           </div>
         )}
       </CardContent>

@@ -209,6 +209,10 @@ export type Charger = {
   marketingImageUrl?: string;
   /** Description longue (paragraphe) — éditable par l'admin, affichée dans le PDF. */
   description?: string;
+  /** Texte de garantie spécifique au modèle (IP, IK, durée constructeur, extension).
+   *  Éditable par le commercial dans /admin/chargers, affiché sur la fiche
+   *  produit du PDF site entreprise. Si vide, fallback sur pdf_texts. */
+  warranty?: string;
   defaultLineItems?: LineItem[];
   custom?: boolean;
 };

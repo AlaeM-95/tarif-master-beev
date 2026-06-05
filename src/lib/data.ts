@@ -110,6 +110,7 @@ function dbToCharger(row: ChargerRow): Charger {
     image: row.image ?? "",
     marketingImageUrl: (row as any).marketing_image_url ?? undefined,
     description: row.description ?? undefined,
+    warranty: (row as any).warranty ?? undefined,
     defaultLineItems: Array.isArray(row.default_line_items)
       ? (row.default_line_items as LineItem[])
       : undefined,
@@ -147,6 +148,10 @@ function chargerToDb(c: Charger): ChargerInsert {
   // marketing_image_url : envoyé seulement si la migration 027 a tourné.
   if (c.marketingImageUrl !== undefined && c.marketingImageUrl !== null && c.marketingImageUrl !== "") {
     (row as any).marketing_image_url = c.marketingImageUrl;
+  }
+  // warranty : envoyé seulement si la migration 032 a tourné.
+  if (c.warranty !== undefined && c.warranty !== null && c.warranty !== "") {
+    (row as any).warranty = c.warranty;
   }
   return row;
 }

@@ -1329,7 +1329,10 @@ async function drawSiteProductSheet(doc: jsPDF, sc: SelectedCharger) {
     { label: "Connectivité", value: lookupText(TEXTS, "site", "site_product_connectivity", "Prise Type 2 intégrée · Lecteur RFID · Connectivité WiFi/4G") },
     { label: "Communication", value: lookupText(TEXTS, "site", "site_product_communication", "OCPP 1.6 et 2.0 · Supervision compatible") },
     { label: "Smart Charging", value: lookupText(TEXTS, "site", "site_product_smart_charging", "Délestage dynamique · Équilibrage actif") },
-    { label: "Qualité et Garantie", value: lookupText(TEXTS, "site", "site_product_warranty", "IP54 · IK10 · Garantie constructeur 3 ans (extensible 6 ans)") },
+    // Garantie : priorité au champ saisi par le commercial dans /admin/chargers
+    // (v.warranty) puis fallback sur pdf_texts (site_product_warranty) puis
+    // valeur par défaut. Permet d'avoir une garantie spécifique par modèle.
+    { label: "Qualité et Garantie", value: (v.warranty && v.warranty.trim()) || lookupText(TEXTS, "site", "site_product_warranty", "IP54 · IK10 · Garantie constructeur 3 ans (extensible 6 ans)") },
   ];
   let ty = y;
   doc.setDrawColor(...RULE);
