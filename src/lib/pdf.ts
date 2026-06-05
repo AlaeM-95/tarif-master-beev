@@ -614,15 +614,27 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
   doc.setFillColor(...INK);
   doc.rect(0, 0, PAGE_W, PAGE_H, "F");
 
-  // Logo Beev en haut gauche — fichier blanc local (public/images/).
+  // Logo Beev en haut gauche — essai en cascade sur plusieurs chemins
+  // candidats pour gérer les variations de nommage du fichier dans
+  // public/images/ (espace, accent, langue). Le premier qui charge gagne.
   // Pilotable via pdf_settings.coverLogoUrl pour co-branding éventuel.
-  const logoUrl = (PDF_CONTENT.coverLogoUrl as string | undefined) || "/images/logo%20beev%20white.png";
+  const logoCandidates = [
+    PDF_CONTENT.coverLogoUrl as string | undefined,
+    "/images/logo-beev-blanc.png",
+    "/images/logo-beev-white.png",
+    "/images/logo%20beev%20white.png",
+    "/images/logo beev white.png",
+    "/images/logo-beev.png",
+  ].filter(Boolean) as string[];
   let logoLoaded = false;
-  try {
-    await drawImageContain(doc, logoUrl, M, 50, 120, 70);
-    logoLoaded = true;
-  } catch {
-    // Fallback : texte wordmark
+  for (const url of logoCandidates) {
+    try {
+      await drawImageContain(doc, url, M, 50, 120, 70);
+      logoLoaded = true;
+      break;
+    } catch {
+      // Essai suivant
+    }
   }
   if (!logoLoaded) {
     doc.setTextColor(...BG);
@@ -2853,7 +2865,8 @@ function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: Energy
   doc.text(introL, M, y);
   y += introL.length * 13 + 16;
 
-  // Calcul pour chaque véhicule
+  // Calcul pour chaque véhicule + tri du meilleur (TCO le plus bas) au pire.
+  // Le véhicule recommandé apparaît donc en première ligne du tableau.
   const rows = vehicles.map((sv) => {
     const duree = sv.durationMonths / 12;
     const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
@@ -2867,7 +2880,7 @@ function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: Energy
       remisePctOverride: sv.discountPct,
     }, sv.negotiatedMonthly);
     return { sv, r, duree };
-  });
+  }).sort((a, b) => a.r.tcoTotal - b.r.tcoTotal);
 
   // Tableau autoTable — 7 colonnes (au lieu de 10) pour rester lisible sur A4
   // portrait. Les composantes sont fusionnées : "Malus" = Malus CO2 + Poids,

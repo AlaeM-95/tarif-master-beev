@@ -154,6 +154,47 @@ function App() {
     try { localStorage.setItem(SK_CLIENT, JSON.stringify(client)); } catch { /* ignore */ }
   }, [client]);
 
+  // Sync catalogue → panneau droit : quand un ops édite un véhicule ou une
+  // borne dans le catalogue (via Éditer dans la card), on resync l'instance
+  // dans selectedV / selectedC pour que les modifications (prix, image,
+  // description, etc.) se propagent automatiquement au panneau de droite
+  // sans avoir à re-cocher. Évite la duplication d'info.
+  useEffect(() => {
+    if (!hydratedRef.current || vehicles.length === 0) return;
+    setSelectedV((prev) => {
+      let changed = false;
+      const next: Record<string, SelectedVehicle> = {};
+      for (const [id, sv] of Object.entries(prev)) {
+        const fresh = vehicles.find((v) => v.id === id);
+        if (fresh && fresh !== sv.vehicle) {
+          next[id] = { ...sv, vehicle: fresh };
+          changed = true;
+        } else {
+          next[id] = sv;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [vehicles]);
+
+  useEffect(() => {
+    if (!hydratedRef.current || chargers.length === 0) return;
+    setSelectedC((prev) => {
+      let changed = false;
+      const next: Record<string, SelectedCharger> = {};
+      for (const [id, sc] of Object.entries(prev)) {
+        const fresh = chargers.find((c) => c.id === id);
+        if (fresh && fresh !== sc.charger) {
+          next[id] = { ...sc, charger: fresh };
+          changed = true;
+        } else {
+          next[id] = sc;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [chargers]);
+
   // Chargement automatique d'une proposition depuis l'URL (?proposal=xxx)
   useEffect(() => {
     if (!loadedProposal) return;
