@@ -2714,8 +2714,9 @@ function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
   // sv.options sont saisies en TTC dans le panneau droit.
   const rows = vehicles.map((sv) => {
     const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
+    const duree = sv.durationMonths / 12;
     const contract: import("./tco-calculator").TcoContractParams = {
-      dureeAnnees: sv.durationMonths / 12,
+      dureeAnnees: duree,
       kmContrat: (sv.kmPerYear * sv.durationMonths) / 12,
       prixEssenceLitre: e.fuelPriceL,
       prixKwhDomicile: e.kWhHome,
@@ -2731,6 +2732,9 @@ function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
       energie: r.coutEnergie,
       tvs: r.tvsTotal,
       malus: r.malusCO2 + r.malusPoids,
+      andTotal: r.andAnnuel * duree,
+      aenTotal: r.partEmployeurAnnuelle * duree,
+      coutEmployeur: r.tcoEmployeurComplet,
       annuel: r.tcoAnnuel,
       par100km: r.tcoParKm * 100,
     };
@@ -2879,13 +2883,40 @@ function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
     y += rowH;
   });
 
+  // === Détail Charges fiscales annexes (AND/AEN) — récap par véhicule ===
+  y += 14;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...LAVENDER);
+  doc.text("DÉTAIL CHARGES FISCALES ANNEXES PAR VÉHICULE", M, y);
+  y += 8;
+
+  autoTable(doc, {
+    startY: y,
+    theme: "plain",
+    head: [["Véhicule", "Malus (achat)", "TVS (×durée)", "AND (×durée)", "AEN empl. (×durée)", "Coût empl. complet"]],
+    body: rows.map((r) => [
+      `${r.sv.vehicle.brand} ${r.sv.vehicle.model}`,
+      { content: eur(r.malus), styles: { halign: "right" as any, textColor: r.malus > 0 ? LAVENDER : SUB, fontStyle: r.malus > 0 ? "bold" as any : "normal" as any } },
+      { content: eur(r.tvs), styles: { halign: "right" as any, textColor: r.tvs > 0 ? LAVENDER : SUB, fontStyle: r.tvs > 0 ? "bold" as any : "normal" as any } },
+      { content: eur(r.andTotal), styles: { halign: "right" as any } },
+      { content: eur(r.aenTotal), styles: { halign: "right" as any } },
+      { content: eur(r.coutEmployeur), styles: { halign: "right" as any, fontStyle: "bold" as any, textColor: LAVENDER } },
+    ]),
+    headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 7, fontStyle: "bold", font: BRAND_FONT, cellPadding: 4, halign: "center" as any },
+    bodyStyles: { fontSize: 8, cellPadding: 4, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
+    alternateRowStyles: { fillColor: BG },
+    columnStyles: { 0: { cellWidth: 130 } },
+    margin: { left: M, right: M },
+  });
+  y = (doc as any).lastAutoTable.finalY + 10;
+
   // Pied : note méthodologie
-  y += 6;
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(7.5);
   doc.setTextColor(...SUB);
   doc.text(
-    "Estimation Beev 2026 : loyer LLD × durée + énergie sur kilométrage prévu + TVS annualisée + malus à l'achat. Valeurs indicatives, à confirmer auprès du loueur retenu.",
+    "Estimation Beev 2026 : loyer LLD × durée + énergie sur kilométrage prévu + TVS annualisée + malus à l'achat. AND/AEN selon barèmes fiscaux 2026. Valeurs indicatives, à confirmer auprès du loueur retenu.",
     M,
     y,
     { maxWidth: PAGE_W - M * 2 },
@@ -2942,7 +2973,13 @@ function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: Energy
   // Tableau autoTable — 7 colonnes (au lieu de 10) pour rester lisible sur A4
   // portrait. Les composantes sont fusionnées : "Malus" = Malus CO2 + Poids,
   // "Fiscalité" = AND + AEN employeur sur la durée.
-  // Couleurs : charte Beev officielle (LAVENDER, INK, BG, ACCENT depuis admin).
+  // Couleurs charte 2026 :
+  //   ALERT_BG   = Rose 30% (#FCEAE5) — fond cellule pour valeurs > 0
+  //   ALERT_TEXT = Rose foncé dérivé (#B5604F) — lisible sur fond cream
+  //   ALERT_TEXT garantit le contraste là où le Rose charte (#F4B8AA)
+  //   serait trop pâle pour un texte de chiffre.
+  const ALERT_BG: [number, number, number] = [252, 234, 229]; // #FCEAE5
+  const ALERT_TEXT: [number, number, number] = [181, 96, 79];  // #B5604F
   autoTable(doc, {
     startY: y,
     theme: "plain",
@@ -2964,8 +3001,12 @@ function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: Energy
         { content: `${sv.vehicle.brand} ${sv.vehicle.model}\n${sv.durationMonths} mois · ${(sv.kmPerYear / 1000).toFixed(0)}k km/an`, styles: { fontStyle: "bold" as any, fontSize: 8.5 } },
         { content: eur(r.loyerTotal), styles: { halign: "right" as any } },
         { content: eur(r.coutEnergie), styles: { halign: "right" as any } },
-        { content: eur(r.tvsTotal), styles: { halign: "right" as any, textColor: r.tvsTotal > 0 ? LAVENDER : SUB, fontStyle: r.tvsTotal > 0 ? "bold" as any : "normal" as any } },
-        { content: eur(malusTotal), styles: { halign: "right" as any, textColor: malusTotal > 0 ? LAVENDER : SUB, fontStyle: malusTotal > 0 ? "bold" as any : "normal" as any } },
+        { content: eur(r.tvsTotal), styles: r.tvsTotal > 0
+          ? { halign: "right" as any, fillColor: ALERT_BG, textColor: ALERT_TEXT, fontStyle: "bold" as any }
+          : { halign: "right" as any, textColor: SUB } },
+        { content: eur(malusTotal), styles: malusTotal > 0
+          ? { halign: "right" as any, fillColor: ALERT_BG, textColor: ALERT_TEXT, fontStyle: "bold" as any }
+          : { halign: "right" as any, textColor: SUB } },
         { content: eur(andTotal), styles: { halign: "right" as any } },
         { content: eur(aenTotal), styles: { halign: "right" as any } },
         { content: eur(r.tcoEmployeurComplet), styles: { halign: "right" as any, fontStyle: "bold" as any, textColor: LAVENDER, fontSize: 10 } },
@@ -2993,7 +3034,7 @@ function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: Energy
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
   const legendLines = [
-    "· Valeurs en violet : charges fiscales à valider (Malus CO2 + poids, TVS non nulles)",
+    "· Cellules en rose : charges fiscales à valider (Malus CO2 + poids, TVS non nulles)",
     "· Coût employeur complet = Loyer + Énergie + TVS + Malus + (AND × durée) + (AEN employeur × durée)",
     "· Loyer total = loyer mensuel négocié × nombre de mois (TTC, TVA récupérable LLD)",
     "· Énergie = conso véhicule × km contrat × prix carburant ou kWh (mix 85 % domicile / 15 % public)",

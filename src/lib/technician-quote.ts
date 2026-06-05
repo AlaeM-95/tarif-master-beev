@@ -119,9 +119,17 @@ function repairCommonFragments(text: string): string {
 
 const UNIT_REGEX = "(?:forfait|forfaits|article|articles|ml|ens|kit|jours?|j|heures?|h|pi[èe]ces?|unit[ée]s?|m[èe]tres?|u\\b|m\\b)";
 
-// Queue de ligne : qty unit PU TVA% total
-const LINE_TAIL = new RegExp(
+// Queue de ligne format A : qty UNIT PU TVA% total (style Talent Tech)
+const LINE_TAIL_WITH_UNIT = new RegExp(
   `(\\d+(?:[.,]\\d{1,3})?)\\s+(${UNIT_REGEX})\\s+([\\d\\s\\u00a0]+[.,]\\d{2})\\s+(\\d{1,2})\\s*%\\s+([\\d\\s\\u00a0]+[.,]\\d{2})`,
+  "i",
+);
+
+// Queue de ligne format B : qty PU TVA% total (sans colonne unité —
+// style FIR Energies & Services). Le PU et le total doivent avoir 2
+// décimales pour éviter de matcher de fausses lignes (ex. adresse postale).
+const LINE_TAIL_NO_UNIT = new RegExp(
+  `(\\d+(?:[.,]\\d{1,3})?)\\s+([\\d\\s\\u00a0]+[.,]\\d{2})\\s+(\\d{1,2})\\s*%\\s+([\\d\\s\\u00a0]+[.,]\\d{2})`,
   "i",
 );
 
@@ -259,16 +267,37 @@ function detectLines(rawText: string): { lines: ParsedQuoteLine[]; warnings: str
       continue;
     }
 
-    const tail = line.match(LINE_TAIL);
-    if (tail) {
-      const [, qtyStr, unitStr, puStr, , totalStr] = tail;
+    // On essaie d'abord le format A (avec unité forfait/article/…), puis le
+    // format B (sans unité, ex. SASU FIR Energies). Le premier qui matche
+    // gagne. Le format B est plus permissif donc on le teste en second pour
+    // éviter de faux positifs.
+    let qtyStr: string | undefined;
+    let unitStr: string | undefined;
+    let puStr: string | undefined;
+    let totalStr: string | undefined;
+    let matchIndex = -1;
+    const tailA = line.match(LINE_TAIL_WITH_UNIT);
+    if (tailA) {
+      [, qtyStr, unitStr, puStr, , totalStr] = tailA;
+      matchIndex = tailA.index!;
+    } else {
+      const tailB = line.match(LINE_TAIL_NO_UNIT);
+      if (tailB) {
+        [, qtyStr, puStr, , totalStr] = tailB;
+        unitStr = "u"; // unité par défaut quand le devis n'en fournit pas
+        matchIndex = tailB.index!;
+      }
+    }
+
+    if (qtyStr && puStr && totalStr && unitStr) {
       const qty = parseFrNumber(qtyStr);
       const unitHt = parseFrNumber(puStr);
       const total = parseFrNumber(totalStr);
 
-      const beforeMatch = line.slice(0, tail.index!).trim();
+      const beforeMatch = line.slice(0, matchIndex).trim();
       const labelRaw = [...labelBuffer, beforeMatch].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
-      const label = softCleanLabel(labelRaw);
+      // Retire l'astérisque de début de ligne typique de certains devis
+      const label = softCleanLabel(labelRaw).replace(/^\*\s*/, "").trim();
       labelBuffer = [];
 
       if (!label) {
