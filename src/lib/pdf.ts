@@ -1355,19 +1355,9 @@ async function drawSiteProductSheet(doc: jsPDF, sc: SelectedCharger) {
   doc.setTextColor(...SUB);
   doc.text(`${v.brand} ${v.model} · borne sur poteau ou mur`, photoX + photoW / 2, y + 218, { align: "center" });
 
-  // Description longue de l'admin si renseignée
-  if (v.description && v.description.trim().length > 0) {
-    const descY = Math.max(ty, y + 240) + 10;
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(8.5);
-    doc.setTextColor(...LAVENDER);
-    doc.text(lookupText(TEXTS, "site", "site_product_presentation_label", "PRÉSENTATION"), M, descY);
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(...INK);
-    const descL = doc.splitTextToSize(v.description, PAGE_W - M * 2);
-    doc.text(descL.slice(0, 8), M, descY + 14);
-  }
+  // Bloc PRÉSENTATION (description longue) volontairement retiré sur demande
+  // utilisateur — la fiche produit doit se limiter aux specs techniques pour
+  // éviter de noyer le lecteur sur cette slide.
 }
 
 // ============ RAPPORT SITE — SUPERVISION ============
@@ -2630,6 +2620,14 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   // par showChargerLineItems. Si l'admin a décoché la case, on saute tout.
   if (PDF_CFG.showChargerLineItems) {
   y = ensureSpace(doc, y, 110, client, type);
+  // Pour le scope SITE, on supprime le footer "Total HT par site" : ce total
+  // est partiel (n'inclut pas le bureau de contrôle 700 €), donc il
+  // contredisait le MONTANT TOTAL PROJET de la slide options de paiement et
+  // le Total HT du récap financier. Le Total HT par site n'est plus affiché
+  // QUE sur la slide récap financier final.
+  // Pour le scope HOME (B2B2E), on garde le footer "Total HT par collaborateur"
+  // car il n'y a pas de récap financier consolidé sur ce parcours.
+  const showLineItemFooter = isHome;
   autoTable(doc, {
     startY: y,
     theme: "plain",
@@ -2640,25 +2638,22 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
       eur(lineItemClientUnit(li)),
       eur(lineItemClientTotal(li)),
     ]),
-    foot: [[
+    foot: showLineItemFooter ? [[
       {
         content: lookupText(
           TEXTS,
-          isHome ? "home" : "site",
+          "home",
           "charger_total_label",
-          isHome ? "Total HT par collaborateur" : "Total HT par site",
+          "Total HT par collaborateur",
         ),
         colSpan: 3,
-        // fontStyle 'normal' (et non 'bold') : la variante bold de Roobert n'a
-        // pas le glyphe €, ce qui faisait afficher "1 841 ¤" sur le total.
-        // L'emphase est portée par fontSize + textColor LAVENDER côté droit.
         styles: { halign: "right", fontStyle: "normal", textColor: INK, fillColor: BG, cellPadding: 8, font: BRAND_FONT },
       },
       {
         content: eur(total_),
         styles: { halign: "right", fontStyle: "normal", textColor: LAVENDER, fillColor: BG, cellPadding: 8, fontSize: 12, font: BRAND_FONT },
       },
-    ]],
+    ]] : undefined,
     headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT, cellPadding: 7, halign: "left" },
     bodyStyles: { fontSize: 9.5, cellPadding: 7, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
     footStyles: { font: BRAND_FONT },
@@ -2673,20 +2668,18 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   });
   y = (doc as any).lastAutoTable.finalY + 10;
 
-  // Si quantité > 1 (plusieurs collaborateurs / plusieurs sites), encart
-  // récapitulatif final mis en valeur.
-  if (sc.quantity > 1) {
+  // Encart "Pour N bornes / Total HT" affiché uniquement sur le parcours
+  // HOME (B2B2E) où il n'y a pas de slide récap financier. Sur le parcours
+  // SITE, le total consolidé apparaît uniquement sur la slide récap financier.
+  if (sc.quantity > 1 && isHome) {
     y = ensureSpace(doc, y, 44, client, type);
     doc.setFillColor(...LAVENDER);
     doc.rect(M, y, PAGE_W - M * 2, 36, "F");
-    // Police normale (pas bold) car la variante bold de Roobert affiche le €
-    // en ¤. L'emphase visuelle vient de la taille et du fond lavender.
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(11);
     doc.setTextColor(255, 255, 255);
-    const scopeKey = isHome ? "home" : "site";
-    const unitSingular = lookupText(TEXTS, scopeKey, "charger_grand_total_unit_singular", isHome ? "collaborateur" : "borne");
-    const unitPlural = lookupText(TEXTS, scopeKey, "charger_grand_total_unit_plural", isHome ? "collaborateurs" : "bornes");
+    const unitSingular = lookupText(TEXTS, "home", "charger_grand_total_unit_singular", "collaborateur");
+    const unitPlural = lookupText(TEXTS, "home", "charger_grand_total_unit_plural", "collaborateurs");
     const unitLabel = sc.quantity > 1 ? unitPlural : unitSingular;
     const label = `Pour ${sc.quantity} ${unitLabel}`;
     doc.text(label, M + 14, y + 22);
