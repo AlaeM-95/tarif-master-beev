@@ -2762,11 +2762,8 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
     ? [
         "Matériel et accessoires de raccordement",
         "Pose et raccordement par technicien IRVE certifié",
-        // "Câblage standard jusqu'à 10 m du tableau électrique",
-        // "Supervision Beev en marque blanche",
         "Mise en supervision et remboursement automatisé de l'énergie consommée à titre professionnel (en option)",
         "Gestion des déchets de chantier",
-        // "Garantie constructeur selon la gamme",
       ]
     : [
         "Étude de site et chiffrage par technicien IRVE certifié",
