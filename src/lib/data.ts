@@ -259,18 +259,37 @@ export function useChargersData() {
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["chargers"] });
 
+  // Si la migration 032 (chargers.warranty) n'est pas encore appliquée côté
+  // Supabase, on retry en strippant le champ warranty pour ne pas perdre
+  // les autres modifications du charger.
+  const updateChargerRow = async (id: string, row: any) => {
+    let { error } = await supabase.from("chargers").update(row).eq("id", id);
+    if (error && /warranty/i.test(error.message ?? "")) {
+      const { warranty: _drop, ...rest } = row;
+      ({ error } = await supabase.from("chargers").update(rest).eq("id", id));
+      if (!error) console.warn("Migration 032 (chargers.warranty) non appliquée — champ ignoré");
+    }
+    return error;
+  };
+
   const update = async (id: string, patch: Partial<Charger>) => {
     const current = chargers.find((c) => c.id === id);
     if (!current) return;
     const merged = { ...current, ...patch };
-    const { error } = await supabase.from("chargers").update(chargerToDb(merged)).eq("id", id);
+    const error = await updateChargerRow(id, chargerToDb(merged));
     if (error) console.error("Erreur update charger:", error);
     invalidate();
   };
 
   const add = async (c: Charger) => {
     const nextPosition = chargers.length + 1;
-    const { error } = await supabase.from("chargers").insert({ ...chargerToDb(c), position: nextPosition });
+    const row = { ...chargerToDb(c), position: nextPosition } as any;
+    let { error } = await supabase.from("chargers").insert(row);
+    if (error && /warranty/i.test(error.message ?? "")) {
+      const { warranty: _drop, ...rest } = row;
+      ({ error } = await supabase.from("chargers").insert(rest));
+      if (!error) console.warn("Migration 032 (chargers.warranty) non appliquée — champ ignoré");
+    }
     if (error) console.error("Erreur add charger:", error);
     invalidate();
   };
