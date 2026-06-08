@@ -444,7 +444,17 @@ export async function generateProposalPdf(opts: {
   HEADER_LOGO = null;
   for (const url of headerLogoCandidates) {
     const img = await loadImage(url);
-    if (img) { HEADER_LOGO = img; break; }
+    if (!img) continue;
+    // Si le logo est en PNG transparent, on le pré-aplatit sur fond noir
+    // (la box du badge est INK). Sans ça, doc.addImage rend mal la
+    // transparence et le logo disparaît visuellement.
+    if (img.format === "PNG") {
+      const flatUrl = await flattenPngToJpeg(img.dataUrl, img.w, img.h, INK);
+      HEADER_LOGO = { dataUrl: flatUrl, w: img.w, h: img.h, format: "JPEG" };
+    } else {
+      HEADER_LOGO = img;
+    }
+    break;
   }
 
   await drawCover(doc, effectiveType, client, v.length, c.length);
@@ -684,7 +694,10 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
   let logoLoaded = false;
   for (const url of logoCandidates) {
     try {
-      await drawImageContain(doc, url, M, 50, 120, 70);
+      // bg=INK : aplatit la transparence sur fond noir (la cover a un fond
+      // noir pleine page), sinon un PNG blanc transparent devient invisible
+      // car flattenPngToJpeg utilise cream par défaut.
+      await drawImageContain(doc, url, M, 50, 120, 70, INK);
       logoLoaded = true;
       break;
     } catch {
@@ -1022,7 +1035,10 @@ function drawSiteProjectSynthesis(doc: jsPDF, client: ClientInfo, chargers: Sele
   // Table 2 colonnes : libellé / valeur. Surcharge via sc.siteSpecs.
   const rows: Array<{ label: string; value: string }> = [
     { label: "Points de recharge", value: `${totalPdc} PDC (${totalChargers} borne${totalChargers > 1 ? "s" : ""} × ${ppb} point${ppb > 1 ? "s" : ""})` },
-    { label: "Distance TGBT → Bornes", value: specs.distanceTgbt || "À confirmer après visite technique" },
+    // Roobert n'a pas le glyphe → (U+2192) — jsPDF tombe sur un fallback
+    // qui casse l'espacement. Pour tout texte client : ASCII + ponctuation
+    // de base seulement.
+    { label: "Distance TGBT > Bornes", value: specs.distanceTgbt || "À confirmer après visite technique" },
     { label: "Emplacement", value: specs.locationDescription || chargers[0]?.siteAddress || "Parking site entreprise" },
     { label: "Puissance abonnement EDF", value: specs.edfPower || "À confirmer (abonnement client)" },
   ];
@@ -1644,7 +1660,7 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
     doc.setFontSize(9.5);
     doc.setTextColor(...INK);
     doc.text(
-      t("site_comp_bureau_desc", "Abonnement client > 36 kVA → contrôle réglementaire obligatoire. Intervention prévue J+25 après installation. Attestation délivrée à réception."),
+      t("site_comp_bureau_desc", "Abonnement client > 36 kVA, contrôle réglementaire obligatoire. Intervention prévue J+25 après installation. Attestation délivrée à réception."),
       M + 14,
       ly,
       { maxWidth: colW - 28 },
@@ -4099,10 +4115,10 @@ function drawExecutiveSummary(
   doc.setFontSize(11);
   doc.setTextColor(255, 255, 255);
   const nextStep = type === "vehicles"
-    ? "Signature du Bon Pour Accord → émission des BC LLD sous 10 jours ouvrés."
+    ? "Signature du Bon Pour Accord, émission des BC LLD sous 10 jours ouvrés."
     : type === "home"
-    ? "Validation de la convention B2B2E → onboarding des collaborateurs en parallèle."
-    : "Validation de l'offre cadre → étude technique site sous 5 jours ouvrés.";
+    ? "Validation de la convention B2B2E, onboarding des collaborateurs en parallèle."
+    : "Validation de l'offre cadre, étude technique site sous 5 jours ouvrés.";
   doc.text(nextStep, M + 16, y + 36);
 }
 
@@ -4766,17 +4782,24 @@ async function loadImage(url: string): Promise<LoadedImage | null> {
   }
 }
 
-// Aplatit une image PNG (potentiellement transparente) sur un fond cream
-// pour éviter les pixels noirs dans le PDF (jsPDF ne gère pas l'alpha PNG).
-async function flattenPngToJpeg(dataUrl: string, w: number, h: number): Promise<string> {
+// Aplatit une image PNG (potentiellement transparente) sur un fond opaque
+// (par défaut cream) pour éviter les pixels noirs dans le PDF (jsPDF ne gère
+// pas l'alpha PNG). Le paramètre `bg` permet d'utiliser un fond différent —
+// indispensable pour les logos blancs placés sur fond noir (cover, badge
+// header) qui deviendraient invisibles s'ils étaient aplatis sur cream.
+async function flattenPngToJpeg(
+  dataUrl: string,
+  w: number,
+  h: number,
+  bg: [number, number, number] = [250, 248, 244],
+): Promise<string> {
   return new Promise((resolve) => {
     const canvas = document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext("2d");
     if (!ctx) return resolve(dataUrl);
-    // Fond cream identique au BG de la zone image
-    ctx.fillStyle = "rgb(250, 248, 244)";
+    ctx.fillStyle = `rgb(${bg[0]}, ${bg[1]}, ${bg[2]})`;
     ctx.fillRect(0, 0, w, h);
     const imgEl = new Image();
     imgEl.onload = () => {
@@ -4789,7 +4812,18 @@ async function flattenPngToJpeg(dataUrl: string, w: number, h: number): Promise<
 }
 
 // Affiche une image en gardant son ratio natif, centrée dans la zone (x,y,maxW,maxH).
-async function drawImageContain(doc: jsPDF, url: string, x: number, y: number, maxW: number, maxH: number) {
+// `bg` : couleur de fond utilisée pour aplatir les PNG transparents. Par défaut
+// cream (zones produits). Passer [29,29,29] sur la cover et le badge header
+// pour préserver la visibilité des logos blancs.
+async function drawImageContain(
+  doc: jsPDF,
+  url: string,
+  x: number,
+  y: number,
+  maxW: number,
+  maxH: number,
+  bg: [number, number, number] = [250, 248, 244],
+) {
   const img = await loadImage(url);
   if (!img) return;
   const ratio = img.w / Math.max(img.h, 1);
@@ -4804,7 +4838,7 @@ async function drawImageContain(doc: jsPDF, url: string, x: number, y: number, m
   let finalDataUrl = img.dataUrl;
   let finalFormat: "JPEG" | "PNG" = img.format;
   if (img.format === "PNG") {
-    finalDataUrl = await flattenPngToJpeg(img.dataUrl, img.w, img.h);
+    finalDataUrl = await flattenPngToJpeg(img.dataUrl, img.w, img.h, bg);
     finalFormat = "JPEG";
   }
   try {
