@@ -181,31 +181,37 @@
    * arbitraires ou via .text-beev-h1 etc. */
 }
 
-/* Roobert (fallback Inter si non chargée) — chargement local depuis public/fonts */
+/* Roobert (fallback Inter si non chargée) — chargement local depuis public/fonts
+ * Le repo ne contient QUE les .ttf (Regular, Medium, SemiBold). Les .woff2
+ * et la variante Bold ne sont pas embarqués. On référence les .ttf ; pour
+ * le bold (700), on remappe sur SemiBold pour éviter le 404 et garder un
+ * rendu acceptable jusqu'à ce qu'on ait la vraie variante Bold. */
 @font-face {
   font-family: "Roobert";
-  src: url("/fonts/Roobert-Regular.woff2") format("woff2");
+  src: url("/fonts/Roobert-Regular.ttf") format("truetype");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Roobert";
-  src: url("/fonts/Roobert-Medium.woff2") format("woff2");
+  src: url("/fonts/Roobert-Medium.ttf") format("truetype");
   font-weight: 500;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Roobert";
-  src: url("/fonts/Roobert-SemiBold.woff2") format("woff2");
+  src: url("/fonts/Roobert-SemiBold.ttf") format("truetype");
   font-weight: 600;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Roobert";
-  src: url("/fonts/Roobert-Bold.woff2") format("woff2");
+  /* Bold remappé sur SemiBold faute de fichier Bold dans le repo. À swapper
+     dès qu'on aura le Roobert-Bold.ttf (ou .woff2). */
+  src: url("/fonts/Roobert-SemiBold.ttf") format("truetype");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
