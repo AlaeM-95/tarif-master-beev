@@ -3165,6 +3165,19 @@ function SiteSpecsEditor({ sc, onChange }: { sc: SelectedCharger; onChange: (p: 
             <span className="text-xs">Inclure la maintenance annuelle dans le PDF</span>
           </label>
 
+          {/* Inclure le bureau de contrôle (obligatoire > 36 kVA, désactivé
+              par défaut : à activer manuellement par le commercial). Impacte
+              le récap financier, le MONTANT TOTAL PROJET et la page conformité. */}
+          <label className="flex items-center gap-2 cursor-pointer p-2 rounded-md hover:bg-muted">
+            <input
+              type="checkbox"
+              checked={specs.includeBureauControle ?? false}
+              onChange={(e) => setSpec({ includeBureauControle: e.target.checked })}
+              className="h-4 w-4"
+            />
+            <span className="text-xs">Inclure le bureau de contrôle (700 € HT, obligatoire {">"} 36 kVA)</span>
+          </label>
+
           {/* Taux de TVA applicable (5,5 % réduit ou 20 % standard) */}
           <div className="space-y-1">
             <Label className="text-[10px] text-muted-foreground uppercase">Taux de TVA</Label>

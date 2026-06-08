@@ -88,6 +88,10 @@ export type SiteSpecs = {
   /** Taux de TVA applicable (5,5 % ou 20 %) — utilisé dans le récap
    *  financier pour calculer le total TTC. */
   tvaRate?: 5.5 | 20;
+  /** Activer le bureau de contrôle dans le chiffrage (obligatoire si abonnement
+   *  > 36 kVA). Si false, ligne masquée dans le récap financier, le total
+   *  MONTANT TOTAL PROJET et la page conformité. */
+  includeBureauControle?: boolean;
   /** Plan de supervision : Beev Connect (site entreprise) ou Beev Home Charging
    *  (B2B2E domicile collaborateur). 'none' = pas de bloc supervision. */
   supervisionPlan?: "beev_connect" | "beev_home_charging" | "none";
@@ -229,6 +233,12 @@ let PILLARS: BeevPillar[] = [];
 let TEXTS_CACHE: { data: PdfTextMap; expiresAt: number } | null = null;
 const TEXTS_TTL_MS = 5 * 1000;
 let TEXTS: PdfTextMap = new Map();
+
+// Logo Beev préchargé une fois par appel à generateProposalPdf, puis utilisé
+// de manière synchrone dans drawHeader (qui est appelé après chaque addPage).
+// La variante blanche est placée sur un petit bandeau noir arrondi pour
+// rester visible sur les pages internes à fond clair.
+let HEADER_LOGO: { dataUrl: string; w: number; h: number; format: "JPEG" | "PNG" } | null = null;
 
 // Wrap une promesse avec un timeout court qui rejette si la requête traîne.
 // Utilisé pour chaque fetch réseau afin de retomber rapidement sur les valeurs
@@ -416,6 +426,22 @@ export async function generateProposalPdf(opts: {
       : (!hasVehicles && hasSite && !hasHome)
         ? "site"
         : projectType; // par défaut : ce que le commercial a choisi en dernier
+
+  // Préchargement du logo header (variante blanche officielle Beev) — utilisé
+  // sur chaque page interne via drawHeader (placé dans un bandeau noir
+  // arrondi). On essaie plusieurs chemins candidats puis on bascule sur le
+  // logo noir si le blanc échoue, et sur le texte si rien ne charge.
+  const headerLogoCandidates = [
+    "/images/logo-beev-blanc.png",
+    "/images/logo-beev-white.png",
+    "/images/logo%20beev%20white.png",
+    "/images/logo beev white.png",
+  ];
+  HEADER_LOGO = null;
+  for (const url of headerLogoCandidates) {
+    const img = await loadImage(url);
+    if (img) { HEADER_LOGO = img; break; }
+  }
 
   await drawCover(doc, effectiveType, client, v.length, c.length);
 
@@ -821,6 +847,7 @@ function aggregateSiteSpecs(chargers: SelectedCharger[]): SiteSpecs {
     if (merged.includeMaintenance === undefined && s.includeMaintenance !== undefined) merged.includeMaintenance = s.includeMaintenance;
     if (!merged.chantierPhotos && s.chantierPhotos && s.chantierPhotos.length > 0) merged.chantierPhotos = s.chantierPhotos;
     if (!merged.tvaRate && s.tvaRate) merged.tvaRate = s.tvaRate;
+    if (merged.includeBureauControle === undefined && s.includeBureauControle !== undefined) merged.includeBureauControle = s.includeBureauControle;
     if (!merged.supervisionPlan && s.supervisionPlan) merged.supervisionPlan = s.supervisionPlan;
   }
   return merged;
@@ -1564,10 +1591,12 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
   const totalBornes = chargers.reduce((s, sc) => s + sc.quantity, 0);
   const maintenanceUnit = Math.max(0, parseFloat(t("site_comp_maint_unit_eur", "150")) || 150);
   const maintenanceTotal = totalBornes * maintenanceUnit;
-  // La maintenance est affichée uniquement si le commercial coche la case
-  // dans le panneau droit (SiteSpecsEditor → includeMaintenance).
+  // La maintenance et le bureau de contrôle sont affichés uniquement si le
+  // commercial coche la case dans le panneau droit (SiteSpecsEditor →
+  // includeMaintenance / includeBureauControle).
   const aggregated = aggregateSiteSpecs(chargers);
   const showMaintenance = aggregated.includeMaintenance === true;
+  const showBureauControle = aggregated.includeBureauControle === true;
 
   let y = 116;
   doc.setFillColor(...PINK);
@@ -1587,38 +1616,40 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
   // Sinon : 2 colonnes équilibrées.
   const colW = showMaintenance ? (PAGE_W - M * 2 - 20) / 2 : PAGE_W - M * 2;
 
-  // Colonne gauche : Bureau de Contrôle + Consuel
+  // Colonne gauche : Bureau de Contrôle (conditionnel) + Consuel
   doc.setFillColor(...PINK_LIGHT);
   doc.roundedRect(M, y, colW, 280, 8, 8, "F");
   let ly = y + 22;
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(11);
-  doc.setTextColor(...INK);
-  doc.text(t("site_comp_bureau_title", "Bureau de Contrôle"), M + 14, ly);
-  ly += 18;
-  doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(9.5);
-  doc.setTextColor(...INK);
-  doc.text(
-    t("site_comp_bureau_desc", "Abonnement client > 36 kVA → contrôle réglementaire obligatoire. Intervention prévue J+25 après installation. Attestation délivrée à réception."),
-    M + 14,
-    ly,
-    { maxWidth: colW - 28 },
-  );
-  ly += 60;
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(9);
-  doc.setTextColor(...SUB);
-  doc.text(t("site_comp_bureau_price_label", "COÛT"), M + 14, ly);
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(18);
-  doc.setTextColor(...INK);
-  doc.text(t("site_comp_bureau_price", "700 € HT"), M + 14, ly + 22);
+  if (showBureauControle) {
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...INK);
+    doc.text(t("site_comp_bureau_title", "Bureau de Contrôle"), M + 14, ly);
+    ly += 18;
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(...INK);
+    doc.text(
+      t("site_comp_bureau_desc", "Abonnement client > 36 kVA → contrôle réglementaire obligatoire. Intervention prévue J+25 après installation. Attestation délivrée à réception."),
+      M + 14,
+      ly,
+      { maxWidth: colW - 28 },
+    );
+    ly += 60;
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(...SUB);
+    doc.text(t("site_comp_bureau_price_label", "COÛT"), M + 14, ly);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(18);
+    doc.setTextColor(...INK);
+    doc.text(t("site_comp_bureau_price", "700 € HT"), M + 14, ly + 22);
 
-  ly += 56;
-  doc.setDrawColor(...RULE);
-  doc.line(M + 14, ly, M + colW - 14, ly);
-  ly += 18;
+    ly += 56;
+    doc.setDrawColor(...RULE);
+    doc.line(M + 14, ly, M + colW - 14, ly);
+    ly += 18;
+  }
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(11);
   doc.setTextColor(...INK);
@@ -1726,10 +1757,15 @@ function drawSiteFinancialRecap(doc: jsPDF, chargers: SelectedCharger[]) {
   }
   const totalInstall = installItems.reduce((a, b) => a + b, 0);
   const totalChargersOnly = chargerItems.reduce((a, b) => a + b, 0);
-  const bureauControle = Math.max(0, parseFloat(t("site_pay_bureau_ht", "700")) || 700);
+  // Bureau de Contrôle : activable par le commercial uniquement (siteSpecs.
+  // includeBureauControle). Obligatoire seulement si abonnement > 36 kVA.
+  const specsTVA = aggregateSiteSpecs(chargers);
+  const bureauControleEnabled = specsTVA.includeBureauControle === true;
+  const bureauControle = bureauControleEnabled
+    ? Math.max(0, parseFloat(t("site_pay_bureau_ht", "700")) || 700)
+    : 0;
   const totalHt = totalInstall + totalChargersOnly + bureauControle;
   // Taux TVA configurable : 5,5 % (TVA réduite particulier) ou 20 % (standard B2B)
-  const specsTVA = aggregateSiteSpecs(chargers);
   const tvaRate = specsTVA.tvaRate ?? 20;
   const tva = totalHt * (tvaRate / 100);
   const totalTtc = totalHt + tva;
@@ -1747,7 +1783,7 @@ function drawSiteFinancialRecap(doc: jsPDF, chargers: SelectedCharger[]) {
     body: [
       ...(totalInstall > 0 ? [[t("site_fin_install_label", "Installation électrique"), t("site_fin_install_supplier", "Électricien partenaire"), { content: eur(totalInstall), styles: { halign: "right", fontStyle: "bold" } }]] : []),
       ...(totalChargersOnly > 0 ? [[t("site_fin_bornes_label", "Bornes de recharge"), t("site_fin_bornes_supplier", "Beev"), { content: eur(totalChargersOnly), styles: { halign: "right", fontStyle: "bold" } }]] : []),
-      [t("site_fin_bureau_label", "Bureau de Contrôle (>36 kVA)"), t("site_fin_bureau_supplier", "Tiers"), { content: eur(bureauControle), styles: { halign: "right", fontStyle: "bold" } }],
+      ...(bureauControleEnabled ? [[t("site_fin_bureau_label", "Bureau de Contrôle (>36 kVA)"), t("site_fin_bureau_supplier", "Tiers"), { content: eur(bureauControle), styles: { halign: "right", fontStyle: "bold" } }]] : []),
       ...(hasSupervision ? [[t("site_fin_sup_label", "Supervision (12 premiers mois)"), t("site_fin_sup_supplier", "Beev"), { content: t("site_fin_sup_value", "OPTION"), styles: { halign: "right", textColor: SUB, fontStyle: "normal" } }]] : []),
     ],
     foot: [
@@ -1782,9 +1818,13 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
   const PINK_LIGHT: [number, number, number] = [253, 241, 238];
   const BLACK: [number, number, number] = [29, 29, 29];
   const t = (s: string, fb: string) => lookupText(TEXTS, "site", s, fb);
-  const bureauControle = Math.max(0, parseFloat(t("site_pay_bureau_ht", "700")) || 700);
+  // Bureau de Contrôle activé uniquement si toggle commercial coché.
+  const specsBureau = aggregateSiteSpecs(chargers);
+  const bureauControle = specsBureau.includeBureauControle === true
+    ? Math.max(0, parseFloat(t("site_pay_bureau_ht", "700")) || 700)
+    : 0;
 
-  // Total recalculé pour cohérence avec la page précédente
+  // Total recalculé pour cohérence avec la page récap financier.
   const total = chargers.reduce((sum, sc) => sum + sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0) * sc.quantity, 0) + bureauControle;
   const ttc = total * 1.2;
   const acompte50 = ttc * 0.5;
@@ -2709,7 +2749,9 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
         "Paramétrage OCPP et configuration du superviseur",
         "Formation des utilisateurs sur site",
         "Gestion des déchets de chantier",
-        "Garantie constructeur 3 ans, extensible 6 ans",
+        // Ligne "Garantie constructeur 3 ans, extensible 6 ans" retirée :
+        // la garantie est désormais affichée sur la fiche produit borne, par
+        // modèle (champ warranty éditable dans /admin/chargers).
       ];
   const inclusions = lookupList(TEXTS, isHome ? "home" : "site", "charger_inclusion_items", fallbackInclusions);
   const lineH = 13;
@@ -4511,19 +4553,59 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
 
 // ============ HEADER / FOOTER / HELPERS ============
 function drawHeader(doc: jsPDF, c: ClientInfo, type: ProjectType) {
-  doc.setTextColor(...INK);
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(11);
-  doc.text("BEEV", M, 56);
+  // Bandeau noir arrondi en haut à gauche contenant le logo Beev blanc
+  // (préchargé dans HEADER_LOGO). Si l'image n'a pas pu être chargée, on
+  // retombe sur le texte "BEEV" en blanc sur le même bandeau.
+  const badgeW = 80;
+  const badgeH = 26;
+  const badgeX = M;
+  const badgeY = 40;
+  doc.setFillColor(...INK);
+  doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 6, 6, "F");
+  if (HEADER_LOGO) {
+    // Calcule un placement contain dans le bandeau (padding 6 pts)
+    const padX = 10;
+    const padY = 6;
+    const innerW = badgeW - padX * 2;
+    const innerH = badgeH - padY * 2;
+    const ratio = HEADER_LOGO.w / Math.max(HEADER_LOGO.h, 1);
+    let w = innerW;
+    let h = w / ratio;
+    if (h > innerH) {
+      h = innerH;
+      w = h * ratio;
+    }
+    const cx = badgeX + (badgeW - w) / 2;
+    const cy = badgeY + (badgeH - h) / 2;
+    try {
+      doc.addImage(HEADER_LOGO.dataUrl, HEADER_LOGO.format, cx, cy, w, h, undefined, "FAST");
+    } catch {
+      // Fallback texte si addImage échoue
+      doc.setTextColor(255, 255, 255);
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(13);
+      doc.text("Beev", badgeX + badgeW / 2, badgeY + 22, { align: "center" });
+    }
+  } else {
+    doc.setTextColor(255, 255, 255);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(13);
+    doc.text("Beev", badgeX + badgeW / 2, badgeY + 22, { align: "center" });
+  }
+
+  // Tag offre sous le bandeau, en gris discret
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
   const tag = type === "vehicles" ? "Offre véhicules LLD" : type === "home" ? "Déploiement domicile (B2B2E)" : "Déploiement site entreprise";
-  doc.text(tag, M, 70);
+  doc.text(tag, M, badgeY + badgeH + 12);
 
+  // Bloc droite : société client + date
   doc.setTextColor(...INK);
+  doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(9);
   doc.text(c.company || "—", PAGE_W - M, 56, { align: "right" });
+  doc.setFont(BRAND_FONT, "normal");
   doc.setTextColor(...SUB);
   doc.setFontSize(8.5);
   doc.text(c.date, PAGE_W - M, 70, { align: "right" });
