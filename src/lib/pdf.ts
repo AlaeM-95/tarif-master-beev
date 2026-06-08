@@ -679,12 +679,16 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
   doc.setFillColor(...INK);
   doc.rect(0, 0, PAGE_W, PAGE_H, "F");
 
-  // Logo Beev en haut gauche — essai en cascade sur plusieurs chemins
-  // candidats pour gérer les variations de nommage du fichier dans
-  // public/images/ (espace, accent, langue). Le premier qui charge gagne.
-  // Pilotable via pdf_settings.coverLogoUrl pour co-branding éventuel.
+  // Logo Beev en haut gauche — priorité au logo uploadé par le commercial
+  // dans /admin/pdf (PDF_CONTENT.logoUrl, alimenté par pdf_settings.logo_url).
+  // Fallback sur les fichiers locaux dans public/images/ pour les variations
+  // de nommage (espace, accent, langue). Le premier qui charge gagne.
+  //
+  // ATTENTION : c'est bien `logoUrl` qu'il faut lire, pas coverLogoUrl
+  // (ce champ n'existe pas dans PDF_CONTENT, le cast string|undefined
+  // masquait l'erreur et le logo admin n'était jamais utilisé).
   const logoCandidates = [
-    PDF_CONTENT.coverLogoUrl as string | undefined,
+    PDF_CONTENT.logoUrl ?? undefined,
     "/images/logo-beev-blanc.png",
     "/images/logo-beev-white.png",
     "/images/logo%20beev%20white.png",
@@ -709,6 +713,24 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(22);
     doc.text("Beev", M, 80);
+  }
+
+  // Image de couverture uploadée par le commercial dans /admin/pdf
+  // (pdf_settings.cover_image_url → PDF_CONTENT.coverImageUrl). Placée en
+  // haut à droite de la cover, dans une zone 240×180. Si absente, on saute
+  // — la cover reste lisible sans visuel.
+  if (PDF_CONTENT.coverImageUrl) {
+    const coverImgW = 240;
+    const coverImgH = 180;
+    const coverImgX = PAGE_W - M - coverImgW;
+    const coverImgY = 50;
+    try {
+      // bg=INK : fond noir derrière les zones transparentes pour préserver
+      // la cohérence visuelle avec le fond de la cover.
+      await drawImageContain(doc, PDF_CONTENT.coverImageUrl, coverImgX, coverImgY, coverImgW, coverImgH, INK);
+    } catch {
+      // image non chargée — non bloquant, la cover reste valide
+    }
   }
 
   // Référence devis générée automatiquement : BEEV-AAAA-MMJJ-HHMM
@@ -4761,7 +4783,10 @@ type LoadedImage = { dataUrl: string; w: number; h: number; format: "JPEG" | "PN
 async function loadImage(url: string): Promise<LoadedImage | null> {
   try {
     const res = await fetch(url, { mode: "cors" });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`[pdf] loadImage ${res.status} ${url}`);
+      return null;
+    }
     const blob = await res.blob();
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
@@ -4777,7 +4802,8 @@ async function loadImage(url: string): Promise<LoadedImage | null> {
     });
     const format: "JPEG" | "PNG" = /\.png(\?|$)/i.test(url) || dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
     return { dataUrl, w: dims.w, h: dims.h, format };
-  } catch {
+  } catch (e) {
+    console.warn(`[pdf] loadImage error ${url}`, e);
     return null;
   }
 }
