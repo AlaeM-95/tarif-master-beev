@@ -1022,11 +1022,7 @@ function drawSiteProjectSynthesis(doc: jsPDF, client: ClientInfo, chargers: Sele
   // Table 2 colonnes : libellé / valeur. Surcharge via sc.siteSpecs.
   const rows: Array<{ label: string; value: string }> = [
     { label: "Points de recharge", value: `${totalPdc} PDC (${totalChargers} borne${totalChargers > 1 ? "s" : ""} × ${ppb} point${ppb > 1 ? "s" : ""})` },
-    // ATTENTION : Roobert ne contient pas le glyphe → (U+2192), jsPDF tombe
-    // alors sur un fallback qui casse l'espacement de tout le label. Pour
-    // toute chaîne affichée client, n'utiliser que des caractères ASCII
-    // étendus présents dans Roobert (·, >, etc.). NE PAS remettre →.
-    { label: "Distance TGBT > Bornes", value: specs.distanceTgbt || "À confirmer après visite technique" },
+    { label: "Distance TGBT → Bornes", value: specs.distanceTgbt || "À confirmer après visite technique" },
     { label: "Emplacement", value: specs.locationDescription || chargers[0]?.siteAddress || "Parking site entreprise" },
     { label: "Puissance abonnement EDF", value: specs.edfPower || "À confirmer (abonnement client)" },
   ];
@@ -1648,7 +1644,7 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
     doc.setFontSize(9.5);
     doc.setTextColor(...INK);
     doc.text(
-      t("site_comp_bureau_desc", "Abonnement client > 36 kVA, contrôle réglementaire obligatoire. Intervention prévue J+25 après installation. Attestation délivrée à réception."),
+      t("site_comp_bureau_desc", "Abonnement client > 36 kVA → contrôle réglementaire obligatoire. Intervention prévue J+25 après installation. Attestation délivrée à réception."),
       M + 14,
       ly,
       { maxWidth: colW - 28 },
@@ -4105,10 +4101,10 @@ function drawExecutiveSummary(
   doc.setFontSize(11);
   doc.setTextColor(255, 255, 255);
   const nextStep = type === "vehicles"
-    ? "Signature du Bon Pour Accord, émission des BC LLD sous 10 jours ouvrés."
+    ? "Signature du Bon Pour Accord → émission des BC LLD sous 10 jours ouvrés."
     : type === "home"
-    ? "Validation de la convention B2B2E, onboarding des collaborateurs en parallèle."
-    : "Validation de l'offre cadre, étude technique site sous 5 jours ouvrés.";
+    ? "Validation de la convention B2B2E → onboarding des collaborateurs en parallèle."
+    : "Validation de l'offre cadre → étude technique site sous 5 jours ouvrés.";
   doc.text(nextStep, M + 16, y + 36);
 }
 
