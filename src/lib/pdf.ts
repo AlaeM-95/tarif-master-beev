@@ -92,6 +92,10 @@ export type SiteSpecs = {
    *  > 36 kVA). Si false, ligne masquée dans le récap financier, le total
    *  MONTANT TOTAL PROJET et la page conformité. */
   includeBureauControle?: boolean;
+  /** Inclure le bloc Consuel sur la page conformité (obligatoire pour toute
+   *  installation IRVE en théorie, mais souvent géré par l'électricien ; le
+   *  commercial choisit de l'afficher ou non au client). */
+  includeConsuel?: boolean;
   /** Plan de supervision : Beev Connect (site entreprise) ou Beev Home Charging
    *  (B2B2E domicile collaborateur). 'none' = pas de bloc supervision. */
   supervisionPlan?: "beev_connect" | "beev_home_charging" | "none";
@@ -848,6 +852,7 @@ function aggregateSiteSpecs(chargers: SelectedCharger[]): SiteSpecs {
     if (!merged.chantierPhotos && s.chantierPhotos && s.chantierPhotos.length > 0) merged.chantierPhotos = s.chantierPhotos;
     if (!merged.tvaRate && s.tvaRate) merged.tvaRate = s.tvaRate;
     if (merged.includeBureauControle === undefined && s.includeBureauControle !== undefined) merged.includeBureauControle = s.includeBureauControle;
+    if (merged.includeConsuel === undefined && s.includeConsuel !== undefined) merged.includeConsuel = s.includeConsuel;
     if (!merged.supervisionPlan && s.supervisionPlan) merged.supervisionPlan = s.supervisionPlan;
   }
   return merged;
@@ -1597,6 +1602,10 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
   const aggregated = aggregateSiteSpecs(chargers);
   const showMaintenance = aggregated.includeMaintenance === true;
   const showBureauControle = aggregated.includeBureauControle === true;
+  const showConsuel = aggregated.includeConsuel === true;
+  // Si rien à afficher côté colonne gauche, on ne dessine pas la box rose
+  // (la page reste cohérente avec uniquement la maintenance à droite).
+  const showLeftCol = showBureauControle || showConsuel;
 
   let y = 116;
   doc.setFillColor(...PINK);
@@ -1612,19 +1621,20 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
   doc.text(t("site_comp_title", "Contrôles obligatoires et maintenance"), M, y + 18);
   y += 50;
 
-  // Si maintenance non incluse : colonne gauche pleine largeur.
-  // Sinon : 2 colonnes équilibrées.
-  const colW = showMaintenance ? (PAGE_W - M * 2 - 20) / 2 : PAGE_W - M * 2;
+  // Largeur colonnes : 2 colonnes si maintenance ET colonne gauche affichées,
+  // pleine largeur sinon (le bloc maintenance prend toute la page si seul).
+  const twoCol = showMaintenance && showLeftCol;
+  const colW = twoCol ? (PAGE_W - M * 2 - 20) / 2 : PAGE_W - M * 2;
 
-  // Colonne gauche : Bureau de Contrôle (conditionnel) + Consuel (toujours)
-  // Box hauteur adaptative : 280 si bureau de contrôle affiché (les deux blocs),
-  // 140 si seul Consuel est présent. Évite un grand espace vide en bas de
-  // l'encart rose quand le commercial désactive le bureau de contrôle.
-  const leftBoxH = showBureauControle ? 280 : 140;
-  doc.setFillColor(...PINK_LIGHT);
-  doc.roundedRect(M, y, colW, leftBoxH, 8, 8, "F");
+  // Colonne gauche : Bureau de Contrôle (conditionnel) + Consuel (conditionnel)
+  // Hauteur adaptative selon les blocs activés. Si rien à gauche : on saute.
   let ly = y + 22;
-  if (showBureauControle) {
+  if (showLeftCol) {
+    const leftBoxH = (showBureauControle && showConsuel) ? 280 : 140;
+    doc.setFillColor(...PINK_LIGHT);
+    doc.roundedRect(M, y, colW, leftBoxH, 8, 8, "F");
+  }
+  if (showLeftCol && showBureauControle) {
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(11);
     doc.setTextColor(...INK);
@@ -1650,32 +1660,40 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
     doc.text(t("site_comp_bureau_price", "700 € HT"), M + 14, ly + 22);
 
     ly += 56;
-    doc.setDrawColor(...RULE);
-    doc.line(M + 14, ly, M + colW - 14, ly);
-    ly += 18;
+    // Séparateur entre Bureau de Contrôle et Consuel uniquement si Consuel
+    // est aussi affiché (sinon le trait pend dans le vide).
+    if (showConsuel) {
+      doc.setDrawColor(...RULE);
+      doc.line(M + 14, ly, M + colW - 14, ly);
+      ly += 18;
+    }
   }
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(11);
-  doc.setTextColor(...INK);
-  doc.text(t("site_comp_consuel_title", "Consuel"), M + 14, ly);
-  ly += 18;
-  doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(9.5);
-  doc.setTextColor(...INK);
-  doc.text(
-    t("site_comp_consuel_desc", "Obligatoire pour toute installation IRVE. Passage prévu J+28 après installation. Attestation de conformité délivrée à réception."),
-    M + 14,
-    ly,
-    { maxWidth: colW - 28 },
-  );
+  if (showLeftCol && showConsuel) {
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...INK);
+    doc.text(t("site_comp_consuel_title", "Consuel"), M + 14, ly);
+    ly += 18;
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(...INK);
+    doc.text(
+      t("site_comp_consuel_desc", "Obligatoire pour toute installation IRVE. Passage prévu J+28 après installation. Attestation de conformité délivrée à réception."),
+      M + 14,
+      ly,
+      { maxWidth: colW - 28 },
+    );
+  }
 
   // Colonne droite : Maintenance annuelle — affichée uniquement si le
   // commercial a coché "Inclure la maintenance annuelle" dans le panneau
-  // droit (SiteSpecs.includeMaintenance).
+  // droit (SiteSpecs.includeMaintenance). Si la colonne gauche est masquée,
+  // le bloc maintenance prend toute la largeur de la page.
   if (showMaintenance) {
-    const rx = M + colW + 20;
+    const rx = showLeftCol ? M + colW + 20 : M;
+    const rW = showLeftCol ? colW : PAGE_W - M * 2;
     doc.setFillColor(29, 29, 29);
-    doc.roundedRect(rx, y, colW, 280, 8, 8, "F");
+    doc.roundedRect(rx, y, rW, 280, 8, 8, "F");
     let ry = y + 22;
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(11);
@@ -1700,11 +1718,13 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(11);
       doc.setTextColor(isTotal ? PINK[0] : 252, isTotal ? PINK[1] : 249, isTotal ? PINK[2] : 242);
-      doc.text(line.v, rx + colW - 14, ry, { align: "right" });
+      doc.text(line.v, rx + rW - 14, ry, { align: "right" });
       ry += 22;
       if (i < 2) {
+        // Trait centré entre la ligne actuelle et la suivante : ry vient
+        // d'être incrémenté de 22 pt, le centre se trouve donc à ry - 11.
         doc.setDrawColor(70, 67, 62);
-        doc.line(rx + 14, ry - 6, rx + colW - 14, ry - 6);
+        doc.line(rx + 14, ry - 11, rx + rW - 14, ry - 11);
       }
     });
     ry += 16;
