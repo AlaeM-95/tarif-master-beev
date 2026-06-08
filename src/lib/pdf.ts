@@ -432,8 +432,8 @@ export async function generateProposalPdf(opts: {
   // arrondi). On essaie plusieurs chemins candidats puis on bascule sur le
   // logo noir si le blanc échoue, et sur le texte si rien ne charge.
   const headerLogoCandidates = [
+    "/images/logo-beev-white.png", // copie URL-safe (sans espaces) recommandée
     "/images/logo-beev-blanc.png",
-    "/images/logo-beev-white.png",
     "/images/logo%20beev%20white.png",
     "/images/logo beev white.png",
   ];
@@ -1616,9 +1616,13 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
   // Sinon : 2 colonnes équilibrées.
   const colW = showMaintenance ? (PAGE_W - M * 2 - 20) / 2 : PAGE_W - M * 2;
 
-  // Colonne gauche : Bureau de Contrôle (conditionnel) + Consuel
+  // Colonne gauche : Bureau de Contrôle (conditionnel) + Consuel (toujours)
+  // Box hauteur adaptative : 280 si bureau de contrôle affiché (les deux blocs),
+  // 140 si seul Consuel est présent. Évite un grand espace vide en bas de
+  // l'encart rose quand le commercial désactive le bureau de contrôle.
+  const leftBoxH = showBureauControle ? 280 : 140;
   doc.setFillColor(...PINK_LIGHT);
-  doc.roundedRect(M, y, colW, 280, 8, 8, "F");
+  doc.roundedRect(M, y, colW, leftBoxH, 8, 8, "F");
   let ly = y + 22;
   if (showBureauControle) {
     doc.setFont(BRAND_FONT, "bold");
@@ -4555,17 +4559,29 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
 function drawHeader(doc: jsPDF, c: ClientInfo, type: ProjectType) {
   // Bandeau noir arrondi en haut à gauche contenant le logo Beev blanc
   // (préchargé dans HEADER_LOGO). Si l'image n'a pas pu être chargée, on
-  // retombe sur le texte "BEEV" en blanc sur le même bandeau.
+  // retombe sur le texte "Beev" centré dans le même bandeau.
   const badgeW = 80;
   const badgeH = 26;
   const badgeX = M;
   const badgeY = 40;
   doc.setFillColor(...INK);
   doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 6, 6, "F");
+
+  const fallbackText = () => {
+    doc.setTextColor(255, 255, 255);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(12);
+    // baseline 'middle' centre verticalement le glyphe dans la box noire
+    (doc.text as any)("Beev", badgeX + badgeW / 2, badgeY + badgeH / 2, {
+      align: "center",
+      baseline: "middle",
+    });
+  };
+
   if (HEADER_LOGO) {
-    // Calcule un placement contain dans le bandeau (padding 6 pts)
-    const padX = 10;
-    const padY = 6;
+    // Placement contain dans le bandeau, avec padding interne
+    const padX = 12;
+    const padY = 5;
     const innerW = badgeW - padX * 2;
     const innerH = badgeH - padY * 2;
     const ratio = HEADER_LOGO.w / Math.max(HEADER_LOGO.h, 1);
@@ -4580,17 +4596,10 @@ function drawHeader(doc: jsPDF, c: ClientInfo, type: ProjectType) {
     try {
       doc.addImage(HEADER_LOGO.dataUrl, HEADER_LOGO.format, cx, cy, w, h, undefined, "FAST");
     } catch {
-      // Fallback texte si addImage échoue
-      doc.setTextColor(255, 255, 255);
-      doc.setFont(BRAND_FONT, "bold");
-      doc.setFontSize(13);
-      doc.text("Beev", badgeX + badgeW / 2, badgeY + 22, { align: "center" });
+      fallbackText();
     }
   } else {
-    doc.setTextColor(255, 255, 255);
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(13);
-    doc.text("Beev", badgeX + badgeW / 2, badgeY + 22, { align: "center" });
+    fallbackText();
   }
 
   // Tag offre sous le bandeau, en gris discret
