@@ -1961,7 +1961,7 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
   eyebrow(doc, lookupText(TEXTS, "common", "why_beev_eyebrow", "NOTRE APPROCHE"), y);
   y += 32;
   const whyBeevTitleFallback = type === "vehicles" ? "Pourquoi confier vos véhicules à Beev." :
-              type === "home" ? "Le kit B2B2E clé en main pour vos collaborateurs." :
+              type === "home" ? "Le forfait clé en main pour vos collaborateurs." :
               "Un déploiement IRVE site entreprise sans friction.";
   title(doc, lookupText(TEXTS, type, "why_beev_title", whyBeevTitleFallback), y);
   y += 36;
@@ -1972,8 +1972,8 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
 
   const intros: Record<ProjectType, string> = {
     vehicles: "Beev centralise pour vous le sourcing constructeur (Tesla, Mercedes, Renault, VW, Hyundai, Kia, Peugeot…), le financement LLD (Ayvens, Arval, Athlon, Leaseplan), et l'assistance multimarque tout au long de la vie du contrat. Loyers exprimés en TTC.",
-    home: "Vous équipez vos collaborateurs roulant en véhicule électrique d'une borne à leur domicile. Beev gère l'intégralité : vente, installation IRVE certifiée par notre partenaire Seris, supervision, et remboursement automatisé de l'énergie consommée à titre professionnel.",
-    site: "Vous électrifiez vos sites tertiaires, logistiques ou commerciaux. Beev prend en charge l'étude de site, le matériel premium (Alfen, Schneider, Hager, Wallbox), la pose IRVE certifiée, le génie civil, la mise en service OCPP et la formation des utilisateurs.",
+    home: "Vous équipez vos collaborateurs roulant en véhicule électrique d'une borne à leur domicile. Beev gère l'intégralité : vente, installation IRVE certifiée par nos techniciens partenaries, supervision, et remboursement automatisé de l'énergie consommée à titre professionnel.",
+    site: "Vous électrifiez vos sites tertiaires, logistiques ou commerciaux. Beev prend en charge l'étude de site, le matériel premium (Alfen, Schneider, Hager, Smappee), la pose IRVE certifiée, le génie civil, la mise en service OCPP et la formation des utilisateurs.",
   };
   const introText = PDF_CONTENT.whyBeevIntro ?? intros[type];
   const l1 = doc.splitTextToSize(introText, PAGE_W - M * 2);
@@ -1994,18 +1994,18 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
       "Suivi commercial dédié grand compte.",
     ],
     home: [
-      "Un kit standardisé : matériel + pose 0–10 m + supervision + remboursement.",
-      "Pose réalisée par technicien IRVE certifié partenaire Seris.",
-      "Supervision en marque blanche : visibilité par collaborateur, par site.",
-      "Remboursement automatisé de l'énergie consommée à des fins professionnelles.",
-      "Garantie matériel jusqu'à 4 ans selon la gamme retenue.",
+      "Un forfait standardisé : matériel + pose + supervision.",
+      "Pose réalisée par nos techniciens IRVE certifié.",
+      "Supervision : visibilité par collaborateur, par site. (en option)",
+      "Remboursement automatisé de l'énergie consommée à des fins professionnelles. (en option)",
+      "Garantie matériel selon la gamme retenue.",
     ],
     site: [
       "Visite technique de chaque site et étude de faisabilité IRVE.",
       "Devis détaillé matériel + pose + génie civil, ligne par ligne.",
       "Pose par technicien IRVE certifié, mise en service OCPP, formation utilisateurs.",
-      "Supervision flotte multi-sites et compteurs MID conformes.",
-      "Garantie constructeur 3 ans extensible 6 ans.",
+      "Supervision flotte multi-sites (en option) et compteurs MID conformes.",
+      "Garantie matériel selon la gamme retenue.",
     ],
   };
   const bullets = PDF_CONTENT.whyBeevBullets.length > 0 ? PDF_CONTENT.whyBeevBullets : bulletsByType[type];
@@ -2029,9 +2029,9 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
     doc.text(lookupText(TEXTS, "common", "why_beev_chiffres_title", "BEEV EN CHIFFRES"), M + 16, y + 18);
 
     const stats: Array<{ value: string; label: string }> = [
-      { value: "200+", label: "entreprises\naccompagnées" },
-      { value: "1500+", label: "véhicules\nlivrés" },
-      { value: "800+", label: "bornes\ninstallées" },
+      { value: "5000+", label: "entreprises\naccompagnées" },
+      { value: "90%", label: "bornes\ninstallées en moins de 20 jours ouvrés" },
+      { value: "350+", label: "techniciens\nIRVE partenaire" },
       { value: "97 %", label: "clients satisfaits\n(NPS 2025)" },
     ];
     const cw = (PAGE_W - M * 2 - 32) / stats.length;
@@ -2061,11 +2061,11 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
     doc.setTextColor(...INK);
     const quoteByType: Record<ProjectType, { quote: string; author: string }> = {
       vehicles: {
-        quote: "« Beev nous a permis d'électrifier 22 véhicules en 3 mois, avec un interlocuteur unique et un suivi sans faille. »",
+        quote: "« Beev nous a permis d'électrifier 30 véhicules en 2 mois, avec un interlocuteur unique et un suivi sans faille. »",
         author: "DAF · ETI logistique 180 collaborateurs",
       },
       home: {
-        quote: "« Le kit B2B2E Beev a simplifié notre déploiement chez 35 collaborateurs : zéro charge pour notre équipe RH. »",
+        quote: "« Le forfait Beev a simplifié notre déploiement chez 35 collaborateurs : zéro charge pour notre équipe RH. »",
         author: "DRH · PME tech 60 collaborateurs",
       },
       site: {
@@ -2762,10 +2762,11 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
     ? [
         "Matériel et accessoires de raccordement",
         "Pose et raccordement par technicien IRVE certifié",
-        "Câblage standard jusqu'à 10 m du tableau électrique",
-        "Supervision Beev en marque blanche",
-        "Remboursement automatisé de l'énergie consommée à titre professionnel",
-        "Garantie constructeur selon la gamme",
+        // "Câblage standard jusqu'à 10 m du tableau électrique",
+        // "Supervision Beev en marque blanche",
+        "Mise en supervision et remboursement automatisé de l'énergie consommée à titre professionnel (en option)",
+        "Gestion des déchets de chantier",
+        // "Garantie constructeur selon la gamme",
       ]
     : [
         "Étude de site et chiffrage par technicien IRVE certifié",
