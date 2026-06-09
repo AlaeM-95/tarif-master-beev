@@ -583,7 +583,7 @@ export async function generateProposalPdf(opts: {
   if (cfg.showVehicleComparator && v.length >= 2) {
     doc.addPage();
     drawHeader(doc, client, "vehicles");
-    drawVehicleComparator(doc, v);
+    await drawVehicleComparator(doc, v);
   }
 
   // Page comparaison TCO multi-véhicules (toggleable) — toujours si 2+ véhicules
@@ -2420,13 +2420,16 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       ...(PDF_CFG.showVehicleCo2 ? [["CO2", `${v.co2} g/km`]] : []),
       ...(PDF_CFG.showVehicleFiscalHp ? [["Puissance fiscale", `${v.fiscalHp} CV`]] : []),
       ...(PDF_CFG.showVehicleEnvScore && v.envScore !== undefined ? [["Score environnemental", `${v.envScore} / 100`]] : []),
-      // Specs étendues (migration 039) — affichées seulement si renseignées
-      ...(v.trunkLitres ? [["Volume de coffre", `${v.trunkLitres} L`]] : []),
-      ...(v.chargeAcMaxKw ? [["Recharge AC max", `${v.chargeAcMaxKw} kW`]] : []),
-      ...(v.chargeDcMaxKw ? [["Recharge DC max", `${v.chargeDcMaxKw} kW`]] : []),
-      ...(v.chargeTime2080Ac ? [["Recharge 20-80 % AC", v.chargeTime2080Ac]] : []),
-      ...(v.chargeTime2080Dc ? [["Recharge 20-80 % DC", v.chargeTime2080Dc]] : []),
-      ...(v.dimensions ? [["Dimensions", v.dimensions]] : []),
+      // Specs étendues (migration 039) — affichées seulement si la donnée est
+      // renseignée ET que le toggle correspondant est activé dans le panneau
+      // de configuration PDF. Permet au commercial de masquer une ligne par
+      // ligne sans toucher au catalogue.
+      ...(PDF_CFG.showVehicleTrunk && v.trunkLitres ? [["Volume de coffre", `${v.trunkLitres} L`]] : []),
+      ...(PDF_CFG.showVehicleChargeAc && v.chargeAcMaxKw ? [["Recharge AC max", `${v.chargeAcMaxKw} kW`]] : []),
+      ...(PDF_CFG.showVehicleChargeDc && v.chargeDcMaxKw ? [["Recharge DC max", `${v.chargeDcMaxKw} kW`]] : []),
+      ...(PDF_CFG.showVehicleChargeTime2080Ac && v.chargeTime2080Ac ? [["Recharge 20-80 % AC", v.chargeTime2080Ac]] : []),
+      ...(PDF_CFG.showVehicleChargeTime2080Dc && v.chargeTime2080Dc ? [["Recharge 20-80 % DC", v.chargeTime2080Dc]] : []),
+      ...(PDF_CFG.showVehicleDimensions && v.dimensions ? [["Dimensions", v.dimensions]] : []),
     ],
     headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT },
     bodyStyles: { fontSize: 9.5, cellPadding: 6, textColor: INK, lineColor: RULE, font: BRAND_FONT },
@@ -3609,7 +3612,7 @@ function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
 //
 // Limite : 4 véhicules max pour rester lisible sur A4 portrait. Si la
 // sélection dépasse 4, on prend les 4 premiers.
-function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[]) {
+async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[]) {
   const PINK: [number, number, number] = [244, 184, 170];
   const PINK_LIGHT: [number, number, number] = [253, 241, 238];
   const items = vehicles.slice(0, 4);
@@ -3719,8 +3722,12 @@ function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[]) {
   const labelW = 130;
   const colW = (PAGE_W - M * 2 - labelW) / items.length;
 
-  // Header véhicules : marque/modèle + version
-  const headH = 56;
+  // Header véhicules : photo + marque/modèle + version
+  // Photo en haut (cream rond) puis textes dessous. Permet une identification
+  // visuelle immédiate des modèles comparés.
+  const photoH = 56;
+  const textH = 56;
+  const headH = photoH + textH;
   doc.setFillColor(...PINK);
   doc.rect(M, y, PAGE_W - M * 2, 2, "F");
   y += 6;
@@ -3730,23 +3737,41 @@ function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[]) {
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
   doc.text(lookupText(TEXTS, "vehicles", "comparator_header_label", "CARACTÉRISTIQUE"), M + 8, y + 20);
-  items.forEach((sv, i) => {
+
+  // Charge les photos en parallèle puis dessine chaque cellule véhicule
+  for (let i = 0; i < items.length; i++) {
+    const sv = items[i];
     const cx = M + labelW + i * colW;
+    // Photo véhicule centrée (fond blanc cream pour produit) — fallback
+    // silencieux si l'image n'existe pas.
+    if (sv.vehicle.image && sv.vehicle.image.trim()) {
+      const pImgW = Math.min(colW - 20, 110);
+      const pImgH = photoH - 8;
+      const pImgX = cx + (colW - pImgW) / 2;
+      const pImgY = y + 4;
+      try {
+        await drawImageContain(doc, sv.vehicle.image, pImgX, pImgY, pImgW, pImgH);
+      } catch {
+        /* image non chargée — non bloquant */
+      }
+    }
+    // Textes sous la photo
+    const textBaseY = y + photoH;
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(11);
     doc.setTextColor(...INK);
     const brand = sv.vehicle.brand.toUpperCase();
-    doc.text(brand, cx + colW / 2, y + 18, { align: "center", maxWidth: colW - 8 });
+    doc.text(brand, cx + colW / 2, textBaseY + 14, { align: "center", maxWidth: colW - 8 });
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(9);
     doc.setTextColor(...INK);
     const modelLine = doc.splitTextToSize(sv.vehicle.model, colW - 12)[0] || "";
-    doc.text(modelLine, cx + colW / 2, y + 32, { align: "center" });
+    doc.text(modelLine, cx + colW / 2, textBaseY + 28, { align: "center" });
     doc.setFontSize(7.5);
     doc.setTextColor(...SUB);
     const versionLine = doc.splitTextToSize(sv.vehicle.version || "", colW - 12)[0] || "";
-    doc.text(versionLine, cx + colW / 2, y + 46, { align: "center" });
-  });
+    doc.text(versionLine, cx + colW / 2, textBaseY + 42, { align: "center" });
+  }
   y += headH + 4;
 
   // Lignes de specs

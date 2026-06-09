@@ -23,6 +23,15 @@ export type PdfDisplayConfig = {
   showVehicleServices: boolean;
   showVehicleOptions: boolean;
   showVehicleTcoBlock: boolean; // bloc TCO par véhicule (graphique barres)
+  // Specs étendues (migration 039) — chaque ligne du tableau caractéristique
+  // technique est désormais togglable indépendamment pour ne pas polluer la
+  // fiche si une donnée manque ou n'est pas pertinente pour le client.
+  showVehicleTrunk: boolean;
+  showVehicleChargeDc: boolean;
+  showVehicleChargeAc: boolean;
+  showVehicleChargeTime2080Ac: boolean;
+  showVehicleChargeTime2080Dc: boolean;
+  showVehicleDimensions: boolean;
 
   // ===== Détails fiches bornes =====
   showChargerFeatures: boolean;
@@ -64,6 +73,12 @@ export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
   showVehicleServices: true,
   showVehicleOptions: true,
   showVehicleTcoBlock: true,
+  showVehicleTrunk: true,
+  showVehicleChargeDc: true,
+  showVehicleChargeAc: true,
+  showVehicleChargeTime2080Ac: true,
+  showVehicleChargeTime2080Dc: true,
+  showVehicleDimensions: true,
   showChargerFeatures: true,
   showChargerLineItems: true,
   showChargerInclusionNote: true,
@@ -154,6 +169,12 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
       { key: "showVehicleServices", label: "Services inclus" },
       { key: "showVehicleOptions", label: "Options & accessoires" },
       { key: "showVehicleTcoBlock", label: "Bloc TCO graphique", description: "Comparaison vs essence" },
+      { key: "showVehicleTrunk", label: "Volume de coffre" },
+      { key: "showVehicleChargeAc", label: "Recharge AC max", description: "Puissance recharge sur borne AC (kW)" },
+      { key: "showVehicleChargeDc", label: "Recharge DC max", description: "Puissance recharge rapide DC (kW)" },
+      { key: "showVehicleChargeTime2080Ac", label: "Recharge 20-80 % AC", description: "Durée recharge AC" },
+      { key: "showVehicleChargeTime2080Dc", label: "Recharge 20-80 % DC", description: "Durée recharge rapide" },
+      { key: "showVehicleDimensions", label: "Dimensions", description: "L × l × H" },
     ],
   },
   {
