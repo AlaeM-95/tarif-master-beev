@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles, Copy } from "lucide-react";
+import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles, Copy, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type EnergyParams } from "@/lib/store";
 import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
@@ -2128,10 +2128,42 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
             <Badge className="bg-beev-bleu text-beev-black text-[10px] border-0 font-semibold">Stock × {vehicle.availableStock}</Badge>
           )}
         </div>
-        {selected && (
+        {/* Coin haut droite : check sélection OU barre actions admin compacte.
+            Les actions admin (corbeille / dupliquer / éditer) sont placées sur
+            l'image avec fond semi-transparent pour libérer le bloc prix qui
+            était écrasé sur 3 lignes. */}
+        {selected ? (
           <div className="absolute top-2 right-2 w-8 h-8 rounded-full bg-primary text-primary-foreground grid place-content-center text-sm font-bold shadow-lg">
             ✓
           </div>
+        ) : (
+          (onDelete || onDuplicate || onUpdate) && (
+            <div className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-white/95 backdrop-blur-sm shadow-md px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              {onUpdate && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 hover:bg-muted"
+                  onClick={() => setEditing((e) => !e)}
+                  title={editing ? "Fermer l'édition" : "Éditer ce véhicule"}
+                >
+                  {editing ? <X className="w-3.5 h-3.5" /> : <Settings2 className="w-3.5 h-3.5" />}
+                </Button>
+              )}
+              {onDuplicate && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 hover:bg-muted"
+                  onClick={onDuplicate}
+                  title="Dupliquer ce véhicule"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </Button>
+              )}
+              {onDelete && <ConfirmDeleteButton label={`${vehicle.brand} ${vehicle.model}`} onConfirm={onDelete} />}
+            </div>
+          )
         )}
         {/* Bandeau loyer mensuel en bas de l'image (overlay) */}
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-beev-black via-beev-black/80 to-transparent p-3 pt-8">
@@ -2140,39 +2172,22 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
         </div>
       </div>
       <CardContent className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <h3 className="font-bold leading-tight text-foreground text-base truncate">{vehicle.brand} {vehicle.model}</h3>
-            <p className="text-xs text-muted-foreground truncate mt-0.5">{vehicle.version}</p>
-          </div>
+        <div className="min-w-0">
+          <h3 className="font-bold leading-tight text-foreground text-base truncate">{vehicle.brand} {vehicle.model}</h3>
+          <p className="text-xs text-muted-foreground truncate mt-0.5">{vehicle.version}</p>
         </div>
         <div className="grid grid-cols-3 gap-2 text-[11px] text-foreground/70">
           <Spec icon={<Gauge className="w-3 h-3" />} v={vehicle.rangeWltp ? `${vehicle.rangeWltp} km` : `${vehicle.co2} g/km`} />
           <Spec icon={<Battery className="w-3 h-3" />} v={vehicle.batteryKwh ? `${vehicle.batteryKwh} kWh` : "—"} />
           <Spec icon={<Zap className="w-3 h-3" />} v={`${vehicle.powerHp} ch`} />
         </div>
-        <div className="flex items-end justify-between pt-1 border-t border-border/50 pt-3">
-          <div>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Prix catalogue TTC</p>
-            <p className="font-semibold text-foreground text-sm">{fmtEur(vehicle.priceTtc)}</p>
-          </div>
-          <div className="flex items-center gap-1">
-            {onDelete && <ConfirmDeleteButton label={`${vehicle.brand} ${vehicle.model}`} onConfirm={onDelete} />}
-            {onDuplicate && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onDuplicate}
-                className="text-foreground/70 hover:text-foreground hover:bg-muted gap-1"
-                title="Crée une copie modifiable de ce véhicule"
-              >
-                <Copy className="w-3.5 h-3.5" /> Dupliquer
-              </Button>
-            )}
-            {onUpdate && <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)} className="text-foreground/70 hover:text-foreground hover:bg-muted">{editing ? "OK" : "Éditer"}</Button>}
-          </div>
+        {/* Prix catalogue : ligne pleine, label horizontal pour ne plus être
+            écrasé sur 3 lignes par les boutons d'actions. */}
+        <div className="flex items-baseline justify-between pt-3 border-t border-border/50">
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Prix catalogue TTC</span>
+          <span className="font-semibold text-foreground text-base">{fmtEur(vehicle.priceTtc)}</span>
         </div>
-        {/* CTA explicite Ajouter/Retirer — charte Beev (default=Black, outline=Black border) */}
+        {/* CTA principal — pleine largeur, charte Beev */}
         <Button
           type="button"
           onClick={onToggle}
@@ -2182,17 +2197,20 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
         >
           {selected ? (<><X className="w-4 h-4" /> Retirer de la sélection</>) : (<><Plus className="w-4 h-4" /> Ajouter à la sélection</>)}
         </Button>
-        {/* Toggle ajout au comparateur — visible si onToggleCompare passé */}
+        {/* Toggle comparateur — design discret en lien texte avec icône */}
         {onToggleCompare && (
-          <Button
+          <button
             type="button"
             onClick={onToggleCompare}
-            variant={isInCompare ? "default" : "outline"}
-            size="sm"
-            className="w-full gap-2 text-xs"
+            className={`w-full flex items-center justify-center gap-1.5 text-[11px] py-1.5 rounded-md transition-colors ${
+              isInCompare
+                ? "bg-beev-bleu-30 text-beev-black font-semibold"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            }`}
           >
-            {isInCompare ? (<>Retirer du comparateur</>) : (<>Ajouter au comparateur</>)}
-          </Button>
+            <BarChart3 className="w-3 h-3" />
+            {isInCompare ? "Dans le comparateur" : "Ajouter au comparateur"}
+          </button>
         )}
         {/* Badges loueurs : 1 par offre disponible (durée / km / mensuel) */}
         {leaserOffers.length > 0 && (
@@ -2364,10 +2382,39 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete, onDuplic
           </Badge>
           {charger.custom && <Badge className="bg-beev-beige text-beev-black text-[10px]">Custom</Badge>}
         </div>
-        {selected && (
+        {/* Coin haut droite : check sélection OU barre actions admin (hover). */}
+        {selected ? (
           <div className="absolute top-2 right-2 w-8 h-8 rounded-full bg-primary text-primary-foreground grid place-content-center text-sm font-bold shadow-lg">
             ✓
           </div>
+        ) : (
+          (onDelete || onDuplicate || onUpdate) && (
+            <div className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-white/95 backdrop-blur-sm shadow-md px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              {onUpdate && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 hover:bg-muted"
+                  onClick={() => setEditing((e) => !e)}
+                  title={editing ? "Fermer l'édition" : "Éditer cette borne"}
+                >
+                  {editing ? <X className="w-3.5 h-3.5" /> : <Settings2 className="w-3.5 h-3.5" />}
+                </Button>
+              )}
+              {onDuplicate && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 hover:bg-muted"
+                  onClick={onDuplicate}
+                  title="Dupliquer cette borne"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </Button>
+              )}
+              {onDelete && <ConfirmDeleteButton label={`${charger.brand} ${charger.model}`} onConfirm={onDelete} />}
+            </div>
+          )
         )}
         {/* Bandeau prix en bas de l'image (overlay) */}
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-beev-black via-beev-black/80 to-transparent p-3 pt-8">
@@ -2378,11 +2425,9 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete, onDuplic
         </div>
       </div>
       <CardContent className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <h3 className="font-bold leading-tight text-foreground text-base truncate">{charger.brand} {charger.model}</h3>
-            <p className="text-xs text-muted-foreground truncate mt-0.5">{charger.type}</p>
-          </div>
+        <div className="min-w-0">
+          <h3 className="font-bold leading-tight text-foreground text-base truncate">{charger.brand} {charger.model}</h3>
+          <p className="text-xs text-muted-foreground truncate mt-0.5">{charger.type}</p>
         </div>
         <ul className="text-xs text-foreground/70 space-y-1">
           {charger.features.slice(0, 4).map((f, i) => (
@@ -2392,21 +2437,6 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete, onDuplic
             </li>
           ))}
         </ul>
-        <div className="flex items-center justify-end gap-1 pt-1 border-t border-border/50 pt-3">
-          {onDelete && <ConfirmDeleteButton label={`${charger.brand} ${charger.model}`} onConfirm={onDelete} />}
-          {onDuplicate && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onDuplicate}
-              className="text-foreground/70 hover:text-foreground hover:bg-muted gap-1"
-              title="Crée une copie modifiable de cette borne"
-            >
-              <Copy className="w-3.5 h-3.5" /> Dupliquer
-            </Button>
-          )}
-          {onUpdate && <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)} className="text-foreground/70 hover:text-foreground hover:bg-muted">{editing ? "OK" : "Éditer"}</Button>}
-        </div>
         {/* CTA explicite Ajouter / Retirer — charte Beev */}
         <Button
           type="button"
