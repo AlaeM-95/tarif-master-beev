@@ -1,0 +1,259 @@
+// Importeur de car policy client (Excel libre).
+//
+// Le commercial uploade un fichier Excel (.xlsx, .xls, .csv) issu de la
+// car policy actuelle de son prospect. On détecte automatiquement les
+// colonnes via des mots-clés FR/EN puis on transforme chaque ligne en
+// Vehicle utilisable comme n'importe quel véhicule du catalogue (avec
+// le flag `custom: true` pour le distinguer visuellement).
+//
+// IMPORTANT — ISOLATION DU CATALOGUE :
+// Les véhicules importés vivent UNIQUEMENT dans le state React local de
+// la page (pas de localStorage, pas de Supabase). Au refresh ou changement
+// de projet, ils disparaissent. Aucun risque de polluer le catalogue
+// officiel partagé entre commerciaux.
+
+import * as XLSX from "xlsx";
+import type { Vehicle, Energy } from "./catalog";
+
+export type ImportReport = {
+  vehicles: Vehicle[];
+  detectedColumns: Record<string, string | null>; // map "brand" -> "Marque" (en-tête détecté)
+  warnings: string[];
+  totalRows: number;
+  importedRows: number;
+};
+
+// Synonymes par champ — recherche case-insensitive, accents ignorés,
+// match partiel (contains). L'ordre compte : on prend le premier match.
+const COLUMN_SYNONYMS: Record<keyof typeof FIELD_MAP, string[]> = {
+  brand: ["marque", "brand", "constructeur", "make", "manufacturer"],
+  model: ["modele", "model", "vehicule", "vehicle"],
+  version: ["version", "finition", "trim", "variant", "déclinaison", "declinaison"],
+  category: ["categorie", "category", "segment", "type", "carrosserie", "body"],
+  energy: ["energie", "energy", "carburant", "fuel", "motorisation", "propulsion"],
+  batteryKwh: ["batterie", "battery", "kwh", "capacite batterie", "capacité batterie"],
+  rangeWltp: ["autonomie", "range", "wltp", "km", "distance"],
+  powerHp: ["puissance", "power", "ch", "hp", "chevaux", "kw moteur"],
+  consumption: ["consommation", "consumption", "conso", "kwh 100", "kwh/100", "l 100", "l/100"],
+  co2: ["co2", "co₂", "co 2", "emissions"],
+  fiscalHp: ["cv fiscal", "puissance fiscale", "fiscal hp", "fiscal", "chevaux fiscaux"],
+  priceTtc: ["prix ttc", "prix catalogue", "price ttc", "prix vehicule", "prix véhicule", "tarif"],
+  monthlyLld: ["loyer", "lld", "leasing", "monthly", "mensualite", "mensualité"],
+  durationMonths: ["duree", "durée", "duration", "mois", "months"],
+  kmPerYear: ["km/an", "kilometrage", "kilométrage", "km par an", "annual km"],
+  trunkLitres: ["coffre", "trunk", "volume coffre", "litres coffre"],
+  chargeDcMaxKw: ["recharge dc", "dc max", "puissance dc", "fast charge"],
+  chargeAcMaxKw: ["recharge ac", "ac max", "puissance ac"],
+  dimensions: ["dimensions", "lxlxh", "l x l x h", "longueur"],
+  chargeTime2080Ac: ["recharge ac 20", "temps ac", "20-80 ac"],
+  chargeTime2080Dc: ["recharge dc 20", "temps dc", "20-80 dc"],
+};
+
+// Sentinel pour TypeScript : recense tous les champs supportés.
+const FIELD_MAP = {
+  brand: true, model: true, version: true, category: true, energy: true,
+  batteryKwh: true, rangeWltp: true, powerHp: true, consumption: true,
+  co2: true, fiscalHp: true, priceTtc: true, monthlyLld: true,
+  durationMonths: true, kmPerYear: true, trunkLitres: true,
+  chargeDcMaxKw: true, chargeAcMaxKw: true, dimensions: true,
+  chargeTime2080Ac: true, chargeTime2080Dc: true,
+};
+
+function normalize(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "") // strip accents
+    .replace(/[^a-z0-9\s/]/g, " ") // strip punctuation, keep / for kWh/100km
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function detectColumn(headerNormalized: string, synonyms: string[]): number {
+  // Retourne le score (0 = aucun match, sinon plus le score est haut, mieux c'est).
+  for (const syn of synonyms) {
+    const synN = normalize(syn);
+    if (headerNormalized === synN) return 100; // match exact
+    if (headerNormalized.includes(synN)) return 50; // contient
+  }
+  return 0;
+}
+
+function parseFrNumber(raw: unknown): number {
+  if (raw == null || raw === "") return 0;
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : 0;
+  const s = String(raw)
+    .replace(/[\s €$£]/g, "")
+    .replace(/,/g, ".");
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function detectEnergy(raw: unknown): Energy {
+  if (!raw) return "Électrique";
+  const s = normalize(String(raw));
+  if (/^(ev|bev|elect|100%|electric)/i.test(s) || s.includes("electrique")) return "Électrique";
+  if (s.includes("phev") || (s.includes("hybride") && s.includes("rechargeable"))) return "Hybride Rechargeable";
+  if (s.includes("mild") || s.includes("mhev")) return "Mild Hybrid";
+  if (s.includes("hybride") || s.includes("hev") || s.includes("hybrid")) return "Hybride";
+  if (s.includes("essence") || s.includes("gasoline") || s.includes("petrol")) return "Essence";
+  if (s.includes("diesel") || s.includes("gazole")) return "Diesel";
+  return "Électrique"; // par défaut on suppose EV — la car policy moderne l'est majoritairement
+}
+
+/**
+ * Parse un fichier Excel/CSV et retourne la liste des véhicules détectés.
+ * Préfère la première feuille du classeur.
+ */
+export async function importCarPolicy(file: File): Promise<ImportReport> {
+  const warnings: string[] = [];
+  const buffer = await file.arrayBuffer();
+  const wb = XLSX.read(buffer, { type: "array" });
+  if (wb.SheetNames.length === 0) {
+    throw new Error("Le fichier ne contient aucune feuille.");
+  }
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  // header:1 → renvoie un tableau de tableaux (lignes), pas un AOS.
+  const rows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null, raw: false });
+  if (rows.length === 0) {
+    throw new Error("La feuille est vide.");
+  }
+
+  // Détection de la ligne d'en-tête : on prend la première qui contient au
+  // moins 2 mots-clés reconnus (sinon les feuilles avec un titre en ligne 1
+  // décaleraient toute la détection).
+  let headerRowIdx = -1;
+  let bestHits = 0;
+  for (let i = 0; i < Math.min(8, rows.length); i++) {
+    const row = rows[i];
+    const hits = row.reduce<number>((sum, cell) => {
+      if (!cell) return sum;
+      const cellN = normalize(String(cell));
+      for (const synonyms of Object.values(COLUMN_SYNONYMS)) {
+        for (const syn of synonyms) {
+          if (cellN === normalize(syn)) return sum + 2;
+          if (cellN.includes(normalize(syn))) return sum + 1;
+        }
+      }
+      return sum;
+    }, 0);
+    if (hits > bestHits) {
+      bestHits = hits;
+      headerRowIdx = i;
+    }
+  }
+  if (headerRowIdx < 0 || bestHits < 2) {
+    throw new Error("Aucune ligne d'en-tête reconnue. Vérifiez que le fichier contient au moins une ligne avec « Marque », « Modèle », « Prix » ou équivalents.");
+  }
+
+  const headerRow = rows[headerRowIdx];
+  const dataRows = rows.slice(headerRowIdx + 1);
+
+  // Pour chaque colonne du fichier, on essaie de la mapper à un champ Vehicle.
+  // Si plusieurs colonnes matchent le même champ, on garde le meilleur score.
+  const fieldToColIdx: Record<string, number> = {};
+  const detectedColumns: Record<string, string | null> = {};
+
+  for (const field of Object.keys(COLUMN_SYNONYMS) as Array<keyof typeof COLUMN_SYNONYMS>) {
+    let bestIdx = -1;
+    let bestScore = 0;
+    headerRow.forEach((cell, idx) => {
+      if (!cell) return;
+      const cellN = normalize(String(cell));
+      const score = detectColumn(cellN, COLUMN_SYNONYMS[field]);
+      if (score > bestScore) {
+        bestScore = score;
+        bestIdx = idx;
+      }
+    });
+    if (bestIdx >= 0) {
+      fieldToColIdx[field] = bestIdx;
+      detectedColumns[field] = String(headerRow[bestIdx]);
+    } else {
+      detectedColumns[field] = null;
+    }
+  }
+
+  if (fieldToColIdx.brand === undefined && fieldToColIdx.model === undefined) {
+    throw new Error("Impossible de trouver les colonnes Marque ou Modèle. Renommez vos colonnes ou vérifiez l'en-tête.");
+  }
+
+  // Conversion ligne par ligne
+  const vehicles: Vehicle[] = [];
+  const seenIds = new Set<string>();
+
+  for (let i = 0; i < dataRows.length; i++) {
+    const row = dataRows[i];
+    if (!row || row.every((c) => c == null || c === "")) continue; // ligne vide
+
+    const get = (field: keyof typeof COLUMN_SYNONYMS): unknown => {
+      const idx = fieldToColIdx[field];
+      return idx !== undefined ? row[idx] : null;
+    };
+
+    const brand = String(get("brand") ?? "").trim();
+    const model = String(get("model") ?? "").trim();
+    if (!brand && !model) continue; // ligne sans identification
+    if (!brand) {
+      warnings.push(`Ligne ${headerRowIdx + 2 + i} : marque manquante, ignorée.`);
+      continue;
+    }
+    if (!model) {
+      warnings.push(`Ligne ${headerRowIdx + 2 + i} : modèle manquant, ignorée.`);
+      continue;
+    }
+
+    const version = String(get("version") ?? "").trim();
+    let id = `imported_${brand}_${model}_${version}`
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "");
+    // Déduplication : si même clé, suffixe numérique
+    if (seenIds.has(id)) {
+      let n = 2;
+      while (seenIds.has(`${id}_${n}`)) n++;
+      id = `${id}_${n}`;
+    }
+    seenIds.add(id);
+
+    const vehicle: Vehicle = {
+      id,
+      brand,
+      model,
+      version,
+      category: String(get("category") ?? "").trim() || "Berline",
+      energy: detectEnergy(get("energy")),
+      batteryKwh: parseFrNumber(get("batteryKwh")),
+      rangeWltp: parseFrNumber(get("rangeWltp")),
+      powerHp: parseFrNumber(get("powerHp")),
+      consumption: parseFrNumber(get("consumption")),
+      co2: parseFrNumber(get("co2")),
+      fiscalHp: parseFrNumber(get("fiscalHp")),
+      priceTtc: parseFrNumber(get("priceTtc")),
+      monthlyLld: parseFrNumber(get("monthlyLld")),
+      image: "", // pas d'image → placeholder côté UI
+      custom: true, // marque le véhicule comme issu d'un import (badge dans VehicleCard)
+      trunkLitres: parseFrNumber(get("trunkLitres")) || undefined,
+      chargeDcMaxKw: parseFrNumber(get("chargeDcMaxKw")) || undefined,
+      chargeAcMaxKw: parseFrNumber(get("chargeAcMaxKw")) || undefined,
+      dimensions: String(get("dimensions") ?? "").trim() || undefined,
+      chargeTime2080Ac: String(get("chargeTime2080Ac") ?? "").trim() || undefined,
+      chargeTime2080Dc: String(get("chargeTime2080Dc") ?? "").trim() || undefined,
+    };
+
+    vehicles.push(vehicle);
+  }
+
+  if (vehicles.length === 0) {
+    warnings.unshift("Aucun véhicule importé. Vérifiez le contenu des colonnes Marque et Modèle.");
+  }
+
+  return {
+    vehicles,
+    detectedColumns,
+    warnings,
+    totalRows: dataRows.length,
+    importedRows: vehicles.length,
+  };
+}

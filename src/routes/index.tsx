@@ -25,6 +25,7 @@ import { VehicleSpotlight } from "@/components/vehicle-spotlight";
 import { VehicleComparator } from "@/components/vehicle-comparator";
 import { PdfTextEditor, usePdfTextOverrides } from "@/components/pdf-text-editor";
 import { generateProposalPdfV2 } from "@/lib/pdf-v2";
+import { CarPolicyImporter } from "@/components/car-policy-importer";
 import { LiveIndicator } from "@/components/live-indicator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MarginReviewDialog } from "@/components/margin-review-dialog";
@@ -111,6 +112,10 @@ function App() {
   // depuis VehicleSpotlight ou par toggle dans la liste. Le comparateur
   // n'apparaît que si compareIds contient au moins 2 véhicules.
   const [compareIds, setCompareIds] = useState<Set<string>>(new Set());
+  // Car policy importée depuis Excel/CSV — ÉPHÉMÈRE, state local uniquement.
+  // Vide au refresh, jamais persisté en Supabase ni localStorage. Ces
+  // véhicules sont disponibles pour la sélection en parallèle du catalogue.
+  const [importedVehicles, setImportedVehicles] = useState<Vehicle[]>([]);
   // Éditeur WYSIWYG des textes PDF, par devis.
   const [pdfTextEditorOpen, setPdfTextEditorOpen] = useState(false);
   const { overrides: pdfTextOverrides } = usePdfTextOverrides();
@@ -1120,6 +1125,28 @@ function App() {
                 </div>
               )}
             </CatalogSection>
+          )}
+
+          {/* Import Car Policy Client — encart sous le catalogue véhicules.
+              Permet d'importer la car policy actuelle du prospect (Excel/CSV)
+              sans toucher au catalogue Beev officiel ni à Supabase. State
+              éphémère uniquement (perdu au refresh). */}
+          {!tcoView && projectType === "vehicles" && (
+            <CarPolicyImporter
+              importedVehicles={importedVehicles}
+              onImported={setImportedVehicles}
+              onClear={() => setImportedVehicles([])}
+              onAddOne={(v) => toggleV(v)}
+              onRemoveOne={(id) => {
+                // Retire de selectedV mais conserve la disponibilité dans la liste importée
+                setSelectedV((prev) => {
+                  const next = { ...prev };
+                  delete next[id];
+                  return next;
+                });
+              }}
+              selectedIds={new Set(Object.keys(selectedV))}
+            />
           )}
 
           {/* Comparateur inline — visible quand >= 2 véhicules dans compareIds */}
