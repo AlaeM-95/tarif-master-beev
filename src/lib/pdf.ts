@@ -2869,6 +2869,18 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
 // Affichée uniquement si 2+ véhicules sont dans la sélection. Compare les
 // véhicules les uns par rapport aux autres (pas de référence essence).
 // Le véhicule le moins cher est mis en valeur en vert Beev.
+// Helper : libellé complet d'un véhicule (marque + modèle + version) avec
+// troncature optionnelle. Permet de distinguer 2 finitions du même modèle
+// dans les comparateurs TCO. Si la version est vide, on retourne juste
+// "MARQUE MODÈLE". Si maxLen est défini, on tronque proprement.
+function vehicleLabel(v: { brand: string; model: string; version?: string }, maxLen?: number): string {
+  const main = `${v.brand} ${v.model}`.trim();
+  const ver = (v.version ?? "").trim();
+  const full = ver ? `${main} · ${ver}` : main;
+  if (maxLen && full.length > maxLen) return full.slice(0, maxLen - 1) + "…";
+  return full;
+}
+
 // ============ TCO DASHBOARD (page de synthèse visuelle pour le mode TCO) ============
 // Page d'ouverture du PDF TCO standalone : 4 KPI cards en haut + barres
 // empilées par véhicule (loyer + énergie + TVS + malus) en bas. Permet au
@@ -2944,13 +2956,14 @@ function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
     {
       label: "MEILLEUR TCO",
       value: `${cheapest.par100km.toFixed(2)} €/100km`,
-      sub: `${cheapest.sv.vehicle.brand} ${cheapest.sv.vehicle.model}`.slice(0, 26),
+      // Version incluse pour distinguer 2 finitions du même modèle
+      sub: vehicleLabel(cheapest.sv.vehicle, 30),
       color: COLOR_ENERGIE,
     },
     {
       label: "TCO LE PLUS ÉLEVÉ",
       value: `${mostExpensive.par100km.toFixed(2)} €/100km`,
-      sub: `${mostExpensive.sv.vehicle.brand} ${mostExpensive.sv.vehicle.model}`.slice(0, 26),
+      sub: vehicleLabel(mostExpensive.sv.vehicle, 30),
       color: COLOR_MALUS,
     },
     {
@@ -3082,7 +3095,8 @@ function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
     theme: "plain",
     head: [["Véhicule", "Malus (achat)", "TVS (×durée)", "AND (×durée)", "AEN empl. (×durée)", "Coût empl. complet"]],
     body: rows.map((r) => [
-      `${r.sv.vehicle.brand} ${r.sv.vehicle.model}`,
+      // Marque + modèle + version pour distinguer 2 finitions du même modèle
+      vehicleLabel(r.sv.vehicle),
       { content: eur(r.malus), styles: { halign: "right" as any, textColor: r.malus > 0 ? LAVENDER : SUB, fontStyle: r.malus > 0 ? "bold" as any : "normal" as any } },
       { content: eur(r.tvs), styles: { halign: "right" as any, textColor: r.tvs > 0 ? LAVENDER : SUB, fontStyle: r.tvs > 0 ? "bold" as any : "normal" as any } },
       { content: eur(r.andTotal), styles: { halign: "right" as any } },
@@ -3184,7 +3198,9 @@ function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: Energy
       const andTotal = r.andAnnuel * duree;
       const aenTotal = r.partEmployeurAnnuelle * duree;
       return [
-        { content: `${sv.vehicle.brand} ${sv.vehicle.model}\n${sv.durationMonths} mois · ${(sv.kmPerYear / 1000).toFixed(0)}k km/an`, styles: { fontStyle: "bold" as any, fontSize: 8.5 } },
+        // Marque + modèle + version sur 1re ligne, durée/km sur 2e (séparation
+        // claire pour distinguer 2 finitions d'un même modèle dans le tableau).
+        { content: `${vehicleLabel(sv.vehicle)}\n${sv.durationMonths} mois · ${(sv.kmPerYear / 1000).toFixed(0)}k km/an`, styles: { fontStyle: "bold" as any, fontSize: 8.5 } },
         { content: eur(r.loyerTotal), styles: { halign: "right" as any } },
         { content: eur(r.coutEnergie), styles: { halign: "right" as any } },
         { content: eur(r.tvsTotal), styles: r.tvsTotal > 0
@@ -3892,16 +3908,21 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
     doc.setTextColor(isCheapest ? 255 : INK[0], isCheapest ? 255 : INK[1], isCheapest ? 255 : INK[2]);
     doc.text(String(idx + 1), colLabelX + 8, y + 11, { align: "center" });
 
+    // Ligne 1 : MARQUE MODÈLE (gras, gros)
+    // Ligne 2 : version + qté (sous-titre discret) — permet de distinguer
+    // 2 finitions du même modèle dans le ranking.
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(8.5);
     doc.setTextColor(...INK);
-    const maxLblChars = 18;
-    const lblShort = `${row.sv.vehicle.brand} ${row.sv.vehicle.model}`.slice(0, maxLblChars);
-    doc.text(lblShort, colLabelX + 20, y + 7);
+    const titleMaxChars = 22;
+    const titleLine = `${row.sv.vehicle.brand} ${row.sv.vehicle.model}`.slice(0, titleMaxChars);
+    doc.text(titleLine, colLabelX + 20, y + 7);
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(7);
     doc.setTextColor(...SUB);
-    doc.text(`× ${row.sv.quantity}${row.synced ? " · sync" : ""}`, colLabelX + 20, y + 17);
+    const versionShort = (row.sv.vehicle.version ?? "").slice(0, 30);
+    const subParts = [versionShort, `× ${row.sv.quantity}`, row.synced ? "sync" : null].filter(Boolean);
+    doc.text(subParts.join(" · "), colLabelX + 20, y + 17);
 
     // === Colonne barre (largeur clampée pour ne jamais déborder) ===
     const veBarW = Math.min(barAreaW - 4, (row.tco100 / maxTco) * (barAreaW - 4));
