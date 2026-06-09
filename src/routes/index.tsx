@@ -23,6 +23,7 @@ import { TechnicianQuoteImportDialog } from "@/components/technician-quote-impor
 import { B2B2ECalculator, useB2B2EInput } from "@/components/b2b2e-calculator";
 import { VehicleSpotlight } from "@/components/vehicle-spotlight";
 import { VehicleComparator } from "@/components/vehicle-comparator";
+import { PdfTextEditor, usePdfTextOverrides } from "@/components/pdf-text-editor";
 import { LiveIndicator } from "@/components/live-indicator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MarginReviewDialog } from "@/components/margin-review-dialog";
@@ -109,6 +110,9 @@ function App() {
   // depuis VehicleSpotlight ou par toggle dans la liste. Le comparateur
   // n'apparaît que si compareIds contient au moins 2 véhicules.
   const [compareIds, setCompareIds] = useState<Set<string>>(new Set());
+  // Éditeur WYSIWYG des textes PDF, par devis.
+  const [pdfTextEditorOpen, setPdfTextEditorOpen] = useState(false);
+  const { overrides: pdfTextOverrides } = usePdfTextOverrides();
   // Calculateur TCO B2B2E (Bornes domicile) — toggle d'inclusion PDF persisté
   const { input: b2b2eInput, update: setB2B2EInput, reset: resetB2B2EInput } = useB2B2EInput();
   const [b2b2eIncludeInPdf, setB2B2EIncludeInPdf] = useState<boolean>(() => {
@@ -533,6 +537,10 @@ function App() {
           chargers: freshChargers,
           pdfConfig: tcoFocusedConfig,
           b2b2eInput: projectType === "home" && b2b2eIncludeInPdf ? b2b2eInput : undefined,
+          // Surcharges WYSIWYG saisies par le commercial dans le PdfTextEditor.
+          // Stockées en localStorage par navigateur. Si vide, le PDF utilise
+          // les valeurs DB / fallback comme avant.
+          textOverrides: Object.keys(pdfTextOverrides).length > 0 ? pdfTextOverrides : undefined,
         }),
         timeout,
       ]);
@@ -861,6 +869,23 @@ function App() {
               <Presentation className="w-3.5 h-3.5" /> Présenter
             </Button>
 
+            {/* Bouton WYSIWYG : ouvre l'éditeur des textes PDF pour ce devis. */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPdfTextEditorOpen(true)}
+              disabled={visibleCount === 0}
+              className="gap-1.5 relative"
+              title="Personnaliser tous les textes du PDF avant génération"
+            >
+              <Sparkles className="w-3.5 h-3.5" /> Personnaliser
+              {Object.keys(pdfTextOverrides).length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-beev-rose text-beev-black text-[9px] font-bold rounded-full px-1.5 py-0.5">
+                  {Object.keys(pdfTextOverrides).length}
+                </span>
+              )}
+            </Button>
+
             {/* CTA primaire : PDF (lavande Beev) */}
             <Button size="sm" onClick={exportPdf} disabled={visibleCount === 0 || isGenerating} className="gap-1.5">
               {isGenerating ? (
@@ -872,6 +897,13 @@ function App() {
           </div>
         </div>
       </header>
+
+      {/* Dialog plein écran : éditeur WYSIWYG des textes PDF */}
+      <PdfTextEditor
+        open={pdfTextEditorOpen}
+        onOpenChange={setPdfTextEditorOpen}
+        projectType={projectType}
+      />
 
       <main className="container mx-auto px-6 pt-20 pb-8 grid gap-8 lg:grid-cols-[1fr_380px]">
         <div className="space-y-8">

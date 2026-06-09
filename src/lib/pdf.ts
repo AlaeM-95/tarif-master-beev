@@ -5,7 +5,7 @@ import { loadPdfSettings, hexToRgb } from "./pdf-settings";
 import { DEFAULT_PDF_CONFIG, type PdfDisplayConfig } from "./pdf-config";
 import { fetchTcoResultsForVehicles, type TcoResult } from "./tco-results";
 import { loadBeevPillars, type BeevPillar } from "./beev-pillars";
-import { loadPdfTexts, buildPdfTextMap, lookupText, lookupList, type PdfTextMap } from "./pdf-texts";
+import { loadPdfTexts, buildPdfTextMap, lookupText, lookupList, setPdfTextOverrides, type PdfTextMap } from "./pdf-texts";
 import { calculateTcoFull, calculateB2B2ETco, calculateMalusCO2, calculateMalusPoids, type B2B2ECalculatorInput } from "./tco-calculator";
 import type { EnergyParams } from "./store";
 
@@ -390,10 +390,18 @@ export async function generateProposalPdf(opts: {
   pdfConfig?: PdfDisplayConfig;
   /** Si fourni ET projet "home", insère la page TCO B2B2E dans le PDF. */
   b2b2eInput?: B2B2ECalculatorInput;
+  /** Overrides textes par devis (éditeur WYSIWYG). Clés "scope:slug",
+   *  valeurs string (text) ou string[] (list). Priorité max sur DB et
+   *  fallback. Reset à null après la génération pour ne pas polluer les
+   *  appels suivants. */
+  textOverrides?: import("./pdf-texts").PdfTextOverrides | null;
 }) {
-  const { projectType, client, vehicles, chargers, energy, pdfConfig, b2b2eInput } = opts;
+  const { projectType, client, vehicles, chargers, energy, pdfConfig, b2b2eInput, textOverrides } = opts;
   const cfg: PdfDisplayConfig = pdfConfig ?? DEFAULT_PDF_CONFIG;
   PDF_CFG = cfg; // expose la config pour les fonctions draw*
+  // Active les overrides texte pour ce devis (priorité max dans lookupText
+  // / lookupList). Reset en fin de fonction.
+  setPdfTextOverrides(textOverrides ?? null);
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   // Charge en parallèle : settings PDF, police, et résultats TCO depuis Supabase.
   // Le matching TCO est tolérant : ID exact OU (brand + model) pour gérer les
@@ -661,6 +669,9 @@ export async function generateProposalPdf(opts: {
   const safe = (s: string) => s.replace(/[^a-z0-9]+/gi, "_").slice(0, 40) || "client";
   const tag = projectType === "vehicles" ? "Vehicules" : projectType === "home" ? "Bornes_Domicile" : "Bornes_Site";
   doc.save(`Beev_${tag}_${safe(client.company)}_${client.date.replace(/\//g, "-")}.pdf`);
+  // Reset des overrides texte pour ne pas polluer les générations suivantes
+  // (un même processus peut générer plusieurs PDF pour plusieurs clients).
+  setPdfTextOverrides(null);
 }
 
 // ============ COVER ============

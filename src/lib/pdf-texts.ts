@@ -81,13 +81,40 @@ export function usePdfTextsMutations() {
 
 // Helper de lookup utilisé dans pdf.ts : retourne le texte pour un (scope, slug)
 // donné, ou la valeur de fallback hardcodée si la migration n'a pas été
-// appliquée. Lookup priorité : scope spécifique au type projet → scope 'common'.
+// appliquée. Lookup priorité : overrides par devis -> scope spécifique au
+// type projet -> scope 'common' -> fallback.
 export type PdfTextMap = Map<string, PdfText>;
+
+// Surcharges locales du devis courant : clé = "scope:slug", valeur = texte
+// (string pour text/multiline) ou tableau (list). Renseignées par le commercial
+// depuis l'éditeur WYSIWYG avant la génération du PDF, persistées en local
+// par devis. PRIORITÉ MAX sur tout (DB + fallback).
+export type PdfTextOverrides = Record<string, string | string[]>;
+let TEXT_OVERRIDES: PdfTextOverrides | null = null;
+export function setPdfTextOverrides(overrides: PdfTextOverrides | null) {
+  TEXT_OVERRIDES = overrides;
+}
+export function getPdfTextOverrides(): PdfTextOverrides | null {
+  return TEXT_OVERRIDES;
+}
 
 export function buildPdfTextMap(texts: PdfText[]): PdfTextMap {
   const map = new Map<string, PdfText>();
   for (const t of texts) map.set(`${t.scope}:${t.slug}`, t);
   return map;
+}
+
+function readOverrideText(scope: PdfTextScope, slug: string): string | null {
+  if (!TEXT_OVERRIDES) return null;
+  const v = TEXT_OVERRIDES[`${scope}:${slug}`] ?? TEXT_OVERRIDES[`common:${slug}`];
+  if (typeof v === "string") return v;
+  return null;
+}
+function readOverrideList(scope: PdfTextScope, slug: string): string[] | null {
+  if (!TEXT_OVERRIDES) return null;
+  const v = TEXT_OVERRIDES[`${scope}:${slug}`] ?? TEXT_OVERRIDES[`common:${slug}`];
+  if (Array.isArray(v)) return v;
+  return null;
 }
 
 export function lookupText(
@@ -96,6 +123,10 @@ export function lookupText(
   slug: string,
   fallback: string,
 ): string {
+  // 1) Override par devis (priorité max)
+  const o = readOverrideText(scope, slug);
+  if (o !== null) return o;
+  // 2) Valeur DB
   const entry = map.get(`${scope}:${slug}`) ?? map.get(`common:${slug}`);
   if (!entry || entry.kind === "list") return fallback;
   return entry.contentText ?? fallback;
@@ -107,6 +138,8 @@ export function lookupList(
   slug: string,
   fallback: string[],
 ): string[] {
+  const o = readOverrideList(scope, slug);
+  if (o !== null) return o;
   const entry = map.get(`${scope}:${slug}`) ?? map.get(`common:${slug}`);
   if (!entry || entry.kind !== "list") return fallback;
   return entry.contentList ?? fallback;
