@@ -46,6 +46,8 @@ function dbToVehicle(row: VehicleRow): Vehicle {
     tripartitePdfUrl: (row as any).tripartite_pdf_url ?? undefined,
     lastSyncAt: (row as any).last_sync_at ?? undefined,
     image: row.image ?? "",
+    gallery: Array.isArray((row as any).gallery) ? ((row as any).gallery as string[]) : undefined,
+    featured: (row as any).featured ?? false,
     services: Array.isArray(row.services) ? (row.services as string[]) : undefined,
   };
 }
@@ -92,6 +94,10 @@ function vehicleToDb(v: Vehicle): VehicleInsert {
   if (v.leadTime !== undefined) (row as any).lead_time = v.leadTime;
   if (v.tripartiteContract !== undefined) (row as any).tripartite_contract = v.tripartiteContract;
   if (v.tripartitePdfUrl !== undefined) (row as any).tripartite_pdf_url = v.tripartitePdfUrl;
+  // Galerie + featured (migration 038). Defensif : si la colonne n'existe pas
+  // encore en DB, on les évite simplement.
+  if (v.gallery !== undefined) (row as any).gallery = v.gallery;
+  if (v.featured !== undefined) (row as any).featured = v.featured;
   return row;
 }
 

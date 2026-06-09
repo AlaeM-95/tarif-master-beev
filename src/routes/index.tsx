@@ -21,6 +21,8 @@ import { ImageUpload } from "@/components/image-upload";
 import { FileUpload } from "@/components/file-upload";
 import { TechnicianQuoteImportDialog } from "@/components/technician-quote-import-dialog";
 import { B2B2ECalculator, useB2B2EInput } from "@/components/b2b2e-calculator";
+import { VehicleSpotlight } from "@/components/vehicle-spotlight";
+import { VehicleComparator } from "@/components/vehicle-comparator";
 import { LiveIndicator } from "@/components/live-indicator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MarginReviewDialog } from "@/components/margin-review-dialog";
@@ -59,7 +61,7 @@ export const Route = createFileRoute("/")({
 });
 
 function App() {
-  const { isAdmin, isOps, signOut } = useAuth();
+  const { isAdmin, isOps, isSales, signOut } = useAuth();
   // Pour la majorité des gates d'écriture (catalogue, pricing, templates PDF)
   // on utilise isOps (admin OU ops). isAdmin reste réservé aux actions
   // super-admin (gestion utilisateurs, etc. — pas exposées dans cette page).
@@ -68,7 +70,7 @@ function App() {
   const loadedProposalId = search.proposal;
   const { data: loadedProposal } = useProposal(loadedProposalId);
   const { save: saveProposal, proposals: allProposals, remove: removeProposal } = useProposals();
-  const { vehicles, update: updateVehicle, add: addVehicle, remove: removeVehicle, removeAll: removeAllVehicles, importMany: importVehicles } = useVehicles();
+  const { vehicles, update: updateVehicle, add: addVehicle, remove: removeVehicle, removeAll: removeAllVehicles, importMany: importVehicles, duplicate: duplicateVehicle } = useVehicles();
   // Offres loueurs (table leaser_offers — migration 018). Permet de pré-remplir
   // le loyer négocié à la sélection et d'afficher un badge "AYVENS 649€/mois"
   // sur la carte véhicule.
@@ -103,6 +105,10 @@ function App() {
   const [selectedV, setSelectedV] = useState<Record<string, SelectedVehicle>>({});
   const [selectedC, setSelectedC] = useState<Record<string, SelectedCharger>>({});
   const [presenting, setPresenting] = useState(false);
+  // IDs des véhicules à comparer. Initialisé vide, alimenté via boutons ajout
+  // depuis VehicleSpotlight ou par toggle dans la liste. Le comparateur
+  // n'apparaît que si compareIds contient au moins 2 véhicules.
+  const [compareIds, setCompareIds] = useState<Set<string>>(new Set());
   // Calculateur TCO B2B2E (Bornes domicile) — toggle d'inclusion PDF persisté
   const { input: b2b2eInput, update: setB2B2EInput, reset: resetB2B2EInput } = useB2B2EInput();
   const [b2b2eIncludeInPdf, setB2B2EIncludeInPdf] = useState<boolean>(() => {
@@ -894,6 +900,24 @@ function App() {
           )}
 
           {!tcoView && projectType === "vehicles" && (
+            <VehicleSpotlight
+              vehicles={vehicles}
+              onCompare={() => {
+                // Auto-sélectionne les 3 premiers véhicules pour démarrer
+                // la comparaison ; le commercial ajustera ensuite.
+                const featuredId = vehicles.find((x) => x.featured)?.id;
+                const ids = [featuredId, ...vehicles.filter((v) => v.id !== featuredId).slice(0, 2).map((v) => v.id)]
+                  .filter(Boolean) as string[];
+                setCompareIds(new Set(ids));
+                // scroll vers le comparateur
+                setTimeout(() => {
+                  document.getElementById("vehicle-comparator")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }, 100);
+              }}
+            />
+          )}
+
+          {!tcoView && projectType === "vehicles" && (
             <CatalogSection
               title={`Véhicules (${filteredVehicles.length}${filteredVehicles.length !== vehicles.length ? ` / ${vehicles.length}` : ""})`}
               subtitle={catalogSubtitleFor("vehicles")}
@@ -998,16 +1022,28 @@ function App() {
                 allVehicleCount={vehicles.length}
                 selectedV={selectedV}
                 onToggle={toggleV}
-                onUpdate={isOps ? updateVehicle : undefined}
+                onUpdate={isSales ? updateVehicle : undefined}
                 onDelete={isOps ? async (v) => {
                   if (selectedV[v.id]) toggleV(v);
                   const result = await removeVehicle(v.id);
                   if (result?.error) toast.error(`Échec suppression : ${result.error}`);
                   else toast.success(`${v.brand} ${v.model} supprimé définitivement`);
                 } : undefined}
+                onDuplicate={isSales ? async (v) => {
+                  const res = await duplicateVehicle(v.id);
+                  if (res.error) toast.error(`Échec duplication : ${res.error}`);
+                  else toast.success(`${v.brand} ${v.model} dupliqué — modifiez la copie pour personnaliser`);
+                } : undefined}
                 existingCategories={existingCategories}
                 leaserOffers={leaserOffers}
                 hasActiveSearch={!!vehicleSearch.trim()}
+                compareIds={compareIds}
+                onToggleCompare={(id) => setCompareIds((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(id)) next.delete(id);
+                  else next.add(id);
+                  return next;
+                })}
               />
               {filteredVehicles.length === 0 && vehicles.length > 0 && (
                 <div className="col-span-full text-center py-12 text-sm text-muted-foreground">
@@ -1015,6 +1051,21 @@ function App() {
                 </div>
               )}
             </CatalogSection>
+          )}
+
+          {/* Comparateur inline — visible quand >= 2 véhicules dans compareIds */}
+          {!tcoView && projectType === "vehicles" && compareIds.size >= 2 && (
+            <div id="vehicle-comparator">
+              <VehicleComparator
+                vehicles={vehicles.filter((v) => compareIds.has(v.id))}
+                onRemove={(id) => setCompareIds((prev) => {
+                  const next = new Set(prev);
+                  next.delete(id);
+                  return next;
+                })}
+                onClear={() => setCompareIds(new Set())}
+              />
+            </div>
           )}
 
           {projectType === "home" && (
@@ -1032,14 +1083,14 @@ function App() {
                 {chargersHome.map((c) => (
                   <ChargerCard key={c.id} charger={c} selected={!!selectedC[c.id]}
                     onToggle={() => toggleC(c)}
-                    onUpdate={isOps ? (p) => updateCharger(c.id, p) : undefined}
+                    onUpdate={isSales ? (p) => updateCharger(c.id, p) : undefined}
                     onDelete={isOps ? async () => {
                       if (selectedC[c.id]) toggleC(c);
                       const result = await removeCharger(c.id);
                       if (result?.error) toast.error(`Échec suppression : ${result.error}`);
                       else toast.success(`${c.brand} ${c.model} supprimée définitivement`);
                     } : undefined}
-                    onDuplicate={isOps ? async () => {
+                    onDuplicate={isSales ? async () => {
                       const res = await duplicateCharger(c.id);
                       if (res.error) toast.error(`Échec duplication : ${res.error}`);
                       else toast.success(`${c.brand} ${c.model} dupliquée — modifiez la copie pour personnaliser`);
@@ -1082,14 +1133,14 @@ function App() {
                 {chargersSite.map((c) => (
                   <ChargerCard key={c.id} charger={c} selected={!!selectedC[c.id]}
                     onToggle={() => toggleC(c)}
-                    onUpdate={isOps ? (p) => updateCharger(c.id, p) : undefined}
+                    onUpdate={isSales ? (p) => updateCharger(c.id, p) : undefined}
                     onDelete={isOps ? async () => {
                       if (selectedC[c.id]) toggleC(c);
                       const result = await removeCharger(c.id);
                       if (result?.error) toast.error(`Échec suppression : ${result.error}`);
                       else toast.success(`${c.brand} ${c.model} supprimée définitivement`);
                     } : undefined}
-                    onDuplicate={isOps ? async () => {
+                    onDuplicate={isSales ? async () => {
                       const res = await duplicateCharger(c.id);
                       if (res.error) toast.error(`Échec duplication : ${res.error}`);
                       else toast.success(`${c.brand} ${c.model} dupliquée — modifiez la copie pour personnaliser`);
@@ -1391,7 +1442,7 @@ function ClientCard({ client, setClient }: { client: any; setClient: (c: any) =>
 // Si l'utilisateur tape une recherche, les marques avec résultats sont
 // automatiquement dépliées pour rendre les véhicules trouvables.
 function VehicleCatalogByBrand({
-  vehicles, allVehicleCount, selectedV, onToggle, onUpdate, onDelete, existingCategories, leaserOffers, hasActiveSearch,
+  vehicles, allVehicleCount, selectedV, onToggle, onUpdate, onDelete, onDuplicate, existingCategories, leaserOffers, hasActiveSearch, compareIds, onToggleCompare,
 }: {
   vehicles: Vehicle[];
   allVehicleCount: number;
@@ -1399,9 +1450,12 @@ function VehicleCatalogByBrand({
   onToggle: (v: Vehicle) => void;
   onUpdate?: (id: string, patch: Partial<Vehicle>) => void | Promise<void>;
   onDelete?: (v: Vehicle) => void | Promise<void>;
+  onDuplicate?: (v: Vehicle) => void | Promise<void>;
   existingCategories: string[];
   leaserOffers: LeaserOffer[];
   hasActiveSearch: boolean;
+  compareIds?: Set<string>;
+  onToggleCompare?: (id: string) => void;
 }) {
   // Groupement par marque (trie alphabétique sauf BMW/Audi/Mercedes/Tesla en tête)
   const byBrand = useMemo(() => {
@@ -1487,8 +1541,11 @@ function VehicleCatalogByBrand({
                         onToggle={() => onToggle(v)}
                         onUpdate={onUpdate ? (p) => onUpdate(v.id, p) : undefined}
                         onDelete={onDelete ? () => onDelete(v) : undefined}
+                        onDuplicate={onDuplicate ? () => onDuplicate(v) : undefined}
                         existingCategories={existingCategories}
                         leaserOffers={leaserOffers.filter((o) => o.vehicleId === v.id)}
+                        isInCompare={compareIds?.has(v.id)}
+                        onToggleCompare={onToggleCompare ? () => onToggleCompare(v.id) : undefined}
                       />
                     ))}
                   </div>
@@ -2024,7 +2081,7 @@ function ConfirmDeleteButton({ label, onConfirm }: { label: string; onConfirm: (
   );
 }
 
-function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existingCategories = [], leaserOffers = [] }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Vehicle>) => void; onDelete?: () => void; existingCategories?: string[]; leaserOffers?: LeaserOffer[] }) {
+function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existingCategories = [], leaserOffers = [], isInCompare, onToggleCompare, onDuplicate }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Vehicle>) => void; onDelete?: () => void; existingCategories?: string[]; leaserOffers?: LeaserOffer[]; isInCompare?: boolean; onToggleCompare?: () => void; onDuplicate?: () => void }) {
   const [editing, setEditing] = useState(false);
   // Badge énergie — couleurs charte Beev 2026 (Rose / Bleu / Violet / Beige)
   const energyBadgeCls = vehicle.energy === "Électrique"
@@ -2086,6 +2143,17 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
           </div>
           <div className="flex items-center gap-1">
             {onDelete && <ConfirmDeleteButton label={`${vehicle.brand} ${vehicle.model}`} onConfirm={onDelete} />}
+            {onDuplicate && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onDuplicate}
+                className="text-foreground/70 hover:text-foreground hover:bg-muted gap-1"
+                title="Crée une copie modifiable de ce véhicule"
+              >
+                <Copy className="w-3.5 h-3.5" /> Dupliquer
+              </Button>
+            )}
             {onUpdate && <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)} className="text-foreground/70 hover:text-foreground hover:bg-muted">{editing ? "OK" : "Éditer"}</Button>}
           </div>
         </div>
@@ -2099,6 +2167,18 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
         >
           {selected ? (<><X className="w-4 h-4" /> Retirer de la sélection</>) : (<><Plus className="w-4 h-4" /> Ajouter à la sélection</>)}
         </Button>
+        {/* Toggle ajout au comparateur — visible si onToggleCompare passé */}
+        {onToggleCompare && (
+          <Button
+            type="button"
+            onClick={onToggleCompare}
+            variant={isInCompare ? "default" : "outline"}
+            size="sm"
+            className="w-full gap-2 text-xs"
+          >
+            {isInCompare ? (<>Retirer du comparateur</>) : (<>Ajouter au comparateur</>)}
+          </Button>
+        )}
         {/* Badges loueurs : 1 par offre disponible (durée / km / mensuel) */}
         {leaserOffers.length > 0 && (
           <div className="flex flex-wrap gap-1 pt-2 border-t border-border/50">
@@ -2174,8 +2254,53 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
               currentUrl={vehicle.image}
               onChange={(url) => onUpdate({ image: url })}
               folder="vehicles"
-              label="Photo du véhicule"
+              label="Photo principale (catalogue + PDF)"
             />
+            {/* Galerie additionnelle pour l'encart "Véhicule du moment" et le
+                comparateur. Max 4 photos (au-delà, ignorées). */}
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground uppercase">
+                Galerie additionnelle ({(vehicle.gallery ?? []).length} / 4)
+              </Label>
+              <p className="text-[10px] text-muted-foreground">
+                Photos affichées dans l'encart "Véhicule du moment" et le comparateur.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {(vehicle.gallery ?? []).map((url, i) => (
+                  <div key={i} className="relative aspect-[4/3] rounded-md overflow-hidden bg-muted">
+                    <img src={url} alt={`Galerie ${i + 1}`} className="w-full h-full object-contain p-1" />
+                    <button
+                      type="button"
+                      onClick={() => onUpdate({ gallery: (vehicle.gallery ?? []).filter((_, idx) => idx !== i) })}
+                      className="absolute top-1 right-1 w-5 h-5 rounded-full bg-destructive text-white grid place-content-center text-xs"
+                      title="Supprimer cette photo"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {(vehicle.gallery ?? []).length < 4 && (
+                <ImageUpload
+                  currentUrl=""
+                  onChange={(url) => {
+                    if (!url) return;
+                    onUpdate({ gallery: [...(vehicle.gallery ?? []), url].slice(0, 4) });
+                  }}
+                  folder="vehicles-gallery"
+                  label="Ajouter une photo"
+                />
+              )}
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer p-2 rounded-md hover:bg-muted">
+              <input
+                type="checkbox"
+                checked={vehicle.featured ?? false}
+                onChange={(e) => onUpdate({ featured: e.target.checked })}
+                className="h-4 w-4"
+              />
+              <span className="text-xs">Mettre en avant dans "Véhicule du moment" sur la home</span>
+            </label>
             <LongTxtField
               label="Services inclus (un par ligne)"
               value={(vehicle.services ?? []).join("\n")}

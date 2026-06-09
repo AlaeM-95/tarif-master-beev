@@ -170,6 +170,14 @@ export type Vehicle = {
   tripartitePdfUrl?: string;
   lastSyncAt?: string;
   image: string;
+  /** Galerie de photos additionnelles (URL Supabase Storage ou /images/...).
+   *  Utilisée par l'encart "Véhicule du moment" et le comparateur. La photo
+   *  principale `image` reste séparée pour la card catalogue / le PDF. */
+  gallery?: string[];
+  /** Si true, ce véhicule est mis en avant dans l'encart "Véhicule du moment"
+   *  sur la home commerciale. Un seul véhicule peut être featured à la fois
+   *  côté UI — si plusieurs, le premier de la liste gagne. */
+  featured?: boolean;
   services?: string[];
   custom?: boolean;
 };
