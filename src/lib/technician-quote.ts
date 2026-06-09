@@ -117,7 +117,9 @@ function repairCommonFragments(text: string): string {
   return out;
 }
 
-const UNIT_REGEX = "(?:forfait|forfaits|article|articles|ml|ens|kit|jours?|j|heures?|h|pi[èe]ces?|unit[ée]s?|m[èe]tres?|u\\b|m\\b)";
+// `uni\b` couvre l'abréviation "Uni" (3 lettres) utilisée par certains
+// devis (ex. IRO Energie Bretagne) sans matcher "univers", "uniforme", etc.
+const UNIT_REGEX = "(?:forfait|forfaits|article|articles|ml|ens|kit|jours?|j|heures?|h|pi[èe]ces?|unit[ée]s?|uni\\b|m[èe]tres?|u\\b|m\\b)";
 
 // Queue de ligne format A : qty UNIT PU TVA% total (style Talent Tech)
 const LINE_TAIL_WITH_UNIT = new RegExp(
@@ -130,6 +132,17 @@ const LINE_TAIL_WITH_UNIT = new RegExp(
 // décimales pour éviter de matcher de fausses lignes (ex. adresse postale).
 const LINE_TAIL_NO_UNIT = new RegExp(
   `(\\d+(?:[.,]\\d{1,3})?)\\s+([\\d\\s\\u00a0]+[.,]\\d{2})\\s+(\\d{1,2})\\s*%\\s+([\\d\\s\\u00a0]+[.,]\\d{2})`,
+  "i",
+);
+
+// Queue de ligne format C : UNIT PU€ qty total€ (style IRO Energie Bretagne)
+// - Pas de colonne TVA % (TVA calculée globalement en bas du devis)
+// - Montants entiers ou décimaux acceptés (« 870€ », « 96,50€ »)
+// - Symbole € obligatoire sur PU ET sur total pour cibler ce format précisément
+//   (sans le €, on matcherait des séquences numériques bénignes du label)
+// - Ordre des colonnes : Unité, PU, Qté, Total (contrairement aux formats A/B)
+const LINE_TAIL_UNIT_NO_VAT = new RegExp(
+  `\\b(${UNIT_REGEX})\\s+([\\d\\s\\u00a0]+(?:[.,]\\d{1,2})?)\\s*€\\s+(\\d+(?:[.,]\\d{1,3})?)\\s+([\\d\\s\\u00a0]+(?:[.,]\\d{1,2})?)\\s*€`,
   "i",
 );
 
@@ -217,9 +230,14 @@ function detectMeta(text: string): { supplier: string; quoteNumber: string; quot
     quoteDate = `${y}-${m}-${d}`;
   }
 
+  // Total HT — accepte montants avec ou sans décimales (« 3 646,00 € »
+   // ou « 3646 € »). On essaie en priorité les variantes avec décimales pour
+   // éviter de matcher accidentellement un fragment de numéro de TVA / SIRET.
   const totalCandidates = [
     /Total\s+HT\s*[:.]?\s*([\d\s ]+[.,]\d{2})\s*€?/i,
     /Montant\s+HT\s*[:.]?\s*([\d\s ]+[.,]\d{2})\s*€?/i,
+    /Total\s+HT\s*[:.]?\s*([\d\s ]+)\s*€/i,
+    /Montant\s+HT\s*[:.]?\s*([\d\s ]+)\s*€/i,
   ];
   let totalHt = 0;
   for (const re of totalCandidates) {
@@ -267,10 +285,12 @@ function detectLines(rawText: string): { lines: ParsedQuoteLine[]; warnings: str
       continue;
     }
 
-    // On essaie d'abord le format A (avec unité forfait/article/…), puis le
-    // format B (sans unité, ex. SASU FIR Energies). Le premier qui matche
-    // gagne. Le format B est plus permissif donc on le teste en second pour
-    // éviter de faux positifs.
+    // On essaie successivement les 3 formats connus, du plus strict (donc le
+    // moins faux-positifs) au plus permissif :
+    //  A : qty UNIT PU TVA% total  (Talent Tech)
+    //  B : qty PU TVA% total       (FIR Energies, sans colonne unité)
+    //  C : UNIT PU€ qty total€     (IRO Energie Bretagne, sans TVA par ligne)
+    // Le premier qui matche gagne.
     let qtyStr: string | undefined;
     let unitStr: string | undefined;
     let puStr: string | undefined;
@@ -281,11 +301,33 @@ function detectLines(rawText: string): { lines: ParsedQuoteLine[]; warnings: str
       [, qtyStr, unitStr, puStr, , totalStr] = tailA;
       matchIndex = tailA.index!;
     } else {
-      const tailB = line.match(LINE_TAIL_NO_UNIT);
-      if (tailB) {
-        [, qtyStr, puStr, , totalStr] = tailB;
-        unitStr = "u"; // unité par défaut quand le devis n'en fournit pas
-        matchIndex = tailB.index!;
+      const tailC = line.match(LINE_TAIL_UNIT_NO_VAT);
+      if (tailC) {
+        // Format C : on extrait UNIT, PU, QTÉ, TOTAL (dans cet ordre)
+        [, unitStr, puStr, qtyStr, totalStr] = tailC;
+        matchIndex = tailC.index!;
+        // Cohérence : qty × PU doit approcher total (tolérance 5 % ou 1 €
+        // selon le plus grand) — sinon on rejette pour éviter un faux positif
+        const qtyCheck = parseFrNumber(qtyStr);
+        const puCheck = parseFrNumber(puStr);
+        const totCheck = parseFrNumber(totalStr);
+        if (totCheck > 0) {
+          const expected = qtyCheck * puCheck;
+          const tolerance = Math.max(1, totCheck * 0.05);
+          if (Math.abs(expected - totCheck) > tolerance) {
+            // pas cohérent → on retombe sur le format B
+            qtyStr = unitStr = puStr = totalStr = undefined;
+            matchIndex = -1;
+          }
+        }
+      }
+      if (!qtyStr) {
+        const tailB = line.match(LINE_TAIL_NO_UNIT);
+        if (tailB) {
+          [, qtyStr, puStr, , totalStr] = tailB;
+          unitStr = "u"; // unité par défaut quand le devis n'en fournit pas
+          matchIndex = tailB.index!;
+        }
       }
     }
 
