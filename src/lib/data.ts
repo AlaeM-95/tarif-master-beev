@@ -233,7 +233,34 @@ export function useVehiclesData() {
     invalidate();
   };
 
-  return { vehicles, isLoading, update, add, remove, removeAll, importMany };
+  // Duplique un véhicule : nouveau UUID, suffixe " (copie)" sur la version
+  // (visible mais pas écrasant pour la marque/modèle), position juste après
+  // l'original. Le commercial édite ensuite les champs à modifier.
+  const duplicate = async (id: string): Promise<{ error: string | null; newId?: string }> => {
+    const source = vehicles.find((v) => v.id === id);
+    if (!source) return { error: "Véhicule introuvable" };
+    const newId = `dup_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    const sourceIdx = vehicles.findIndex((v) => v.id === id);
+    const newPosition = sourceIdx >= 0 ? sourceIdx + 2 : vehicles.length + 1;
+    const copy: Vehicle = {
+      ...source,
+      id: newId,
+      version: `${source.version || "Version"} (copie)`,
+      custom: true,
+    };
+    const { error } = await supabase
+      .from("vehicles")
+      .insert({ ...vehicleToDb(copy), position: newPosition });
+    if (error) {
+      console.error("Erreur duplicate vehicle:", error);
+      return { error: error.message };
+    }
+    await qc.invalidateQueries({ queryKey: ["vehicles"] });
+    await qc.refetchQueries({ queryKey: ["vehicles"] });
+    return { error: null, newId };
+  };
+
+  return { vehicles, isLoading, update, add, remove, removeAll, importMany, duplicate };
 }
 
 // ===== HOOK BORNES =====
@@ -317,5 +344,34 @@ export function useChargersData() {
     return { error: null };
   };
 
-  return { chargers, isLoading, update, add, remove, removeAllByDeployment };
+  // Duplique une borne : nouveau UUID, suffixe " (copie)" sur le modèle,
+  // position juste après l'original. Le commercial édite ensuite la copie.
+  const duplicate = async (id: string): Promise<{ error: string | null; newId?: string }> => {
+    const source = chargers.find((c) => c.id === id);
+    if (!source) return { error: "Borne introuvable" };
+    const newId = `dup_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    const sourceIdx = chargers.findIndex((c) => c.id === id);
+    const newPosition = sourceIdx >= 0 ? sourceIdx + 2 : chargers.length + 1;
+    const copy: Charger = {
+      ...source,
+      id: newId,
+      model: `${source.model} (copie)`,
+      custom: true,
+    };
+    const row = { ...chargerToDb(copy), position: newPosition } as any;
+    let { error } = await supabase.from("chargers").insert(row);
+    if (error && /warranty/i.test(error.message ?? "")) {
+      const { warranty: _drop, ...rest } = row;
+      ({ error } = await supabase.from("chargers").insert(rest));
+    }
+    if (error) {
+      console.error("Erreur duplicate charger:", error);
+      return { error: error.message };
+    }
+    await qc.invalidateQueries({ queryKey: ["chargers"] });
+    await qc.refetchQueries({ queryKey: ["chargers"] });
+    return { error: null, newId };
+  };
+
+  return { chargers, isLoading, update, add, remove, removeAllByDeployment, duplicate };
 }

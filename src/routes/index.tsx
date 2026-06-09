@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles } from "lucide-react";
+import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type EnergyParams } from "@/lib/store";
 import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
@@ -73,7 +73,7 @@ function App() {
   // le loyer négocié à la sélection et d'afficher un badge "AYVENS 649€/mois"
   // sur la carte véhicule.
   const { offers: leaserOffers } = useLeaserOffers();
-  const { chargers, update: updateCharger, add: addCharger, remove: removeCharger, removeAllByDeployment } = useChargers();
+  const { chargers, update: updateCharger, add: addCharger, remove: removeCharger, removeAllByDeployment, duplicate: duplicateCharger } = useChargers();
   const { energy, set: setEnergy, reset: resetEnergy } = useEnergy();
   const { projectType, setProjectType } = useProjectType();
   // Mode TCO : 4e onglet du sélecteur. UI uniquement, projectType en DB
@@ -1039,6 +1039,11 @@ function App() {
                       if (result?.error) toast.error(`Échec suppression : ${result.error}`);
                       else toast.success(`${c.brand} ${c.model} supprimée définitivement`);
                     } : undefined}
+                    onDuplicate={isOps ? async () => {
+                      const res = await duplicateCharger(c.id);
+                      if (res.error) toast.error(`Échec duplication : ${res.error}`);
+                      else toast.success(`${c.brand} ${c.model} dupliquée — modifiez la copie pour personnaliser`);
+                    } : undefined}
                   />
                 ))}
               </div>
@@ -1083,6 +1088,11 @@ function App() {
                       const result = await removeCharger(c.id);
                       if (result?.error) toast.error(`Échec suppression : ${result.error}`);
                       else toast.success(`${c.brand} ${c.model} supprimée définitivement`);
+                    } : undefined}
+                    onDuplicate={isOps ? async () => {
+                      const res = await duplicateCharger(c.id);
+                      if (res.error) toast.error(`Échec duplication : ${res.error}`);
+                      else toast.success(`${c.brand} ${c.model} dupliquée — modifiez la copie pour personnaliser`);
                     } : undefined}
                   />
                 ))}
@@ -2179,7 +2189,7 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
   );
 }
 
-function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { charger: Charger; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Charger>) => void; onDelete?: () => void }) {
+function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete, onDuplicate }: { charger: Charger; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Charger>) => void; onDelete?: () => void; onDuplicate?: () => void }) {
   const [editing, setEditing] = useState(false);
   const isHome = charger.deployment === "domicile";
   const hasImage = Boolean(charger.image && charger.image.trim() !== "");
@@ -2233,6 +2243,17 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete }: { char
         </ul>
         <div className="flex items-center justify-end gap-1 pt-1 border-t border-border/50 pt-3">
           {onDelete && <ConfirmDeleteButton label={`${charger.brand} ${charger.model}`} onConfirm={onDelete} />}
+          {onDuplicate && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onDuplicate}
+              className="text-foreground/70 hover:text-foreground hover:bg-muted gap-1"
+              title="Crée une copie modifiable de cette borne"
+            >
+              <Copy className="w-3.5 h-3.5" /> Dupliquer
+            </Button>
+          )}
           {onUpdate && <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)} className="text-foreground/70 hover:text-foreground hover:bg-muted">{editing ? "OK" : "Éditer"}</Button>}
         </div>
         {/* CTA explicite Ajouter / Retirer — charte Beev */}

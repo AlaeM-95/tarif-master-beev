@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Search, Plus, Trash2, Star, Pencil, Filter, Package, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Search, Plus, Trash2, Star, Pencil, Filter, Package, Sparkles, X, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +30,7 @@ function AdminVehiclesPage() {
     if (!loading && !isOps) navigate({ to: "/login" });
   }, [loading, isOps, navigate]);
 
-  const { vehicles, update: updateVehicle, remove: removeVehicle } = useVehicles();
+  const { vehicles, update: updateVehicle, remove: removeVehicle, duplicate: duplicateVehicle } = useVehicles();
   const { offers } = useLeaserOffers();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKind>("all");
@@ -215,9 +215,28 @@ function AdminVehiclesPage() {
                           )}
                         </td>
                         <td className="py-2 px-3">
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingId(v.id)} title="Éditer">
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
+                          <div className="flex items-center gap-0.5">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingId(v.id)} title="Éditer">
+                              <Pencil className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={async () => {
+                                const res = await duplicateVehicle(v.id);
+                                if (res.error) toast.error(`Échec duplication : ${res.error}`);
+                                else {
+                                  toast.success(`${v.brand} ${v.model} dupliqué`, { duration: 2000 });
+                                  // Ouvre directement la copie en édition pour la modifier
+                                  if (res.newId) setEditingId(res.newId);
+                                }
+                              }}
+                              title="Dupliquer ce véhicule"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     );
