@@ -1640,11 +1640,26 @@ function TopShortlistSection({
                 onClick={() => onToggle(v)}
                 className={`text-left rounded-lg border bg-white p-3 transition-all hover:shadow-md ${selected ? "ring-2 ring-primary border-primary" : ""}`}
               >
-                {v.image && (
-                  <div className="aspect-video bg-muted rounded mb-2 overflow-hidden">
-                    <img src={v.image} alt="" className="w-full h-full object-contain p-1" />
-                  </div>
-                )}
+                {/* Zone image toujours rendue : si v.image absent OU 404,
+                    on bascule sur un placeholder (svg) plutôt que rien. */}
+                <div className="aspect-video bg-white rounded mb-2 overflow-hidden border border-border/40 flex items-center justify-center">
+                  {v.image ? (
+                    <img
+                      src={v.image}
+                      alt={`${v.brand} ${v.model}`}
+                      className="w-full h-full object-contain p-1"
+                      loading="lazy"
+                      onError={(e) => {
+                        // En cas de 404 / erreur réseau, remplace par le placeholder
+                        const img = e.currentTarget;
+                        if (img.src.endsWith("/images/placeholder.svg")) return;
+                        img.src = "/images/placeholder.svg";
+                      }}
+                    />
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground italic">Photo à venir</span>
+                  )}
+                </div>
                 <p className="text-xs font-semibold truncate">{v.brand} {v.model}</p>
                 <p className="text-[10px] text-muted-foreground truncate">{v.version || v.category}</p>
                 {best ? (
@@ -2249,6 +2264,17 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
                 onChange={(s) => onUpdate({ category: s })}
                 existingCategories={existingCategories}
               />
+            </div>
+            {/* Specs étendues — affichées sur fiche produit PDF + comparateur */}
+            <div className="grid grid-cols-3 gap-2">
+              <NumField label="Coffre (L)" value={vehicle.trunkLitres ?? 0} onChange={(n) => onUpdate({ trunkLitres: n })} />
+              <NumField label="Recharge DC max (kW)" value={vehicle.chargeDcMaxKw ?? 0} onChange={(n) => onUpdate({ chargeDcMaxKw: n })} step={0.1} />
+              <NumField label="Recharge AC max (kW)" value={vehicle.chargeAcMaxKw ?? 0} onChange={(n) => onUpdate({ chargeAcMaxKw: n })} step={0.1} />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <TxtField label="Dimensions (L × l × H)" value={vehicle.dimensions ?? ""} onChange={(s) => onUpdate({ dimensions: s })} />
+              <TxtField label="Recharge 20-80% AC" value={vehicle.chargeTime2080Ac ?? ""} onChange={(s) => onUpdate({ chargeTime2080Ac: s })} />
+              <TxtField label="Recharge 20-80% DC" value={vehicle.chargeTime2080Dc ?? ""} onChange={(s) => onUpdate({ chargeTime2080Dc: s })} />
             </div>
             <ImageUpload
               currentUrl={vehicle.image}

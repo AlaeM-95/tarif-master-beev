@@ -2420,6 +2420,13 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       ...(PDF_CFG.showVehicleCo2 ? [["CO2", `${v.co2} g/km`]] : []),
       ...(PDF_CFG.showVehicleFiscalHp ? [["Puissance fiscale", `${v.fiscalHp} CV`]] : []),
       ...(PDF_CFG.showVehicleEnvScore && v.envScore !== undefined ? [["Score environnemental", `${v.envScore} / 100`]] : []),
+      // Specs étendues (migration 039) — affichées seulement si renseignées
+      ...(v.trunkLitres ? [["Volume de coffre", `${v.trunkLitres} L`]] : []),
+      ...(v.chargeAcMaxKw ? [["Recharge AC max", `${v.chargeAcMaxKw} kW`]] : []),
+      ...(v.chargeDcMaxKw ? [["Recharge DC max", `${v.chargeDcMaxKw} kW`]] : []),
+      ...(v.chargeTime2080Ac ? [["Recharge 20-80 % AC", v.chargeTime2080Ac]] : []),
+      ...(v.chargeTime2080Dc ? [["Recharge 20-80 % DC", v.chargeTime2080Dc]] : []),
+      ...(v.dimensions ? [["Dimensions", v.dimensions]] : []),
     ],
     headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT },
     bodyStyles: { fontSize: 9.5, cellPadding: 6, textColor: INK, lineColor: RULE, font: BRAND_FONT },
@@ -3615,16 +3622,18 @@ function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[]) {
     format?: (val: number | string) => string;
   };
 
+  // Lignes du comparateur PDF dans l'ordre demandé par le commercial.
+  // Loyer LLD affiché en TTC (HT × 1,20) pour matcher la convention client.
   const rows: Row[] = [
     {
-      label: "Prix TTC",
+      label: "Prix catalogue TTC",
       values: items.map((sv) => sv.vehicle.priceTtc),
       bestDir: "asc",
       format: (n) => eur(Number(n)),
     },
     {
-      label: "Loyer LLD HT",
-      values: items.map((sv) => sv.negotiatedMonthly ?? sv.vehicle.monthlyLld),
+      label: "Loyer LLD TTC",
+      values: items.map((sv) => (sv.negotiatedMonthly ?? sv.vehicle.monthlyLld) * 1.20),
       bestDir: "asc",
       format: (n) => `${eur(Number(n))}/mois`,
     },
@@ -3635,32 +3644,10 @@ function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[]) {
       format: (n) => `${n} km`,
     },
     {
-      label: "Batterie",
-      values: items.map((sv) => sv.vehicle.batteryKwh),
-      format: (n) => `${n} kWh`,
-    },
-    {
-      label: "Puissance",
-      values: items.map((sv) => sv.vehicle.powerHp),
-      format: (n) => `${n} ch`,
-    },
-    {
       label: "Consommation",
       values: items.map((sv) => sv.vehicle.consumption),
       bestDir: "asc",
       format: (n) => `${n} kWh/100km`,
-    },
-    {
-      label: "CO2",
-      values: items.map((sv) => sv.vehicle.energy === "Électrique" ? 0 : (sv.vehicle.co2 ?? 0)),
-      bestDir: "asc",
-      format: (n) => `${n} g/km`,
-    },
-    {
-      label: "Puissance fiscale",
-      values: items.map((sv) => sv.vehicle.fiscalHp),
-      bestDir: "asc",
-      format: (n) => `${n} CV`,
     },
     {
       label: "Catégorie",
@@ -3669,6 +3656,36 @@ function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[]) {
     {
       label: "Énergie",
       values: items.map((sv) => sv.vehicle.energy),
+    },
+    {
+      label: "Volume de coffre",
+      values: items.map((sv) => sv.vehicle.trunkLitres ?? "—"),
+      bestDir: "desc",
+      format: (n) => typeof n === "number" ? `${n} L` : String(n),
+    },
+    {
+      label: "Recharge DC max",
+      values: items.map((sv) => sv.vehicle.chargeDcMaxKw ?? "—"),
+      bestDir: "desc",
+      format: (n) => typeof n === "number" ? `${n} kW` : String(n),
+    },
+    {
+      label: "Recharge AC max",
+      values: items.map((sv) => sv.vehicle.chargeAcMaxKw ?? "—"),
+      bestDir: "desc",
+      format: (n) => typeof n === "number" ? `${n} kW` : String(n),
+    },
+    {
+      label: "Dimensions",
+      values: items.map((sv) => sv.vehicle.dimensions ?? "—"),
+    },
+    {
+      label: "Recharge 20-80 % AC",
+      values: items.map((sv) => sv.vehicle.chargeTime2080Ac ?? "—"),
+    },
+    {
+      label: "Recharge 20-80 % DC",
+      values: items.map((sv) => sv.vehicle.chargeTime2080Dc ?? "—"),
     },
   ];
 

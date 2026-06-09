@@ -48,6 +48,12 @@ function dbToVehicle(row: VehicleRow): Vehicle {
     image: row.image ?? "",
     gallery: Array.isArray((row as any).gallery) ? ((row as any).gallery as string[]) : undefined,
     featured: (row as any).featured ?? false,
+    trunkLitres: (row as any).trunk_litres ?? undefined,
+    chargeDcMaxKw: (row as any).charge_dc_max_kw ?? undefined,
+    chargeAcMaxKw: (row as any).charge_ac_max_kw ?? undefined,
+    dimensions: (row as any).dimensions ?? undefined,
+    chargeTime2080Ac: (row as any).charge_time_2080_ac ?? undefined,
+    chargeTime2080Dc: (row as any).charge_time_2080_dc ?? undefined,
     services: Array.isArray(row.services) ? (row.services as string[]) : undefined,
   };
 }
@@ -98,6 +104,13 @@ function vehicleToDb(v: Vehicle): VehicleInsert {
   // encore en DB, on les évite simplement.
   if (v.gallery !== undefined) (row as any).gallery = v.gallery;
   if (v.featured !== undefined) (row as any).featured = v.featured;
+  // Specs étendues (migration 039)
+  if (v.trunkLitres !== undefined) (row as any).trunk_litres = v.trunkLitres;
+  if (v.chargeDcMaxKw !== undefined) (row as any).charge_dc_max_kw = v.chargeDcMaxKw;
+  if (v.chargeAcMaxKw !== undefined) (row as any).charge_ac_max_kw = v.chargeAcMaxKw;
+  if (v.dimensions !== undefined) (row as any).dimensions = v.dimensions;
+  if (v.chargeTime2080Ac !== undefined) (row as any).charge_time_2080_ac = v.chargeTime2080Ac;
+  if (v.chargeTime2080Dc !== undefined) (row as any).charge_time_2080_dc = v.chargeTime2080Dc;
   return row;
 }
 

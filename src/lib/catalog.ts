@@ -170,6 +170,18 @@ export type Vehicle = {
   tripartitePdfUrl?: string;
   lastSyncAt?: string;
   image: string;
+  /** Volume de coffre en litres (norme VDA). */
+  trunkLitres?: number;
+  /** Puissance maximale de recharge DC (rapide) en kW. */
+  chargeDcMaxKw?: number;
+  /** Puissance maximale de recharge AC (lente / borne) en kW. */
+  chargeAcMaxKw?: number;
+  /** Dimensions extérieures texte libre, ex : "4 750 × 1 850 × 1 620 mm". */
+  dimensions?: string;
+  /** Durée recharge 20 -> 80 % en AC (ex. "8h00"). */
+  chargeTime2080Ac?: string;
+  /** Durée recharge 20 -> 80 % en DC rapide (ex. "28 min"). */
+  chargeTime2080Dc?: string;
   /** Galerie de photos additionnelles (URL Supabase Storage ou /images/...).
    *  Utilisée par l'encart "Véhicule du moment" et le comparateur. La photo
    *  principale `image` reste séparée pour la card catalogue / le PDF. */

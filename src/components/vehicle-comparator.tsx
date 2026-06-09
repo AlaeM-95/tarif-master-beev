@@ -24,17 +24,20 @@ type Row = {
   format?: (val: string | number) => string;
 };
 
+// Loyer LLD TTC = HT × 1,20 (convention client).
 const ROWS: Row[] = [
-  { label: "Prix TTC", get: (v) => v.priceTtc, bestDir: "asc", format: (n) => fmtEur(Number(n)), highlight: true },
-  { label: "Loyer LLD", get: (v) => v.monthlyLld, bestDir: "asc", format: (n) => `${fmtEur(Number(n))}/mois`, highlight: true },
+  { label: "Prix catalogue TTC", get: (v) => v.priceTtc, bestDir: "asc", format: (n) => fmtEur(Number(n)), highlight: true },
+  { label: "Loyer LLD TTC", get: (v) => v.monthlyLld * 1.20, bestDir: "asc", format: (n) => `${fmtEur(Number(n))}/mois`, highlight: true },
   { label: "Autonomie WLTP", get: (v) => v.rangeWltp, bestDir: "desc", format: (n) => `${n} km`, highlight: true },
-  { label: "Batterie", get: (v) => v.batteryKwh, format: (n) => `${n} kWh` },
-  { label: "Puissance", get: (v) => v.powerHp, format: (n) => `${n} ch` },
   { label: "Consommation", get: (v) => v.consumption, bestDir: "asc", format: (n) => `${n} kWh/100km`, highlight: true },
-  { label: "CO₂", get: (v) => v.co2, bestDir: "asc", format: (n) => `${n} g/km` },
-  { label: "Puissance fiscale", get: (v) => v.fiscalHp, bestDir: "asc", format: (n) => `${n} CV` },
   { label: "Catégorie", get: (v) => v.category },
   { label: "Énergie", get: (v) => v.energy },
+  { label: "Volume de coffre", get: (v) => v.trunkLitres ?? "—", bestDir: "desc", format: (n) => typeof n === "number" ? `${n} L` : String(n), highlight: true },
+  { label: "Recharge DC max", get: (v) => v.chargeDcMaxKw ?? "—", bestDir: "desc", format: (n) => typeof n === "number" ? `${n} kW` : String(n), highlight: true },
+  { label: "Recharge AC max", get: (v) => v.chargeAcMaxKw ?? "—", bestDir: "desc", format: (n) => typeof n === "number" ? `${n} kW` : String(n), highlight: true },
+  { label: "Dimensions", get: (v) => v.dimensions ?? "—" },
+  { label: "Recharge 20-80 % AC", get: (v) => v.chargeTime2080Ac ?? "—" },
+  { label: "Recharge 20-80 % DC", get: (v) => v.chargeTime2080Dc ?? "—" },
 ];
 
 function findBest(values: number[], dir: "asc" | "desc"): number {
