@@ -9,6 +9,7 @@ export type PdfDisplayConfig = {
   showWhyBeev: boolean;
   showSocialProof: boolean; // chiffres clés + témoignage sur Pourquoi Beev
   showTcoComparison: boolean; // page comparaison TCO multi-véhicules
+  showVehicleComparator: boolean; // page comparateur multi-véhicules (specs côte à côte)
   showFinancialSummary: boolean; // page synthèse HT/TVA/TTC
   showGuarantees: boolean; // page garanties Beev
   showJourney: boolean; // page parcours client
@@ -51,6 +52,7 @@ export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
   showWhyBeev: true,
   showSocialProof: true,
   showTcoComparison: true,
+  showVehicleComparator: true,
   showFinancialSummary: false, // retirée sur demande utilisateur (info déjà dans le récap site)
   showGuarantees: true,
   showJourney: true,
@@ -133,6 +135,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
       { key: "showWhyBeev", label: "Page Pourquoi Beev", description: "Intro, proposition de valeur" },
       { key: "showSocialProof", label: "Chiffres clés + témoignage", description: "Encart noir + citation client" },
       { key: "showTcoComparison", label: "Comparaison TCO flotte", description: "Page synthèse si 2+ véhicules", appliesTo: ["vehicles"] as unknown as string[] } as any,
+      { key: "showVehicleComparator", label: "Comparateur véhicules", description: "Tableau comparatif specs côte à côte (prix, autonomie, conso, fiscalité) si 2+ véhicules", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showCarbonImpact", label: "Bilan carbone (RSE)", description: "Page CO2 évité + équivalences (avion, arbres, km)", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showFinancialSummary", label: "Synthèse HT / TVA / TTC", description: "Tableau récap financier" },
       { key: "showGuarantees", label: "Garanties Beev", description: "3 piliers d'engagement" },

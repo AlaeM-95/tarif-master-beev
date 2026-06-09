@@ -578,6 +578,14 @@ export async function generateProposalPdf(opts: {
     drawSiteSupervision(doc, "beev_connect");
   }
 
+  // Page comparateur véhicules (specs côte à côte) — toggleable, indépendante
+  // du TCO. Affichée dès 2+ véhicules dans la sélection commerciale.
+  if (cfg.showVehicleComparator && v.length >= 2) {
+    doc.addPage();
+    drawHeader(doc, client, "vehicles");
+    drawVehicleComparator(doc, v);
+  }
+
   // Page comparaison TCO multi-véhicules (toggleable) — toujours si 2+ véhicules
   if (cfg.showTcoComparison && v.length >= 2 && v.some((sv) => sv.includeTco)) {
     // 1) Tableau de bord visuel (KPI cards + barres empilées) en ouverture
@@ -3568,6 +3576,185 @@ function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
   doc.text(
     "Estimation Beev 2026 · Référence thermique 135 g CO2/km (moyenne véhicules essence + diesel parc France). 1 arbre absorbe en moyenne 25 kg CO2/an (chêne adulte, ADEME). 1 A/R Paris-Marseille en avion = 270 kg CO2/passager.",
     M, y2, { maxWidth: PAGE_W - M * 2 },
+  );
+}
+
+// ============ COMPARATEUR VÉHICULES (specs côte à côte) ============
+// Page PDF type tableau comparatif des spécifications clés des véhicules
+// sélectionnés. Indépendant du TCO. Met en avant la meilleure valeur de
+// chaque ligne (cellule fond rose clair + texte bold).
+//
+// Limite : 4 véhicules max pour rester lisible sur A4 portrait. Si la
+// sélection dépasse 4, on prend les 4 premiers.
+function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[]) {
+  const PINK: [number, number, number] = [244, 184, 170];
+  const PINK_LIGHT: [number, number, number] = [253, 241, 238];
+  const items = vehicles.slice(0, 4);
+  let y = 130;
+  eyebrow(doc, lookupText(TEXTS, "vehicles", "comparator_eyebrow", "COMPARATEUR VÉHICULES"), y);
+  y += 32;
+  title(doc, lookupText(TEXTS, "vehicles", "comparator_title", "Quel modèle choisir ?"), y);
+  y += 36;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...SUB);
+  doc.text(
+    lookupText(TEXTS, "vehicles", "comparator_intro",
+      "Comparaison côte à côte des caractéristiques clés. Les cellules surlignées indiquent la meilleure valeur sur chaque ligne (prix le plus bas, autonomie la plus haute, etc.)."),
+    M, y, { maxWidth: PAGE_W - M * 2 },
+  );
+  y += 28;
+
+  type Row = {
+    label: string;
+    /** Valeurs brutes par véhicule (number ou string) */
+    values: (number | string)[];
+    /** "asc" = la plus petite gagne, "desc" = la plus grande gagne, undefined = pas de meilleure valeur */
+    bestDir?: "asc" | "desc";
+    /** Formatter par valeur */
+    format?: (val: number | string) => string;
+  };
+
+  const rows: Row[] = [
+    {
+      label: "Prix TTC",
+      values: items.map((sv) => sv.vehicle.priceTtc),
+      bestDir: "asc",
+      format: (n) => eur(Number(n)),
+    },
+    {
+      label: "Loyer LLD HT",
+      values: items.map((sv) => sv.negotiatedMonthly ?? sv.vehicle.monthlyLld),
+      bestDir: "asc",
+      format: (n) => `${eur(Number(n))}/mois`,
+    },
+    {
+      label: "Autonomie WLTP",
+      values: items.map((sv) => sv.vehicle.rangeWltp),
+      bestDir: "desc",
+      format: (n) => `${n} km`,
+    },
+    {
+      label: "Batterie",
+      values: items.map((sv) => sv.vehicle.batteryKwh),
+      format: (n) => `${n} kWh`,
+    },
+    {
+      label: "Puissance",
+      values: items.map((sv) => sv.vehicle.powerHp),
+      format: (n) => `${n} ch`,
+    },
+    {
+      label: "Consommation",
+      values: items.map((sv) => sv.vehicle.consumption),
+      bestDir: "asc",
+      format: (n) => `${n} kWh/100km`,
+    },
+    {
+      label: "CO2",
+      values: items.map((sv) => sv.vehicle.energy === "Électrique" ? 0 : (sv.vehicle.co2 ?? 0)),
+      bestDir: "asc",
+      format: (n) => `${n} g/km`,
+    },
+    {
+      label: "Puissance fiscale",
+      values: items.map((sv) => sv.vehicle.fiscalHp),
+      bestDir: "asc",
+      format: (n) => `${n} CV`,
+    },
+    {
+      label: "Catégorie",
+      values: items.map((sv) => sv.vehicle.category),
+    },
+    {
+      label: "Énergie",
+      values: items.map((sv) => sv.vehicle.energy),
+    },
+  ];
+
+  // Calcule l'index "gagnant" par ligne (le 1er qui a la meilleure valeur).
+  // Si plusieurs ex aequo, tous sont marqués gagnants (mise en avant cohérente).
+  const winners: boolean[][] = rows.map((row) => {
+    if (!row.bestDir) return row.values.map(() => false);
+    const nums = row.values.map((v) => typeof v === "number" ? v : NaN);
+    if (nums.some((n) => Number.isNaN(n))) return row.values.map(() => false);
+    const best = row.bestDir === "asc" ? Math.min(...nums) : Math.max(...nums);
+    return nums.map((n) => n === best);
+  });
+
+  // Largeur colonne label + colonnes véhicules
+  const labelW = 130;
+  const colW = (PAGE_W - M * 2 - labelW) / items.length;
+
+  // Header véhicules : marque/modèle + version
+  const headH = 56;
+  doc.setFillColor(...PINK);
+  doc.rect(M, y, PAGE_W - M * 2, 2, "F");
+  y += 6;
+  doc.setFillColor(255, 255, 255);
+  doc.rect(M, y, PAGE_W - M * 2, headH, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text(lookupText(TEXTS, "vehicles", "comparator_header_label", "CARACTÉRISTIQUE"), M + 8, y + 20);
+  items.forEach((sv, i) => {
+    const cx = M + labelW + i * colW;
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...INK);
+    const brand = sv.vehicle.brand.toUpperCase();
+    doc.text(brand, cx + colW / 2, y + 18, { align: "center", maxWidth: colW - 8 });
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...INK);
+    const modelLine = doc.splitTextToSize(sv.vehicle.model, colW - 12)[0] || "";
+    doc.text(modelLine, cx + colW / 2, y + 32, { align: "center" });
+    doc.setFontSize(7.5);
+    doc.setTextColor(...SUB);
+    const versionLine = doc.splitTextToSize(sv.vehicle.version || "", colW - 12)[0] || "";
+    doc.text(versionLine, cx + colW / 2, y + 46, { align: "center" });
+  });
+  y += headH + 4;
+
+  // Lignes de specs
+  const rowH = 24;
+  rows.forEach((row, rowIdx) => {
+    // Alternance fond clair / blanc
+    if (rowIdx % 2 === 0) {
+      doc.setFillColor(252, 251, 248);
+      doc.rect(M, y, PAGE_W - M * 2, rowH, "F");
+    }
+    // Label gauche
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...SUB);
+    doc.text(row.label, M + 8, y + 15);
+    // Valeurs par véhicule
+    row.values.forEach((val, i) => {
+      const cx = M + labelW + i * colW;
+      const isBest = winners[rowIdx][i];
+      if (isBest) {
+        doc.setFillColor(...PINK_LIGHT);
+        doc.rect(cx + 2, y + 2, colW - 4, rowH - 4, "F");
+      }
+      doc.setFont(BRAND_FONT, isBest ? "bold" : "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(...INK);
+      const text = row.format ? row.format(val) : String(val);
+      doc.text(text, cx + colW / 2, y + 15, { align: "center", maxWidth: colW - 8 });
+    });
+    y += rowH;
+  });
+
+  // Note de bas de page
+  y += 12;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...SUB);
+  doc.text(
+    lookupText(TEXTS, "vehicles", "comparator_footnote",
+      "Données constructeur. Le CO2 est forcé à 0 g/km pour les véhicules électriques (convention Beev). La consommation est exprimée en kWh/100 km."),
+    M, y, { maxWidth: PAGE_W - M * 2 },
   );
 }
 
