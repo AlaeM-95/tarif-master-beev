@@ -24,6 +24,7 @@ import { B2B2ECalculator, useB2B2EInput } from "@/components/b2b2e-calculator";
 import { VehicleSpotlight } from "@/components/vehicle-spotlight";
 import { VehicleComparator } from "@/components/vehicle-comparator";
 import { PdfTextEditor, usePdfTextOverrides } from "@/components/pdf-text-editor";
+import { generateProposalPdfV2 } from "@/lib/pdf-v2";
 import { LiveIndicator } from "@/components/live-indicator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MarginReviewDialog } from "@/components/margin-review-dialog";
@@ -886,14 +887,50 @@ function App() {
               )}
             </Button>
 
-            {/* CTA primaire : PDF (lavande Beev) */}
-            <Button size="sm" onClick={exportPdf} disabled={visibleCount === 0 || isGenerating} className="gap-1.5">
-              {isGenerating ? (
-                <><RotateCcw className="w-3.5 h-3.5 animate-spin" /> Génération...</>
-              ) : (
-                <><FileDown className="w-3.5 h-3.5" /> {tcoView ? "Générer PDF TCO" : "Générer PDF"}</>
-              )}
-            </Button>
+            {/* CTA primaire : dropdown 2 versions PDF.
+                Version classique : pipeline jsPDF actuel (toutes les slides).
+                Version premium : BPU HTML (Bordereau Prix Unitaires) au design
+                Claude Beev 2026, ouvert dans une nouvelle fenêtre prête à
+                imprimer en PDF. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" disabled={visibleCount === 0 || isGenerating} className="gap-1.5">
+                  {isGenerating ? (
+                    <><RotateCcw className="w-3.5 h-3.5 animate-spin" /> Génération...</>
+                  ) : (
+                    <><FileDown className="w-3.5 h-3.5" /> Générer PDF <ChevronDown className="w-3.5 h-3.5" /></>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-72">
+                <DropdownMenuLabel>Choisissez la version</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={exportPdf} className="cursor-pointer flex-col items-start gap-0.5 py-2.5">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <FileDown className="w-3.5 h-3.5" /> Version classique
+                  </div>
+                  <p className="text-[10px] text-muted-foreground pl-5">
+                    PDF complet (cover, fiches, TCO, comparateur, BPA) — généré par jsPDF
+                  </p>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => generateProposalPdfV2({
+                    client,
+                    vehicles: Object.values(selectedV),
+                    chargers: Object.values(selectedC),
+                    salesRep: client.salesRep,
+                  })}
+                  className="cursor-pointer flex-col items-start gap-0.5 py-2.5"
+                >
+                  <div className="flex items-center gap-2 font-semibold">
+                    <Sparkles className="w-3.5 h-3.5 text-beev-rose" /> Version BPU (nouveau)
+                  </div>
+                  <p className="text-[10px] text-muted-foreground pl-5">
+                    Bordereau de prix unitaires — design Beev 2026, ouvre une fenêtre prête à imprimer en PDF
+                  </p>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
