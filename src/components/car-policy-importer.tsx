@@ -341,15 +341,31 @@ function ImportedVehicleForm({
         <NumberField label="Puissance (ch)" value={vehicle.powerHp} onChange={(n) => onChange({ powerHp: n })} />
       </div>
 
-      {/* Spécifications électriques */}
+      {/* Spécifications */}
       <div className="grid grid-cols-3 gap-3">
         <NumberField label="Batterie (kWh)" value={vehicle.batteryKwh} onChange={(n) => onChange({ batteryKwh: n })} step={0.1} />
         <NumberField label="Autonomie WLTP (km)" value={vehicle.rangeWltp} onChange={(n) => onChange({ rangeWltp: n })} />
-        <NumberField label="Consommation" value={vehicle.consumption} onChange={(n) => onChange({ consumption: n })} step={0.1} />
         <NumberField label="CO2 (g/km)" value={vehicle.co2} onChange={(n) => onChange({ co2: n })} />
         <NumberField label="CV fiscaux" value={vehicle.fiscalHp} onChange={(n) => onChange({ fiscalHp: n })} />
         <NumberField label="Score env. (0-100)" value={vehicle.envScore ?? 0} onChange={(n) => onChange({ envScore: n })} />
+        {vehicle.energy === "Électrique" ? (
+          <NumberField label="Consommation (kWh/100km)" value={vehicle.consumption} onChange={(n) => onChange({ consumption: n, consumptionElec: n })} step={0.1} />
+        ) : (
+          <NumberField label="Conso thermique (L/100km)" value={vehicle.consumptionThermal ?? vehicle.consumption} onChange={(n) => onChange({ consumptionThermal: n, consumption: n })} step={0.1} />
+        )}
       </div>
+      {/* Hybrides Rechargeables : 2e champ pour la conso électrique en mode EV.
+          Le calcul TCO mixe 60 % élec + 40 % thermique. */}
+      {(vehicle.energy === "Hybride Rechargeable") && (
+        <div className="grid grid-cols-1 gap-3">
+          <NumberField
+            label="Conso électrique en mode EV (kWh/100 km)"
+            value={vehicle.consumptionElec ?? 0}
+            onChange={(n) => onChange({ consumptionElec: n })}
+            step={0.1}
+          />
+        </div>
+      )}
 
       {/* Prix */}
       <div className="grid grid-cols-2 gap-3">

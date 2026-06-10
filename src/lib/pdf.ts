@@ -46,16 +46,17 @@ export type SelectedVehicle = {
   includeTco: boolean;
   services: string[];
   options: LineItem[];
-  /** Offre concurrente saisie par le commercial pour la mise en concurrence :
-   *  Beev propose sur le MÊME véhicule un loyer face à un loueur existant
-   *  (Arval, Ayvens, Leasys...). Si renseigné, déclenche l'affichage de la
-   *  slide « Mise en concurrence » dans le PDF. */
-  competitorOffer?: {
+  /** Offres concurrentes saisies par le commercial pour la mise en concurrence :
+   *  Beev propose sur le MÊME véhicule un loyer face à plusieurs loueurs
+   *  existants (Arval, Ayvens, Leasys...). Si non vide, déclenche l'affichage
+   *  de la slide « Mise en concurrence » dans le PDF avec une colonne par
+   *  offre concurrente + 1 colonne Beev. */
+  competitorOffers?: Array<{
     loueur: string;
     monthlyTtc: number;
     durationMonths: number;
     kmPerYear: number;
-  };
+  }>;
 };
 
 /** Spécifications site personnalisables par le commercial pour le rapport site
@@ -195,18 +196,39 @@ export function computeTco(sv: SelectedVehicle, e: EnergyParams) {
   const v = sv.vehicle;
   const isElec = v.energy === "Électrique";
   const isPhev = v.energy === "Hybride Rechargeable";
+  const isHev = v.energy === "Hybride" || v.energy === "Mild Hybrid";
+  const kWhCost = mix * e.kWhHome + (1 - mix) * e.kWhPublic;
   let energy100 = 0;
   if (isElec) {
-    const kWhCost = mix * e.kWhHome + (1 - mix) * e.kWhPublic;
-    energy100 = v.consumption * kWhCost;
+    // 100 % électrique : v.consumption en kWh/100 km (legacy) ou
+    // v.consumptionElec si renseigné (priorité car plus explicite)
+    const consoKwh = (v.consumptionElec ?? v.consumption) || 0;
+    energy100 = consoKwh * kWhCost;
   } else if (isPhev) {
-    const kWhCost = mix * e.kWhHome + (1 - mix) * e.kWhPublic;
+    // Hybride Rechargeable : si les 2 consos sont renseignées, on les utilise
+    // directement (mode mixte 60 % élec / 40 % thermique par défaut). Sinon
+    // fallback heuristique sur batterie/autonomie.
     const elecShare = 0.6;
-    const fuelL100 = 6.5;
-    energy100 = elecShare * (v.batteryKwh / Math.max(v.rangeWltp, 1)) * 100 * kWhCost
-              + (1 - elecShare) * fuelL100 * e.fuelPriceL;
+    const consoKwh = v.consumptionElec ?? 0;
+    const consoL = v.consumptionThermal ?? v.consumption ?? 0;
+    if (consoKwh > 0 && consoL > 0) {
+      energy100 = elecShare * consoKwh * kWhCost + (1 - elecShare) * consoL * e.fuelPriceL;
+    } else {
+      // Fallback historique : on déduit la conso élec depuis la batterie/autonomie
+      const fuelL100 = consoL || 6.5;
+      energy100 = elecShare * (v.batteryKwh / Math.max(v.rangeWltp, 1)) * 100 * kWhCost
+                + (1 - elecShare) * fuelL100 * e.fuelPriceL;
+    }
+  } else if (isHev) {
+    // Hybride non rechargeable (Toyota HEV, MHEV) : pas de recharge externe,
+    // donc la conso "officielle" L/100 inclut déjà le bonus EV ponctuel.
+    // Si consumptionThermal est renseigné, on l'utilise ; sinon legacy consumption.
+    const consoL = v.consumptionThermal ?? v.consumption ?? 0;
+    energy100 = consoL * e.fuelPriceL;
   } else {
-    energy100 = v.consumption * e.fuelPriceL;
+    // Thermique pur (Essence, Diesel) : v.consumption en L/100 km
+    const consoL = v.consumptionThermal ?? v.consumption ?? 0;
+    energy100 = consoL * e.fuelPriceL;
   }
   const lease100 = (sv.negotiatedMonthly * 12) / Math.max(sv.kmPerYear, 1) * 100;
   const tco100 = lease100 + energy100;
@@ -604,10 +626,12 @@ export async function generateProposalPdf(opts: {
     await drawVehicleComparator(doc, v);
   }
 
-  // Slide « Mise en concurrence » — affichée si au moins un véhicule a une
-  // offre concurrente saisie. Le commercial voit côte à côte l'offre du
-  // loueur actuel du client vs l'offre Beev sur le MÊME véhicule.
-  const withCompetitor = v.filter((sv) => sv.competitorOffer && sv.competitorOffer.monthlyTtc > 0);
+  // Slide « Mise en concurrence » — affichée si au moins un véhicule a au
+  // moins UNE offre concurrente avec un loyer > 0. Le commercial voit côte
+  // à côte les N offres concurrentes vs l'offre Beev sur le MÊME véhicule.
+  const withCompetitor = v.filter((sv) =>
+    sv.competitorOffers && sv.competitorOffers.some((c) => c.monthlyTtc > 0),
+  );
   if (cfg.showCompetitorComparison && withCompetitor.length > 0) {
     doc.addPage();
     drawHeader(doc, client, "vehicles");
@@ -2184,6 +2208,20 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setTextColor(...SUB);
   doc.text(`VÉHICULE ${idx} / ${total}`, M + 30, 109);
 
+  // Badge « FLOTTE ACTUELLE » à droite si le véhicule est marqué isCurrentFleet
+  if (v.isCurrentFleet) {
+    const ROSE: [number, number, number] = [244, 184, 170];
+    const badgeText = "FLOTTE ACTUELLE";
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8.5);
+    const badgeW = doc.getTextWidth(badgeText) + 16;
+    const badgeX = PAGE_W - M - badgeW;
+    doc.setFillColor(...ROSE);
+    doc.roundedRect(badgeX, 100, badgeW, 16, 8, 8, "F");
+    doc.setTextColor(...INK);
+    doc.text(badgeText, badgeX + badgeW / 2, 111, { align: "center" });
+  }
+
   // Titre 38px ≈ 28.5pt
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(28);
@@ -2446,7 +2484,24 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       ["Capacité batterie", v.batteryKwh > 0 ? `${v.batteryKwh} kWh` : "—"],
       ["Puissance", `${v.powerHp} ch`],
       ...(PDF_CFG.showVehicleConsumption
-        ? [[v.energy === "Électrique" || v.energy === "Hybride Rechargeable" ? "Consommation" : "Consommation moyenne", v.energy === "Électrique" ? `${v.consumption} kWh/100 km` : `${v.consumption} L/100 km`]]
+        ? (() => {
+            // Pour PHEV (Hybride Rechargeable), on affiche les 2 conso si elles
+            // sont distinctement renseignées (thermique L/100 + électrique
+            // kWh/100). Sinon fallback sur consumption legacy.
+            const isElec = v.energy === "Électrique";
+            const isPhev = v.energy === "Hybride Rechargeable";
+            if (isElec) {
+              return [["Consommation", `${v.consumptionElec ?? v.consumption} kWh/100 km`]];
+            }
+            if (isPhev && (v.consumptionThermal || v.consumptionElec)) {
+              const rows: string[][] = [];
+              if (v.consumptionThermal) rows.push(["Conso thermique", `${v.consumptionThermal} L/100 km`]);
+              if (v.consumptionElec) rows.push(["Conso électrique (mode EV)", `${v.consumptionElec} kWh/100 km`]);
+              return rows;
+            }
+            const consoL = v.consumptionThermal ?? v.consumption;
+            return [["Consommation moyenne", `${consoL} L/100 km`]];
+          })()
         : []),
       ...(PDF_CFG.showVehicleCo2 ? [["CO2", `${v.co2} g/km`]] : []),
       ...(PDF_CFG.showVehicleFiscalHp ? [["Puissance fiscale", `${v.fiscalHp} CV`]] : []),
@@ -3934,15 +3989,25 @@ function drawCompetitorComparison(doc: jsPDF, vehicles: SelectedVehicle[]) {
   let totalContractSavings = 0;
 
   for (const sv of vehicles) {
-    const comp = sv.competitorOffer!;
-    const savingsMonthly = comp.monthlyTtc - sv.negotiatedMonthly;
-    const savingsContract = savingsMonthly * sv.durationMonths;
-    totalMonthlySavings += savingsMonthly * sv.quantity;
-    totalContractSavings += savingsContract * sv.quantity;
+    const offers = (sv.competitorOffers ?? []).filter((o) => o.monthlyTtc > 0);
+    if (offers.length === 0) continue;
 
-    // Garde-fou page : si on ne tient pas le bloc complet (~150 pt),
-    // on saute en nouvelle page.
-    if (y + 160 > PAGE_H - 80) {
+    // Économie maximale (offre concurrente la plus chère - Beev)
+    const maxCompetitor = Math.max(...offers.map((o) => o.monthlyTtc));
+    const bestSavings = maxCompetitor - sv.negotiatedMonthly;
+    if (bestSavings > 0) {
+      totalMonthlySavings += bestSavings * sv.quantity;
+      totalContractSavings += bestSavings * sv.durationMonths * sv.quantity;
+    }
+
+    // Hauteur du bloc : 1 ligne titre + N colonnes côte à côte
+    // (N offres concurrentes + 1 Beev). Maximum 4 colonnes par ligne ;
+    // au-delà on saute en page suivante.
+    const totalCols = offers.length + 1;
+    const blockH = 96;
+    const econH = 30;
+    const need = 30 + blockH + econH + 16;
+    if (y + need > PAGE_H - 80) {
       doc.addPage();
       drawHeader(doc, { company: "" } as ClientInfo, "vehicles");
       y = 130;
@@ -3960,85 +4025,99 @@ function drawCompetitorComparison(doc: jsPDF, vehicles: SelectedVehicle[]) {
     doc.text(`Quantité ${sv.quantity} · ${sv.vehicle.energy}`, M, y);
     y += 16;
 
-    // 2 colonnes
-    const blockH = 96;
-    const gap = 12;
-    const colW = (PAGE_W - M * 2 - gap) / 2;
+    // Disposition en N+1 colonnes : N offres concurrentes (rose) + 1 Beev (bleu)
+    const gap = 8;
+    const colW = (PAGE_W - M * 2 - gap * (totalCols - 1)) / totalCols;
 
-    // ── Colonne gauche : OFFRE ACTUELLE (rose)
-    doc.setFillColor(...ROSE_LIGHT);
-    doc.roundedRect(M, y, colW, blockH, 8, 8, "F");
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(7.5);
-    doc.setTextColor(...PINK);
-    doc.text("VOTRE OFFRE ACTUELLE", M + 12, y + 14);
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(...INK);
-    doc.text(comp.loueur || "Loueur actuel", M + 12, y + 30);
-    // Loyer en gros
-    doc.setFontSize(22);
-    doc.text(`${eur(comp.monthlyTtc)}`, M + 12, y + 56);
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(8.5);
-    doc.setTextColor(...SUB);
-    doc.text("TTC/mois", M + 12 + doc.getTextWidth(eur(comp.monthlyTtc)) + 6, y + 56);
-    // Détails durée / km
-    doc.setFontSize(9);
-    doc.setTextColor(...INK);
-    doc.text(`Durée : ${comp.durationMonths} mois`, M + 12, y + 76);
-    doc.text(`Kilométrage : ${comp.kmPerYear.toLocaleString("fr-FR")} km/an`, M + 12, y + 88);
+    // Fonction interne pour dessiner une carte (loueur, loyer, durée, km, couleur)
+    const drawOfferCard = (
+      cx: number,
+      header: string,
+      headerColor: [number, number, number],
+      bg: [number, number, number],
+      title: string,
+      monthly: number,
+      duration: number,
+      kmPerYear: number,
+    ) => {
+      doc.setFillColor(...bg);
+      doc.roundedRect(cx, y, colW, blockH, 8, 8, "F");
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(6.5);
+      doc.setTextColor(...headerColor);
+      doc.text(header, cx + 10, y + 13);
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(9.5);
+      doc.setTextColor(...INK);
+      const titleLines = doc.splitTextToSize(title, colW - 16);
+      doc.text(titleLines.slice(0, 2), cx + 10, y + 27);
+      doc.setFontSize(18);
+      doc.text(`${eur(monthly)}`, cx + 10, y + 56);
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(7.5);
+      doc.setTextColor(...SUB);
+      doc.text("TTC/mois", cx + 10, y + 67);
+      doc.setFontSize(8);
+      doc.setTextColor(...INK);
+      doc.text(`${duration} mois`, cx + 10, y + 80);
+      doc.text(`${kmPerYear.toLocaleString("fr-FR")} km/an`, cx + 10, y + 90);
+    };
 
-    // ── Colonne droite : OFFRE BEEV (bleu)
-    const rx = M + colW + gap;
-    doc.setFillColor(...BLUE_LIGHT);
-    doc.roundedRect(rx, y, colW, blockH, 8, 8, "F");
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(7.5);
-    doc.setTextColor(...LAVENDER_COLOR);
-    doc.text("NOTRE OFFRE BEEV", rx + 12, y + 14);
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(...INK);
-    doc.text("Beev × partenaire loueur", rx + 12, y + 30);
-    doc.setFontSize(22);
-    doc.text(`${eur(sv.negotiatedMonthly)}`, rx + 12, y + 56);
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(8.5);
-    doc.setTextColor(...SUB);
-    doc.text("TTC/mois", rx + 12 + doc.getTextWidth(eur(sv.negotiatedMonthly)) + 6, y + 56);
-    doc.setFontSize(9);
-    doc.setTextColor(...INK);
-    doc.text(`Durée : ${sv.durationMonths} mois`, rx + 12, y + 76);
-    doc.text(`Kilométrage : ${sv.kmPerYear.toLocaleString("fr-FR")} km/an`, rx + 12, y + 88);
+    // Cartes concurrentes (rose)
+    offers.forEach((offer, idx) => {
+      const cx = M + idx * (colW + gap);
+      drawOfferCard(
+        cx,
+        `OFFRE ${offers.length > 1 ? idx + 1 : "ACTUELLE"}`,
+        PINK,
+        ROSE_LIGHT,
+        offer.loueur || `Loueur ${idx + 1}`,
+        offer.monthlyTtc,
+        offer.durationMonths,
+        offer.kmPerYear,
+      );
+    });
+
+    // Carte Beev (bleu) — toujours dernière
+    const beevX = M + offers.length * (colW + gap);
+    drawOfferCard(
+      beevX,
+      "OFFRE BEEV",
+      LAVENDER_COLOR,
+      BLUE_LIGHT,
+      "Beev × partenaire loueur",
+      sv.negotiatedMonthly,
+      sv.durationMonths,
+      sv.kmPerYear,
+    );
 
     y += blockH + 6;
 
-    // ── Encart économies (bandeau vert) — uniquement si gain réel
-    if (savingsMonthly > 0) {
-      const econH = 30;
+    // Bandeau économies : on prend la meilleure offre concurrente comme référence
+    if (bestSavings > 0) {
       doc.setFillColor(...GREEN_LIGHT);
       doc.roundedRect(M, y, PAGE_W - M * 2, econH, 6, 6, "F");
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(9.5);
       doc.setTextColor(...GREEN);
-      doc.text(`Économie : ${eur(savingsMonthly)} / mois · ${eur(savingsContract)} sur ${sv.durationMonths} mois`,
+      const refLabel = offers.length > 1 ? "vs offre la plus chère" : "vs votre offre actuelle";
+      doc.text(`Économie Beev (${refLabel}) : ${eur(bestSavings)} / mois · ${eur(bestSavings * sv.durationMonths)} sur ${sv.durationMonths} mois`,
         M + 14, y + 19);
       if (sv.quantity > 1) {
         doc.setFont(BRAND_FONT, "normal");
         doc.setFontSize(8.5);
         doc.setTextColor(...INK);
-        const totalRow = `× ${sv.quantity} véhicules = ${eur(savingsContract * sv.quantity)} économisés sur le contrat`;
+        const totalRow = `× ${sv.quantity} véhicules = ${eur(bestSavings * sv.durationMonths * sv.quantity)}`;
         doc.text(totalRow, PAGE_W - M - 14 - doc.getTextWidth(totalRow), y + 19);
       }
       y += econH + 16;
-    } else if (savingsMonthly < 0) {
+    } else if (bestSavings < 0) {
       doc.setFont(BRAND_FONT, "italic");
       doc.setFontSize(9);
       doc.setTextColor(...SUB);
-      doc.text(`Notre offre est ${eur(Math.abs(savingsMonthly))}/mois plus chère — Beev apporte d'autres avantages (services, accompagnement, conditions de fin de contrat).`,
-        M, y + 12);
-      y += 28;
+      doc.text(`Notre offre est ${eur(Math.abs(bestSavings))}/mois plus chère que la meilleure offre concurrente — Beev apporte d'autres avantages (services, accompagnement, conditions de fin de contrat).`,
+        M, y + 12, { maxWidth: PAGE_W - M * 2 });
+      y += 32;
     } else {
       y += 8;
     }

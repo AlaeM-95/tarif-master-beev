@@ -2787,67 +2787,93 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove }: { sv: SelectedVe
         </div>
       )}
 
-      {/* Mise en concurrence : sous-formulaire pour saisir l'offre du loueur
-          actuel du client (Arval, Ayvens, Leasys...) sur le MÊME véhicule.
-          Si renseigné, le PDF affiche une slide « Mise en concurrence » avec
-          comparaison côte à côte et calcul des écarts. */}
+      {/* Encart « Flotte actuelle » : visible si le véhicule est marqué
+          isCurrentFleet (via import car policy OU toggle direct ici).
+          Permet au commercial de voir d'un coup d'œil le statut du véhicule
+          dans le devis. */}
+      <label className="flex items-center gap-2 cursor-pointer p-2 rounded-md border border-beev-rose/30 bg-beev-rose-20/40 hover:bg-beev-rose-20/60">
+        <input
+          type="checkbox"
+          checked={sv.vehicle.isCurrentFleet ?? false}
+          onChange={(e) => onChange({ vehicle: { ...sv.vehicle, isCurrentFleet: e.target.checked } })}
+          className="h-4 w-4 accent-beev-rose"
+        />
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-beev-rose">
+          {sv.vehicle.isCurrentFleet ? "Flotte actuelle (à comparer)" : "Marquer comme flotte actuelle"}
+        </span>
+      </label>
+
+      {/* Mise en concurrence MULTI-OFFRES : le commercial peut saisir N
+          offres concurrentes (différents loueurs ayant fait une proposition
+          sur le MÊME véhicule). Chaque offre est listée séparément, les
+          écarts calculés en direct. */}
       <div className="rounded-md border border-beev-rose/30 p-2 space-y-2 bg-beev-rose-20/40">
-        {!sv.competitorOffer ? (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-beev-rose">
+            Mise en concurrence ({(sv.competitorOffers ?? []).length})
+          </span>
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => onChange({ competitorOffer: { loueur: "", monthlyTtc: 0, durationMonths: sv.durationMonths, kmPerYear: sv.kmPerYear } })}
-            className="w-full h-7 text-[11px] gap-1.5 text-beev-rose hover:text-beev-black hover:bg-beev-rose/20"
+            onClick={() => {
+              const next = [...(sv.competitorOffers ?? []), { loueur: "", monthlyTtc: 0, durationMonths: sv.durationMonths, kmPerYear: sv.kmPerYear }];
+              onChange({ competitorOffers: next });
+            }}
+            className="h-6 text-[10px] gap-1 text-beev-rose hover:text-beev-black hover:bg-beev-rose/20"
           >
-            <Plus className="w-3 h-3" /> Ajouter l'offre concurrente
+            <Plus className="w-3 h-3" /> Ajouter une offre
           </Button>
-        ) : (
-          <>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-beev-rose">Mise en concurrence</span>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => onChange({ competitorOffer: undefined })}
-                className="h-5 w-5 text-muted-foreground hover:text-destructive"
-                title="Retirer l'offre concurrente"
-              >
-                <X className="w-3 h-3" />
-              </Button>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <TxtField
-                label="Loueur actuel"
-                value={sv.competitorOffer.loueur}
-                onChange={(s) => onChange({ competitorOffer: { ...sv.competitorOffer!, loueur: s } })}
-                placeholder="Arval, Ayvens..."
-              />
-              <NumField
-                label="Loyer TTC/mois"
-                value={sv.competitorOffer.monthlyTtc}
-                onChange={(n) => onChange({ competitorOffer: { ...sv.competitorOffer!, monthlyTtc: n } })}
-              />
-              <NumField
-                label="Durée (mois)"
-                value={sv.competitorOffer.durationMonths}
-                onChange={(n) => onChange({ competitorOffer: { ...sv.competitorOffer!, durationMonths: n } })}
-              />
-              <NumField
-                label="Km / an"
-                value={sv.competitorOffer.kmPerYear}
-                onChange={(n) => onChange({ competitorOffer: { ...sv.competitorOffer!, kmPerYear: n } })}
-              />
-            </div>
-            {sv.competitorOffer.monthlyTtc > 0 && sv.negotiatedMonthly > 0 && (
-              <div className="text-[10px] text-beev-black/70 pt-1 border-t border-beev-rose/20">
-                Économie Beev : <span className="font-semibold text-beev-good">
-                  {fmtEur(sv.competitorOffer.monthlyTtc - sv.negotiatedMonthly)}/mois
-                </span> · <span className="font-semibold text-beev-good">
-                  {fmtEur((sv.competitorOffer.monthlyTtc - sv.negotiatedMonthly) * sv.durationMonths)}
-                </span> sur le contrat
+        </div>
+        {(sv.competitorOffers ?? []).map((offer, idx) => {
+          const savings = offer.monthlyTtc - sv.negotiatedMonthly;
+          return (
+            <div key={idx} className="rounded bg-white border border-beev-rose/20 p-2 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-semibold text-beev-rose">Offre {idx + 1}</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onChange({ competitorOffers: (sv.competitorOffers ?? []).filter((_, i) => i !== idx) })}
+                  className="h-5 w-5 text-muted-foreground hover:text-destructive"
+                  title="Retirer cette offre"
+                >
+                  <X className="w-3 h-3" />
+                </Button>
               </div>
-            )}
-          </>
+              <div className="grid grid-cols-2 gap-2">
+                <TxtField label="Loueur" value={offer.loueur} onChange={(s) => {
+                  const next = (sv.competitorOffers ?? []).map((c, i) => i === idx ? { ...c, loueur: s } : c);
+                  onChange({ competitorOffers: next });
+                }} placeholder="Arval, Ayvens..." />
+                <NumField label="Loyer TTC/mois" value={offer.monthlyTtc} onChange={(n) => {
+                  const next = (sv.competitorOffers ?? []).map((c, i) => i === idx ? { ...c, monthlyTtc: n } : c);
+                  onChange({ competitorOffers: next });
+                }} />
+                <NumField label="Durée (mois)" value={offer.durationMonths} onChange={(n) => {
+                  const next = (sv.competitorOffers ?? []).map((c, i) => i === idx ? { ...c, durationMonths: n } : c);
+                  onChange({ competitorOffers: next });
+                }} />
+                <NumField label="Km / an" value={offer.kmPerYear} onChange={(n) => {
+                  const next = (sv.competitorOffers ?? []).map((c, i) => i === idx ? { ...c, kmPerYear: n } : c);
+                  onChange({ competitorOffers: next });
+                }} />
+              </div>
+              {offer.monthlyTtc > 0 && sv.negotiatedMonthly > 0 && (
+                <div className="text-[10px] pt-1 border-t border-beev-rose/10">
+                  {savings > 0 ? (
+                    <>Économie Beev : <span className="font-semibold text-beev-good">{fmtEur(savings)}/mois</span> · <span className="font-semibold text-beev-good">{fmtEur(savings * sv.durationMonths)}</span> sur le contrat</>
+                  ) : (
+                    <span className="text-muted-foreground">Beev est {fmtEur(Math.abs(savings))}/mois plus cher</span>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {(sv.competitorOffers ?? []).length === 0 && (
+          <p className="text-[10px] text-muted-foreground italic px-1">
+            Aucune offre concurrente. Cliquez sur « Ajouter une offre » pour saisir un loyer concurrent et déclencher la slide « Mise en concurrence » dans le PDF.
+          </p>
         )}
       </div>
 

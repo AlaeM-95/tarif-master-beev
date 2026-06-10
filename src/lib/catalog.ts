@@ -195,6 +195,15 @@ export type Vehicle = {
    *  Permet au comparateur d'afficher le mode AVANT/APRÈS thermique vs EV.
    *  Jamais en DB, pose seulement côté state local. */
   isCurrentFleet?: boolean;
+  /** Consommation électrique en kWh/100 km, distincte de la conso thermique.
+   *  Pour PHEV (Hybride Rechargeable) et HEV (Hybride), elle est non nulle
+   *  uniquement dans la partie roulée en mode électrique. Champ `consumption`
+   *  ci-dessus reste utilisé pour la conso principale (kWh/100 si EV,
+   *  L/100 si thermique). */
+  consumptionElec?: number;
+  /** Consommation thermique en L/100 km, distincte de la conso électrique.
+   *  Pour PHEV/HEV, elle représente la partie roulée en thermique. */
+  consumptionThermal?: number;
   services?: string[];
   custom?: boolean;
 };
