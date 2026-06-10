@@ -146,7 +146,7 @@ const LINE_TAIL_UNIT_NO_VAT = new RegExp(
   "i",
 );
 
-const EXCLUDE_LINE = /^(total ht|tva\b|total ttc|sous[- ]total|remise globale|net à payer|escompte|acompte|page \d|signature|sas au capital|siren\b|siret\b|tva intr)/i;
+const EXCLUDE_LINE = /^(total ht|tva\b|total ttc|sous[- ]total|base ht|base d'imposition|remise globale|net à payer|escompte|acompte|page \d|signature|sas au capital|siren\b|siret\b|tva intr)/i;
 const EXCLUDE_LABEL = /^(d[ée]signation|montant ht|prix unitaire|qte|qté|quantit|tva|unit[ée])$/i;
 
 async function extractPdfText(file: File): Promise<string> {
@@ -267,6 +267,96 @@ function softCleanLabel(label: string): string {
   return out;
 }
 
+// ─── Format D : détecteur générique (dernier recours) ──────────────────
+// Les devis techniciens sont tous différents : ordre de colonnes variable,
+// présence ou non d'une colonne unité, d'une colonne TVA %, du symbole €…
+// Plutôt que d'ajouter un Nième regex par format, ce détecteur extrait les
+// nombres en fin de ligne et identifie qté / PU / total via l'invariant
+// arithmétique qté × PU ≈ total. Il couvre notamment le format « qté PU€
+// total€ » (sans unité ni TVA par ligne) qui échappait aux formats A/B/C.
+
+type ValueToken = {
+  value: number;
+  euro: boolean;
+  pct: boolean;
+  decimals: boolean;
+  start: number;
+};
+
+// Extrait tous les nombres d'une ligne, avec leur position et leurs signaux
+// (€, %, décimales). Gère le séparateur de milliers FR (espace/insécable).
+function extractValueTokens(line: string): ValueToken[] {
+  const re = /(\d{1,3}(?:[\s ]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,3})?)\s*(€|%)?/g;
+  const tokens: ValueToken[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(line)) !== null) {
+    const raw = m[1];
+    const sym = m[2];
+    tokens.push({
+      value: parseFrNumber(raw),
+      euro: sym === "€",
+      pct: sym === "%",
+      decimals: /[.,]\d/.test(raw),
+      start: m.index,
+    });
+  }
+  return tokens;
+}
+
+function tryGenericLine(
+  line: string,
+): { qty: number; unit: string; unitHt: number; total: number; labelEnd: number } | null {
+  const tokens = extractValueTokens(line);
+  // On ignore les pourcentages (colonne TVA) pour ne garder que quantités
+  // et montants.
+  const amounts = tokens.filter((t) => !t.pct);
+  if (amounts.length < 2) return null;
+
+  const total = amounts[amounts.length - 1];
+  const pu = amounts[amounts.length - 2];
+  if (pu.value <= 0 || total.value <= 0) return null;
+  // Signal monétaire : € ou 2 décimales sur PU ou total. Sa présence permet
+  // une tolérance d'arrondi ; son absence (montants entiers nus) impose une
+  // égalité quasi exacte pour rester sûr face aux références techniques.
+  const monetarySignal = pu.euro || pu.decimals || total.euro || total.decimals;
+
+  // Cas le plus courant : 3 valeurs en fin de ligne = qté, PU, total.
+  // On valide par l'invariant qté × PU ≈ total.
+  if (amounts.length >= 3) {
+    const qtyTok = amounts[amounts.length - 3];
+    const qtyVal = qtyTok.value;
+    // Sans signal monétaire, on n'accepte ce chemin que sous garde renforcée :
+    // PU ≥ 10 et qté entière. Ces gardes éliminent les coïncidences de
+    // comptage (« Coffret 3 phases 4 modules 12 » → 3×4=12) sans perdre les
+    // forfaits réels en euros ronds (PU généralement ≥ 50 €).
+    const pathOk = qtyVal > 0 && qtyVal <= 100000
+      && (monetarySignal || (pu.value >= 10 && Number.isInteger(qtyVal)));
+    if (pathOk) {
+      // Avec signal monétaire : tolérance 8 % (arrondis). Sans signal
+      // (ex. « Forfait mise en service 1 350 350 ») : égalité exacte (≤ 1 €).
+      const tol = monetarySignal ? Math.max(2, total.value * 0.08) : 1;
+      if (Math.abs(qtyVal * pu.value - total.value) <= tol) {
+        // Détecte une unité (ml, h, jour…) située entre la qté et le PU,
+        // sinon "u" par défaut. Préserve l'unité que les formats stricts
+        // auraient reconnue (ex. « 45 ml 32,50 1 462,50 »).
+        const between = line.slice(qtyTok.start, pu.start);
+        const um = between.match(new RegExp(`\\b(${UNIT_REGEX})\\b`, "i"));
+        const unit = um ? um[1].toLowerCase() : "u";
+        return { qty: qtyVal, unit, unitHt: pu.value, total: total.value, labelEnd: qtyTok.start };
+      }
+    }
+  }
+  // Repli : 2 valeurs (PU, total) avec qté implicite 1, si PU ≈ total. Exige
+  // un signal monétaire (sans lui, deux entiers proches sont trop ambigus).
+  if (monetarySignal) {
+    const tol = Math.max(2, total.value * 0.08);
+    if (Math.abs(pu.value - total.value) <= tol) {
+      return { qty: 1, unit: "u", unitHt: pu.value, total: total.value, labelEnd: pu.start };
+    }
+  }
+  return null;
+}
+
 function detectLines(rawText: string): { lines: ParsedQuoteLine[]; warnings: string[] } {
   const warnings: string[] = [];
   const lines: ParsedQuoteLine[] = [];
@@ -327,6 +417,17 @@ function detectLines(rawText: string): { lines: ParsedQuoteLine[]; warnings: str
           [, qtyStr, puStr, , totalStr] = tailB;
           unitStr = "u"; // unité par défaut quand le devis n'en fournit pas
           matchIndex = tailB.index!;
+        }
+      }
+      // Format D générique — dernier recours pour les devis non standard.
+      if (!qtyStr) {
+        const gen = tryGenericLine(line);
+        if (gen) {
+          qtyStr = String(gen.qty);
+          puStr = String(gen.unitHt);
+          totalStr = String(gen.total);
+          unitStr = gen.unit;
+          matchIndex = gen.labelEnd;
         }
       }
     }

@@ -195,6 +195,11 @@ const PAGE_W = 595.28;
 const PAGE_H = 841.89;
 const M = 48;
 const FOOTER_LIMIT = PAGE_H - 78; // footer enrichi (2 lignes) prend ~22pt + filet
+// Marge basse de sécurité pour les tableaux autoTable : le footer (filet +
+// 2 lignes) occupe la bande PAGE_H-56 → PAGE_H-32. Sans cette marge, la
+// marge basse par défaut d'autoTable (40) laisse les lignes du tableau
+// chevaucher le footer. 72pt garantit un espace propre au-dessus du footer.
+const TABLE_BOTTOM_MARGIN = 72;
 
 // ============ TCO ============
 export function computeTco(sv: SelectedVehicle, e: EnergyParams) {
@@ -1410,7 +1415,7 @@ function drawSiteEquipments(doc: jsPDF, chargers: SelectedCharger[]) {
       1: { halign: "center", cellWidth: 60 },
       2: { halign: "right", cellWidth: 100 },
     },
-    margin: { left: M, right: M },
+    margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
   });
   y = (doc as any).lastAutoTable.finalY + 24;
 
@@ -1978,7 +1983,7 @@ function drawSiteFinancialRecap(doc: jsPDF, chargers: SelectedCharger[]) {
     bodyStyles: { fontSize: 10, cellPadding: 7, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
     footStyles: { font: BRAND_FONT },
     columnStyles: { 0: { cellWidth: "auto" }, 1: { cellWidth: 140 }, 2: { halign: "right", cellWidth: 100, fontStyle: "bold" } },
-    margin: { left: M, right: M },
+    margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
   });
   let y2 = (doc as any).lastAutoTable.finalY + 16;
 
@@ -2563,7 +2568,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
         3: { halign: "right", cellWidth: 80 },
         4: { halign: "right" },
       },
-      margin: { left: M, right: M },
+      margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
     });
     y = (doc as any).lastAutoTable.finalY + 16;
   }
@@ -2615,7 +2620,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT },
     bodyStyles: { fontSize: 9.5, cellPadding: 6, textColor: INK, lineColor: RULE, font: BRAND_FONT },
     columnStyles: { 1: { halign: "right", fontStyle: "bold" } },
-    margin: { left: M, right: M },
+    margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
   });
   y = (doc as any).lastAutoTable.finalY + 14;
 
@@ -2812,7 +2817,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT },
     bodyStyles: { fontSize: 9, cellPadding: 6, textColor: INK, lineColor: RULE, font: BRAND_FONT },
     columnStyles: { 1: { halign: "center", cellWidth: 40 }, 2: { halign: "right", cellWidth: 70 }, 3: { halign: "right", cellWidth: 80, fontStyle: "bold" } },
-    margin: { left: M, right: M },
+    margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
   });
 }
 
@@ -2968,7 +2973,7 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
       2: { halign: "right", cellWidth: 80 },
       3: { halign: "right", cellWidth: 90, fontStyle: "bold" },
     },
-    margin: { left: M, right: M },
+    margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
   });
   y = (doc as any).lastAutoTable.finalY + 10;
 
@@ -3291,7 +3296,7 @@ function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
     bodyStyles: { fontSize: 8, cellPadding: 4, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
     alternateRowStyles: { fillColor: BG },
     columnStyles: { 0: { cellWidth: 130 } },
-    margin: { left: M, right: M },
+    margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
   });
   y = (doc as any).lastAutoTable.finalY + 10;
 
@@ -3411,7 +3416,7 @@ function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: Energy
       6: { cellWidth: 60 },
       7: { cellWidth: "auto" },
     },
-    margin: { left: M, right: M },
+    margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
   });
   let y2 = (doc as any).lastAutoTable.finalY + 20;
 
@@ -3772,7 +3777,7 @@ function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
     bodyStyles: { fontSize: 9, cellPadding: 6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
     alternateRowStyles: { fillColor: BG },
     columnStyles: { 1: { halign: "right" as any }, 2: { halign: "right" as any }, 3: { halign: "right" as any }, 4: { halign: "right" as any } },
-    margin: { left: M, right: M },
+    margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
   });
   const y2 = (doc as any).lastAutoTable.finalY + 16;
 
@@ -4983,7 +4988,7 @@ function drawFinancialSummary(
       bodyStyles: { fontSize: 9.5, cellPadding: 6, textColor: INK, lineColor: RULE, font: BRAND_FONT },
       footStyles: { fontSize: 9.5, fillColor: BG, textColor: INK, font: BRAND_FONT },
       columnStyles: { 1: { halign: "center" }, 2: { halign: "right" }, 3: { halign: "right", fontStyle: "bold" } },
-      margin: { left: M, right: M },
+      margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
     });
     y = (doc as any).lastAutoTable.finalY + 16;
 
@@ -5035,7 +5040,7 @@ function drawFinancialSummary(
       bodyStyles: { fontSize: 9.5, cellPadding: 6, textColor: INK, lineColor: RULE, font: BRAND_FONT },
       footStyles: { fontSize: 9.5, fillColor: BG, textColor: INK, font: BRAND_FONT },
       columnStyles: { 1: { halign: "center" }, 2: { halign: "right", fontStyle: "bold" } },
-      margin: { left: M, right: M },
+      margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
     });
     y = (doc as any).lastAutoTable.finalY + 16;
 
@@ -5072,11 +5077,7 @@ function drawJourney(doc: jsPDF, type: ProjectType, _client: ClientInfo) {
   // "Beev fait" et "Vous fournissez". Pas de cascade diagonale (trop complexe
   // à reproduire en jsPDF), mais respect du système d'accents par section.
   const VIOLET: [number, number, number] = [211, 204, 216]; // #D3CCD8
-  const VIOLET_50: [number, number, number] = [233, 230, 236]; // #E9E6EC
-  const VIOLET_30: [number, number, number] = [242, 240, 243]; // #F2F0F3
-  const VIOLET_20: [number, number, number] = [246, 245, 247]; // #F6F5F7
   const ROSE: [number, number, number] = [244, 184, 170]; // #F4B8AA pour le "Beev"
-  const stepBgs = [VIOLET, VIOLET_50, VIOLET_30, VIOLET_20, [255, 255, 255] as [number, number, number]];
 
   const fallbackJourney = BEEV_JOURNEYS[type];
   const j = PDF_CONTENT.steps.length > 0
@@ -5111,99 +5112,99 @@ function drawJourney(doc: jsPDF, type: ProjectType, _client: ClientInfo) {
   doc.text(intro, M, y);
   y += intro.length * 13 + 20;
 
-  // Timeline horizontal — style charte Beev 2026 (inspiré du document
-  // de référence transmis : ligne centrale + points colorés alternés +
-  // cards au-dessus et en-dessous).
+  // Liste verticale d'étapes — pleine largeur de page. Ce layout remplace
+  // l'ancienne timeline horizontale qui, faute de place dans des cartes
+  // ~90pt de large, tronquait titres et résumés à l'ellipse. Ici chaque
+  // étape dispose de toute la largeur utile : 100 % du texte est affiché,
+  // sans troncature.
   const steps = j.steps.slice(0, 5);
-  const nbSteps = steps.length;
-  // timelineY = y + 240 (au lieu de 200) pour éviter le chevauchement des
-  // cards above avec l'intro multi-lignes (3+ lignes possible).
-  const timelineY = y + 240;
-  const lineX1 = M + 30;
-  const lineX2 = PAGE_W - M - 30;
-  const lineW = lineX2 - lineX1;
-
-  // Ligne horizontale principale
-  doc.setDrawColor(...INK);
-  doc.setLineWidth(1.2);
-  doc.line(lineX1, timelineY, lineX2, timelineY);
-
-  // Couleurs alternées charte (Rose / Bleu / Violet)
   const stepColors: Array<[number, number, number]> = [
     ROSE, [165, 210, 255], VIOLET, ROSE, [165, 210, 255],
   ];
 
-  // Positions équiréparties des points sur la ligne
-  const stepX = (i: number) => lineX1 + ((i + 0.5) * lineW) / nbSteps;
+  // Géométrie : rail à gauche avec pastille numérotée, contenu à droite.
+  const railX = M + 16;            // centre des pastilles
+  const badgeR = 15;               // rayon pastille
+  const contentX = railX + badgeR + 18; // début du bloc texte
+  const contentW = PAGE_W - M - contentX; // largeur dispo pour le texte
+  const gapBetween = 18;           // espace vertical entre étapes
 
   steps.forEach((s, i) => {
-    const cx = stepX(i);
-    const above = i % 2 === 0; // alternance haut/bas
     const color = stepColors[i % stepColors.length];
 
-    // Trait de connexion vertical entre point et carte
-    doc.setDrawColor(...color);
-    doc.setLineWidth(1);
-    const connEnd = above ? timelineY - 90 : timelineY + 90;
-    doc.line(cx, timelineY, cx, connEnd);
+    // Calcule la hauteur de l'étape AVANT de dessiner, pour gérer la
+    // pagination et le trait de liaison vers l'étape suivante.
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(12);
+    const titleLines = doc.splitTextToSize(s.title, contentW);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9.5);
+    const sumLines = doc.splitTextToSize(s.summary || "", contentW);
+    const titleH = titleLines.length * 15;
+    const sumH = sumLines.length * 13;
+    const durH = s.duration ? 16 : 0;
+    const blockH = titleH + 6 + sumH + durH;
+    const rowH = Math.max(blockH, badgeR * 2);
 
-    // Cercle point principal sur la ligne (cercle plein couleur)
+    // Pagination : si l'étape ne tient pas, page suivante avec header.
+    const before = y;
+    y = ensureSpace(doc, y, rowH + gapBetween, _client, type);
+    if (y !== before) {
+      // Nouvelle page : on repart sous le header, sans titre de section
+      // répété (le contenu reste lisible et continu).
+      y += 8;
+    }
+
+    const rowTop = y;
+    const badgeCY = rowTop + badgeR;
+
+    // Trait de liaison vertical entre cette pastille et la suivante
+    // (sauf dernière étape). Tracé léger couleur de l'étape courante.
+    if (i < steps.length - 1) {
+      doc.setDrawColor(...color);
+      doc.setLineWidth(1.5);
+      doc.line(railX, badgeCY + badgeR + 2, railX, rowTop + rowH + gapBetween + badgeR - 2);
+    }
+
+    // Pastille numérotée pleine couleur + anneau INK
     doc.setFillColor(...color);
-    doc.circle(cx, timelineY, 7, "F");
-    // Anneau intérieur INK pour donner le style ponctuation
+    doc.circle(railX, badgeCY, badgeR, "F");
     doc.setDrawColor(...INK);
     doc.setLineWidth(1);
-    doc.circle(cx, timelineY, 7, "S");
-
-    // Carte étape positionnée au-dessus ou en-dessous.
-    // Hauteur étendue à 130 pour accueillir titre + résumé 3 lignes + durée
-    // sans chevauchement.
-    const cardW = lineW / nbSteps - 8;
-    const cardH = 130;
-    const cardX = cx - cardW / 2;
-    const cardY = above ? timelineY - 100 - cardH : timelineY + 100;
-
-    // Numéro étape en gros, couleur charte
+    doc.circle(railX, badgeCY, badgeR, "S");
     doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(24);
-    doc.setTextColor(...color);
-    const numStr = String(i + 1).padStart(2, "0");
-    doc.text(numStr, cardX, cardY + 22);
-
-    // Titre étape (sous le numéro). fontSize 9 (au lieu de 10) pour plus de
-    // capacité en largeur, et splitTextToSize avec marge interne calculée
-    // (cardW - 4 pt) plutôt que cardW pur pour éviter qu'une lettre frôle
-    // le bord et soit coupée par le clipping interne de jsPDF. 3 lignes max
-    // avec ellipsis si dépassement.
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(9);
+    doc.setFontSize(13);
     doc.setTextColor(...INK);
-    const rawTitleLines = doc.splitTextToSize(s.title, cardW - 4);
-    const titleLines = rawTitleLines.length > 3
-      ? [...rawTitleLines.slice(0, 2), rawTitleLines[2].slice(0, 18) + "…"]
-      : rawTitleLines;
-    doc.text(titleLines, cardX, cardY + 38);
+    doc.text(String(i + 1).padStart(2, "0"), railX, badgeCY + 4.5, { align: "center" });
 
-    // Résumé : 3 lignes max, fontSize 8, line-height 10. Ellipsis si tronqué.
+    // Bloc texte à droite
+    let ty = rowTop + 12;
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(...INK);
+    doc.text(titleLines, contentX, ty);
+    ty += titleH + 4;
+
     doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(7.5);
+    doc.setFontSize(9.5);
     doc.setTextColor(...SUB);
-    const sumStart = cardY + 38 + titleLines.length * 11 + 4;
-    const rawSumLines = doc.splitTextToSize(s.summary || "", cardW - 4);
-    const sumLines = rawSumLines.length > 3
-      ? [...rawSumLines.slice(0, 2), rawSumLines[2].slice(0, 24) + "…"]
-      : rawSumLines;
-    doc.text(sumLines, cardX, sumStart);
+    doc.text(sumLines, contentX, ty);
+    ty += sumH;
 
-    // Durée affichée APRÈS le résumé, jamais au milieu du texte.
+    // Chip durée sous le résumé (jamais superposée au texte)
     if (s.duration) {
+      ty += 6;
+      const durText = s.duration.toUpperCase();
       doc.setFont(BRAND_FONT, "bold");
-      doc.setFontSize(7);
-      doc.setTextColor(...color);
-      const sumEnd = sumStart + sumLines.length * 9;
-      const durY = Math.min(cardY + cardH - 4, sumEnd + 10);
-      doc.text(s.duration.toUpperCase(), cardX, durY);
+      doc.setFontSize(7.5);
+      const chipW = doc.getTextWidth(durText) + 16;
+      doc.setFillColor(...color);
+      doc.roundedRect(contentX, ty - 9, chipW, 14, 7, 7, "F");
+      doc.setTextColor(...INK);
+      doc.text(durText, contentX + 8, ty);
     }
+
+    y = rowTop + rowH + gapBetween;
   });
 }
 
@@ -5376,7 +5377,7 @@ function drawFinancialSynthesis(
       headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT, cellPadding: 6 },
       bodyStyles: { fontSize: 9, cellPadding: 6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
       columnStyles: { 1: { halign: "center", cellWidth: 38 }, 3: { halign: "right", fontStyle: "bold" } },
-      margin: { left: M, right: M },
+      margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
     });
   }
 }
