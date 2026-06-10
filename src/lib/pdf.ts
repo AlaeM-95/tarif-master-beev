@@ -584,12 +584,54 @@ export async function generateProposalPdf(opts: {
     drawWhyBeev(doc, effectiveType);
   }
 
-  // Boucle véhicules : pour les projets mixtes, on affiche toujours les véhicules
-  // EXCEPTÉ les véhicules « flotte actuelle » (isCurrentFleet=true) : leur
-  // détail n'a pas d'intérêt commercial, ils n'apparaissent que dans le
-  // comparateur global. On va droit au but : pas de fiche individuelle pour
-  // les véhicules à remplacer.
-  const vehiclesForDetail = v.filter((sv) => !sv.vehicle.isCurrentFleet);
+  // Page comparateur véhicules (specs côte à côte) — placée AVANT les fiches
+  // véhicule individuelles : le client voit d'abord la vue d'ensemble
+  // comparative, puis le détail de chaque modèle. Toggleable, indépendante du
+  // TCO. Affichée dès 2+ véhicules dans la sélection commerciale.
+  if (cfg.showVehicleComparator && v.length >= 2) {
+    // Groupes de comparaison granulaire : si le commercial a saisi des
+    // valeurs dans « Groupe de comparaison » sur certaines cards, on
+    // génère une slide PAR groupe (en plus de la slide globale qui
+    // contient les véhicules sans groupe). Permet par exemple d'avoir
+    // "Groupe Berlines" (1 actuelle + 2 EV) ET "Groupe SUV" (1 actuelle
+    // + 2 EV) dans le même PDF.
+    const groups = new Map<string, SelectedVehicle[]>();
+    for (const sv of v) {
+      const g = (sv.comparisonGroup ?? "").trim();
+      if (!g) continue;
+      const arr = groups.get(g) ?? [];
+      arr.push(sv);
+      groups.set(g, arr);
+    }
+    if (groups.size > 0) {
+      // Une slide par groupe (titre = nom du groupe)
+      for (const [groupName, groupVehicles] of groups.entries()) {
+        if (groupVehicles.length < 2) continue;
+        doc.addPage();
+        drawHeader(doc, client, "vehicles");
+        await drawVehicleComparator(doc, groupVehicles, groupName);
+      }
+      // Véhicules sans groupe : slide globale uniquement s'il y en a 2+
+      const ungrouped = v.filter((sv) => !(sv.comparisonGroup ?? "").trim());
+      if (ungrouped.length >= 2) {
+        doc.addPage();
+        drawHeader(doc, client, "vehicles");
+        await drawVehicleComparator(doc, ungrouped);
+      }
+    } else {
+      // Pas de groupes : comparateur global classique
+      doc.addPage();
+      drawHeader(doc, client, "vehicles");
+      await drawVehicleComparator(doc, v);
+    }
+  }
+
+  // Boucle véhicules : pour les projets mixtes, on affiche les véhicules.
+  // Les véhicules « flotte actuelle » (isCurrentFleet=true) sont par défaut
+  // exclus des fiches individuelles (ils n'apparaissent que dans le
+  // comparateur), sauf si le commercial active le toggle
+  // « Fiche détaillée flotte actuelle » dans la configuration PDF.
+  const vehiclesForDetail = v.filter((sv) => cfg.showCurrentFleetVehicle || !sv.vehicle.isCurrentFleet);
   for (let i = 0; i < vehiclesForDetail.length; i++) {
     doc.addPage();
     drawHeader(doc, client, effectiveType);
@@ -634,46 +676,6 @@ export async function generateProposalPdf(opts: {
     drawSiteSupervision(doc, "beev_connect");
   }
 
-  // Page comparateur véhicules (specs côte à côte) — toggleable, indépendante
-  // du TCO. Affichée dès 2+ véhicules dans la sélection commerciale.
-  if (cfg.showVehicleComparator && v.length >= 2) {
-    // Groupes de comparaison granulaire : si le commercial a saisi des
-    // valeurs dans « Groupe de comparaison » sur certaines cards, on
-    // génère une slide PAR groupe (en plus de la slide globale qui
-    // contient les véhicules sans groupe). Permet par exemple d'avoir
-    // "Groupe Berlines" (1 actuelle + 2 EV) ET "Groupe SUV" (1 actuelle
-    // + 2 EV) dans le même PDF.
-    const groups = new Map<string, SelectedVehicle[]>();
-    for (const sv of v) {
-      const g = (sv.comparisonGroup ?? "").trim();
-      if (!g) continue;
-      const arr = groups.get(g) ?? [];
-      arr.push(sv);
-      groups.set(g, arr);
-    }
-    if (groups.size > 0) {
-      // Une slide par groupe (titre = nom du groupe)
-      for (const [groupName, groupVehicles] of groups.entries()) {
-        if (groupVehicles.length < 2) continue;
-        doc.addPage();
-        drawHeader(doc, client, "vehicles");
-        await drawVehicleComparator(doc, groupVehicles, groupName);
-      }
-      // Véhicules sans groupe : slide globale uniquement s'il y en a 2+
-      const ungrouped = v.filter((sv) => !(sv.comparisonGroup ?? "").trim());
-      if (ungrouped.length >= 2) {
-        doc.addPage();
-        drawHeader(doc, client, "vehicles");
-        await drawVehicleComparator(doc, ungrouped);
-      }
-    } else {
-      // Pas de groupes : comparateur global classique
-      doc.addPage();
-      drawHeader(doc, client, "vehicles");
-      await drawVehicleComparator(doc, v);
-    }
-  }
-
   // Slide « Mise en concurrence » — affichée si au moins un véhicule a au
   // moins UNE offre concurrente avec un loyer > 0. Le commercial voit côte
   // à côte les N offres concurrentes vs l'offre Beev sur le MÊME véhicule.
@@ -698,11 +700,7 @@ export async function generateProposalPdf(opts: {
     doc.addPage();
     drawHeader(doc, client, "vehicles");
     drawTcoDetailedTable(doc, v, energy);
-    // 2) Page comparaison classique (ranking + écart max) en détail
-    doc.addPage();
-    drawHeader(doc, client, "vehicles");
-    drawTcoComparison(doc, v, energy);
-    // 3) Page Bilan carbone — argument RSE
+    // Page « Bilan carbone » — argument RSE
     if (cfg.showCarbonImpact) {
       doc.addPage();
       drawHeader(doc, client, "vehicles");
@@ -4195,7 +4193,7 @@ function drawCompetitorComparison(doc: jsPDF, vehicles: SelectedVehicle[]) {
     //   • titre loueur (9.5pt)   à y + 27 (+/- 12 si 2 lignes)
     //   • LOYER en gros (18pt)   à y + 58 (largeur protégée)
     //   • « TTC/mois »  (7.5pt)  à y + 70 (SOUS le loyer, pas à côté)
-    //   • durée + km    (8pt)    à y + 84 et y + 94
+    //   • durée · km    (8pt)    à y + 88, sur une seule ligne (trait séparateur)
     const drawOfferCard = (
       cx: number,
       header: string,
@@ -4227,8 +4225,19 @@ function drawCompetitorComparison(doc: jsPDF, vehicles: SelectedVehicle[]) {
       doc.text("TTC/mois", cx + 10, y + 70);
       doc.setFontSize(8);
       doc.setTextColor(...INK);
-      doc.text(`${duration} mois`, cx + 10, y + 84);
-      doc.text(`${kmPerYear.toLocaleString("fr-FR")} km/an`, cx + 10, y + 94);
+      // Durée et kilométrage sur la MÊME ligne, séparés par un point médian
+      // (séparateur de charte Beev). Trait fin vertical dessiné entre les
+      // deux pour bien marquer la séparation demandée.
+      const durTxt = `${duration} mois`;
+      const kmTxt = `${kmPerYear.toLocaleString("fr-FR")} km/an`;
+      const lineY = y + 88;
+      doc.text(durTxt, cx + 10, lineY);
+      const durW = doc.getTextWidth(durTxt);
+      const sepX = cx + 10 + durW + 6;
+      doc.setDrawColor(...SUB);
+      doc.setLineWidth(0.6);
+      doc.line(sepX, lineY - 6, sepX, lineY + 1);
+      doc.text(kmTxt, sepX + 6, lineY);
     };
 
     // Cartes concurrentes (rose)
@@ -4280,14 +4289,25 @@ function drawCompetitorComparison(doc: jsPDF, vehicles: SelectedVehicle[]) {
       }
       y += econH + 16;
     } else if (bestSavings < 0) {
-      doc.setFont(BRAND_FONT, "italic");
+      // Encart neutre à la charte Beev (fond beige, police Roobert normale —
+      // PAS d'italique qui retombe sur une serif hors charte). Pas de tiret
+      // cadratin comme séparateur : on coupe en deux phrases. Hauteur de
+      // l'encart calculée sur le nombre réel de lignes pour ne pas chevaucher
+      // le titre du véhicule suivant.
+      doc.setFont(BRAND_FONT, "normal");
       doc.setFontSize(9);
-      doc.setTextColor(...SUB);
-      doc.text(`Notre offre est ${eur(Math.abs(bestSavings))}/mois plus chère que la meilleure offre concurrente — Beev apporte d'autres avantages (services, accompagnement, conditions de fin de contrat).`,
-        M, y + 12, { maxWidth: PAGE_W - M * 2 });
-      y += 32;
+      const noteText = `Notre offre est ${eur(Math.abs(bestSavings))}/mois plus chère que la meilleure offre concurrente. Beev apporte d'autres avantages : services, accompagnement et conditions de fin de contrat.`;
+      const noteLines = doc.splitTextToSize(noteText, PAGE_W - M * 2 - 28);
+      const noteH = noteLines.length * 12 + 16;
+      doc.setFillColor(252, 251, 248); // beige charte
+      doc.roundedRect(M, y, PAGE_W - M * 2, noteH, 6, 6, "F");
+      doc.setFillColor(...PINK);
+      doc.rect(M, y, 3, noteH, "F");
+      doc.setTextColor(...INK);
+      doc.text(noteLines, M + 14, y + 14);
+      y += noteH + 18;
     } else {
-      y += 8;
+      y += 12;
     }
   }
 
@@ -5355,16 +5375,29 @@ function drawFinancialSynthesis(
   });
   y += cardH + 28;
 
-  // ─── Tableau détaillé loyers ─────────────────────────────────────────
-  if (beevVehicles.length > 0 && y < PAGE_H - 200) {
+  // ─── Tableau détaillé loyers (flotte actuelle vs proposition Beev) ─────
+  // On liste d'abord les véhicules « flotte actuelle » à remplacer, puis les
+  // propositions Beev. Les lignes flotte actuelle sont surlignées en rose,
+  // et le loyer le plus bas (toutes lignes confondues) en vert — le client
+  // voit immédiatement quel véhicule est le mieux-disant.
+  const detailVehicles = [...currentFleet, ...beevVehicles];
+  if (detailVehicles.length > 0 && y < PAGE_H - 200) {
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(11);
     doc.setTextColor(...INK);
-    doc.text("DÉTAIL DES LOYERS — PROPOSITION BEEV", M, y);
+    const detailTitle = currentFleet.length > 0
+      ? "DÉTAIL DES LOYERS — FLOTTE ACTUELLE vs PROPOSITION BEEV"
+      : "DÉTAIL DES LOYERS — PROPOSITION BEEV";
+    doc.text(detailTitle, M, y);
     y += 8;
 
-    const rows = beevVehicles.map((sv) => [
-      vehicleLabel(sv.vehicle, 40),
+    // Loyer le plus bas parmi les valeurs renseignées (> 0)
+    const loyerVals = detailVehicles.map((sv) => sv.negotiatedMonthly || 0).filter((n) => n > 0);
+    const minLoyer = loyerVals.length > 0 ? Math.min(...loyerVals) : null;
+
+    const rows = detailVehicles.map((sv) => [
+      vehicleLabel(sv.vehicle, 34),
+      sv.vehicle.isCurrentFleet ? "Flotte actuelle" : "Proposition Beev",
       `${sv.quantity}`,
       `${sv.durationMonths} mois · ${(sv.kmPerYear / 1000).toFixed(0)}k km/an`,
       eurLoyer(sv.negotiatedMonthly),
@@ -5372,13 +5405,34 @@ function drawFinancialSynthesis(
     autoTable(doc, {
       startY: y,
       theme: "plain",
-      head: [["Véhicule", "Qté", "Conditions", "Loyer / mois"]],
+      head: [["Véhicule", "Statut", "Qté", "Conditions", "Loyer / mois"]],
       body: rows,
       headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT, cellPadding: 6 },
       bodyStyles: { fontSize: 9, cellPadding: 6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
-      columnStyles: { 1: { halign: "center", cellWidth: 38 }, 3: { halign: "right", fontStyle: "bold" } },
+      columnStyles: { 1: { cellWidth: 86 }, 2: { halign: "center", cellWidth: 32 }, 4: { halign: "right", fontStyle: "bold" } },
       margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
+      didParseCell: (data: any) => {
+        if (data.section !== "body") return;
+        const sv = detailVehicles[data.row.index];
+        if (!sv) return;
+        // Ligne flotte actuelle → fond rose
+        if (sv.vehicle.isCurrentFleet) {
+          data.cell.styles.fillColor = ROSE_LIGHT;
+        }
+        // Cellule loyer la plus basse → fond vert (prime sur le rose)
+        if (data.column.index === 4 && minLoyer !== null && (sv.negotiatedMonthly || 0) === minLoyer) {
+          data.cell.styles.fillColor = GREEN_LIGHT;
+          data.cell.styles.textColor = INK;
+        }
+      },
     });
+
+    // Légende du surlignement, sous le tableau
+    const afterY = (doc as any).lastAutoTable?.finalY ?? y;
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...SUB);
+    doc.text("Rose : véhicule de votre flotte actuelle à remplacer.  Vert : loyer mensuel le plus bas.", M, afterY + 14);
   }
 }
 
