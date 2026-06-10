@@ -504,7 +504,12 @@ function App() {
       // gardait le snapshot pris au moment de la sélection.
       const freshVehicles = Object.values(selectedV).map((sv) => {
         const fresh = vehicles.find((v) => v.id === sv.vehicle.id);
-        return fresh ? { ...sv, vehicle: fresh } : sv;
+        // On rafraîchit depuis le catalogue (prix, specs) mais on PRÉSERVE
+        // isCurrentFleet : ce flag est saisi au niveau du devis (toggle
+        // « flotte actuelle ») et n'existe pas dans le catalogue. Sans ça,
+        // le refresh écrasait le flag et le PDF affichait toujours
+        // « PROPOSITION BEEV » au lieu de « FLOTTE ACTUELLE ».
+        return fresh ? { ...sv, vehicle: { ...fresh, isCurrentFleet: sv.vehicle.isCurrentFleet } } : sv;
       });
       const freshChargers = Object.values(selectedC).map((sc) => {
         const fresh = chargers.find((c) => c.id === sc.charger.id);
@@ -598,7 +603,8 @@ function App() {
     // soient visibles côté client sans avoir à décocher/recocher.
     const freshV = Object.values(selectedV).map((sv) => {
       const fresh = vehicles.find((v) => v.id === sv.vehicle.id);
-      return fresh ? { ...sv, vehicle: fresh } : sv;
+      // Préserve isCurrentFleet (flag de niveau devis absent du catalogue).
+      return fresh ? { ...sv, vehicle: { ...fresh, isCurrentFleet: sv.vehicle.isCurrentFleet } } : sv;
     });
     const freshC = Object.values(selectedC).map((sc) => {
       const fresh = chargers.find((c) => c.id === sc.charger.id);

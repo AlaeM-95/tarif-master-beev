@@ -105,7 +105,7 @@ export function VehicleSpotlight({
               </div>
 
               <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs text-beev-black/80">
-                <div className="flex justify-between"><span>Consommation</span><span className="font-semibold">{v.consumption} kWh/100km</span></div>
+                <div className="flex justify-between"><span>Consommation</span><span className="font-semibold">{v.energy === "Électrique" ? `${v.consumptionElec ?? v.consumption} kWh/100km` : `${v.consumptionThermal ?? v.consumption} L/100km`}</span></div>
                 <div className="flex justify-between"><span>Puissance fiscale</span><span className="font-semibold">{v.fiscalHp} CV</span></div>
                 <div className="flex justify-between"><span>CO₂</span><span className="font-semibold">{v.co2} g/km</span></div>
                 <div className="flex justify-between"><span>Catégorie</span><span className="font-semibold">{v.category}</span></div>
