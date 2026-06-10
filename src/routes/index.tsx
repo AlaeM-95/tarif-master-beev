@@ -1146,13 +1146,16 @@ function App() {
                 });
               }}
               onUpdateSelected={(id, patch) => {
-                // Propage les modifs de fiche aux SelectedVehicles déjà au devis
+                // Propage les modifs de fiche aux SelectedVehicles déjà au devis.
+                // Si le loyer catalogue (monthlyLld) change, on resynchronise
+                // negotiatedMonthly pour éviter le décalage panneau droite vs PDF.
                 setSelectedV((prev) => {
                   if (!prev[id]) return prev;
-                  return {
-                    ...prev,
-                    [id]: { ...prev[id], vehicle: { ...prev[id].vehicle, ...patch } },
-                  };
+                  const next = { ...prev[id], vehicle: { ...prev[id].vehicle, ...patch } };
+                  if (patch.monthlyLld !== undefined) {
+                    next.negotiatedMonthly = patch.monthlyLld;
+                  }
+                  return { ...prev, [id]: next };
                 });
               }}
               selectedIds={new Set(Object.keys(selectedV))}

@@ -190,6 +190,11 @@ export type Vehicle = {
    *  sur la home commerciale. Un seul véhicule peut être featured à la fois
    *  côté UI — si plusieurs, le premier de la liste gagne. */
   featured?: boolean;
+  /** Drapeau optionnel utilisé par les imports car policy client : true si
+   *  ce véhicule fait partie de la flotte actuelle du prospect (à remplacer).
+   *  Permet au comparateur d'afficher le mode AVANT/APRÈS thermique vs EV.
+   *  Jamais en DB, pose seulement côté state local. */
+  isCurrentFleet?: boolean;
   services?: string[];
   custom?: boolean;
 };

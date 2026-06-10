@@ -261,11 +261,40 @@ export async function importCarPolicy(file: File): Promise<ImportReport> {
   const vehicles: Vehicle[] = [];
   const seenIds = new Set<string>();
 
+  // Marqueur de section : si la dernière ligne séparateur traitée contient
+  // "flotte actuelle" / "véhicules actuels", les véhicules qui suivent sont
+  // de la flotte client à remplacer (isCurrentFleet=true). Sinon (propositions
+  // Beev, futur, etc.) → propositions, isCurrentFleet=false.
+  let currentSection: "current" | "proposed" = "proposed";
+
+  // Détection des "re-headers" : certains classeurs Excel répètent l'en-tête
+  // après chaque sous-section (ex. R4 ET R8 sont des en-têtes dans Axiences ×
+  // Beev). On considère qu'une ligne est un re-header si elle a au moins 3
+  // cellules qui correspondent à des cellules de l'en-tête de référence.
+  const headerCellsNormalized = headerRow.map((c) => c != null ? normalize(String(c)) : "");
+
   for (let i = 0; i < dataRows.length; i++) {
     const row = dataRows[i];
     if (!row || row.every((c) => c == null || c === "")) continue; // ligne vide
-    // Ignore les séparateurs de section (« ▼ FLOTTE ACTUELLE », « ▼ PROPOSITIONS BEEV »)
-    if (isSeparatorRow(row)) continue;
+
+    // Détection du séparateur de section → met à jour currentSection puis skip
+    if (isSeparatorRow(row)) {
+      const text = row.filter(Boolean).map((c) => normalize(String(c))).join(" ");
+      if (/flotte actuelle|veh icules? actuels?|veh icules? thermiques?|flotte thermique/.test(text)) {
+        currentSection = "current";
+      } else if (/propositions? beev|veh icules? cibles?|propositions? ev|nouvelle flotte/.test(text)) {
+        currentSection = "proposed";
+      }
+      continue;
+    }
+
+    // Détection de re-header : skip si la ligne réplique l'en-tête initial
+    const rowNormalized = row.map((c) => c != null ? normalize(String(c)) : "");
+    let matchingHeaderCells = 0;
+    for (let j = 0; j < Math.min(rowNormalized.length, headerCellsNormalized.length); j++) {
+      if (rowNormalized[j] && rowNormalized[j] === headerCellsNormalized[j]) matchingHeaderCells++;
+    }
+    if (matchingHeaderCells >= 3) continue;
 
     const get = (field: keyof typeof COLUMN_SYNONYMS): unknown => {
       const idx = fieldToColIdx[field];
@@ -315,6 +344,7 @@ export async function importCarPolicy(file: File): Promise<ImportReport> {
       monthlyLld: parseFrNumber(get("monthlyLld")),
       image: "", // pas d'image → placeholder côté UI
       custom: true, // marque le véhicule comme issu d'un import (badge dans VehicleCard)
+      isCurrentFleet: currentSection === "current", // détecté via section "▼ FLOTTE ACTUELLE"
       trunkLitres: parseFrNumber(get("trunkLitres")) || undefined,
       chargeDcMaxKw: parseFrNumber(get("chargeDcMaxKw")) || undefined,
       chargeAcMaxKw: parseFrNumber(get("chargeAcMaxKw")) || undefined,

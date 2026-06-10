@@ -16,10 +16,11 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Upload, FileSpreadsheet, X, AlertTriangle, Download, Pencil } from "lucide-react";
+import { Upload, FileSpreadsheet, X, AlertTriangle, Download, Pencil, Zap, ArrowRightLeft } from "lucide-react";
 import { toast } from "sonner";
 import { importCarPolicy, type ImportReport } from "@/lib/car-policy-importer";
 import type { Vehicle, Energy } from "@/lib/catalog";
+import { ImageUpload } from "@/components/image-upload";
 
 export function CarPolicyImporter({
   importedVehicles,
@@ -220,9 +221,21 @@ export function CarPolicyImporter({
                         {v.version || v.category}
                       </p>
                     </div>
-                    <Badge className="bg-beev-violet-30 text-beev-black text-[9px] border-beev-violet shrink-0">
-                      Import
-                    </Badge>
+                    <div className="flex flex-col gap-0.5 shrink-0">
+                      <Badge className="bg-beev-violet-30 text-beev-black text-[9px] border-beev-violet">
+                        Import
+                      </Badge>
+                      {v.isCurrentFleet && (
+                        <Badge className="bg-beev-rose-30 text-beev-black text-[9px] border-beev-rose gap-1">
+                          <ArrowRightLeft className="w-2.5 h-2.5" /> Flotte actuelle
+                        </Badge>
+                      )}
+                      {v.energy === "Électrique" && !v.isCurrentFleet && (
+                        <Badge className="bg-beev-bleu-30 text-beev-black text-[9px] border-beev-bleu gap-1">
+                          <Zap className="w-2.5 h-2.5" /> EV
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                   <div className="mt-2 grid grid-cols-3 gap-1 text-[10px] text-muted-foreground">
                     <span>{v.rangeWltp ? `${v.rangeWltp} km` : "—"}</span>
@@ -344,17 +357,47 @@ function ImportedVehicleForm({
         <NumberField label="Loyer LLD (€/mois)" value={vehicle.monthlyLld} onChange={(n) => onChange({ monthlyLld: n })} />
       </div>
 
-      {/* Specs étendues */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* Specs étendues — coffre + dimensions toujours, recharge UNIQUEMENT
+          pour les véhicules électriques (DC/AC n'a pas de sens sur thermique
+          ou hybride léger). */}
+      <div className="grid grid-cols-2 gap-3">
         <NumberField label="Coffre (L)" value={vehicle.trunkLitres ?? 0} onChange={(n) => onChange({ trunkLitres: n })} />
-        <NumberField label="Recharge DC (kW)" value={vehicle.chargeDcMaxKw ?? 0} onChange={(n) => onChange({ chargeDcMaxKw: n })} step={0.1} />
-        <NumberField label="Recharge AC (kW)" value={vehicle.chargeAcMaxKw ?? 0} onChange={(n) => onChange({ chargeAcMaxKw: n })} step={0.1} />
-      </div>
-      <div className="grid grid-cols-3 gap-3">
         <Field label="Dimensions (L × l × H)" value={vehicle.dimensions ?? ""} onChange={(s) => onChange({ dimensions: s })} placeholder="4 750 × 1 850 × 1 620 mm" />
-        <Field label="Recharge 20-80 % AC" value={vehicle.chargeTime2080Ac ?? ""} onChange={(s) => onChange({ chargeTime2080Ac: s })} placeholder="8h00" />
-        <Field label="Recharge 20-80 % DC" value={vehicle.chargeTime2080Dc ?? ""} onChange={(s) => onChange({ chargeTime2080Dc: s })} placeholder="28 min" />
       </div>
+      {vehicle.energy === "Électrique" && (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <NumberField label="Recharge DC max (kW)" value={vehicle.chargeDcMaxKw ?? 0} onChange={(n) => onChange({ chargeDcMaxKw: n })} step={0.1} />
+            <NumberField label="Recharge AC max (kW)" value={vehicle.chargeAcMaxKw ?? 0} onChange={(n) => onChange({ chargeAcMaxKw: n })} step={0.1} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Recharge 20-80 % AC" value={vehicle.chargeTime2080Ac ?? ""} onChange={(s) => onChange({ chargeTime2080Ac: s })} placeholder="8h00" />
+            <Field label="Recharge 20-80 % DC" value={vehicle.chargeTime2080Dc ?? ""} onChange={(s) => onChange({ chargeTime2080Dc: s })} placeholder="28 min" />
+          </div>
+        </>
+      )}
+
+      {/* Toggle "Véhicule de la flotte actuelle" — détermine le mode du
+          comparateur (Avant/Après thermique vs EV). Marqué automatiquement
+          si le véhicule a été importé sous la section ▼ FLOTTE ACTUELLE. */}
+      <label className="flex items-center gap-2 cursor-pointer p-2 rounded-md hover:bg-muted">
+        <input
+          type="checkbox"
+          checked={vehicle.isCurrentFleet ?? false}
+          onChange={(e) => onChange({ isCurrentFleet: e.target.checked })}
+          className="h-4 w-4"
+        />
+        <ArrowRightLeft className="w-3.5 h-3.5 text-beev-rose" />
+        <span className="text-xs">Véhicule de la flotte actuelle (à remplacer)</span>
+      </label>
+
+      {/* Image personnalisée — affichée sur la fiche véhicule du PDF client */}
+      <ImageUpload
+        currentUrl={vehicle.image}
+        onChange={(url) => onChange({ image: url })}
+        folder="car-policy-imports"
+        label="Photo du véhicule (affichée dans le PDF de présentation)"
+      />
     </div>
   );
 }

@@ -2432,14 +2432,15 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       ...(PDF_CFG.showVehicleFiscalHp ? [["Puissance fiscale", `${v.fiscalHp} CV`]] : []),
       ...(PDF_CFG.showVehicleEnvScore && v.envScore !== undefined ? [["Score environnemental", `${v.envScore} / 100`]] : []),
       // Specs étendues (migration 039) — affichées seulement si la donnée est
-      // renseignée ET que le toggle correspondant est activé dans le panneau
-      // de configuration PDF. Permet au commercial de masquer une ligne par
-      // ligne sans toucher au catalogue.
+      // renseignée, que le toggle correspondant est activé, ET (pour la
+      // recharge) que le véhicule est électrique. Les recharges AC/DC n'ont
+      // aucun sens sur un thermique ou un hybride léger ; on les masque
+      // automatiquement même si le commercial les a remplies par erreur.
       ...(PDF_CFG.showVehicleTrunk && v.trunkLitres ? [["Volume de coffre", `${v.trunkLitres} L`]] : []),
-      ...(PDF_CFG.showVehicleChargeAc && v.chargeAcMaxKw ? [["Recharge AC max", `${v.chargeAcMaxKw} kW`]] : []),
-      ...(PDF_CFG.showVehicleChargeDc && v.chargeDcMaxKw ? [["Recharge DC max", `${v.chargeDcMaxKw} kW`]] : []),
-      ...(PDF_CFG.showVehicleChargeTime2080Ac && v.chargeTime2080Ac ? [["Recharge 20-80 % AC", v.chargeTime2080Ac]] : []),
-      ...(PDF_CFG.showVehicleChargeTime2080Dc && v.chargeTime2080Dc ? [["Recharge 20-80 % DC", v.chargeTime2080Dc]] : []),
+      ...(v.energy === "Électrique" && PDF_CFG.showVehicleChargeAc && v.chargeAcMaxKw ? [["Recharge AC max", `${v.chargeAcMaxKw} kW`]] : []),
+      ...(v.energy === "Électrique" && PDF_CFG.showVehicleChargeDc && v.chargeDcMaxKw ? [["Recharge DC max", `${v.chargeDcMaxKw} kW`]] : []),
+      ...(v.energy === "Électrique" && PDF_CFG.showVehicleChargeTime2080Ac && v.chargeTime2080Ac ? [["Recharge 20-80 % AC", v.chargeTime2080Ac]] : []),
+      ...(v.energy === "Électrique" && PDF_CFG.showVehicleChargeTime2080Dc && v.chargeTime2080Dc ? [["Recharge 20-80 % DC", v.chargeTime2080Dc]] : []),
       ...(PDF_CFG.showVehicleDimensions && v.dimensions ? [["Dimensions", v.dimensions]] : []),
     ],
     headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT },
@@ -3626,17 +3627,43 @@ function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
 async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[]) {
   const PINK: [number, number, number] = [244, 184, 170];
   const PINK_LIGHT: [number, number, number] = [253, 241, 238];
-  const items = vehicles.slice(0, 4);
+  const BLUE_LIGHT: [number, number, number] = [237, 246, 255]; // beev-bleu-20
+  const ROSE_LIGHT: [number, number, number] = [253, 241, 238];
+  // Mode AVANT/APRÈS : déclenché si au moins 1 véhicule "flotte actuelle"
+  // ET au moins 1 véhicule à proposer. On réarrange l'ordre : thermiques
+  // d'abord (gauche), EV après (droite), avec un séparateur visuel.
+  const beforeVehicles = vehicles.filter((sv) => sv.vehicle.isCurrentFleet);
+  const afterVehicles = vehicles.filter((sv) => !sv.vehicle.isCurrentFleet);
+  const isBeforeAfter = beforeVehicles.length > 0 && afterVehicles.length > 0;
+  const items = isBeforeAfter
+    ? [...beforeVehicles, ...afterVehicles].slice(0, 4)
+    : vehicles.slice(0, 4);
+  const nBefore = isBeforeAfter ? Math.min(beforeVehicles.length, 4) : 0;
   let y = 130;
-  eyebrow(doc, lookupText(TEXTS, "vehicles", "comparator_eyebrow", "COMPARATEUR VÉHICULES"), y);
+  eyebrow(
+    doc,
+    isBeforeAfter
+      ? lookupText(TEXTS, "vehicles", "comparator_before_after_eyebrow", "AVANT / APRÈS · ÉLECTRIFICATION DE LA FLOTTE")
+      : lookupText(TEXTS, "vehicles", "comparator_eyebrow", "COMPARATEUR VÉHICULES"),
+    y,
+  );
   y += 32;
-  title(doc, lookupText(TEXTS, "vehicles", "comparator_title", "Quel modèle choisir ?"), y);
+  title(
+    doc,
+    isBeforeAfter
+      ? lookupText(TEXTS, "vehicles", "comparator_before_after_title", "Votre flotte actuelle vs notre proposition Beev")
+      : lookupText(TEXTS, "vehicles", "comparator_title", "Quel modèle choisir ?"),
+    y,
+  );
   y += 36;
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
   doc.text(
-    lookupText(TEXTS, "vehicles", "comparator_intro",
+    isBeforeAfter
+      ? lookupText(TEXTS, "vehicles", "comparator_before_after_intro",
+          "À gauche, votre flotte actuelle thermique. À droite, les véhicules électriques Beev pour la remplacer. Les économies sur le coût, la consommation et le CO2 sont mises en évidence.")
+      : lookupText(TEXTS, "vehicles", "comparator_intro",
       "Comparaison côte à côte des caractéristiques clés. Les cellules surlignées indiquent la meilleure valeur sur chaque ligne (prix le plus bas, autonomie la plus haute, etc.)."),
     M, y, { maxWidth: PAGE_W - M * 2 },
   );
@@ -3744,6 +3771,25 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[]) {
   y += 6;
   doc.setFillColor(255, 255, 255);
   doc.rect(M, y, PAGE_W - M * 2, headH, "F");
+  // Mode AVANT/APRÈS : on dessine 2 bandeaux colorés sous les en-têtes
+  // pour distinguer visuellement les colonnes flotte actuelle vs proposition.
+  if (isBeforeAfter) {
+    const beforeWidth = nBefore * colW;
+    const afterWidth = (items.length - nBefore) * colW;
+    // Bandeau AVANT (rose) à gauche
+    doc.setFillColor(...ROSE_LIGHT);
+    doc.rect(M + labelW, y, beforeWidth, headH, "F");
+    // Bandeau APRÈS (bleu) à droite
+    doc.setFillColor(...BLUE_LIGHT);
+    doc.rect(M + labelW + beforeWidth, y, afterWidth, headH, "F");
+    // Étiquettes "AVANT" / "APRÈS" au-dessus du tableau
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...PINK);
+    doc.text("AVANT · FLOTTE ACTUELLE", M + labelW + beforeWidth / 2, y - 4, { align: "center" });
+    doc.setTextColor(56, 9, 234); // lavender Beev
+    doc.text("APRÈS · PROPOSITION BEEV", M + labelW + beforeWidth + afterWidth / 2, y - 4, { align: "center" });
+  }
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
