@@ -46,6 +46,16 @@ export type SelectedVehicle = {
   includeTco: boolean;
   services: string[];
   options: LineItem[];
+  /** Offre concurrente saisie par le commercial pour la mise en concurrence :
+   *  Beev propose sur le MÊME véhicule un loyer face à un loueur existant
+   *  (Arval, Ayvens, Leasys...). Si renseigné, déclenche l'affichage de la
+   *  slide « Mise en concurrence » dans le PDF. */
+  competitorOffer?: {
+    loueur: string;
+    monthlyTtc: number;
+    durationMonths: number;
+    kmPerYear: number;
+  };
 };
 
 /** Spécifications site personnalisables par le commercial pour le rapport site
@@ -592,6 +602,16 @@ export async function generateProposalPdf(opts: {
     doc.addPage();
     drawHeader(doc, client, "vehicles");
     await drawVehicleComparator(doc, v);
+  }
+
+  // Slide « Mise en concurrence » — affichée si au moins un véhicule a une
+  // offre concurrente saisie. Le commercial voit côte à côte l'offre du
+  // loueur actuel du client vs l'offre Beev sur le MÊME véhicule.
+  const withCompetitor = v.filter((sv) => sv.competitorOffer && sv.competitorOffer.monthlyTtc > 0);
+  if (cfg.showCompetitorComparison && withCompetitor.length > 0) {
+    doc.addPage();
+    drawHeader(doc, client, "vehicles");
+    drawCompetitorComparison(doc, withCompetitor);
   }
 
   // Page comparaison TCO multi-véhicules (toggleable) — toujours si 2+ véhicules
@@ -3880,6 +3900,168 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[]) {
       "Données constructeur. Le CO2 est forcé à 0 g/km pour les véhicules électriques (convention Beev). La consommation est exprimée en kWh/100 km."),
     M, y, { maxWidth: PAGE_W - M * 2 },
   );
+}
+
+// ============ MISE EN CONCURRENCE (offre actuelle vs Beev sur même véhicule) ============
+// Slide PDF dédiée : pour chaque véhicule ayant une offre concurrente saisie,
+// on affiche un bloc avec 2 colonnes côte à côte (offre actuelle | offre Beev)
+// + un encart d'économies (€/mois et total contrat).
+function drawCompetitorComparison(doc: jsPDF, vehicles: SelectedVehicle[]) {
+  const PINK: [number, number, number] = [244, 184, 170];
+  const ROSE_LIGHT: [number, number, number] = [253, 241, 238];
+  const BLUE_LIGHT: [number, number, number] = [237, 246, 255];
+  const GREEN_LIGHT: [number, number, number] = [219, 238, 220]; // beev-good 20%
+  const GREEN: [number, number, number] = [108, 190, 94]; // beev-good
+  const LAVENDER_COLOR: [number, number, number] = [56, 9, 234];
+
+  let y = 130;
+  eyebrow(doc, lookupText(TEXTS, "vehicles", "competitor_eyebrow", "MISE EN CONCURRENCE"), y);
+  y += 32;
+  title(doc, lookupText(TEXTS, "vehicles", "competitor_title", "Votre offre actuelle face à notre proposition Beev"), y);
+  y += 36;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...SUB);
+  doc.text(
+    lookupText(TEXTS, "vehicles", "competitor_intro",
+      "Sur les mêmes véhicules, comparaison côte à côte de votre offre actuelle avec notre proposition Beev. Les économies mensuelles et sur la durée du contrat sont mises en évidence."),
+    M, y, { maxWidth: PAGE_W - M * 2 },
+  );
+  y += 24;
+
+  // Cumul économies sur l'ensemble du devis (affiché en bas)
+  let totalMonthlySavings = 0;
+  let totalContractSavings = 0;
+
+  for (const sv of vehicles) {
+    const comp = sv.competitorOffer!;
+    const savingsMonthly = comp.monthlyTtc - sv.negotiatedMonthly;
+    const savingsContract = savingsMonthly * sv.durationMonths;
+    totalMonthlySavings += savingsMonthly * sv.quantity;
+    totalContractSavings += savingsContract * sv.quantity;
+
+    // Garde-fou page : si on ne tient pas le bloc complet (~150 pt),
+    // on saute en nouvelle page.
+    if (y + 160 > PAGE_H - 80) {
+      doc.addPage();
+      drawHeader(doc, { company: "" } as ClientInfo, "vehicles");
+      y = 130;
+    }
+
+    // Titre véhicule
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(13);
+    doc.setTextColor(...INK);
+    doc.text(vehicleLabel(sv.vehicle, 60), M, y);
+    y += 14;
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...SUB);
+    doc.text(`Quantité ${sv.quantity} · ${sv.vehicle.energy}`, M, y);
+    y += 16;
+
+    // 2 colonnes
+    const blockH = 96;
+    const gap = 12;
+    const colW = (PAGE_W - M * 2 - gap) / 2;
+
+    // ── Colonne gauche : OFFRE ACTUELLE (rose)
+    doc.setFillColor(...ROSE_LIGHT);
+    doc.roundedRect(M, y, colW, blockH, 8, 8, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...PINK);
+    doc.text("VOTRE OFFRE ACTUELLE", M + 12, y + 14);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...INK);
+    doc.text(comp.loueur || "Loueur actuel", M + 12, y + 30);
+    // Loyer en gros
+    doc.setFontSize(22);
+    doc.text(`${eur(comp.monthlyTtc)}`, M + 12, y + 56);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...SUB);
+    doc.text("TTC/mois", M + 12 + doc.getTextWidth(eur(comp.monthlyTtc)) + 6, y + 56);
+    // Détails durée / km
+    doc.setFontSize(9);
+    doc.setTextColor(...INK);
+    doc.text(`Durée : ${comp.durationMonths} mois`, M + 12, y + 76);
+    doc.text(`Kilométrage : ${comp.kmPerYear.toLocaleString("fr-FR")} km/an`, M + 12, y + 88);
+
+    // ── Colonne droite : OFFRE BEEV (bleu)
+    const rx = M + colW + gap;
+    doc.setFillColor(...BLUE_LIGHT);
+    doc.roundedRect(rx, y, colW, blockH, 8, 8, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...LAVENDER_COLOR);
+    doc.text("NOTRE OFFRE BEEV", rx + 12, y + 14);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...INK);
+    doc.text("Beev × partenaire loueur", rx + 12, y + 30);
+    doc.setFontSize(22);
+    doc.text(`${eur(sv.negotiatedMonthly)}`, rx + 12, y + 56);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...SUB);
+    doc.text("TTC/mois", rx + 12 + doc.getTextWidth(eur(sv.negotiatedMonthly)) + 6, y + 56);
+    doc.setFontSize(9);
+    doc.setTextColor(...INK);
+    doc.text(`Durée : ${sv.durationMonths} mois`, rx + 12, y + 76);
+    doc.text(`Kilométrage : ${sv.kmPerYear.toLocaleString("fr-FR")} km/an`, rx + 12, y + 88);
+
+    y += blockH + 6;
+
+    // ── Encart économies (bandeau vert) — uniquement si gain réel
+    if (savingsMonthly > 0) {
+      const econH = 30;
+      doc.setFillColor(...GREEN_LIGHT);
+      doc.roundedRect(M, y, PAGE_W - M * 2, econH, 6, 6, "F");
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(9.5);
+      doc.setTextColor(...GREEN);
+      doc.text(`Économie : ${eur(savingsMonthly)} / mois · ${eur(savingsContract)} sur ${sv.durationMonths} mois`,
+        M + 14, y + 19);
+      if (sv.quantity > 1) {
+        doc.setFont(BRAND_FONT, "normal");
+        doc.setFontSize(8.5);
+        doc.setTextColor(...INK);
+        const totalRow = `× ${sv.quantity} véhicules = ${eur(savingsContract * sv.quantity)} économisés sur le contrat`;
+        doc.text(totalRow, PAGE_W - M - 14 - doc.getTextWidth(totalRow), y + 19);
+      }
+      y += econH + 16;
+    } else if (savingsMonthly < 0) {
+      doc.setFont(BRAND_FONT, "italic");
+      doc.setFontSize(9);
+      doc.setTextColor(...SUB);
+      doc.text(`Notre offre est ${eur(Math.abs(savingsMonthly))}/mois plus chère — Beev apporte d'autres avantages (services, accompagnement, conditions de fin de contrat).`,
+        M, y + 12);
+      y += 28;
+    } else {
+      y += 8;
+    }
+  }
+
+  // Cumul global si plusieurs véhicules concernés et économies positives
+  if (vehicles.length > 1 && totalContractSavings > 0 && y + 60 < PAGE_H - 80) {
+    doc.setFillColor(...INK);
+    doc.roundedRect(M, y, PAGE_W - M * 2, 50, 10, 10, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...PINK);
+    doc.text("ÉCONOMIE GLOBALE BEEV", M + 16, y + 17);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(20);
+    doc.setTextColor(255, 255, 255);
+    doc.text(`${eur(totalMonthlySavings)} / mois`, M + 16, y + 38);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(11);
+    doc.setTextColor(255, 255, 255);
+    const totalText = `Soit ${eur(totalContractSavings)} sur la durée totale des contrats`;
+    doc.text(totalText, PAGE_W - M - 16 - doc.getTextWidth(totalText), y + 35);
+  }
 }
 
 function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams) {

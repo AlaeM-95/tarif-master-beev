@@ -2787,6 +2787,70 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove }: { sv: SelectedVe
         </div>
       )}
 
+      {/* Mise en concurrence : sous-formulaire pour saisir l'offre du loueur
+          actuel du client (Arval, Ayvens, Leasys...) sur le MÊME véhicule.
+          Si renseigné, le PDF affiche une slide « Mise en concurrence » avec
+          comparaison côte à côte et calcul des écarts. */}
+      <div className="rounded-md border border-beev-rose/30 p-2 space-y-2 bg-beev-rose-20/40">
+        {!sv.competitorOffer ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onChange({ competitorOffer: { loueur: "", monthlyTtc: 0, durationMonths: sv.durationMonths, kmPerYear: sv.kmPerYear } })}
+            className="w-full h-7 text-[11px] gap-1.5 text-beev-rose hover:text-beev-black hover:bg-beev-rose/20"
+          >
+            <Plus className="w-3 h-3" /> Ajouter l'offre concurrente
+          </Button>
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-beev-rose">Mise en concurrence</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onChange({ competitorOffer: undefined })}
+                className="h-5 w-5 text-muted-foreground hover:text-destructive"
+                title="Retirer l'offre concurrente"
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <TxtField
+                label="Loueur actuel"
+                value={sv.competitorOffer.loueur}
+                onChange={(s) => onChange({ competitorOffer: { ...sv.competitorOffer!, loueur: s } })}
+                placeholder="Arval, Ayvens..."
+              />
+              <NumField
+                label="Loyer TTC/mois"
+                value={sv.competitorOffer.monthlyTtc}
+                onChange={(n) => onChange({ competitorOffer: { ...sv.competitorOffer!, monthlyTtc: n } })}
+              />
+              <NumField
+                label="Durée (mois)"
+                value={sv.competitorOffer.durationMonths}
+                onChange={(n) => onChange({ competitorOffer: { ...sv.competitorOffer!, durationMonths: n } })}
+              />
+              <NumField
+                label="Km / an"
+                value={sv.competitorOffer.kmPerYear}
+                onChange={(n) => onChange({ competitorOffer: { ...sv.competitorOffer!, kmPerYear: n } })}
+              />
+            </div>
+            {sv.competitorOffer.monthlyTtc > 0 && sv.negotiatedMonthly > 0 && (
+              <div className="text-[10px] text-beev-black/70 pt-1 border-t border-beev-rose/20">
+                Économie Beev : <span className="font-semibold text-beev-good">
+                  {fmtEur(sv.competitorOffer.monthlyTtc - sv.negotiatedMonthly)}/mois
+                </span> · <span className="font-semibold text-beev-good">
+                  {fmtEur((sv.competitorOffer.monthlyTtc - sv.negotiatedMonthly) * sv.durationMonths)}
+                </span> sur le contrat
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
       {/* Alerte fiscale : Malus à l'achat + TVS annuelle. Visible si > 0 pour
           que le commercial vérifie le calcul avant de présenter au client. */}
       <FiscalWarningBadge vehicle={sv.vehicle} durationMonths={sv.durationMonths} />
