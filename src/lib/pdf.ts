@@ -655,11 +655,13 @@ export async function generateProposalPdf(opts: {
     }
   }
 
-  // Boucle véhicules : on affiche toutes les fiches détaillées, y compris les
-  // véhicules « flotte actuelle » (pas de choix laissé au commercial). L'ordre
-  // suit les groupes de comparaison : flotte actuelle d'abord, puis les
-  // propositions Beev par loyer croissant (cf. orderVehiclesByGroup).
-  const vehiclesForDetail = orderVehiclesByGroup(v);
+  // Boucle véhicules : les fiches détaillées sont ordonnées par groupe de
+  // comparaison (flotte actuelle d'abord, puis propositions Beev par loyer
+  // croissant). Les véhicules « flotte actuelle » sont MASQUÉS du détail par
+  // défaut ; le commercial peut les afficher via le toggle « Fiche détaillée
+  // flotte actuelle » de la configuration PDF.
+  const vehiclesForDetail = orderVehiclesByGroup(v)
+    .filter((sv) => cfg.showCurrentFleetVehicle || !sv.vehicle.isCurrentFleet);
   for (let i = 0; i < vehiclesForDetail.length; i++) {
     doc.addPage();
     drawHeader(doc, client, effectiveType);
@@ -5287,12 +5289,13 @@ function drawFinancialSynthesis(
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
-  doc.text(
-    lookupText(TEXTS, "common", "synthesis_intro",
-      "Récapitulatif sur la durée totale des contrats : coût total, économies négociées vs vos offres actuelles, fiscalité évitée par l'électrification et empreinte carbone évitée."),
-    M, y, { maxWidth: PAGE_W - M * 2 },
-  );
-  y += 24;
+  const synthIntro = lookupText(TEXTS, "common", "synthesis_intro",
+    "Récapitulatif sur la durée totale des contrats : coût total, économies négociées vs vos offres actuelles, fiscalité évitée par l'électrification et empreinte carbone évitée.");
+  const synthIntroLines = doc.splitTextToSize(synthIntro, PAGE_W - M * 2);
+  doc.text(synthIntroLines, M, y);
+  // Espace réel calculé sur le nombre de lignes (l'intro fait 2 lignes) + marge,
+  // sinon le titre DÉTAIL DES LOYERS chevauche la dernière ligne d'intro.
+  y += synthIntroLines.length * 13 + 18;
 
   // ─── Calculs cumulés ─────────────────────────────────────────────────
   // Véhicules Beev (propositions) vs flotte actuelle (à remplacer)

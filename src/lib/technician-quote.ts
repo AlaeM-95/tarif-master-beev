@@ -146,7 +146,23 @@ const LINE_TAIL_UNIT_NO_VAT = new RegExp(
   "i",
 );
 
-const EXCLUDE_LINE = /^(total ht|tva\b|total ttc|sous[- ]total|base ht|base d'imposition|remise globale|net à payer|escompte|acompte|page \d|signature|sas au capital|siren\b|siret\b|tva intr)/i;
+// Format E : PU€ QTÉ [unité] MONTANT€ — deux marqueurs € par ligne, sans
+// colonne TVA (style Axonaut, Gs Network, Henrri…). C'est le format le plus
+// courant des devis IRVE PME. Particularités gérées :
+//  - PU avec 2 ou 3 décimales (« 552,162 € », « 45,710 € »)
+//  - séparateur de milliers en groupes de 3 chiffres EXACTS (« 2 786,000 »),
+//    pour ne pas avaler les chiffres d'une référence collée (« RAL9010 »)
+//  - ambiguïté de l'espace (« 18 822,78 » = qté 18 + montant 822,78) levée par
+//    l'invariant qté × PU ≈ montant au moment de la validation
+//  - regex GLOBALE : plusieurs lignes de devis fusionnées dans un même bloc de
+//    texte (extraction PDF imparfaite) produisent plusieurs lignes détectées.
+const NUM3 = "\\d{1,3}(?:[ \\u00a0\\u202f]\\d{3})*"; // entier + séparateur milliers
+const LINE_E_GLOBAL = new RegExp(
+  `(${NUM3},\\d{2,3})\\s*€\\s+(\\d+)\\s*([a-zà-ÿ²]{1,4})?\\s+(${NUM3},\\d{2})\\s*€`,
+  "gi",
+);
+
+const EXCLUDE_LINE = /^(total ht|tva\b|total ttc|sous[- ]total|base ht|base d'imposition|remise globale|net à payer|escompte|acompte|page \d|signature|sas au capital|siren\b|siret\b|tva intr|description\b.*(prix|quantit|montant))/i;
 const EXCLUDE_LABEL = /^(d[ée]signation|montant ht|prix unitaire|qte|qté|quantit|tva|unit[ée])$/i;
 
 async function extractPdfText(file: File): Promise<string> {
@@ -375,11 +391,43 @@ function detectLines(rawText: string): { lines: ParsedQuoteLine[]; warnings: str
       continue;
     }
 
-    // On essaie successivement les 3 formats connus, du plus strict (donc le
-    // moins faux-positifs) au plus permissif :
+    // Format E (PU€ qté montant€) — testé EN PREMIER car le plus courant et
+    // le plus discriminant (2 marqueurs €, pas de TVA par ligne). Regex
+    // globale : émet une ligne par couple détecté, ce qui récupère aussi les
+    // cas où l'extraction PDF a fusionné plusieurs lignes du devis en un bloc.
+    const eMatches = [...line.matchAll(LINE_E_GLOBAL)];
+    if (eMatches.length > 0) {
+      const accepted: ParsedQuoteLine[] = [];
+      let cursor = 0;
+      for (const mm of eMatches) {
+        const pu = parseFrNumber(mm[1]);
+        const qty = parseFrNumber(mm[2]);
+        const unit = (mm[3] || "u").toLowerCase();
+        const montant = parseFrNumber(mm[4]);
+        // Invariant qté × PU ≈ montant : valide la découpe des espaces
+        // (« 18 822,78 » → qté 18 / montant 822,78). Tolérance arrondi 6 %.
+        if (montant > 0 && Math.abs(qty * pu - montant) > Math.max(2, montant * 0.06)) {
+          continue;
+        }
+        const labelSeg = line.slice(cursor, mm.index!).trim();
+        cursor = mm.index! + mm[0].length;
+        const labelParts = accepted.length === 0 ? [...labelBuffer, labelSeg] : [labelSeg];
+        const label = softCleanLabel(labelParts.filter(Boolean).join(" ")).replace(/^\*\s*/, "").trim();
+        if (!label) continue;
+        accepted.push({ label, qty: qty || 1, unit, unitHt: pu });
+      }
+      if (accepted.length > 0) {
+        lines.push(...accepted);
+        labelBuffer = [];
+        continue;
+      }
+    }
+
+    // On essaie ensuite successivement les formats à colonne TVA / unité :
     //  A : qty UNIT PU TVA% total  (Talent Tech)
     //  B : qty PU TVA% total       (FIR Energies, sans colonne unité)
     //  C : UNIT PU€ qty total€     (IRO Energie Bretagne, sans TVA par ligne)
+    //  D : générique (dernier recours, invariant qté × PU ≈ total)
     // Le premier qui matche gagne.
     let qtyStr: string | undefined;
     let unitStr: string | undefined;

@@ -10,6 +10,7 @@ export type PdfDisplayConfig = {
   showSocialProof: boolean; // chiffres clés + témoignage sur Pourquoi Beev
   showTcoComparison: boolean; // page comparaison TCO multi-véhicules
   showVehicleComparator: boolean; // page comparateur multi-véhicules (specs côte à côte)
+  showCurrentFleetVehicle: boolean; // afficher la fiche détaillée des véhicules « flotte actuelle » (masqués par défaut)
   showCompetitorComparison: boolean; // page Mise en concurrence (offre client vs Beev sur même véhicule)
   showFinancialSummary: boolean; // page synthèse HT/TVA/TTC
   showFinancialSynthesis: boolean; // page synthèse financière enrichie (KPI cards, économies, CO2)
@@ -65,6 +66,7 @@ export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
   showSocialProof: true,
   showTcoComparison: true,
   showVehicleComparator: true,
+  showCurrentFleetVehicle: false, // masquée par défaut ; le commercial l'active dans la config PDF
   showCompetitorComparison: true,
   showFinancialSummary: false, // retirée sur demande utilisateur (info déjà dans le récap site)
   showFinancialSynthesis: true, // nouvelle synthèse complète (KPI + économies + CO2)
@@ -157,6 +159,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
       { key: "showSocialProof", label: "Chiffres clés + témoignage", description: "Encart noir + citation client" },
       { key: "showTcoComparison", label: "Comparaison TCO flotte", description: "Page synthèse si 2+ véhicules", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showVehicleComparator", label: "Comparateur véhicules", description: "Tableau comparatif specs côte à côte (prix, autonomie, conso, fiscalité) si 2+ véhicules", appliesTo: ["vehicles"] as unknown as string[] } as any,
+      { key: "showCurrentFleetVehicle", label: "Fiche détaillée flotte actuelle", description: "Afficher la fiche véhicule complète des véhicules marqués « flotte actuelle » (masqués par défaut, visibles uniquement dans le comparateur)", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showCompetitorComparison", label: "Mise en concurrence", description: "Slide « Offre actuelle vs Offre Beev » pour les véhicules sur lesquels une offre concurrente est saisie", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showCarbonImpact", label: "Bilan carbone (RSE)", description: "Page CO2 évité + équivalences (avion, arbres, km)", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showFinancialSummary", label: "Synthèse HT / TVA / TTC", description: "Tableau récap financier" },
