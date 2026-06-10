@@ -13,10 +13,13 @@ import { useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Upload, FileSpreadsheet, X, AlertTriangle, Download } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Upload, FileSpreadsheet, X, AlertTriangle, Download, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { importCarPolicy, type ImportReport } from "@/lib/car-policy-importer";
-import type { Vehicle } from "@/lib/catalog";
+import type { Vehicle, Energy } from "@/lib/catalog";
 
 export function CarPolicyImporter({
   importedVehicles,
@@ -24,6 +27,7 @@ export function CarPolicyImporter({
   onClear,
   onAddOne,
   onRemoveOne,
+  onUpdateSelected,
   selectedIds,
 }: {
   /** Liste des véhicules actuellement importés (state React du parent) */
@@ -36,12 +40,31 @@ export function CarPolicyImporter({
   onAddOne: (v: Vehicle) => void;
   /** Callback : retire un véhicule importé du panier de sélection */
   onRemoveOne: (id: string) => void;
+  /** Callback : propage une modification au selectedV si le véhicule
+   *  est déjà au devis. Permet d'éditer un import et de voir la modif
+   *  immédiatement dans le panneau de sélection du devis. */
+  onUpdateSelected?: (id: string, patch: Partial<Vehicle>) => void;
   /** Set des IDs déjà dans le panier (pour afficher l'état) */
   selectedIds: Set<string>;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [report, setReport] = useState<ImportReport | null>(null);
   const [importing, setImporting] = useState(false);
+  // Véhicule en cours d'édition (null = Dialog fermé). On stocke l'ID +
+  // les valeurs en cours pour pouvoir annuler sans toucher au state parent.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const editingVehicle = editingId
+    ? importedVehicles.find((v) => v.id === editingId) ?? null
+    : null;
+
+  const updateImported = (id: string, patch: Partial<Vehicle>) => {
+    onImported(importedVehicles.map((v) => (v.id === id ? { ...v, ...patch } : v)));
+    // Si le véhicule est déjà au devis, on propage la modif au SelectedVehicle
+    // correspondant pour que le panneau de droite affiche la dernière version.
+    if (selectedIds.has(id) && onUpdateSelected) {
+      onUpdateSelected(id, patch);
+    }
+  };
 
   const handleFile = async (file: File) => {
     setImporting(true);
@@ -214,8 +237,16 @@ export function CarPolicyImporter({
                   </div>
                   <Button
                     size="sm"
+                    variant="outline"
+                    className="w-full mt-2 h-7 text-xs gap-1"
+                    onClick={() => setEditingId(v.id)}
+                  >
+                    <Pencil className="w-3 h-3" /> Modifier la fiche
+                  </Button>
+                  <Button
+                    size="sm"
                     variant={isSelected ? "outline" : "default"}
-                    className="w-full mt-2 h-7 text-xs"
+                    className="w-full mt-1.5 h-7 text-xs"
                     onClick={() => (isSelected ? onRemoveOne(v.id) : onAddOne(v))}
                   >
                     {isSelected ? "Retirer" : "Ajouter au devis"}
@@ -226,6 +257,128 @@ export function CarPolicyImporter({
           </div>
         )}
       </CardContent>
+
+      {/* Dialog d'édition complète — même fiche produit que dans /admin */}
+      <Dialog open={!!editingVehicle} onOpenChange={(o) => !o && setEditingId(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          {editingVehicle && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Pencil className="w-4 h-4" />
+                  Modifier la fiche produit
+                </DialogTitle>
+                <DialogDescription>
+                  Les modifications restent locales à ce devis. Le catalogue Beev
+                  officiel et la base Supabase ne sont jamais touchés.
+                </DialogDescription>
+              </DialogHeader>
+              <ImportedVehicleForm
+                vehicle={editingVehicle}
+                onChange={(patch) => updateImported(editingVehicle.id, patch)}
+              />
+              <DialogFooter>
+                <Button onClick={() => setEditingId(null)}>OK</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
+  );
+}
+
+// Formulaire d'édition d'un véhicule importé. Reprend les champs de la
+// VehicleCard /admin mais en version compacte, sans les actions catalogue
+// (delete/duplicate). Les modifs sont appliquées en direct au state parent.
+function ImportedVehicleForm({
+  vehicle,
+  onChange,
+}: {
+  vehicle: Vehicle;
+  onChange: (patch: Partial<Vehicle>) => void;
+}) {
+  return (
+    <div className="space-y-4 py-2">
+      {/* Identité */}
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Marque" value={vehicle.brand} onChange={(s) => onChange({ brand: s })} />
+        <Field label="Modèle" value={vehicle.model} onChange={(s) => onChange({ model: s })} />
+        <Field label="Version / Finition" value={vehicle.version} onChange={(s) => onChange({ version: s })} />
+        <Field label="Catégorie" value={vehicle.category} onChange={(s) => onChange({ category: s })} placeholder="SUV, Berline, Break…" />
+      </div>
+
+      {/* Énergie */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label className="text-[10px] text-muted-foreground uppercase">Énergie</Label>
+          <select
+            value={vehicle.energy}
+            onChange={(e) => onChange({ energy: e.target.value as Energy })}
+            className="h-8 w-full rounded-md border border-border bg-card px-2 text-xs text-foreground"
+          >
+            <option value="Électrique">Électrique</option>
+            <option value="Hybride Rechargeable">Hybride Rechargeable</option>
+            <option value="Hybride">Hybride</option>
+            <option value="Mild Hybrid">Mild Hybrid</option>
+            <option value="Essence">Essence</option>
+            <option value="Diesel">Diesel</option>
+          </select>
+        </div>
+        <NumberField label="Puissance (ch)" value={vehicle.powerHp} onChange={(n) => onChange({ powerHp: n })} />
+      </div>
+
+      {/* Spécifications électriques */}
+      <div className="grid grid-cols-3 gap-3">
+        <NumberField label="Batterie (kWh)" value={vehicle.batteryKwh} onChange={(n) => onChange({ batteryKwh: n })} step={0.1} />
+        <NumberField label="Autonomie WLTP (km)" value={vehicle.rangeWltp} onChange={(n) => onChange({ rangeWltp: n })} />
+        <NumberField label="Consommation" value={vehicle.consumption} onChange={(n) => onChange({ consumption: n })} step={0.1} />
+        <NumberField label="CO2 (g/km)" value={vehicle.co2} onChange={(n) => onChange({ co2: n })} />
+        <NumberField label="CV fiscaux" value={vehicle.fiscalHp} onChange={(n) => onChange({ fiscalHp: n })} />
+        <NumberField label="Score env. (0-100)" value={vehicle.envScore ?? 0} onChange={(n) => onChange({ envScore: n })} />
+      </div>
+
+      {/* Prix */}
+      <div className="grid grid-cols-2 gap-3">
+        <NumberField label="Prix TTC (€)" value={vehicle.priceTtc} onChange={(n) => onChange({ priceTtc: n })} />
+        <NumberField label="Loyer LLD (€/mois)" value={vehicle.monthlyLld} onChange={(n) => onChange({ monthlyLld: n })} />
+      </div>
+
+      {/* Specs étendues */}
+      <div className="grid grid-cols-3 gap-3">
+        <NumberField label="Coffre (L)" value={vehicle.trunkLitres ?? 0} onChange={(n) => onChange({ trunkLitres: n })} />
+        <NumberField label="Recharge DC (kW)" value={vehicle.chargeDcMaxKw ?? 0} onChange={(n) => onChange({ chargeDcMaxKw: n })} step={0.1} />
+        <NumberField label="Recharge AC (kW)" value={vehicle.chargeAcMaxKw ?? 0} onChange={(n) => onChange({ chargeAcMaxKw: n })} step={0.1} />
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <Field label="Dimensions (L × l × H)" value={vehicle.dimensions ?? ""} onChange={(s) => onChange({ dimensions: s })} placeholder="4 750 × 1 850 × 1 620 mm" />
+        <Field label="Recharge 20-80 % AC" value={vehicle.chargeTime2080Ac ?? ""} onChange={(s) => onChange({ chargeTime2080Ac: s })} placeholder="8h00" />
+        <Field label="Recharge 20-80 % DC" value={vehicle.chargeTime2080Dc ?? ""} onChange={(s) => onChange({ chargeTime2080Dc: s })} placeholder="28 min" />
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (s: string) => void; placeholder?: string }) {
+  return (
+    <div className="space-y-1">
+      <Label className="text-[10px] text-muted-foreground uppercase">{label}</Label>
+      <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="h-8 text-xs" />
+    </div>
+  );
+}
+
+function NumberField({ label, value, onChange, step = 1 }: { label: string; value: number; onChange: (n: number) => void; step?: number }) {
+  return (
+    <div className="space-y-1">
+      <Label className="text-[10px] text-muted-foreground uppercase">{label}</Label>
+      <Input
+        type="number"
+        value={value || ""}
+        onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+        step={step}
+        className="h-8 text-xs"
+      />
+    </div>
   );
 }

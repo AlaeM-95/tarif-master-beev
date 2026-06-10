@@ -102,8 +102,62 @@ function detectEnergy(raw: unknown): Energy {
 }
 
 /**
+ * Score une feuille selon son adéquation à l'import car policy :
+ * - Bonus si le nom contient « import », « lovable », « tco », « beev »
+ * - Bonus si elle contient beaucoup d'en-têtes reconnus (Marque, Modèle, etc.)
+ * - Bonus si elle a beaucoup de lignes de données
+ * Retourne 0 pour les feuilles d'analyse / synthèse non importables.
+ */
+function scoreSheet(name: string, rows: unknown[][]): number {
+  let score = 0;
+  const nameN = normalize(name);
+  if (/\b(import|lovable|tco)\b/.test(nameN)) score += 100;
+  if (/\bbeev\b/.test(nameN)) score += 20;
+  if (/\b(analyse|synthese|recap|comparatif)\b/.test(nameN)) score -= 30;
+  // Scan des 10 premières lignes pour compter les en-têtes reconnus
+  const headerKeywords = ["marque", "modele", "modèle", "version", "energie", "énergie",
+    "batterie", "autonomie", "puissance", "consommation", "co2", "fiscal", "prix", "loyer"];
+  let hits = 0;
+  for (let i = 0; i < Math.min(10, rows.length); i++) {
+    const row = rows[i];
+    for (const cell of row) {
+      if (!cell) continue;
+      const cellN = normalize(String(cell));
+      for (const kw of headerKeywords) {
+        if (cellN === kw || cellN.includes(kw)) {
+          hits += cellN === kw ? 3 : 1;
+        }
+      }
+    }
+  }
+  score += hits;
+  score += Math.min(20, rows.length / 5);
+  return score;
+}
+
+/**
+ * Détecte si une ligne est un séparateur (titre de section, ligne décorative)
+ * et doit être ignorée. Critères :
+ * - Une seule cellule non-vide qui commence par « ▼ », « ▶ », « ━ » ou est
+ *   en MAJUSCULES (titre type « FLOTTE ACTUELLE »)
+ * - Contient les mots-clés section connus
+ */
+function isSeparatorRow(row: unknown[]): boolean {
+  const nonEmpty = row.filter((c) => c != null && String(c).trim() !== "");
+  if (nonEmpty.length === 0) return true;
+  if (nonEmpty.length <= 2) {
+    const text = nonEmpty.map((c) => String(c).trim()).join(" ");
+    if (/^[▼▶►━─]+/.test(text)) return true;
+    if (/^(flotte actuelle|propositions? beev|veh icules? actuels?|veh icules? cibles?)/i.test(text)) return true;
+    if (/^[A-ZÉÈÀÇ\s]{8,}$/.test(text) && !/[a-z]/.test(text)) return true;
+  }
+  return false;
+}
+
+/**
  * Parse un fichier Excel/CSV et retourne la liste des véhicules détectés.
- * Préfère la première feuille du classeur.
+ * Choisit automatiquement la meilleure feuille (préfère « Import TCO Lovable »
+ * sur une éventuelle feuille de synthèse / matrice comparative).
  */
 export async function importCarPolicy(file: File): Promise<ImportReport> {
   const warnings: string[] = [];
@@ -112,37 +166,62 @@ export async function importCarPolicy(file: File): Promise<ImportReport> {
   if (wb.SheetNames.length === 0) {
     throw new Error("Le fichier ne contient aucune feuille.");
   }
-  const sheet = wb.Sheets[wb.SheetNames[0]];
+  // Si plusieurs feuilles, on choisit celle qui maximise un score d'adéquation
+  // à un import car policy (nom + densité d'en-têtes reconnus).
+  let bestSheetName = wb.SheetNames[0];
+  let bestScore = -Infinity;
+  for (const sheetName of wb.SheetNames) {
+    const sh = wb.Sheets[sheetName];
+    const rs: unknown[][] = XLSX.utils.sheet_to_json(sh, { header: 1, defval: null, raw: false });
+    const sc = scoreSheet(sheetName, rs);
+    if (sc > bestScore) {
+      bestScore = sc;
+      bestSheetName = sheetName;
+    }
+  }
+  const sheet = wb.Sheets[bestSheetName];
+  if (wb.SheetNames.length > 1) {
+    warnings.push(`Feuille utilisée : « ${bestSheetName} » (sur ${wb.SheetNames.length} feuilles, choisie automatiquement)`);
+  }
   // header:1 → renvoie un tableau de tableaux (lignes), pas un AOS.
   const rows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null, raw: false });
   if (rows.length === 0) {
     throw new Error("La feuille est vide.");
   }
 
-  // Détection de la ligne d'en-tête : on prend la première qui contient au
-  // moins 2 mots-clés reconnus (sinon les feuilles avec un titre en ligne 1
-  // décaleraient toute la détection).
+  // Détection de la ligne d'en-tête : on prend la ligne qui contient le PLUS
+  // de matches exacts (=) avec les mots-clés synonymes. On évite les matches
+  // partiels (.includes) ici pour ne pas être trompé par une ligne du genre
+  // « F. Desnoyers (3008 Hybrid …) » qui pourrait contenir « hybrid ».
   let headerRowIdx = -1;
   let bestHits = 0;
-  for (let i = 0; i < Math.min(8, rows.length); i++) {
+  // On scanne jusqu'à 20 lignes pour gérer les feuilles avec titre + sous-titre
+  // + séparateur de section avant les vrais en-têtes (cas Axiences × Beev).
+  for (let i = 0; i < Math.min(20, rows.length); i++) {
     const row = rows[i];
+    if (isSeparatorRow(row)) continue;
     const hits = row.reduce<number>((sum, cell) => {
       if (!cell) return sum;
       const cellN = normalize(String(cell));
+      let cellScore = 0;
       for (const synonyms of Object.values(COLUMN_SYNONYMS)) {
         for (const syn of synonyms) {
-          if (cellN === normalize(syn)) return sum + 2;
-          if (cellN.includes(normalize(syn))) return sum + 1;
+          const synN = normalize(syn);
+          if (cellN === synN) { cellScore = Math.max(cellScore, 3); continue; }
+          // match partiel uniquement si la cellule est courte (vrai en-tête)
+          if (cellN.length <= 30 && cellN.includes(synN)) {
+            cellScore = Math.max(cellScore, 1);
+          }
         }
       }
-      return sum;
+      return sum + cellScore;
     }, 0);
     if (hits > bestHits) {
       bestHits = hits;
       headerRowIdx = i;
     }
   }
-  if (headerRowIdx < 0 || bestHits < 2) {
+  if (headerRowIdx < 0 || bestHits < 3) {
     throw new Error("Aucune ligne d'en-tête reconnue. Vérifiez que le fichier contient au moins une ligne avec « Marque », « Modèle », « Prix » ou équivalents.");
   }
 
@@ -185,6 +264,8 @@ export async function importCarPolicy(file: File): Promise<ImportReport> {
   for (let i = 0; i < dataRows.length; i++) {
     const row = dataRows[i];
     if (!row || row.every((c) => c == null || c === "")) continue; // ligne vide
+    // Ignore les séparateurs de section (« ▼ FLOTTE ACTUELLE », « ▼ PROPOSITIONS BEEV »)
+    if (isSeparatorRow(row)) continue;
 
     const get = (field: keyof typeof COLUMN_SYNONYMS): unknown => {
       const idx = fieldToColIdx[field];

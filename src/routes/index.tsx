@@ -1145,6 +1145,16 @@ function App() {
                   return next;
                 });
               }}
+              onUpdateSelected={(id, patch) => {
+                // Propage les modifs de fiche aux SelectedVehicles déjà au devis
+                setSelectedV((prev) => {
+                  if (!prev[id]) return prev;
+                  return {
+                    ...prev,
+                    [id]: { ...prev[id], vehicle: { ...prev[id].vehicle, ...patch } },
+                  };
+                });
+              }}
               selectedIds={new Set(Object.keys(selectedV))}
             />
           )}
