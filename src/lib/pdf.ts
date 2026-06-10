@@ -712,6 +712,14 @@ export async function generateProposalPdf(opts: {
     drawFinancialSummary(doc, effectiveType, v, c);
   }
 
+  // Page synthèse financière enrichie (KPI cards, économies vs concurrents,
+  // TVS évitée, CO2 évité) — réservée aux projets véhicules
+  if (cfg.showFinancialSynthesis && v.length > 0) {
+    doc.addPage();
+    drawHeader(doc, client, effectiveType);
+    drawFinancialSynthesis(doc, v, energy);
+  }
+
   // Page garanties & engagements (toggleable)
   if (cfg.showGuarantees) {
     doc.addPage();
@@ -745,6 +753,13 @@ export async function generateProposalPdf(opts: {
     doc.addPage();
     drawHeader(doc, client, effectiveType);
     drawValidation(doc, effectiveType, client);
+  }
+
+  // Légende couleurs / symboles — toute dernière page didactique
+  if (cfg.showLegend) {
+    doc.addPage();
+    drawHeader(doc, client, effectiveType);
+    drawLegend(doc);
   }
 
   const pages = doc.getNumberOfPages();
@@ -5102,6 +5117,290 @@ function drawJourney(doc: jsPDF, type: ProjectType, _client: ClientInfo) {
 }
 
 // ============ VALIDATION (varie par type) ============
+// ============ SYNTHÈSE FINANCIÈRE ENRICHIE ============
+// Slide récap avec 4 KPI cards en grille (loyers cumulés, économies vs
+// concurrents, TVS évitée par électrification, CO2 évité) + tableau
+// détaillé en bas. Vise à donner au décideur une vue chiffrée immédiate
+// de la valeur financière ET environnementale du projet.
+function drawFinancialSynthesis(
+  doc: jsPDF,
+  vehicles: SelectedVehicle[],
+  energy: EnergyParams,
+) {
+  const ROSE: [number, number, number] = [244, 184, 170];
+  const ROSE_LIGHT: [number, number, number] = [253, 241, 238];
+  const BLUE: [number, number, number] = [165, 210, 255];
+  const BLUE_LIGHT: [number, number, number] = [237, 246, 255];
+  const VIOLET_LIGHT: [number, number, number] = [246, 245, 247];
+  const GREEN: [number, number, number] = [108, 190, 94];
+  const GREEN_LIGHT: [number, number, number] = [219, 238, 220];
+
+  let y = 130;
+  eyebrow(doc, lookupText(TEXTS, "common", "synthesis_eyebrow", "SYNTHÈSE FINANCIÈRE & ENVIRONNEMENTALE"), y);
+  y += 32;
+  title(doc, lookupText(TEXTS, "common", "synthesis_title", "Ce que ce projet vous apporte, chiffré."), y);
+  y += 36;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...SUB);
+  doc.text(
+    lookupText(TEXTS, "common", "synthesis_intro",
+      "Récapitulatif sur la durée totale des contrats : coût total, économies négociées vs vos offres actuelles, fiscalité évitée par l'électrification et empreinte carbone évitée."),
+    M, y, { maxWidth: PAGE_W - M * 2 },
+  );
+  y += 24;
+
+  // ─── Calculs cumulés ─────────────────────────────────────────────────
+  // Véhicules Beev (propositions) vs flotte actuelle (à remplacer)
+  const beevVehicles = vehicles.filter((sv) => !sv.vehicle.isCurrentFleet);
+  const currentFleet = vehicles.filter((sv) => sv.vehicle.isCurrentFleet);
+
+  let totalContractTtc = 0;
+  let totalMonthlyTtc = 0;
+  for (const sv of beevVehicles) {
+    totalMonthlyTtc += sv.negotiatedMonthly * sv.quantity;
+    totalContractTtc += sv.negotiatedMonthly * sv.durationMonths * sv.quantity;
+  }
+
+  // Économies vs offres concurrentes : pour chaque véhicule Beev avec
+  // au moins une offre concurrente, on prend la MEILLEURE économie (vs
+  // l'offre concurrente la plus chère).
+  let savingsVsCompetitors = 0;
+  for (const sv of beevVehicles) {
+    const offers = (sv.competitorOffers ?? []).filter((o) => o.monthlyTtc > 0);
+    if (offers.length === 0) continue;
+    const maxCompetitor = Math.max(...offers.map((o) => o.monthlyTtc));
+    const monthlyDelta = maxCompetitor - sv.negotiatedMonthly;
+    if (monthlyDelta > 0) {
+      savingsVsCompetitors += monthlyDelta * sv.durationMonths * sv.quantity;
+    }
+  }
+
+  // TVS évitée par l'électrification (passage thermique → EV).
+  // On somme la TVS annuelle des véhicules flotte actuelle thermiques
+  // × durée du contrat — Beev EV = TVS 0.
+  let tvsAvoided = 0;
+  for (const sv of currentFleet) {
+    if (sv.vehicle.energy === "Électrique") continue;
+    try {
+      const r = calculateTcoFull(sv.vehicle, {
+        dureeAnnees: sv.durationMonths / 12,
+        kmParAn: sv.kmPerYear,
+        mixDomicilePct: energy.mixHomePct,
+        prixKwhDom: energy.kWhHome,
+        prixKwhPub: energy.kWhPublic,
+        prixCarburant: energy.fuelPriceL,
+      }, sv.negotiatedMonthly);
+      tvsAvoided += r.tvsTotal * sv.quantity;
+    } catch { /* skip if calc fails */ }
+  }
+
+  // CO2 évité : delta CO2 entre la flotte actuelle thermique et les EV
+  // proposés × km/an × durée. Convention : EV = 0 g/km.
+  let co2AvoidedKg = 0;
+  const totalKmCurrentFleet = currentFleet.reduce(
+    (s, sv) => s + sv.kmPerYear * (sv.durationMonths / 12) * sv.quantity,
+    0,
+  );
+  const avgCo2CurrentFleet = currentFleet.length > 0
+    ? currentFleet.reduce((s, sv) => s + (sv.vehicle.co2 || 0) * sv.quantity, 0) / currentFleet.reduce((s, sv) => s + sv.quantity, 0)
+    : 130; // référence thermique moyenne France si pas de flotte
+  // Pour les EV Beev qui ont du km/an, on calcule la conso évitée vs un
+  // thermique de référence (avgCo2CurrentFleet g/km).
+  for (const sv of beevVehicles) {
+    if (sv.vehicle.energy !== "Électrique") continue;
+    const kmTotal = sv.kmPerYear * (sv.durationMonths / 12) * sv.quantity;
+    co2AvoidedKg += kmTotal * avgCo2CurrentFleet / 1000;
+  }
+  // Fallback : si pas de pairing thermique→EV, on utilise la référence
+  // thermique 130 g/km pour estimer.
+  if (co2AvoidedKg === 0 && currentFleet.length === 0) {
+    co2AvoidedKg = beevVehicles
+      .filter((sv) => sv.vehicle.energy === "Électrique")
+      .reduce((s, sv) => s + sv.kmPerYear * (sv.durationMonths / 12) * sv.quantity, 0)
+      * 130 / 1000;
+  }
+
+  // ─── 4 KPI cards en 2×2 ──────────────────────────────────────────────
+  type Kpi = { label: string; value: string; sub: string; bg: [number, number, number]; accent: [number, number, number] };
+  const kpis: Kpi[] = [
+    {
+      label: "COÛT TOTAL DU CONTRAT",
+      value: eur(totalContractTtc),
+      sub: `${eur(totalMonthlyTtc)}/mois TTC sur ${beevVehicles.length > 0 ? Math.round(beevVehicles.reduce((s, sv) => s + sv.durationMonths, 0) / Math.max(beevVehicles.length, 1)) : 48} mois`,
+      bg: BLUE_LIGHT,
+      accent: [56, 9, 234],
+    },
+    {
+      label: "ÉCONOMIES vs OFFRES ACTUELLES",
+      value: savingsVsCompetitors > 0 ? eur(savingsVsCompetitors) : "—",
+      sub: savingsVsCompetitors > 0 ? "Cumul sur la durée des contrats" : "Saisissez les offres concurrentes",
+      bg: GREEN_LIGHT,
+      accent: GREEN,
+    },
+    {
+      label: "TVS ÉVITÉE PAR ÉLECTRIFICATION",
+      value: tvsAvoided > 0 ? eur(tvsAvoided) : "—",
+      sub: tvsAvoided > 0 ? "Cumul sur la durée des contrats" : "Marquez la flotte actuelle pour calculer",
+      bg: ROSE_LIGHT,
+      accent: ROSE,
+    },
+    {
+      label: "CO2 ÉVITÉ",
+      value: co2AvoidedKg > 0 ? `${Math.round(co2AvoidedKg).toLocaleString("fr-FR")} kg` : "—",
+      sub: co2AvoidedKg > 0 ? `≈ ${Math.round(co2AvoidedKg / 25).toLocaleString("fr-FR")} arbres absorbant 1 an` : "Référence : 130 g CO2/km thermique",
+      bg: VIOLET_LIGHT,
+      accent: [108, 190, 94],
+    },
+  ];
+
+  const cardW = (PAGE_W - M * 2 - 14) / 2;
+  const cardH = 96;
+  kpis.forEach((kpi, i) => {
+    const col = i % 2;
+    const row = Math.floor(i / 2);
+    const cx = M + col * (cardW + 14);
+    const cy = y + row * (cardH + 14);
+    doc.setFillColor(...kpi.bg);
+    doc.roundedRect(cx, cy, cardW, cardH, 10, 10, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...kpi.accent);
+    doc.text(kpi.label, cx + 16, cy + 18);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(26);
+    doc.setTextColor(...INK);
+    doc.text(kpi.value, cx + 16, cy + 56);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...SUB);
+    doc.text(kpi.sub, cx + 16, cy + 76, { maxWidth: cardW - 32 });
+  });
+  y += cardH * 2 + 14 + 24;
+
+  // ─── Tableau détaillé loyers ─────────────────────────────────────────
+  if (beevVehicles.length > 0 && y < PAGE_H - 200) {
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...INK);
+    doc.text("DÉTAIL DES LOYERS — PROPOSITION BEEV", M, y);
+    y += 8;
+
+    const rows = beevVehicles.map((sv) => [
+      vehicleLabel(sv.vehicle, 40),
+      `${sv.quantity}`,
+      `${sv.durationMonths} mois · ${(sv.kmPerYear / 1000).toFixed(0)}k km/an`,
+      eurLoyer(sv.negotiatedMonthly),
+      eurLoyer(sv.negotiatedMonthly * sv.quantity * sv.durationMonths),
+    ]);
+    autoTable(doc, {
+      startY: y,
+      theme: "plain",
+      head: [["Véhicule", "Qté", "Conditions", "Loyer / mois", "Total contrat TTC"]],
+      body: rows,
+      foot: [[
+        { content: "TOTAL", colSpan: 4, styles: { fontStyle: "bold", halign: "right", textColor: INK, fillColor: BG } },
+        { content: eur(totalContractTtc), styles: { fontStyle: "bold", halign: "right", fillColor: BG, textColor: INK } },
+      ]],
+      headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT, cellPadding: 6 },
+      bodyStyles: { fontSize: 9, cellPadding: 6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
+      columnStyles: { 1: { halign: "center", cellWidth: 38 }, 3: { halign: "right" }, 4: { halign: "right", fontStyle: "bold" } },
+      margin: { left: M, right: M },
+    });
+  }
+}
+
+// ============ LÉGENDE COULEURS / ICÔNES ============
+// Page didactique qui explique au client la signification des couleurs
+// et badges utilisés dans le PDF Beev. Aide à la lecture, surtout
+// utile sur les longs documents avec mise en concurrence et comparateurs.
+function drawLegend(doc: jsPDF) {
+  const ROSE: [number, number, number] = [244, 184, 170];
+  const BLUE: [number, number, number] = [165, 210, 255];
+  const VIOLET: [number, number, number] = [211, 204, 216];
+  const GREEN: [number, number, number] = [108, 190, 94];
+
+  let y = 130;
+  eyebrow(doc, lookupText(TEXTS, "common", "legend_eyebrow", "LÉGENDE · COULEURS & SYMBOLES"), y);
+  y += 32;
+  title(doc, lookupText(TEXTS, "common", "legend_title", "Comment lire ce document."), y);
+  y += 36;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...SUB);
+  doc.text(
+    lookupText(TEXTS, "common", "legend_intro",
+      "Ce document combine plusieurs vues (fiches véhicule, comparateurs, mise en concurrence). Les couleurs et badges ci-dessous vous aident à naviguer rapidement."),
+    M, y, { maxWidth: PAGE_W - M * 2 },
+  );
+  y += 30;
+
+  type LegendItem = { color: [number, number, number]; label: string; desc: string };
+  const items: LegendItem[] = [
+    {
+      color: ROSE,
+      label: "FLOTTE ACTUELLE",
+      desc: "Véhicule de votre flotte existante (en cours de contrat). Apparaît dans le comparateur pour visualiser l'écart avec notre proposition.",
+    },
+    {
+      color: BLUE,
+      label: "PROPOSITION BEEV",
+      desc: "Véhicule électrique que nous vous proposons en remplacement ou en nouvel ajout. Détaillé sur sa propre fiche.",
+    },
+    {
+      color: VIOLET,
+      label: "HYBRIDE / TRANSITION",
+      desc: "Véhicule hybride rechargeable ou non rechargeable. Énergie mixte, conso thermique + consommation électrique en mode EV.",
+    },
+    {
+      color: GREEN,
+      label: "ÉCONOMIE / IMPACT POSITIF",
+      desc: "Indique un gain mesurable : économie €/mois vs l'offre concurrente, TVS évitée, CO2 économisé, etc.",
+    },
+    {
+      color: [29, 29, 29],
+      label: "INFORMATION PRINCIPALE",
+      desc: "Données contractuelles clés (loyer mensuel, MONTANT TOTAL PROJET, BPA). Charte Beev — Black officiel.",
+    },
+  ];
+
+  // Affichage en liste verticale : pastille couleur + label gras + description
+  items.forEach((item) => {
+    // Pastille couleur 28×28
+    doc.setFillColor(...item.color);
+    doc.roundedRect(M, y, 28, 28, 6, 6, "F");
+    // Label
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...INK);
+    doc.text(item.label, M + 40, y + 13);
+    // Description
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...SUB);
+    const descLines = doc.splitTextToSize(item.desc, PAGE_W - M * 2 - 40);
+    doc.text(descLines, M + 40, y + 24);
+    y += 28 + Math.max(0, (descLines.length - 1)) * 11 + 16;
+  });
+
+  // Encart bas : symboles génériques
+  y += 8;
+  if (y < PAGE_H - 100) {
+    doc.setFillColor(252, 251, 248);
+    doc.roundedRect(M, y, PAGE_W - M * 2, 70, 8, 8, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(...INK);
+    doc.text("SYMBOLES UTILISÉS", M + 14, y + 16);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...SUB);
+    doc.text("·  Cellules surlignées dans le comparateur = meilleure valeur sur la ligne (prix le plus bas, autonomie la plus haute, etc.).", M + 14, y + 32, { maxWidth: PAGE_W - M * 2 - 28 });
+    doc.text("·  Loyer affiché en TTC. La TVA sur les loyers LLD véhicules électriques est récupérable à 100 %.", M + 14, y + 46, { maxWidth: PAGE_W - M * 2 - 28 });
+    doc.text("·  CO2 évité estimé sur une référence thermique de 130 g/km (moyenne France) — ajustable selon votre flotte actuelle.", M + 14, y + 60, { maxWidth: PAGE_W - M * 2 - 28 });
+  }
+}
+
 function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   let y = 130;
   eyebrow(doc, lookupText(TEXTS, "common", "next_steps_eyebrow", "PROCHAINES ÉTAPES"), y);
