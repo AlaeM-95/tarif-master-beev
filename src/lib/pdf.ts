@@ -57,6 +57,12 @@ export type SelectedVehicle = {
     durationMonths: number;
     kmPerYear: number;
   }>;
+  /** Groupe de comparaison libre — permet au commercial de pairer plusieurs
+   *  véhicules dans le PDF. Tous les véhicules ayant le même comparisonGroup
+   *  sont comparés ensemble dans une slide dédiée. Si vide, le véhicule
+   *  apparaît dans le comparateur global. Exemples : "Groupe A", "Berlines",
+   *  "Remplacement 3008". */
+  comparisonGroup?: string;
 };
 
 /** Spécifications site personnalisables par le commercial pour le rapport site
@@ -574,10 +580,15 @@ export async function generateProposalPdf(opts: {
   }
 
   // Boucle véhicules : pour les projets mixtes, on affiche toujours les véhicules
-  for (let i = 0; i < v.length; i++) {
+  // EXCEPTÉ les véhicules « flotte actuelle » (isCurrentFleet=true) : leur
+  // détail n'a pas d'intérêt commercial, ils n'apparaissent que dans le
+  // comparateur global. On va droit au but : pas de fiche individuelle pour
+  // les véhicules à remplacer.
+  const vehiclesForDetail = v.filter((sv) => !sv.vehicle.isCurrentFleet);
+  for (let i = 0; i < vehiclesForDetail.length; i++) {
     doc.addPage();
     drawHeader(doc, client, effectiveType);
-    await drawVehiclePage(doc, v[i], energy, i + 1, v.length, client, effectiveType);
+    await drawVehiclePage(doc, vehiclesForDetail[i], energy, i + 1, vehiclesForDetail.length, client, effectiveType);
   }
   // Boucle bornes : on regroupe par deployment (domicile puis site) pour
   // une présentation cohérente
@@ -621,9 +632,41 @@ export async function generateProposalPdf(opts: {
   // Page comparateur véhicules (specs côte à côte) — toggleable, indépendante
   // du TCO. Affichée dès 2+ véhicules dans la sélection commerciale.
   if (cfg.showVehicleComparator && v.length >= 2) {
-    doc.addPage();
-    drawHeader(doc, client, "vehicles");
-    await drawVehicleComparator(doc, v);
+    // Groupes de comparaison granulaire : si le commercial a saisi des
+    // valeurs dans « Groupe de comparaison » sur certaines cards, on
+    // génère une slide PAR groupe (en plus de la slide globale qui
+    // contient les véhicules sans groupe). Permet par exemple d'avoir
+    // "Groupe Berlines" (1 actuelle + 2 EV) ET "Groupe SUV" (1 actuelle
+    // + 2 EV) dans le même PDF.
+    const groups = new Map<string, SelectedVehicle[]>();
+    for (const sv of v) {
+      const g = (sv.comparisonGroup ?? "").trim();
+      if (!g) continue;
+      const arr = groups.get(g) ?? [];
+      arr.push(sv);
+      groups.set(g, arr);
+    }
+    if (groups.size > 0) {
+      // Une slide par groupe (titre = nom du groupe)
+      for (const [groupName, groupVehicles] of groups.entries()) {
+        if (groupVehicles.length < 2) continue;
+        doc.addPage();
+        drawHeader(doc, client, "vehicles");
+        await drawVehicleComparator(doc, groupVehicles, groupName);
+      }
+      // Véhicules sans groupe : slide globale uniquement s'il y en a 2+
+      const ungrouped = v.filter((sv) => !(sv.comparisonGroup ?? "").trim());
+      if (ungrouped.length >= 2) {
+        doc.addPage();
+        drawHeader(doc, client, "vehicles");
+        await drawVehicleComparator(doc, ungrouped);
+      }
+    } else {
+      // Pas de groupes : comparateur global classique
+      doc.addPage();
+      drawHeader(doc, client, "vehicles");
+      await drawVehicleComparator(doc, v);
+    }
   }
 
   // Slide « Mise en concurrence » — affichée si au moins un véhicule a au
@@ -2208,15 +2251,19 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setTextColor(...SUB);
   doc.text(`VÉHICULE ${idx} / ${total}`, M + 30, 109);
 
-  // Badge « FLOTTE ACTUELLE » à droite si le véhicule est marqué isCurrentFleet
-  if (v.isCurrentFleet) {
+  // Badge en haut à droite : « FLOTTE ACTUELLE » (rose) si véhicule à
+  // remplacer, sinon « PROPOSITION BEEV » (bleu) — pour distinguer
+  // visuellement le statut de chaque fiche dans le devis.
+  {
     const ROSE: [number, number, number] = [244, 184, 170];
-    const badgeText = "FLOTTE ACTUELLE";
+    const BLUE: [number, number, number] = [165, 210, 255];
+    const isFlotte = !!v.isCurrentFleet;
+    const badgeText = isFlotte ? "FLOTTE ACTUELLE" : "PROPOSITION BEEV";
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(8.5);
     const badgeW = doc.getTextWidth(badgeText) + 16;
     const badgeX = PAGE_W - M - badgeW;
-    doc.setFillColor(...ROSE);
+    doc.setFillColor(...(isFlotte ? ROSE : BLUE));
     doc.roundedRect(badgeX, 100, badgeW, 16, 8, 8, "F");
     doc.setTextColor(...INK);
     doc.text(badgeText, badgeX + badgeW / 2, 111, { align: "center" });
@@ -3699,7 +3746,7 @@ function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
 //
 // Limite : 4 véhicules max pour rester lisible sur A4 portrait. Si la
 // sélection dépasse 4, on prend les 4 premiers.
-async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[]) {
+async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], groupName?: string) {
   const PINK: [number, number, number] = [244, 184, 170];
   const PINK_LIGHT: [number, number, number] = [253, 241, 238];
   const BLUE_LIGHT: [number, number, number] = [237, 246, 255]; // beev-bleu-20
@@ -3717,9 +3764,11 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[]) {
   let y = 130;
   eyebrow(
     doc,
-    isBeforeAfter
-      ? lookupText(TEXTS, "vehicles", "comparator_before_after_eyebrow", "FLOTTE ACTUELLE · PROPOSITION BEEV")
-      : lookupText(TEXTS, "vehicles", "comparator_eyebrow", "COMPARATEUR VÉHICULES"),
+    groupName
+      ? `COMPARATEUR · ${groupName.toUpperCase()}`
+      : isBeforeAfter
+        ? lookupText(TEXTS, "vehicles", "comparator_before_after_eyebrow", "FLOTTE ACTUELLE · PROPOSITION BEEV")
+        : lookupText(TEXTS, "vehicles", "comparator_eyebrow", "COMPARATEUR VÉHICULES"),
     y,
   );
   y += 32;
@@ -4029,7 +4078,13 @@ function drawCompetitorComparison(doc: jsPDF, vehicles: SelectedVehicle[]) {
     const gap = 8;
     const colW = (PAGE_W - M * 2 - gap * (totalCols - 1)) / totalCols;
 
-    // Fonction interne pour dessiner une carte (loueur, loyer, durée, km, couleur)
+    // Fonction interne pour dessiner une carte (loueur, loyer, durée, km, couleur).
+    // Layout vertical strict pour éviter la superposition avec « TTC/mois » :
+    //   • header (6.5pt)         à y + 13
+    //   • titre loueur (9.5pt)   à y + 27 (+/- 12 si 2 lignes)
+    //   • LOYER en gros (18pt)   à y + 58 (largeur protégée)
+    //   • « TTC/mois »  (7.5pt)  à y + 70 (SOUS le loyer, pas à côté)
+    //   • durée + km    (8pt)    à y + 84 et y + 94
     const drawOfferCard = (
       cx: number,
       header: string,
@@ -4051,16 +4106,18 @@ function drawCompetitorComparison(doc: jsPDF, vehicles: SelectedVehicle[]) {
       doc.setTextColor(...INK);
       const titleLines = doc.splitTextToSize(title, colW - 16);
       doc.text(titleLines.slice(0, 2), cx + 10, y + 27);
+      // Loyer en gros sur sa propre ligne — pas de texte à droite pour éviter
+      // toute superposition avec le « TTC/mois » qui passe en-dessous.
       doc.setFontSize(18);
-      doc.text(`${eur(monthly)}`, cx + 10, y + 56);
+      doc.text(`${eur(monthly)}`, cx + 10, y + 58);
       doc.setFont(BRAND_FONT, "normal");
       doc.setFontSize(7.5);
       doc.setTextColor(...SUB);
-      doc.text("TTC/mois", cx + 10, y + 67);
+      doc.text("TTC/mois", cx + 10, y + 70);
       doc.setFontSize(8);
       doc.setTextColor(...INK);
-      doc.text(`${duration} mois`, cx + 10, y + 80);
-      doc.text(`${kmPerYear.toLocaleString("fr-FR")} km/an`, cx + 10, y + 90);
+      doc.text(`${duration} mois`, cx + 10, y + 84);
+      doc.text(`${kmPerYear.toLocaleString("fr-FR")} km/an`, cx + 10, y + 94);
     };
 
     // Cartes concurrentes (rose)
@@ -4085,7 +4142,7 @@ function drawCompetitorComparison(doc: jsPDF, vehicles: SelectedVehicle[]) {
       "OFFRE BEEV",
       LAVENDER_COLOR,
       BLUE_LIGHT,
-      "Beev × partenaire loueur",
+      "Beev",
       sv.negotiatedMonthly,
       sv.durationMonths,
       sv.kmPerYear,
@@ -5007,29 +5064,38 @@ function drawJourney(doc: jsPDF, type: ProjectType, _client: ClientInfo) {
     const numStr = String(i + 1).padStart(2, "0");
     doc.text(numStr, cardX, cardY + 22);
 
-    // Titre étape (sous le numéro)
+    // Titre étape (sous le numéro). fontSize 9 (au lieu de 10) pour plus de
+    // capacité en largeur, et splitTextToSize avec marge interne calculée
+    // (cardW - 4 pt) plutôt que cardW pur pour éviter qu'une lettre frôle
+    // le bord et soit coupée par le clipping interne de jsPDF. 3 lignes max
+    // avec ellipsis si dépassement.
     doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(10);
+    doc.setFontSize(9);
     doc.setTextColor(...INK);
-    const titleLines = doc.splitTextToSize(s.title, cardW).slice(0, 2);
+    const rawTitleLines = doc.splitTextToSize(s.title, cardW - 4);
+    const titleLines = rawTitleLines.length > 3
+      ? [...rawTitleLines.slice(0, 2), rawTitleLines[2].slice(0, 18) + "…"]
+      : rawTitleLines;
     doc.text(titleLines, cardX, cardY + 38);
 
-    // Résumé (3 lignes max — au-delà tronqué) — fontSize + line-height 11
+    // Résumé : 3 lignes max, fontSize 8, line-height 10. Ellipsis si tronqué.
     doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(8);
+    doc.setFontSize(7.5);
     doc.setTextColor(...SUB);
-    const sumStart = cardY + 38 + titleLines.length * 12 + 4;
-    const sumLines = doc.splitTextToSize(s.summary || "", cardW).slice(0, 3);
+    const sumStart = cardY + 38 + titleLines.length * 11 + 4;
+    const rawSumLines = doc.splitTextToSize(s.summary || "", cardW - 4);
+    const sumLines = rawSumLines.length > 3
+      ? [...rawSumLines.slice(0, 2), rawSumLines[2].slice(0, 24) + "…"]
+      : rawSumLines;
     doc.text(sumLines, cardX, sumStart);
 
     // Durée affichée APRÈS le résumé, jamais au milieu du texte.
-    // Position calculée = end du résumé + marge 8px.
     if (s.duration) {
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(7);
       doc.setTextColor(...color);
-      const sumEnd = sumStart + sumLines.length * 10;
-      const durY = Math.min(cardY + cardH - 4, sumEnd + 12);
+      const sumEnd = sumStart + sumLines.length * 9;
+      const durY = Math.min(cardY + cardH - 4, sumEnd + 10);
       doc.text(s.duration.toUpperCase(), cardX, durY);
     }
   });

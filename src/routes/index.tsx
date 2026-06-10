@@ -2791,17 +2791,29 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove }: { sv: SelectedVe
           isCurrentFleet (via import car policy OU toggle direct ici).
           Permet au commercial de voir d'un coup d'œil le statut du véhicule
           dans le devis. */}
-      <label className="flex items-center gap-2 cursor-pointer p-2 rounded-md border border-beev-rose/30 bg-beev-rose-20/40 hover:bg-beev-rose-20/60">
-        <input
-          type="checkbox"
-          checked={sv.vehicle.isCurrentFleet ?? false}
-          onChange={(e) => onChange({ vehicle: { ...sv.vehicle, isCurrentFleet: e.target.checked } })}
-          className="h-4 w-4 accent-beev-rose"
+      <div className="space-y-1.5">
+        <label className="flex items-center gap-2 cursor-pointer p-2 rounded-md border border-beev-rose/30 bg-beev-rose-20/40 hover:bg-beev-rose-20/60">
+          <input
+            type="checkbox"
+            checked={sv.vehicle.isCurrentFleet ?? false}
+            onChange={(e) => onChange({ vehicle: { ...sv.vehicle, isCurrentFleet: e.target.checked } })}
+            className="h-4 w-4 accent-beev-rose"
+          />
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-beev-rose">
+            {sv.vehicle.isCurrentFleet ? "Flotte actuelle (à comparer)" : "Marquer comme flotte actuelle"}
+          </span>
+        </label>
+        {/* Groupe de comparaison libre — assigne ce véhicule à un groupe
+            spécifique pour le PDF. Tous les véhicules du même groupe sont
+            comparés ensemble dans une slide dédiée du PDF (1 slide par
+            groupe). Si vide, comparateur global. */}
+        <TxtField
+          label="Groupe de comparaison (optionnel)"
+          value={sv.comparisonGroup ?? ""}
+          onChange={(s) => onChange({ comparisonGroup: s })}
+          placeholder="ex. Remplacement 3008, Berlines..."
         />
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-beev-rose">
-          {sv.vehicle.isCurrentFleet ? "Flotte actuelle (à comparer)" : "Marquer comme flotte actuelle"}
-        </span>
-      </label>
+      </div>
 
       {/* Mise en concurrence MULTI-OFFRES : le commercial peut saisir N
           offres concurrentes (différents loueurs ayant fait une proposition
