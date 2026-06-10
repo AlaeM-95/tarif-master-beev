@@ -24,10 +24,11 @@ type Row = {
   format?: (val: string | number) => string;
 };
 
-// Loyer LLD TTC = HT × 1,20 (convention client).
+// v.monthlyLld est DÉJÀ TTC (cf. label « Loyer TTC/mois » du panneau de
+// modification véhicule). Pas de × 1.20 ici sinon décalage avec le panneau.
 const ROWS: Row[] = [
   { label: "Prix catalogue TTC", get: (v) => v.priceTtc, bestDir: "asc", format: (n) => fmtEur(Number(n)), highlight: true },
-  { label: "Loyer LLD TTC", get: (v) => v.monthlyLld * 1.20, bestDir: "asc", format: (n) => `${fmtEur(Number(n))}/mois`, highlight: true },
+  { label: "Loyer LLD TTC", get: (v) => v.monthlyLld, bestDir: "asc", format: (n) => `${fmtEur(Number(n))}/mois`, highlight: true },
   { label: "Autonomie WLTP", get: (v) => v.rangeWltp, bestDir: "desc", format: (n) => `${n} km`, highlight: true },
   { label: "Consommation", get: (v) => v.consumption, bestDir: "asc", format: (n) => `${n} kWh/100km`, highlight: true },
   { label: "Catégorie", get: (v) => v.category },

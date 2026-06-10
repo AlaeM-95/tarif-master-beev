@@ -3643,7 +3643,7 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[]) {
   eyebrow(
     doc,
     isBeforeAfter
-      ? lookupText(TEXTS, "vehicles", "comparator_before_after_eyebrow", "AVANT / APRÈS · ÉLECTRIFICATION DE LA FLOTTE")
+      ? lookupText(TEXTS, "vehicles", "comparator_before_after_eyebrow", "FLOTTE ACTUELLE · PROPOSITION BEEV")
       : lookupText(TEXTS, "vehicles", "comparator_eyebrow", "COMPARATEUR VÉHICULES"),
     y,
   );
@@ -3651,7 +3651,7 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[]) {
   title(
     doc,
     isBeforeAfter
-      ? lookupText(TEXTS, "vehicles", "comparator_before_after_title", "Votre flotte actuelle vs notre proposition Beev")
+      ? lookupText(TEXTS, "vehicles", "comparator_before_after_title", "Votre flotte actuelle face à notre proposition Beev")
       : lookupText(TEXTS, "vehicles", "comparator_title", "Quel modèle choisir ?"),
     y,
   );
@@ -3662,7 +3662,7 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[]) {
   doc.text(
     isBeforeAfter
       ? lookupText(TEXTS, "vehicles", "comparator_before_after_intro",
-          "À gauche, votre flotte actuelle thermique. À droite, les véhicules électriques Beev pour la remplacer. Les économies sur le coût, la consommation et le CO2 sont mises en évidence.")
+          "À gauche, votre flotte actuelle. À droite, les véhicules Beev qui peuvent la remplacer. Les écarts sur le coût, la consommation et le CO2 sont mis en évidence.")
       : lookupText(TEXTS, "vehicles", "comparator_intro",
       "Comparaison côte à côte des caractéristiques clés. Les cellules surlignées indiquent la meilleure valeur sur chaque ligne (prix le plus bas, autonomie la plus haute, etc.)."),
     M, y, { maxWidth: PAGE_W - M * 2 },
@@ -3689,8 +3689,12 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[]) {
       format: (n) => eur(Number(n)),
     },
     {
+      // ATTENTION : sv.negotiatedMonthly est DÉJÀ TTC (cf. label « Loyer
+      // TTC/mois » du panneau de modification véhicule). Ne pas multiplier
+      // par 1.20 — ça aurait donné un loyer 20 % trop haut sur le PDF
+      // (ex. 814 € catalogue affiché en 977 € sur le comparateur).
       label: "Loyer LLD TTC",
-      values: items.map((sv) => (sv.negotiatedMonthly ?? sv.vehicle.monthlyLld) * 1.20),
+      values: items.map((sv) => sv.negotiatedMonthly ?? sv.vehicle.monthlyLld),
       bestDir: "asc",
       format: (n) => `${eur(Number(n))}/mois`,
     },
@@ -3766,30 +3770,35 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[]) {
   const photoH = 56;
   const textH = 56;
   const headH = photoH + textH;
+  // Mode FLOTTE ACTUELLE / PROPOSITION BEEV : on dessine une mini-row
+  // dédiée AU-DESSUS du tableau, avec backgrounds rose / bleu et libellés
+  // centrés. Cette row est SÉPARÉE de la ligne séparateur rose qui suit,
+  // pour éviter la superposition du texte sur la barre.
+  if (isBeforeAfter) {
+    const sectionRowH = 18;
+    const beforeWidth = nBefore * colW;
+    const afterWidth = (items.length - nBefore) * colW;
+    // Bandeau FLOTTE ACTUELLE (rose) à gauche
+    doc.setFillColor(...ROSE_LIGHT);
+    doc.rect(M + labelW, y, beforeWidth, sectionRowH, "F");
+    // Bandeau PROPOSITION BEEV (bleu) à droite
+    doc.setFillColor(...BLUE_LIGHT);
+    doc.rect(M + labelW + beforeWidth, y, afterWidth, sectionRowH, "F");
+    // Libellés centrés dans leurs bandeaux
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...PINK);
+    doc.text("FLOTTE ACTUELLE", M + labelW + beforeWidth / 2, y + 12, { align: "center" });
+    doc.setTextColor(56, 9, 234); // lavender Beev
+    doc.text("PROPOSITION BEEV", M + labelW + beforeWidth + afterWidth / 2, y + 12, { align: "center" });
+    y += sectionRowH + 2;
+  }
+  // Séparateur rose puis fond blanc des en-têtes véhicule
   doc.setFillColor(...PINK);
   doc.rect(M, y, PAGE_W - M * 2, 2, "F");
   y += 6;
   doc.setFillColor(255, 255, 255);
   doc.rect(M, y, PAGE_W - M * 2, headH, "F");
-  // Mode AVANT/APRÈS : on dessine 2 bandeaux colorés sous les en-têtes
-  // pour distinguer visuellement les colonnes flotte actuelle vs proposition.
-  if (isBeforeAfter) {
-    const beforeWidth = nBefore * colW;
-    const afterWidth = (items.length - nBefore) * colW;
-    // Bandeau AVANT (rose) à gauche
-    doc.setFillColor(...ROSE_LIGHT);
-    doc.rect(M + labelW, y, beforeWidth, headH, "F");
-    // Bandeau APRÈS (bleu) à droite
-    doc.setFillColor(...BLUE_LIGHT);
-    doc.rect(M + labelW + beforeWidth, y, afterWidth, headH, "F");
-    // Étiquettes "AVANT" / "APRÈS" au-dessus du tableau
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(7.5);
-    doc.setTextColor(...PINK);
-    doc.text("AVANT · FLOTTE ACTUELLE", M + labelW + beforeWidth / 2, y - 4, { align: "center" });
-    doc.setTextColor(56, 9, 234); // lavender Beev
-    doc.text("APRÈS · PROPOSITION BEEV", M + labelW + beforeWidth + afterWidth / 2, y - 4, { align: "center" });
-  }
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
