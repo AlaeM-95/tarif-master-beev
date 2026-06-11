@@ -1415,7 +1415,7 @@ function App() {
                       </p>
                       {Object.values(selectedV).map((sv) => (
                         <SelectedVehicleRow key={sv.vehicle.id} sv={sv} energy={energy}
-                          onChange={(p) => setSelectedV((s) => ({ ...s, [sv.vehicle.id]: { ...sv, ...p } }))}
+                          onChange={(p) => setSelectedV((s) => ({ ...s, [sv.vehicle.id]: { ...(s[sv.vehicle.id] ?? sv), ...p } }))}
                           onRemove={() => toggleV(sv.vehicle)} />
                       ))}
                     </>
@@ -1429,7 +1429,16 @@ function App() {
                       </p>
                       {Object.values(selectedC).map((sc) => (
                         <SelectedChargerRow key={sc.instanceId} sc={sc}
-                          onChange={(p) => setSelectedC((s) => ({ ...s, [sc.instanceId]: { ...sc, ...p } }))}
+                          onChange={(p) => setSelectedC((s) => {
+                            const cur = s[sc.instanceId] ?? sc;
+                            const merged = { ...cur, ...p };
+                            // Fusion PROFONDE de siteSpecs sur l'état courant : le
+                            // SiteSpecsEditor reconstruit siteSpecs depuis son snapshot,
+                            // donc on ré-applique par-dessus l'état à jour pour ne
+                            // perdre aucun champ (ex. includeConsuel) édité entre-temps.
+                            if (p.siteSpecs) merged.siteSpecs = { ...cur.siteSpecs, ...p.siteSpecs };
+                            return { ...s, [sc.instanceId]: merged };
+                          })}
                           onRemove={() => setSelectedC((s) => { const next = { ...s }; delete next[sc.instanceId]; return next; })}
                           onDuplicate={() => duplicateChargerInstance(sc)} />
                       ))}
