@@ -119,6 +119,10 @@ export type SiteSpecs = {
 };
 
 export type SelectedCharger = {
+  /** Identifiant unique de CETTE instance dans le devis. Permet de chiffrer
+   *  plusieurs fois la même référence de borne (ex. un site différent par
+   *  instance). Distinct de charger.id (la référence catalogue). */
+  instanceId: string;
   charger: Charger;
   quantity: number;
   discountPct: number;

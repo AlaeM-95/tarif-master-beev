@@ -82,7 +82,9 @@ function buildBpuHtml(opts: GenerateV2Opts): string {
       pu: li.unitHt,
     }));
     sections.push({
-      id: `sec-${sc.charger.id}`,
+      // instanceId pour garantir l'unicité même si plusieurs instances
+      // partagent la même référence de borne (multi-site).
+      id: `sec-${sc.instanceId ?? sc.charger.id}`,
       num: String(i + 1),
       title: `${sc.charger.brand} ${sc.charger.model} · ${sc.charger.powerKw} kW × ${sc.quantity}`,
       accent,

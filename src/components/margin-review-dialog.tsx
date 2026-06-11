@@ -51,7 +51,7 @@ export function MarginReviewDialog({ open, onClose, selectedChargers, onUpdateLi
             const margeSitePct = totalAchat > 0 ? (margeSite / totalAchat) * 100 : 0;
 
             return (
-              <div key={sc.charger.id} className="rounded-lg border border-border overflow-hidden">
+              <div key={sc.instanceId} className="rounded-lg border border-border overflow-hidden">
                 <div className="bg-[#FAF8F4] px-4 py-3 border-b flex items-center justify-between flex-wrap gap-2">
                   <div>
                     <p className="font-semibold text-sm">{sc.charger.brand} {sc.charger.model}</p>
@@ -81,7 +81,7 @@ export function MarginReviewDialog({ open, onClose, selectedChargers, onUpdateLi
                       <span className="text-right text-muted-foreground">{fmt(li.unitHt)}</span>
                       <MarginSelect
                         value={li.marginPct ?? 0}
-                        onChange={(v) => onUpdateLineItem(sc.charger.id, i, { marginPct: v })}
+                        onChange={(v) => onUpdateLineItem(sc.instanceId, i, { marginPct: v })}
                         className="h-7 w-full rounded-md border border-[#3809EA]/40 bg-background px-2 text-xs text-right font-semibold text-[#3809EA] cursor-pointer"
                       />
                       <span className="text-right font-semibold text-[#3809EA]">{fmt(lineItemClientUnit(li))}</span>

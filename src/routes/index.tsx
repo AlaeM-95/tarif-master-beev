@@ -150,7 +150,15 @@ function App() {
   // Garantit un rendu SSR/client identique au premier passage.
   useEffect(() => {
     setSelectedV(loadFromStorage(SK_V, {}));
-    setSelectedC(loadFromStorage(SK_C, {}));
+    // Normalise le state bornes : garantit un instanceId sur chaque entrée et
+    // re-cle par instanceId (compat ancien format localStorage clé=charger.id).
+    const rawC = loadFromStorage<Record<string, SelectedCharger>>(SK_C, {});
+    const normC: Record<string, SelectedCharger> = {};
+    for (const sc of Object.values(rawC)) {
+      const key = sc.instanceId ?? (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `inst-${Date.now()}-${Math.floor(Math.random() * 1e6)}`);
+      normC[key] = { ...sc, instanceId: key };
+    }
+    setSelectedC(normC);
     setClient(
       loadFromStorage(SK_CLIENT, {
         company: "", contact: "", email: "",
@@ -215,13 +223,15 @@ function App() {
     setSelectedC((prev) => {
       let changed = false;
       const next: Record<string, SelectedCharger> = {};
-      for (const [id, sc] of Object.entries(prev)) {
-        const fresh = chargers.find((c) => c.id === id);
+      // La clé est l'instanceId du devis ; on retrouve la borne catalogue via
+      // sc.charger.id (plusieurs instances peuvent partager la même référence).
+      for (const [key, sc] of Object.entries(prev)) {
+        const fresh = chargers.find((c) => c.id === sc.charger.id);
         if (fresh && fresh !== sc.charger) {
-          next[id] = { ...sc, charger: fresh };
+          next[key] = { ...sc, charger: fresh };
           changed = true;
         } else {
-          next[id] = sc;
+          next[key] = sc;
         }
       }
       return changed ? next : prev;
@@ -246,7 +256,12 @@ function App() {
     loadedProposal.selectedVehicles.forEach((v) => { sv[v.vehicle.id] = v; });
     setSelectedV(sv);
     const sc: Record<string, SelectedCharger> = {};
-    loadedProposal.selectedChargers.forEach((c) => { sc[c.charger.id] = c; });
+    // Clé par instanceId. Les devis sauvegardés avant le multi-instance n'ont
+    // pas d'instanceId : on en génère un (rétro-compatibilité).
+    loadedProposal.selectedChargers.forEach((c) => {
+      const key = c.instanceId ?? newInstanceId();
+      sc[key] = { ...c, instanceId: key };
+    });
     setSelectedC(sc);
     if (loadedProposal.energyParams) setEnergy(loadedProposal.energyParams);
   }, [loadedProposal?.id]);
@@ -326,7 +341,10 @@ function App() {
     t.selectedVehicles.forEach((v) => { sv[v.vehicle.id] = v; });
     setSelectedV(sv);
     const sc: Record<string, SelectedCharger> = {};
-    t.selectedChargers.forEach((c) => { sc[c.charger.id] = c; });
+    t.selectedChargers.forEach((c) => {
+      const key = c.instanceId ?? newInstanceId();
+      sc[key] = { ...c, instanceId: key };
+    });
     setSelectedC(sc);
     if (t.energyParams) setEnergy(t.energyParams);
   };
@@ -440,9 +458,22 @@ function App() {
       };
     });
   };
+  // Génère un identifiant d'instance unique pour une borne ajoutée au devis.
+  const newInstanceId = () =>
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `inst-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+
   const toggleC = (c: Charger) => {
     setSelectedC((s) => {
-      if (s[c.id]) { const { [c.id]: _, ...rest } = s; return rest; }
+      // Toggle off : si au moins une instance de cette référence existe, on
+      // retire TOUTES ses instances. Sinon on ajoute une première instance.
+      const existing = Object.entries(s).filter(([, sc]) => sc.charger.id === c.id);
+      if (existing.length > 0) {
+        const next = { ...s };
+        for (const [key] of existing) delete next[key];
+        return next;
+      }
       // Quand on connaît le prix d'achat (price_buy_ht > 0), on l'utilise comme
       // PU achat de la ligne borne et on calcule la marge nécessaire pour
       // atteindre le prix de vente catalogue (priceHt). Marge arrondie au palier
@@ -475,9 +506,11 @@ function App() {
         ];
       }
 
+      const instanceId = newInstanceId();
       return {
         ...s,
-        [c.id]: {
+        [instanceId]: {
+          instanceId,
           charger: c, quantity: 1, discountPct: 0, installIncluded: true,
           siteName: "", siteAddress: "", siteContact: "",
           lineItems,
@@ -485,6 +518,30 @@ function App() {
       };
     });
   };
+
+  // Duplique une instance de borne (même référence) pour un autre site : copie
+  // la config, vide le nom de site, génère un nouvel instanceId. Permet de
+  // chiffrer la même borne sur plusieurs sites d'une même entreprise.
+  const duplicateChargerInstance = (sc: SelectedCharger) => {
+    setSelectedC((s) => {
+      const instanceId = newInstanceId();
+      return {
+        ...s,
+        [instanceId]: {
+          ...sc,
+          instanceId,
+          siteName: "",
+          // copie profonde des lignes pour éditer indépendamment
+          lineItems: sc.lineItems.map((li) => ({ ...li })),
+          siteSpecs: sc.siteSpecs ? { ...sc.siteSpecs } : undefined,
+        },
+      };
+    });
+  };
+
+  // Une référence de borne est "sélectionnée" si au moins une instance existe.
+  const chargerSelected = (chargerId: string) =>
+    Object.values(selectedC).some((sc) => sc.charger.id === chargerId);
 
   const [marginDialog, setMarginDialog] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -1243,11 +1300,11 @@ function App() {
             >
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {chargersHome.map((c) => (
-                  <ChargerCard key={c.id} charger={c} selected={!!selectedC[c.id]}
+                  <ChargerCard key={c.id} charger={c} selected={chargerSelected(c.id)}
                     onToggle={() => toggleC(c)}
                     onUpdate={isSales ? (p) => updateCharger(c.id, p) : undefined}
                     onDelete={isOps ? async () => {
-                      if (selectedC[c.id]) toggleC(c);
+                      if (chargerSelected(c.id)) toggleC(c);
                       const result = await removeCharger(c.id);
                       if (result?.error) toast.error(`Échec suppression : ${result.error}`);
                       else toast.success(`${c.brand} ${c.model} supprimée définitivement`);
@@ -1293,11 +1350,11 @@ function App() {
             >
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {chargersSite.map((c) => (
-                  <ChargerCard key={c.id} charger={c} selected={!!selectedC[c.id]}
+                  <ChargerCard key={c.id} charger={c} selected={chargerSelected(c.id)}
                     onToggle={() => toggleC(c)}
                     onUpdate={isSales ? (p) => updateCharger(c.id, p) : undefined}
                     onDelete={isOps ? async () => {
-                      if (selectedC[c.id]) toggleC(c);
+                      if (chargerSelected(c.id)) toggleC(c);
                       const result = await removeCharger(c.id);
                       if (result?.error) toast.error(`Échec suppression : ${result.error}`);
                       else toast.success(`${c.brand} ${c.model} supprimée définitivement`);
@@ -1371,9 +1428,10 @@ function App() {
                         Bornes de recharge ({counts.c})
                       </p>
                       {Object.values(selectedC).map((sc) => (
-                        <SelectedChargerRow key={sc.charger.id} sc={sc}
-                          onChange={(p) => setSelectedC((s) => ({ ...s, [sc.charger.id]: { ...sc, ...p } }))}
-                          onRemove={() => toggleC(sc.charger)} />
+                        <SelectedChargerRow key={sc.instanceId} sc={sc}
+                          onChange={(p) => setSelectedC((s) => ({ ...s, [sc.instanceId]: { ...sc, ...p } }))}
+                          onRemove={() => setSelectedC((s) => { const next = { ...s }; delete next[sc.instanceId]; return next; })}
+                          onDuplicate={() => duplicateChargerInstance(sc)} />
                       ))}
                     </>
                   )}
@@ -3067,7 +3125,7 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove }: { sv: SelectedVe
   );
 }
 
-function SelectedChargerRow({ sc, onChange, onRemove }: { sc: SelectedCharger; onChange: (p: Partial<SelectedCharger>) => void; onRemove: () => void }) {
+function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate }: { sc: SelectedCharger; onChange: (p: Partial<SelectedCharger>) => void; onRemove: () => void; onDuplicate?: () => void }) {
   const [openLi, setOpenLi] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const setLi = (i: number, p: Partial<LineItem>) => onChange({ lineItems: sc.lineItems.map((x, idx) => idx === i ? { ...x, ...p } : x) });
@@ -3094,7 +3152,12 @@ function SelectedChargerRow({ sc, onChange, onRemove }: { sc: SelectedCharger; o
           <p className="text-sm font-medium truncate">{sc.charger.brand} {sc.charger.model}</p>
           <p className="text-xs text-muted-foreground">{isHome ? "Domicile collaborateur" : "Site entreprise"} · {sc.charger.powerKw} kW · {fmtEur(totalClient)} HT client</p>
         </div>
-        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onRemove}><Trash2 className="w-3 h-3" /></Button>
+        <div className="flex items-center gap-0.5 shrink-0">
+          {onDuplicate && (
+            <Button variant="ghost" size="icon" className="h-6 w-6" title={isHome ? "Dupliquer pour un autre collaborateur" : "Dupliquer pour un autre site"} onClick={onDuplicate}><Copy className="w-3 h-3" /></Button>
+          )}
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onRemove}><Trash2 className="w-3 h-3" /></Button>
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <TxtField label={isHome ? "Collaborateur" : "Site (nom)"} value={sc.siteName} onChange={(s) => onChange({ siteName: s })} />

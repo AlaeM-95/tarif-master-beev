@@ -200,8 +200,8 @@ function ProposalDetailPage() {
                   <p className="text-sm font-semibold">{fmtEur(sv.negotiatedMonthly)} /mois</p>
                 </div>
               ))}
-              {proposal.selectedChargers.map((sc) => (
-                <div key={sc.charger.id} className="flex items-center justify-between p-2 rounded border border-border">
+              {proposal.selectedChargers.map((sc, idx) => (
+                <div key={sc.instanceId ?? `${sc.charger.id}-${idx}`} className="flex items-center justify-between p-2 rounded border border-border">
                   <div>
                     <p className="text-sm font-medium">{sc.charger.brand} {sc.charger.model}</p>
                     <p className="text-xs text-muted-foreground">{sc.quantity} × · {sc.siteName || "—"}</p>
