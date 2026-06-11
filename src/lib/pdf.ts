@@ -1042,11 +1042,15 @@ function aggregateSiteSpecs(chargers: SelectedCharger[]): SiteSpecs {
     if (!merged.cable22Type && s.cable22Type) merged.cable22Type = s.cable22Type;
     if (!merged.cable74Type && s.cable74Type) merged.cable74Type = s.cable74Type;
     if (merged.pointsParBorne === undefined && s.pointsParBorne) merged.pointsParBorne = s.pointsParBorne;
-    if (merged.includeMaintenance === undefined && s.includeMaintenance !== undefined) merged.includeMaintenance = s.includeMaintenance;
+    // Flags d'inclusion : sémantique OU sur toutes les instances. Si le
+    // commercial a coché l'option sur AU MOINS UNE borne du devis, elle
+    // s'affiche (et le coût éventuel est compté une fois). Évite qu'une
+    // instance dupliquée avec le flag à false écrase le true d'une autre.
+    if (s.includeMaintenance) merged.includeMaintenance = true;
     if (!merged.chantierPhotos && s.chantierPhotos && s.chantierPhotos.length > 0) merged.chantierPhotos = s.chantierPhotos;
     if (!merged.tvaRate && s.tvaRate) merged.tvaRate = s.tvaRate;
-    if (merged.includeBureauControle === undefined && s.includeBureauControle !== undefined) merged.includeBureauControle = s.includeBureauControle;
-    if (merged.includeConsuel === undefined && s.includeConsuel !== undefined) merged.includeConsuel = s.includeConsuel;
+    if (s.includeBureauControle) merged.includeBureauControle = true;
+    if (s.includeConsuel) merged.includeConsuel = true;
     if (!merged.supervisionPlan && s.supervisionPlan) merged.supervisionPlan = s.supervisionPlan;
   }
   return merged;
