@@ -71,6 +71,7 @@ const ROWS: Row[] = [
   { label: "Recharge DC max", get: (v) => v.chargeDcMaxKw ?? "—", bestDir: "desc", format: (n) => typeof n === "number" ? `${n} kW` : String(n), highlight: true },
   { label: "Recharge AC max", get: (v) => v.chargeAcMaxKw ?? "—", bestDir: "desc", format: (n) => typeof n === "number" ? `${n} kW` : String(n), highlight: true },
   { label: "Dimensions", get: (v) => v.dimensions ?? "—" },
+  { label: "Délai de livraison", get: (v) => v.leadTime ?? "—" },
   { label: "Recharge 20-80 % AC", get: (v) => v.chargeTime2080Ac ?? "—", bestDir: "asc", numeric: parseDurationMin, highlight: true },
   { label: "Recharge 20-80 % DC", get: (v) => v.chargeTime2080Dc ?? "—", bestDir: "asc", numeric: parseDurationMin, highlight: true },
 ];

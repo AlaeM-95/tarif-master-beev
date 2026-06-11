@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Upload, FileSpreadsheet, X, AlertTriangle, Download, Pencil, Zap, ArrowRightLeft } from "lucide-react";
+import { Upload, FileSpreadsheet, X, AlertTriangle, Download, Pencil, Zap, ArrowRightLeft, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { importCarPolicy, type ImportReport } from "@/lib/car-policy-importer";
 import type { Vehicle, Energy } from "@/lib/catalog";
@@ -28,6 +28,7 @@ export function CarPolicyImporter({
   onClear,
   onAddOne,
   onRemoveOne,
+  onDeleteImported,
   onUpdateSelected,
   selectedIds,
 }: {
@@ -41,6 +42,9 @@ export function CarPolicyImporter({
   onAddOne: (v: Vehicle) => void;
   /** Callback : retire un véhicule importé du panier de sélection */
   onRemoveOne: (id: string) => void;
+  /** Callback : supprime définitivement un véhicule de la liste importée
+   *  (et du panier s'il y était). Pour retirer un import non souhaité. */
+  onDeleteImported: (id: string) => void;
   /** Callback : propage une modification au selectedV si le véhicule
    *  est déjà au devis. Permet d'éditer un import et de voir la modif
    *  immédiatement dans le panneau de sélection du devis. */
@@ -248,14 +252,25 @@ export function CarPolicyImporter({
                       {v.priceTtc ? `${v.priceTtc.toLocaleString("fr-FR")} €` : "—"}
                     </span>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full mt-2 h-7 text-xs gap-1"
-                    onClick={() => setEditingId(v.id)}
-                  >
-                    <Pencil className="w-3 h-3" /> Modifier la fiche
-                  </Button>
+                  <div className="mt-2 flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1 h-7 text-xs gap-1"
+                      onClick={() => setEditingId(v.id)}
+                    >
+                      <Pencil className="w-3 h-3" /> Modifier
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-beev-rose hover:border-beev-rose"
+                      title="Supprimer ce véhicule importé"
+                      onClick={() => onDeleteImported(v.id)}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
                   <Button
                     size="sm"
                     variant={isSelected ? "outline" : "default"}

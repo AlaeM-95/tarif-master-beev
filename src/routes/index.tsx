@@ -1151,6 +1151,16 @@ function App() {
                   return next;
                 });
               }}
+              onDeleteImported={(id) => {
+                // Supprime définitivement le véhicule de la liste importée
+                // ET du devis s'il y était (import non souhaité / doublon).
+                setImportedVehicles((prev) => prev.filter((v) => v.id !== id));
+                setSelectedV((prev) => {
+                  const next = { ...prev };
+                  delete next[id];
+                  return next;
+                });
+              }}
               onUpdateSelected={(id, patch) => {
                 // Propage les modifs de fiche aux SelectedVehicles déjà au devis.
                 // Si le loyer catalogue (monthlyLld) change, on resynchronise

@@ -657,11 +657,12 @@ export async function generateProposalPdf(opts: {
 
   // Boucle véhicules : les fiches détaillées sont ordonnées par groupe de
   // comparaison (flotte actuelle d'abord, puis propositions Beev par loyer
-  // croissant). Les véhicules « flotte actuelle » sont MASQUÉS du détail par
-  // défaut ; le commercial peut les afficher via le toggle « Fiche détaillée
-  // flotte actuelle » de la configuration PDF.
+  // croissant). Les fiches détaillées sont MASQUÉES par défaut (la vue
+  // d'ensemble passe par le comparateur) : le commercial active séparément
+  // « Fiche détaillée flotte actuelle » et « Fiche détaillée proposition Beev »
+  // dans la configuration PDF.
   const vehiclesForDetail = orderVehiclesByGroup(v)
-    .filter((sv) => cfg.showCurrentFleetVehicle || !sv.vehicle.isCurrentFleet);
+    .filter((sv) => sv.vehicle.isCurrentFleet ? cfg.showCurrentFleetVehicle : cfg.showProposalVehicle);
   for (let i = 0; i < vehiclesForDetail.length; i++) {
     doc.addPage();
     drawHeader(doc, client, effectiveType);
@@ -2644,6 +2645,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       ...(v.energy === "Électrique" && PDF_CFG.showVehicleChargeTime2080Ac && v.chargeTime2080Ac ? [["Recharge 20-80 % AC", v.chargeTime2080Ac]] : []),
       ...(v.energy === "Électrique" && PDF_CFG.showVehicleChargeTime2080Dc && v.chargeTime2080Dc ? [["Recharge 20-80 % DC", v.chargeTime2080Dc]] : []),
       ...(PDF_CFG.showVehicleDimensions && v.dimensions ? [["Dimensions", v.dimensions]] : []),
+      ...(PDF_CFG.showVehicleLeadTime && v.leadTime ? [["Délai de livraison", v.leadTime]] : []),
     ],
     headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT },
     bodyStyles: { fontSize: 9.5, cellPadding: 6, textColor: INK, lineColor: RULE, font: BRAND_FONT },
@@ -4001,6 +4003,12 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
       bestDir: "asc",
       numeric: parseDurationMin,
     },
+    // Délai de livraison (saisi par l'ops dans la fiche produit) — togglable
+    // via la config PDF, au même titre que dimensions / recharge.
+    ...(PDF_CFG.showVehicleLeadTime ? [{
+      label: "Délai de livraison",
+      values: items.map((sv) => sv.vehicle.leadTime ?? "—"),
+    } satisfies Row] : []),
   ];
 
   // Calcule les "gagnants" par ligne. Règles de surlignement :

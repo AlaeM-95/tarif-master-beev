@@ -15,6 +15,13 @@ type AuthContextValue = {
   isSales: boolean;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  /** Connexion par lien magique envoyé par email (pas de mot de passe requis).
+   *  Permet aux comptes invités de toujours se reconnecter. */
+  signInWithMagicLink: (email: string) => Promise<{ error: string | null }>;
+  /** Envoie un email de réinitialisation / définition de mot de passe. */
+  sendPasswordReset: (email: string) => Promise<{ error: string | null }>;
+  /** Définit (ou met à jour) le mot de passe de l'utilisateur connecté. */
+  setPassword: (password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 };
 
@@ -90,6 +97,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error?.message ?? null };
   };
 
+  const redirectBase = typeof window !== "undefined" ? window.location.origin : undefined;
+
+  // Lien magique : connecte sans mot de passe. shouldCreateUser:false pour ne
+  // pas créer de compte depuis l'écran de login (l'invitation se fait par l'admin).
+  const signInWithMagicLink = async (email: string) => {
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.trim().toLowerCase(),
+      options: { shouldCreateUser: false, emailRedirectTo: redirectBase },
+    });
+    return { error: error?.message ?? null };
+  };
+
+  // Réinitialisation : envoie un email avec un lien qui ramène sur /set-password.
+  const sendPasswordReset = async (email: string) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+      redirectTo: redirectBase ? `${redirectBase}/set-password` : undefined,
+    });
+    return { error: error?.message ?? null };
+  };
+
+  const setPassword = async (password: string) => {
+    const { error } = await supabase.auth.updateUser({ password });
+    return { error: error?.message ?? null };
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
   };
@@ -105,6 +137,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isSales: role === "admin" || role === "ops" || role === "sales",
         loading,
         signIn,
+        signInWithMagicLink,
+        sendPasswordReset,
+        setPassword,
         signOut,
       }}
     >

@@ -11,6 +11,7 @@ export type PdfDisplayConfig = {
   showTcoComparison: boolean; // page comparaison TCO multi-véhicules
   showVehicleComparator: boolean; // page comparateur multi-véhicules (specs côte à côte)
   showCurrentFleetVehicle: boolean; // afficher la fiche détaillée des véhicules « flotte actuelle » (masqués par défaut)
+  showProposalVehicle: boolean; // afficher la fiche détaillée des propositions Beev (masquées par défaut)
   showCompetitorComparison: boolean; // page Mise en concurrence (offre client vs Beev sur même véhicule)
   showFinancialSummary: boolean; // page synthèse HT/TVA/TTC
   showFinancialSynthesis: boolean; // page synthèse financière enrichie (KPI cards, économies, CO2)
@@ -30,6 +31,7 @@ export type PdfDisplayConfig = {
   // Specs étendues (migration 039) — chaque ligne du tableau caractéristique
   // technique est désormais togglable indépendamment pour ne pas polluer la
   // fiche si une donnée manque ou n'est pas pertinente pour le client.
+  showVehicleLeadTime: boolean; // délai de livraison (fiche + comparateur)
   showVehicleTrunk: boolean;
   showVehicleChargeDc: boolean;
   showVehicleChargeAc: boolean;
@@ -67,6 +69,7 @@ export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
   showTcoComparison: true,
   showVehicleComparator: true,
   showCurrentFleetVehicle: false, // masquée par défaut ; le commercial l'active dans la config PDF
+  showProposalVehicle: false, // masquée par défaut ; le commercial l'active dans la config PDF
   showCompetitorComparison: true,
   showFinancialSummary: false, // retirée sur demande utilisateur (info déjà dans le récap site)
   showFinancialSynthesis: true, // nouvelle synthèse complète (KPI + économies + CO2)
@@ -81,6 +84,7 @@ export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
   showVehicleServices: true,
   showVehicleOptions: true,
   showVehicleTcoBlock: true,
+  showVehicleLeadTime: true, // délai de livraison affiché si renseigné
   showVehicleTrunk: true,
   showVehicleChargeDc: true,
   showVehicleChargeAc: true,
@@ -160,6 +164,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
       { key: "showTcoComparison", label: "Comparaison TCO flotte", description: "Page synthèse si 2+ véhicules", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showVehicleComparator", label: "Comparateur véhicules", description: "Tableau comparatif specs côte à côte (prix, autonomie, conso, fiscalité) si 2+ véhicules", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showCurrentFleetVehicle", label: "Fiche détaillée flotte actuelle", description: "Afficher la fiche véhicule complète des véhicules marqués « flotte actuelle » (masqués par défaut, visibles uniquement dans le comparateur)", appliesTo: ["vehicles"] as unknown as string[] } as any,
+      { key: "showProposalVehicle", label: "Fiche détaillée proposition Beev", description: "Afficher la fiche véhicule complète des propositions Beev (masquées par défaut, visibles dans le comparateur)", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showCompetitorComparison", label: "Mise en concurrence", description: "Slide « Offre actuelle vs Offre Beev » pour les véhicules sur lesquels une offre concurrente est saisie", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showCarbonImpact", label: "Bilan carbone (RSE)", description: "Page CO2 évité + équivalences (avion, arbres, km)", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showFinancialSummary", label: "Synthèse HT / TVA / TTC", description: "Tableau récap financier" },
@@ -181,6 +186,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
       { key: "showVehicleServices", label: "Services inclus" },
       { key: "showVehicleOptions", label: "Options & accessoires" },
       { key: "showVehicleTcoBlock", label: "Bloc TCO graphique", description: "Comparaison vs essence" },
+      { key: "showVehicleLeadTime", label: "Délai de livraison", description: "Délai indiqué dans la fiche produit (saisi par l'ops). Affiché sur la fiche véhicule et le comparateur." },
       { key: "showVehicleTrunk", label: "Volume de coffre" },
       { key: "showVehicleChargeAc", label: "Recharge AC max", description: "Puissance recharge sur borne AC (kW)" },
       { key: "showVehicleChargeDc", label: "Recharge DC max", description: "Puissance recharge rapide DC (kW)" },
