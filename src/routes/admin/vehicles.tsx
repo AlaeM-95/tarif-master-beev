@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { FileUpload } from "@/components/file-upload";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth";
+import { usePermissions } from "@/lib/permissions";
 import { useVehicles } from "@/lib/store";
 import { useLeaserOffers, type LeaserOffer } from "@/lib/leaser-offers";
 import { LEASER_NAMES, KNOWN_LEASERS, LEASER_KIND_LABELS, type LeaserKind } from "@/lib/leasers";
@@ -23,12 +24,14 @@ export const Route = createFileRoute("/admin/vehicles")({
 type FilterKind = "all" | "shortlist" | "stock" | "no-offer";
 
 function AdminVehiclesPage() {
-  const { isOps, loading } = useAuth();
+  const { loading } = useAuth();
+  const { can } = usePermissions();
+  const allowed = can("backoffice_vehicles");
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!loading && !isOps) navigate({ to: "/login" });
-  }, [loading, isOps, navigate]);
+    if (!loading && !allowed) navigate({ to: "/login" });
+  }, [loading, allowed, navigate]);
 
   const { vehicles, update: updateVehicle, remove: removeVehicle, duplicate: duplicateVehicle } = useVehicles();
   const { offers } = useLeaserOffers();
@@ -75,7 +78,7 @@ function AdminVehiclesPage() {
   const editingVehicle = editingId ? vehicles.find((v) => v.id === editingId) : null;
 
   if (loading) return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Chargement...</div>;
-  if (!isOps) return null;
+  if (!allowed) return null;
 
   // Toggle shortlist avec feedback toast (la valeur précédente est gardée pour rollback en cas d'erreur)
   const toggleShortlist = async (v: Vehicle) => {

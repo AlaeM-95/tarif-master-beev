@@ -11,6 +11,19 @@ export const PROJECT_LABEL: Record<ProjectType, string> = {
 
 export type Energy = "Électrique" | "Hybride Rechargeable" | "Hybride" | "Mild Hybrid" | "Essence" | "Diesel";
 
+// Catalogue EV (électrifié) vs thermique. Convention Beev : le catalogue EV
+// regroupe l'électrique et l'hybride rechargeable (PHEV) — les motorisations
+// rechargeables, cœur de l'offre. Le catalogue thermique regroupe les autres
+// (hybride non rechargeable, mild hybrid, essence, diesel).
+export type CatalogType = "ev" | "thermique";
+export const EV_ENERGIES: Energy[] = ["Électrique", "Hybride Rechargeable"];
+export function isEvEnergy(energy: Energy | undefined | null): boolean {
+  return !!energy && EV_ENERGIES.includes(energy);
+}
+export function catalogTypeOf(energy: Energy | undefined | null): CatalogType {
+  return isEvEnergy(energy) ? "ev" : "thermique";
+}
+
 // ===== Parcours client Beev (process A > Z) =====
 export type JourneyStep = {
   n: string;

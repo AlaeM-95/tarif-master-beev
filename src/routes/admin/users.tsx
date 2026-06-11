@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth";
 import { useUsers, ROLE_LABELS, ROLE_COLORS, type AppUser } from "@/lib/users";
+import { useRolePermissionsAdmin, PERMISSION_LABELS, PERMISSION_ORDER, type Permission, type RolePermissions } from "@/lib/permissions";
 import type { UserRole } from "@/lib/supabase";
 
 export const Route = createFileRoute("/admin/users")({
@@ -27,7 +28,19 @@ function AdminUsersPage() {
   }, [loading, isAdmin, navigate]);
 
   const { users, isLoading, updateRole, inviteUser } = useUsers();
+  const perms = useRolePermissionsAdmin();
   const [inviteEmail, setInviteEmail] = useState("");
+
+  // Rôles éditables dans la matrice (admin = tous droits, non modifiable).
+  const EDITABLE_ROLES: UserRole[] = ["ops", "sales", "visitor"];
+  const handlePermToggle = async (role: UserRole, perm: Permission, value: boolean) => {
+    try {
+      await perms.update.mutateAsync({ role, patch: { [perm]: value } as Partial<RolePermissions> });
+      toast.success("Permission mise à jour");
+    } catch (e) {
+      toast.error(`Échec : ${e instanceof Error ? e.message : "erreur"}`);
+    }
+  };
 
   if (loading || isLoading) {
     return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Chargement...</div>;
@@ -161,6 +174,54 @@ function AdminUsersPage() {
                       <td className="py-3 px-4 text-xs text-muted-foreground">
                         {new Date(u.createdAt).toLocaleDateString("fr-FR")}
                       </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Matrice de permissions par rôle (éditable par l'admin) */}
+        <Card>
+          <CardContent className="p-5">
+            <h2 className="text-sm font-semibold flex items-center gap-2 mb-1">
+              <Shield className="w-4 h-4 text-[#3809EA]" /> Accès par rôle
+            </h2>
+            <p className="text-xs text-muted-foreground mb-4">
+              Décidez, pour chaque rôle, qui accède au backoffice et peut modifier les fiches produit.
+              Le rôle <strong>admin</strong> conserve tous les droits.
+              {!perms.available && " (Migration role_permissions non encore appliquée : valeurs par défaut affichées.)"}
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b bg-[#FAF8F4]">
+                  <tr className="text-left text-muted-foreground uppercase text-[10px] tracking-wide">
+                    <th className="py-3 px-4">Accès</th>
+                    <th className="py-3 px-4 text-center">Admin</th>
+                    {EDITABLE_ROLES.map((r) => (
+                      <th key={r} className="py-3 px-4 text-center">{r}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {PERMISSION_ORDER.map((perm) => (
+                    <tr key={perm} className="border-b hover:bg-accent/30">
+                      <td className="py-3 px-4 font-medium">{PERMISSION_LABELS[perm]}</td>
+                      <td className="py-3 px-4 text-center">
+                        <input type="checkbox" checked readOnly disabled className="h-4 w-4 accent-[#3809EA] opacity-60" />
+                      </td>
+                      {EDITABLE_ROLES.map((r) => (
+                        <td key={r} className="py-3 px-4 text-center">
+                          <input
+                            type="checkbox"
+                            checked={perms.matrix[r][perm]}
+                            disabled={perms.update.isPending}
+                            onChange={(e) => handlePermToggle(r, perm, e.target.checked)}
+                            className="h-4 w-4 accent-[#3809EA] cursor-pointer"
+                          />
+                        </td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>

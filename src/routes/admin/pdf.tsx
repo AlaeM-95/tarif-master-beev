@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/lib/auth";
+import { usePermissions } from "@/lib/permissions";
 import { usePdfSettings, type PdfSettings, type JourneyStep } from "@/lib/pdf-settings";
 import { useBeevPillars, useBeevPillarsMutations, type BeevPillar } from "@/lib/beev-pillars";
 import { usePdfTexts, usePdfTextsMutations, type PdfText } from "@/lib/pdf-texts";
@@ -29,12 +30,14 @@ const PROJECT_LABELS: Record<ProjectType, string> = {
 type TopTab = "apparence" | "communs" | ProjectType;
 
 function AdminPdfPage() {
-  const { isOps, loading } = useAuth();
+  const { loading } = useAuth();
+  const { can } = usePermissions();
+  const allowed = can("backoffice_pdf");
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!loading && !isOps) navigate({ to: "/login" });
-  }, [loading, isOps, navigate]);
+    if (!loading && !allowed) navigate({ to: "/login" });
+  }, [loading, allowed, navigate]);
 
   const { settings, steps, isLoading, getSettings, getSteps, updateSettings, updateStep } = usePdfSettings();
   const [activeTab, setActiveTab] = useState<TopTab>("apparence");
@@ -43,7 +46,7 @@ function AdminPdfPage() {
   if (loading || isLoading) {
     return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Chargement...</div>;
   }
-  if (!isOps) return null;
+  if (!allowed) return null;
 
   const tabIcon = (t: TopTab) => {
     if (t === "apparence") return <Palette className="w-4 h-4" />;

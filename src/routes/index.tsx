@@ -15,7 +15,7 @@ import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Pres
 import { toast } from "sonner";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type EnergyParams } from "@/lib/store";
 import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
-import { BEEV_JOURNEYS, MANDATORY_SERVICES, createBlankCharger, createBlankVehicle, type Charger, type LineItem, type ProjectType, type Vehicle } from "@/lib/catalog";
+import { BEEV_JOURNEYS, MANDATORY_SERVICES, catalogTypeOf, createBlankCharger, createBlankVehicle, type CatalogType, type Charger, type LineItem, type ProjectType, type Vehicle } from "@/lib/catalog";
 import { AdminBadge } from "@/components/admin-badge";
 import { ImageUpload } from "@/components/image-upload";
 import { FileUpload } from "@/components/file-upload";
@@ -37,6 +37,7 @@ import { SaveIndicator } from "@/components/save-indicator";
 import { useMaterials, materialToLineItem, MATERIAL_CATEGORIES, type Material } from "@/lib/materials";
 import { useBpuForfaits, bpuForfaitToLineItem, BPU_CATEGORIES, BPU_ZONE_COEFFICIENTS, type BpuForfait, type BpuZone } from "@/lib/bpu";
 import { useAuth } from "@/lib/auth";
+import { usePermissions } from "@/lib/permissions";
 import { useProposals, useProposal } from "@/lib/proposals";
 import { usePdfConfig } from "@/lib/pdf-config";
 import { usePdfSettings } from "@/lib/pdf-settings";
@@ -65,6 +66,11 @@ export const Route = createFileRoute("/")({
 
 function App() {
   const { isAdmin, isOps, isSales, signOut } = useAuth();
+  const { can } = usePermissions();
+  // Permissions configurables par l'admin (matrice par rôle). canEditProduct
+  // pilote l'édition des fiches produit véhicule depuis le catalogue. Les
+  // liens du menu Administration suivent les permissions backoffice.
+  const canEditProduct = can("edit_product_sheet");
   // Pour la majorité des gates d'écriture (catalogue, pricing, templates PDF)
   // on utilise isOps (admin OU ops). isAdmin reste réservé aux actions
   // super-admin (gestion utilisateurs, etc. — pas exposées dans cette page).
@@ -369,6 +375,8 @@ function App() {
 
   // Recherche & filtres catalogue véhicules
   const [vehicleSearch, setVehicleSearch] = useState("");
+  // Catalogue actif : EV (électrique + hybride rechargeable) ou Thermique.
+  const [catalogType, setCatalogType] = useState<CatalogType>("ev");
   const [vehicleEnergyFilter, setVehicleEnergyFilter] = useState<string>("all");
   const [vehiclePriceMax, setVehiclePriceMax] = useState<number | null>(null);
   // Nouveaux filtres demandés : loyer mensuel max, durée préférée, km/an cible
@@ -385,6 +393,8 @@ function App() {
   const filteredVehicles = useMemo(() => {
     const q = vehicleSearch.trim().toLowerCase();
     return vehicles.filter((v) => {
+      // Catalogue EV vs Thermique (filtre primaire par classe d'énergie)
+      if (catalogTypeOf(v.energy) !== catalogType) return false;
       if (q && !`${v.brand} ${v.model} ${v.version} ${v.category}`.toLowerCase().includes(q)) return false;
       if (vehicleEnergyFilter !== "all" && v.energy !== vehicleEnergyFilter) return false;
       if (vehiclePriceMax !== null && v.priceTtc > vehiclePriceMax) return false;
@@ -404,7 +414,7 @@ function App() {
       }
       return true;
     });
-  }, [vehicles, vehicleSearch, vehicleEnergyFilter, vehiclePriceMax, vehicleMonthlyMax, vehicleDurationFilter, vehicleKmFilter, leaserOffers]);
+  }, [vehicles, catalogType, vehicleSearch, vehicleEnergyFilter, vehiclePriceMax, vehicleMonthlyMax, vehicleDurationFilter, vehicleKmFilter, leaserOffers]);
 
   // visibleCount = TOUTES les sélections (véhicules + bornes), pour permettre
   // au commercial de générer un PDF même si la sélection mélange plusieurs types.
@@ -829,21 +839,21 @@ function App() {
                     <Save className="w-4 h-4 mr-2" /> Sauver comme template
                   </DropdownMenuItem>
                 )}
-                {(isOps || isAdmin) && (
+                {(can("backoffice_vehicles") || can("backoffice_pdf") || can("manage_users")) && (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuLabel>Administration</DropdownMenuLabel>
-                    {isOps && (
+                    {can("backoffice_vehicles") && (
                       <DropdownMenuItem asChild>
                         <a href="/admin/vehicles" className="cursor-pointer"><Car className="w-4 h-4 mr-2" /> Véhicules & loueurs</a>
                       </DropdownMenuItem>
                     )}
-                    {isOps && (
+                    {can("backoffice_pdf") && (
                       <DropdownMenuItem asChild>
                         <a href="/admin/pdf" className="cursor-pointer"><FileDown className="w-4 h-4 mr-2" /> Configuration PDF</a>
                       </DropdownMenuItem>
                     )}
-                    {isAdmin && (
+                    {can("manage_users") && (
                       <DropdownMenuItem asChild>
                         <a href="/admin/users" className="cursor-pointer"><Users className="w-4 h-4 mr-2" /> Utilisateurs & rôles</a>
                       </DropdownMenuItem>
@@ -1001,7 +1011,10 @@ function App() {
             <CatalogSection
               title={`Véhicules (${filteredVehicles.length}${filteredVehicles.length !== vehicles.length ? ` / ${vehicles.length}` : ""})`}
               subtitle={catalogSubtitleFor("vehicles")}
-              isAdmin={isOps}
+              // Édition des fiches produit pilotée par la permission dédiée
+              // (l'admin peut l'accorder à un commercial). L'ajout/suppression
+              // en masse et l'import restent réservés au backoffice (ops/admin).
+              isAdmin={canEditProduct}
               itemCount={vehicles.length}
               onDeleteAll={isOps ? () => { setSelectedV({}); removeAllVehicles(); } : undefined}
               deleteAllLabel="Supprimer tous les véhicules ?"
@@ -1009,6 +1022,30 @@ function App() {
               addLabel="Ajouter un véhicule"
               importTco={isOps ? (list) => importVehicles(list) : undefined}
             >
+              {/* Onglets de catalogue : EV (électrique + hybride rechargeable)
+                  vs Thermique (hybride, mild hybrid, essence, diesel). Filtre
+                  primaire du catalogue. */}
+              <div className="flex items-center gap-1 mb-3 p-1 rounded-lg bg-muted/50 border w-fit">
+                {([
+                  { key: "ev" as CatalogType, label: "Électrique & hybride rechargeable" },
+                  { key: "thermique" as CatalogType, label: "Thermique & hybride" },
+                ]).map((tab) => {
+                  const count = vehicles.filter((v) => catalogTypeOf(v.energy) === tab.key).length;
+                  const active = catalogType === tab.key;
+                  return (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => { setCatalogType(tab.key); setVehicleEnergyFilter("all"); }}
+                      className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                        active ? "bg-beev-black text-white" : "text-muted-foreground hover:bg-card"
+                      }`}
+                    >
+                      {tab.label} ({count})
+                    </button>
+                  );
+                })}
+              </div>
               {/* Barre recherche + filtres */}
               <div className="flex flex-wrap items-center gap-2 mb-4 p-3 rounded-lg bg-card border">
                 <div className="relative flex-1 min-w-[200px]">
