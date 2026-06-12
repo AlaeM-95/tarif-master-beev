@@ -635,6 +635,21 @@ function App() {
 
   const exportPdf = async () => {
     if (!client.company) { alert("Renseignez au moins le nom de la société client."); return; }
+    // Validation : chaque véhicule du devis doit avoir une énergie ET une
+    // consommation renseignées (sinon les calculs TCO / l'affichage conso sont
+    // faux). On bloque la génération et on indique les véhicules à compléter.
+    const invalid = Object.values(selectedV).filter((sv) => {
+      const v = sv.vehicle;
+      const noEnergy = !v.energy || !String(v.energy).trim();
+      const conso = v.energy === "Électrique" ? (v.consumptionElec ?? v.consumption) : (v.consumptionThermal ?? v.consumption);
+      const noConso = !conso || conso <= 0;
+      return noEnergy || noConso;
+    });
+    if (invalid.length > 0) {
+      const names = invalid.map((sv) => `${sv.vehicle.brand} ${sv.vehicle.model}`.trim()).join(", ");
+      toast.error(`Énergie ou consommation manquante sur : ${names}. Complétez la fiche véhicule avant de générer le PDF.`);
+      return;
+    }
     // Si l'offre contient des bornes site entreprise (peu importe le projectType
     // courant — utile pour les offres combinées véhicules + bornes), on ouvre
     // le dialogue de validation des marges avant génération du PDF client.

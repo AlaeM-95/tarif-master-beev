@@ -728,7 +728,7 @@ export async function generateProposalPdf(opts: {
     // 1) Tableau de bord visuel (KPI cards + barres empilées) en ouverture
     doc.addPage();
     drawHeader(doc, client, "vehicles");
-    drawTcoDashboard(doc, v, energy);
+    drawTcoDashboard(doc, v, energy, client, "vehicles");
     // 1bis) Tableau détaillé : 1 ligne par véhicule avec TOUTES les composantes
     // (Loyer / Énergie / TVS / Malus CO2 / Malus poids / AND / AEN / TCO total /
     // Coût employeur complet) pour vérification ligne par ligne.
@@ -3113,7 +3113,7 @@ function vehicleLabel(v: { brand: string; model: string; version?: string }, max
 // empilées par véhicule (loyer + énergie + TVS + malus) en bas. Permet au
 // décideur de visualiser instantanément la structure du coût total et de
 // repérer où sont les écarts entre véhicules.
-function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams) {
+function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams, client?: ClientInfo, type?: ProjectType) {
   // Couleurs cohérentes avec les graphiques recharts dans l'app
   const COLOR_LOYER: [number, number, number] = [56, 9, 234]; // #3809EA LAVENDER
   const COLOR_ENERGIE: [number, number, number] = [53, 218, 118]; // #35DA76 ACCENT
@@ -3318,7 +3318,11 @@ function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
   });
 
   // === Détail Charges fiscales annexes (AND/AEN) — récap par véhicule ===
-  y += 14;
+  // Toujours sur une NOUVELLE PAGE (lisibilité + évite le chevauchement avec
+  // les barres de classement et le footer).
+  doc.addPage();
+  if (client && type) drawHeader(doc, client, type);
+  y = 116;
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...LAVENDER);
@@ -3442,7 +3446,7 @@ function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: Energy
     return [
       // Marque + modèle + version sur 1re ligne, durée/km sur 2e (séparation
       // claire pour distinguer 2 finitions d'un même modèle dans le tableau).
-      { content: `${vehicleLabel(sv.vehicle)}\n${sv.durationMonths} mois · ${(sv.kmPerYear / 1000).toFixed(0)}k km/an`, styles: { fontStyle: "bold" as any, fontSize: 8.5 } },
+      { content: `${vehicleLabel(sv.vehicle)}\n${sv.durationMonths} mois · ${(sv.kmPerYear / 1000).toFixed(0)}k km/an`, styles: { halign: "center" as any, fontStyle: "normal" as any, fontSize: 8.5 } },
         { content: eur(r.loyerTotal), styles: { halign: "right" as any } },
         { content: eur(r.coutEnergie), styles: { halign: "right" as any } },
         { content: eur(r.tvsTotal), styles: r.tvsTotal > 0
@@ -3486,7 +3490,7 @@ function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: Energy
     bodyStyles: { fontSize: 8.5, cellPadding: 6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
     alternateRowStyles: { fillColor: BG },
     columnStyles: {
-      0: { cellWidth: 110 },
+      0: { cellWidth: 110, halign: "center" as any },
       1: { cellWidth: 55 },
       2: { cellWidth: 50 },
       3: { cellWidth: 50 },
@@ -3888,10 +3892,9 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
   const beforeVehicles = vehicles.filter((sv) => sv.vehicle.isCurrentFleet);
   const afterVehicles = vehicles.filter((sv) => !sv.vehicle.isCurrentFleet);
   const isBeforeAfter = beforeVehicles.length > 0 && afterVehicles.length > 0;
-  const items = isBeforeAfter
-    ? [...beforeVehicles, ...afterVehicles].slice(0, 4)
-    : vehicles.slice(0, 4);
-  const nBefore = isBeforeAfter ? Math.min(beforeVehicles.length, 4) : 0;
+  // Affichage VERTICAL (véhicules en lignes) : plus de limite à 4. Les
+  // véhicules « flotte actuelle » d'abord, puis les propositions Beev.
+  const items = isBeforeAfter ? [...beforeVehicles, ...afterVehicles] : vehicles;
   let y = 130;
   eyebrow(
     doc,
@@ -3928,279 +3931,109 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
   doc.text(introLinesHdr, M, y);
   y += introLinesHdr.length * 13 + 12;
 
-  type Row = {
-    label: string;
-    /** Valeurs brutes par véhicule (number ou string) */
-    values: (number | string)[];
-    /** "asc" = la plus petite gagne, "desc" = la plus grande gagne, undefined = pas de meilleure valeur */
-    bestDir?: "asc" | "desc";
-    /** Formatter par valeur */
-    format?: (val: number | string) => string;
-    /** Extracteur numérique pour le surlignement quand la valeur est un
-     *  string (ex. durées "7h30", "30 min"). NaN = non comparable. */
-    numeric?: (val: number | string) => number;
+  // ─── Tableau comparatif VERTICAL (véhicules en lignes) ──────────────────
+  // Présentation verticale : chaque véhicule est une LIGNE. Gère sans
+  // débordement n'importe quel nombre de véhicules (pagination autoTable) et
+  // les valeurs longues comme « Hybride Rechargeable » s'enroulent proprement.
+  const GREEN_LIGHT: [number, number, number] = [219, 238, 220];
+  const ROSE_TEXT: [number, number, number] = [181, 96, 79];
+  const BEEV_BLUE: [number, number, number] = [56, 9, 234];
+
+  const showStatut = isBeforeAfter;
+  const showLoyer = items.some((sv) => (sv.negotiatedMonthly ?? 0) > 0);
+
+  // Conso par véhicule : kWh/100km (électrique) ou L/100km (autres).
+  const consoOf = (sv: SelectedVehicle): { txt: string; num: number } => {
+    const v = sv.vehicle;
+    const elec = v.energy === "Électrique";
+    const c = elec ? (v.consumptionElec ?? v.consumption) : (v.consumptionThermal ?? v.consumption);
+    if (!c || c <= 0) return { txt: "—", num: NaN };
+    return { txt: elec ? `${c} kWh/100km` : `${c} L/100km`, num: c };
   };
+  const consoSameUnit = items.every((sv) => sv.vehicle.energy === "Électrique") || items.every((sv) => sv.vehicle.energy !== "Électrique");
 
-  // Parse une durée de recharge libre ("30 min", "7h", "7h30", "1 h 05")
-  // en minutes pour permettre le surlignement de la plus rapide.
-  const parseDurationMin = (val: number | string): number => {
-    if (typeof val === "number") return val > 0 ? val : NaN;
-    const s = String(val).toLowerCase().replace(/\s+/g, "");
-    let m = s.match(/^(\d+(?:[.,]\d+)?)h(\d{1,2})?(?:min)?$/);
-    if (m) return parseFloat(m[1].replace(",", ".")) * 60 + (m[2] ? parseInt(m[2], 10) : 0);
-    m = s.match(/^(\d+(?:[.,]\d+)?)(?:min|mn|m|minutes?)$/);
-    if (m) return parseFloat(m[1].replace(",", "."));
-    m = s.match(/^(\d+(?:[.,]\d+)?)$/);
-    if (m) return parseFloat(m[1].replace(",", "."));
-    return NaN;
+  // Meilleures valeurs (ignore 0/manquant ; ≥2 valeurs comparables requises).
+  const bestOf = (vals: number[], dir: "min" | "max"): number | null => {
+    const valid = vals.filter((n) => Number.isFinite(n) && n > 0);
+    if (valid.length < 2 || valid.every((n) => n === valid[0])) return null;
+    return dir === "min" ? Math.min(...valid) : Math.max(...valid);
   };
+  const priceMin = bestOf(items.map((sv) => sv.vehicle.priceTtc), "min");
+  const loyerMin = bestOf(items.map((sv) => sv.negotiatedMonthly ?? 0), "min");
+  const autoMax = bestOf(items.map((sv) => sv.vehicle.rangeWltp), "max");
+  const consoMin = consoSameUnit ? bestOf(items.map((sv) => consoOf(sv).num), "min") : null;
 
-  // La ligne Loyer ne s'affiche que si le commercial a saisi (ou laissé)
-  // un loyer > 0 dans le panneau droit. Les véhicules importés sans loyer
-  // (car policy) ont negotiatedMonthly = 0 → cellule "—", et si AUCUN
-  // véhicule n'a de loyer la ligne disparaît entièrement.
-  const hasAnyLoyer = items.some((sv) => (sv.negotiatedMonthly ?? 0) > 0);
-
-  // Lignes du comparateur PDF dans l'ordre demandé par le commercial.
-  // Loyer LLD affiché en TTC (HT × 1,20) pour matcher la convention client.
-  const rows: Row[] = [
-    {
-      label: "Prix catalogue TTC",
-      values: items.map((sv) => sv.vehicle.priceTtc),
-      bestDir: "asc",
-      format: (n) => eur(Number(n)),
-    },
-    ...(hasAnyLoyer ? [{
-      // ATTENTION : sv.negotiatedMonthly est DÉJÀ TTC (cf. label « Loyer
-      // TTC/mois » du panneau de modification véhicule). Ne pas multiplier
-      // par 1.20 — ça aurait donné un loyer 20 % trop haut sur le PDF
-      // (ex. 814 € catalogue affiché en 977 € sur le comparateur).
-      label: "Loyer LLD TTC",
-      values: items.map((sv) => (sv.negotiatedMonthly ?? 0) > 0 ? sv.negotiatedMonthly : "—"),
-      bestDir: "asc",
-      format: (n) => typeof n === "number" ? `${eur(n)}/mois` : String(n),
-    } satisfies Row] : []),
-    {
-      label: "Autonomie WLTP",
-      values: items.map((sv) => sv.vehicle.rangeWltp),
-      bestDir: "desc",
-      format: (n) => `${n} km`,
-    },
-    {
-      // Unité par véhicule : kWh/100km pour les électriques, L/100km pour
-      // les thermiques/hybrides (cohérent avec les fiches véhicule). Le
-      // surlignement n'a de sens que si tous les véhicules comparés
-      // partagent la même unité — comparer des L à des kWh n'en a pas.
-      label: "Consommation",
-      values: items.map((sv) => {
-        const v = sv.vehicle;
-        const isElec = v.energy === "Électrique";
-        // Même logique de champ que la fiche véhicule : électrique →
-        // consumptionElec (kWh/100km), autres → consumptionThermal (L/100km),
-        // avec fallback sur consumption legacy.
-        const conso = isElec ? (v.consumptionElec ?? v.consumption) : (v.consumptionThermal ?? v.consumption);
-        if (!conso || conso <= 0) return "—";
-        return isElec ? `${conso} kWh/100km` : `${conso} L/100km`;
-      }),
-      bestDir: items.every((sv) => sv.vehicle.energy === "Électrique") || items.every((sv) => sv.vehicle.energy !== "Électrique")
-        ? "asc"
-        : undefined,
-      numeric: (val) => {
-        const m = String(val).match(/^(\d+(?:[.,]\d+)?)/);
-        return m ? parseFloat(m[1].replace(",", ".")) : NaN;
-      },
-    },
-    {
-      label: "Catégorie",
-      values: items.map((sv) => sv.vehicle.category),
-    },
-    {
-      label: "Énergie",
-      values: items.map((sv) => sv.vehicle.energy),
-    },
-    {
-      label: "Volume de coffre",
-      values: items.map((sv) => sv.vehicle.trunkLitres ?? "—"),
-      bestDir: "desc",
-      format: (n) => typeof n === "number" ? `${n} L` : String(n),
-    },
-    {
-      label: "Recharge DC max",
-      values: items.map((sv) => sv.vehicle.chargeDcMaxKw ?? "—"),
-      bestDir: "desc",
-      format: (n) => typeof n === "number" ? `${n} kW` : String(n),
-    },
-    {
-      label: "Recharge AC max",
-      values: items.map((sv) => sv.vehicle.chargeAcMaxKw ?? "—"),
-      bestDir: "desc",
-      format: (n) => typeof n === "number" ? `${n} kW` : String(n),
-    },
-    {
-      label: "Dimensions",
-      values: items.map((sv) => sv.vehicle.dimensions ?? "—"),
-    },
-    {
-      label: "Recharge 20-80 % AC",
-      values: items.map((sv) => sv.vehicle.chargeTime2080Ac ?? "—"),
-      bestDir: "asc",
-      numeric: parseDurationMin,
-    },
-    {
-      label: "Recharge 20-80 % DC",
-      values: items.map((sv) => sv.vehicle.chargeTime2080Dc ?? "—"),
-      bestDir: "asc",
-      numeric: parseDurationMin,
-    },
-    // Délai de livraison (saisi par l'ops dans la fiche produit) — togglable
-    // via la config PDF, au même titre que dimensions / recharge.
-    ...(PDF_CFG.showVehicleLeadTime ? [{
-      label: "Délai de livraison",
-      values: items.map((sv) => sv.vehicle.leadTime ?? "—"),
-    } satisfies Row] : []),
+  type Col = { key: string; header: string; align: "left" | "right" | "center" };
+  const cols: Col[] = [
+    { key: "veh", header: "Véhicule", align: "left" },
+    ...(showStatut ? [{ key: "statut", header: "Statut", align: "left" as const }] : []),
+    { key: "prix", header: "Prix TTC", align: "right" as const },
+    ...(showLoyer ? [{ key: "loyer", header: "Loyer / mois", align: "right" as const }] : []),
+    { key: "auto", header: "Autonomie", align: "right" as const },
+    { key: "conso", header: "Conso", align: "right" as const },
+    { key: "energie", header: "Énergie", align: "left" as const },
   ];
 
-  // Calcule les "gagnants" par ligne. Règles de surlignement :
-  // 1) Une valeur manquante ("—", 0) est ignorée — elle ne bloque plus le
-  //    surlignement des autres colonnes et ne peut pas gagner.
-  // 2) Il faut au moins 2 valeurs comparables pour surligner (gagner seul
-  //    par forfait n'a pas de sens).
-  // 3) Si toutes les valeurs comparables sont identiques, AUCUN surlignement
-  //    (pas de meilleure valeur quand tout le monde est ex aequo).
-  // 4) En cas d'ex aequo partiel sur la meilleure valeur, tous les ex aequo
-  //    sont surlignés.
-  const winners: boolean[][] = rows.map((row) => {
-    if (!row.bestDir) return row.values.map(() => false);
-    const nums = row.values.map((v) => {
-      if (row.numeric) return row.numeric(v);
-      return typeof v === "number" && v > 0 ? v : NaN;
-    });
-    const valid = nums.filter((n) => !Number.isNaN(n));
-    if (valid.length < 2 || valid.every((n) => n === valid[0])) {
-      return row.values.map(() => false);
+  const cellFor = (sv: SelectedVehicle, key: string): string => {
+    switch (key) {
+      case "veh": return vehicleLabel(sv.vehicle);
+      case "statut": return sv.vehicle.isCurrentFleet ? "Flotte actuelle" : "Proposition Beev";
+      case "prix": return sv.vehicle.priceTtc > 0 ? eur(sv.vehicle.priceTtc) : "—";
+      case "loyer": return (sv.negotiatedMonthly ?? 0) > 0 ? `${eur(sv.negotiatedMonthly)}/mois` : "—";
+      case "auto": return sv.vehicle.rangeWltp > 0 ? `${sv.vehicle.rangeWltp} km` : "—";
+      case "conso": return consoOf(sv).txt;
+      case "energie": return sv.vehicle.energy;
+      default: return "";
     }
-    const best = row.bestDir === "asc" ? Math.min(...valid) : Math.max(...valid);
-    return nums.map((n) => !Number.isNaN(n) && n === best);
+  };
+
+  const head = [cols.map((c) => c.header)];
+  const body = items.map((sv) => cols.map((c) => cellFor(sv, c.key)));
+
+  const columnStyles: any = {};
+  cols.forEach((c, i) => {
+    columnStyles[i] = { halign: c.align };
+    if (c.key === "veh") columnStyles[i].cellWidth = showStatut ? 132 : 150;
+    if (c.key === "energie") columnStyles[i].cellWidth = 76;
   });
 
-  // Largeur colonne label + colonnes véhicules
-  const labelW = 130;
-  const colW = (PAGE_W - M * 2 - labelW) / items.length;
-
-  // Header véhicules : photo + marque/modèle + version
-  // Photo en haut (cream rond) puis textes dessous. Permet une identification
-  // visuelle immédiate des modèles comparés.
-  const photoH = 52;
-  // textH agrandi pour loger, sous la version, un chip « flotte actuelle » /
-  // « proposition Beev » par véhicule (cf. plus bas). Ce chip par colonne
-  // remplace les anciens bandeaux pleine largeur qui se désalignaient à 4
-  // véhicules : chaque véhicule porte désormais son propre statut, sans
-  // géométrie fragile, quel que soit le nombre ou le mélange.
-  const textH = isBeforeAfter ? 74 : 58;
-  const headH = photoH + textH;
-  // Séparateur rose puis fond blanc des en-têtes véhicule
-  doc.setFillColor(...PINK);
-  doc.rect(M, y, PAGE_W - M * 2, 2, "F");
-  y += 6;
-  doc.setFillColor(255, 255, 255);
-  doc.rect(M, y, PAGE_W - M * 2, headH, "F");
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(8.5);
-  doc.setTextColor(...SUB);
-  doc.text(lookupText(TEXTS, "vehicles", "comparator_header_label", "CARACTÉRISTIQUE"), M + 8, y + 20);
-
-  // Charge les photos en parallèle puis dessine chaque cellule véhicule
-  for (let i = 0; i < items.length; i++) {
-    const sv = items[i];
-    const cx = M + labelW + i * colW;
-    // Photo véhicule centrée (fond blanc cream pour produit) — fallback
-    // silencieux si l'image n'existe pas.
-    if (sv.vehicle.image && sv.vehicle.image.trim()) {
-      const pImgW = Math.min(colW - 20, 110);
-      const pImgH = photoH - 8;
-      const pImgX = cx + (colW - pImgW) / 2;
-      const pImgY = y + 4;
-      try {
-        await drawImageContain(doc, sv.vehicle.image, pImgX, pImgY, pImgW, pImgH);
-      } catch {
-        /* image non chargée — non bloquant */
+  autoTable(doc, {
+    startY: y,
+    theme: "plain",
+    head,
+    body,
+    headStyles: { fillColor: INK, textColor: 255, fontSize: 8.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 6 },
+    bodyStyles: { fontSize: 9, cellPadding: 6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
+    alternateRowStyles: { fillColor: BG },
+    columnStyles,
+    margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
+    didParseCell: (data: any) => {
+      if (data.section !== "body") return;
+      const col = cols[data.column.index];
+      const sv = items[data.row.index];
+      if (!col || !sv) return;
+      if (col.key === "statut") {
+        data.cell.styles.fontStyle = "bold";
+        data.cell.styles.textColor = sv.vehicle.isCurrentFleet ? ROSE_TEXT : BEEV_BLUE;
+        return;
       }
-    }
-    // Textes sous la photo
-    const textBaseY = y + photoH;
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(...INK);
-    const brand = sv.vehicle.brand.toUpperCase();
-    doc.text(brand, cx + colW / 2, textBaseY + 14, { align: "center", maxWidth: colW - 8 });
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(...INK);
-    const modelLine = doc.splitTextToSize(sv.vehicle.model, colW - 12)[0] || "";
-    doc.text(modelLine, cx + colW / 2, textBaseY + 28, { align: "center" });
-    doc.setFontSize(7.5);
-    doc.setTextColor(...SUB);
-    const versionLine = doc.splitTextToSize(sv.vehicle.version || "", colW - 12)[0] || "";
-    doc.text(versionLine, cx + colW / 2, textBaseY + 42, { align: "center" });
-
-    // Chip statut par véhicule (uniquement en mode mixte flotte/proposition) :
-    // rose « FLOTTE ACTUELLE », bleu « PROPOSITION BEEV ». Centré sous la
-    // version, propre à chaque colonne — plus de bandeau pleine largeur fragile.
-    if (isBeforeAfter) {
-      const isFleet = !!sv.vehicle.isCurrentFleet;
-      const chipText = isFleet ? "FLOTTE ACTUELLE" : "PROPOSITION BEEV";
-      doc.setFont(BRAND_FONT, "bold");
-      doc.setFontSize(6);
-      const chipW = Math.min(colW - 8, doc.getTextWidth(chipText) + 12);
-      const chipX = cx + (colW - chipW) / 2;
-      const chipY = textBaseY + 50;
-      doc.setFillColor(...(isFleet ? PINK : BLUE_LIGHT));
-      doc.roundedRect(chipX, chipY, chipW, 13, 6.5, 6.5, "F");
-      doc.setTextColor(...(isFleet ? INK : ([56, 9, 234] as [number, number, number])));
-      doc.text(chipText, cx + colW / 2, chipY + 9, { align: "center" });
-    }
-  }
-  y += headH + 4;
-
-  // Lignes de specs
-  const rowH = 24;
-  rows.forEach((row, rowIdx) => {
-    // Alternance fond clair / blanc
-    if (rowIdx % 2 === 0) {
-      doc.setFillColor(252, 251, 248);
-      doc.rect(M, y, PAGE_W - M * 2, rowH, "F");
-    }
-    // Label gauche
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(...SUB);
-    doc.text(row.label, M + 8, y + 15);
-    // Valeurs par véhicule
-    row.values.forEach((val, i) => {
-      const cx = M + labelW + i * colW;
-      const isBest = winners[rowIdx][i];
-      if (isBest) {
-        doc.setFillColor(...PINK_LIGHT);
-        doc.rect(cx + 2, y + 2, colW - 4, rowH - 4, "F");
-      }
-      doc.setFont(BRAND_FONT, isBest ? "bold" : "normal");
-      doc.setFontSize(10);
-      doc.setTextColor(...INK);
-      const text = row.format ? row.format(val) : String(val);
-      doc.text(text, cx + colW / 2, y + 15, { align: "center", maxWidth: colW - 8 });
-    });
-    y += rowH;
+      const green = () => { data.cell.styles.fillColor = GREEN_LIGHT; data.cell.styles.fontStyle = "bold"; data.cell.styles.textColor = INK; };
+      if (col.key === "prix" && priceMin !== null && sv.vehicle.priceTtc === priceMin) green();
+      else if (col.key === "loyer" && loyerMin !== null && (sv.negotiatedMonthly ?? 0) === loyerMin) green();
+      else if (col.key === "auto" && autoMax !== null && sv.vehicle.rangeWltp === autoMax) green();
+      else if (col.key === "conso" && consoMin !== null && consoOf(sv).num === consoMin) green();
+    },
   });
+  const yEnd = (doc as any).lastAutoTable.finalY + 14;
 
   // Note de bas de page
-  y += 12;
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(7.5);
   doc.setTextColor(...SUB);
   doc.text(
     lookupText(TEXTS, "vehicles", "comparator_footnote",
-      "Données constructeur. Le CO2 est forcé à 0 g/km pour les véhicules électriques (convention Beev). La consommation est exprimée en kWh/100 km pour les électriques et en L/100 km pour les autres motorisations."),
-    M, y, { maxWidth: PAGE_W - M * 2 },
+      "Données constructeur. Le CO2 est forcé à 0 g/km pour les véhicules électriques (convention Beev). Consommation en kWh/100 km (électrique) ou L/100 km (autres). Cellules vertes : meilleure valeur de la colonne."),
+    M, yEnd, { maxWidth: PAGE_W - M * 2 },
   );
 }
 
@@ -5494,8 +5327,12 @@ function drawFinancialSynthesis(
     y += 8;
 
     // Loyer le plus bas PAR GROUPE (valeurs > 0) pour le surlignement vert.
+    // IMPORTANT : on n'inclut QUE les propositions Beev — jamais la flotte
+    // actuelle. Le bandeau vert « loyer le plus bas » valorise l'offre Beev,
+    // il ne doit pas s'afficher sur un véhicule de la flotte actuelle.
     const groupMinLoyer = new Map<string, number>();
     for (const sv of detailVehicles) {
+      if (sv.vehicle.isCurrentFleet) continue; // exclut la flotte actuelle
       const l = sv.negotiatedMonthly || 0;
       if (l <= 0) continue;
       const g = groupKey(sv);
@@ -5538,9 +5375,10 @@ function drawFinancialSynthesis(
         if (sv.vehicle.isCurrentFleet) {
           data.cell.styles.fillColor = ROSE_LIGHT;
         }
-        // Cellule loyer la plus basse DU GROUPE → fond vert (prime sur le rose)
+        // Cellule loyer la plus basse DU GROUPE → fond vert, UNIQUEMENT sur une
+        // proposition Beev (jamais sur la flotte actuelle).
         const gMin = groupMinLoyer.get(groupKey(sv));
-        if (data.column.index === loyerCol && gMin !== undefined && (sv.negotiatedMonthly || 0) === gMin) {
+        if (!sv.vehicle.isCurrentFleet && data.column.index === loyerCol && gMin !== undefined && (sv.negotiatedMonthly || 0) === gMin) {
           data.cell.styles.fillColor = GREEN_LIGHT;
           data.cell.styles.textColor = INK;
         }
