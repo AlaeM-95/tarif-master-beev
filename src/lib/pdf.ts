@@ -3467,7 +3467,7 @@ function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: Energy
   for (const g of groupOrder) {
     if (hasGroups) {
       const label = g === "__none__" ? "Autres véhicules" : g;
-      tcoBody.push([{ content: label.toUpperCase(), colSpan: 8, styles: { fillColor: GROUP_BG, textColor: INK, fontStyle: "bold" as any, fontSize: 9, halign: "left" as any, cellPadding: 6 } }]);
+      tcoBody.push([{ content: label.toUpperCase(), colSpan: 8, styles: { fillColor: GROUP_BG, textColor: INK, fontStyle: "bold" as any, fontSize: 9, halign: "center" as any, cellPadding: 6 } }]);
     }
     for (const c of buckets.get(g)!) tcoBody.push(buildRow(c));
   }
@@ -3931,15 +3931,15 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
   doc.text(introLinesHdr, M, y);
   y += introLinesHdr.length * 13 + 12;
 
-  // ─── Tableau comparatif VERTICAL (véhicules en lignes) ──────────────────
-  // Présentation verticale : chaque véhicule est une LIGNE. Gère sans
-  // débordement n'importe quel nombre de véhicules (pagination autoTable) et
-  // les valeurs longues comme « Hybride Rechargeable » s'enroulent proprement.
+  // ─── Tableau comparatif VERTICAL (véhicules en lignes) avec image ───────
+  // Chaque véhicule est une LIGNE. La colonne « Véhicule » contient l'image,
+  // le nom et un chip de statut (flotte actuelle / proposition Beev), dessinés
+  // via didDrawCell. Les colonnes numériques sont dimensionnées pour ne JAMAIS
+  // tronquer la valeur (« 42 490 € » reste sur une ligne).
   const GREEN_LIGHT: [number, number, number] = [219, 238, 220];
   const ROSE_TEXT: [number, number, number] = [181, 96, 79];
   const BEEV_BLUE: [number, number, number] = [56, 9, 234];
 
-  const showStatut = isBeforeAfter;
   const showLoyer = items.some((sv) => (sv.negotiatedMonthly ?? 0) > 0);
 
   // Conso par véhicule : kWh/100km (électrique) ou L/100km (autres).
@@ -3963,12 +3963,17 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
   const autoMax = bestOf(items.map((sv) => sv.vehicle.rangeWltp), "max");
   const consoMin = consoSameUnit ? bestOf(items.map((sv) => consoOf(sv).num), "min") : null;
 
+  // Pré-chargement des images véhicule (didDrawCell est synchrone : on ne peut
+  // pas charger une image dedans, d'où ce préchargement en amont).
+  const vehImgs = await Promise.all(
+    items.map((sv) => (sv.vehicle.image && sv.vehicle.image.trim() ? loadImage(sv.vehicle.image) : Promise.resolve(null))),
+  );
+
   type Col = { key: string; header: string; align: "left" | "right" | "center" };
   const cols: Col[] = [
     { key: "veh", header: "Véhicule", align: "left" },
-    ...(showStatut ? [{ key: "statut", header: "Statut", align: "left" as const }] : []),
     { key: "prix", header: "Prix TTC", align: "right" as const },
-    ...(showLoyer ? [{ key: "loyer", header: "Loyer / mois", align: "right" as const }] : []),
+    ...(showLoyer ? [{ key: "loyer", header: "Loyer/mois", align: "right" as const }] : []),
     { key: "auto", header: "Autonomie", align: "right" as const },
     { key: "conso", header: "Conso", align: "right" as const },
     { key: "energie", header: "Énergie", align: "left" as const },
@@ -3977,7 +3982,6 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
   const cellFor = (sv: SelectedVehicle, key: string): string => {
     switch (key) {
       case "veh": return vehicleLabel(sv.vehicle);
-      case "statut": return sv.vehicle.isCurrentFleet ? "Flotte actuelle" : "Proposition Beev";
       case "prix": return sv.vehicle.priceTtc > 0 ? eur(sv.vehicle.priceTtc) : "—";
       case "loyer": return (sv.negotiatedMonthly ?? 0) > 0 ? `${eur(sv.negotiatedMonthly)}/mois` : "—";
       case "auto": return sv.vehicle.rangeWltp > 0 ? `${sv.vehicle.rangeWltp} km` : "—";
@@ -3990,11 +3994,18 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
   const head = [cols.map((c) => c.header)];
   const body = items.map((sv) => cols.map((c) => cellFor(sv, c.key)));
 
+  // Largeurs fixes pour les colonnes numériques (évite tout retour à la ligne).
+  const W: Record<string, number> = { veh: 170, prix: 58, loyer: 66, auto: 56, conso: 72 };
   const columnStyles: any = {};
   cols.forEach((c, i) => {
     columnStyles[i] = { halign: c.align };
-    if (c.key === "veh") columnStyles[i].cellWidth = showStatut ? 132 : 150;
-    if (c.key === "energie") columnStyles[i].cellWidth = 76;
+    if (W[c.key]) columnStyles[i].cellWidth = W[c.key];
+    if (c.key === "veh") {
+      // Réserve à gauche pour l'image + en bas pour le chip statut.
+      columnStyles[i].cellPadding = { left: 46, right: 4, top: 6, bottom: isBeforeAfter ? 18 : 6 };
+      columnStyles[i].minCellHeight = 46;
+      columnStyles[i].valign = "middle";
+    }
   });
 
   autoTable(doc, {
@@ -4002,8 +4013,8 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
     theme: "plain",
     head,
     body,
-    headStyles: { fillColor: INK, textColor: 255, fontSize: 8.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 6 },
-    bodyStyles: { fontSize: 9, cellPadding: 6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
+    headStyles: { fillColor: INK, textColor: 255, fontSize: 8, fontStyle: "bold", font: BRAND_FONT, cellPadding: 6, valign: "middle" as any },
+    bodyStyles: { fontSize: 8.5, cellPadding: 5, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
     alternateRowStyles: { fillColor: BG },
     columnStyles,
     margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
@@ -4012,16 +4023,41 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
       const col = cols[data.column.index];
       const sv = items[data.row.index];
       if (!col || !sv) return;
-      if (col.key === "statut") {
-        data.cell.styles.fontStyle = "bold";
-        data.cell.styles.textColor = sv.vehicle.isCurrentFleet ? ROSE_TEXT : BEEV_BLUE;
-        return;
-      }
       const green = () => { data.cell.styles.fillColor = GREEN_LIGHT; data.cell.styles.fontStyle = "bold"; data.cell.styles.textColor = INK; };
       if (col.key === "prix" && priceMin !== null && sv.vehicle.priceTtc === priceMin) green();
       else if (col.key === "loyer" && loyerMin !== null && (sv.negotiatedMonthly ?? 0) === loyerMin) green();
       else if (col.key === "auto" && autoMax !== null && sv.vehicle.rangeWltp === autoMax) green();
       else if (col.key === "conso" && consoMin !== null && consoOf(sv).num === consoMin) green();
+    },
+    didDrawCell: (data: any) => {
+      if (data.section !== "body" || data.column.index !== 0) return;
+      const sv = items[data.row.index];
+      if (!sv) return;
+      const cell = data.cell;
+      // Image véhicule (contain dans une boîte 40×30 à gauche de la cellule)
+      const img = vehImgs[data.row.index];
+      if (img) {
+        const boxW = 40, boxH = 30;
+        const bx = cell.x + 3;
+        const by = cell.y + (cell.height - boxH) / 2;
+        const ratio = Math.min(boxW / img.w, boxH / img.h);
+        const w = img.w * ratio, h = img.h * ratio;
+        try { doc.addImage(img.dataUrl, img.format, bx + (boxW - w) / 2, by + (boxH - h) / 2, w, h); } catch { /* non bloquant */ }
+      }
+      // Chip statut (uniquement en mode mixte flotte / proposition)
+      if (isBeforeAfter) {
+        const isFleet = !!sv.vehicle.isCurrentFleet;
+        const label = isFleet ? "FLOTTE ACTUELLE" : "PROPOSITION BEEV";
+        doc.setFont(BRAND_FONT, "bold");
+        doc.setFontSize(6);
+        const tw = doc.getTextWidth(label);
+        const chipX = cell.x + 46;
+        const chipY = cell.y + cell.height - 14;
+        doc.setFillColor(...(isFleet ? PINK : BLUE_LIGHT));
+        doc.roundedRect(chipX, chipY, tw + 10, 11, 5.5, 5.5, "F");
+        doc.setTextColor(...(isFleet ? ROSE_TEXT : BEEV_BLUE));
+        doc.text(label, chipX + 5, chipY + 7.5);
+      }
     },
   });
   const yEnd = (doc as any).lastAutoTable.finalY + 14;
