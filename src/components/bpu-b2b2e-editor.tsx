@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { Plus, Trash2, FileDown, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ImageUpload } from "@/components/image-upload";
@@ -138,6 +139,16 @@ export function BpuB2B2EEditor({ open, onOpenChange, clientName }: { open: boole
                     </div>
                     <div className="rounded-md bg-muted/40 p-2 text-[11px] text-muted-foreground">
                       Borne + installation (calculé) : mono {(b.equipMono + b.installMono).toLocaleString("fr-FR")} € · tri {(b.equipTri + b.installTri).toLocaleString("fr-FR")} €
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] uppercase text-muted-foreground tracking-wide">Descriptif « Forfait de base »</Label>
+                      <Textarea
+                        value={b.forfaitBase ?? ""}
+                        onChange={(e) => patchBorne(b.id, { forfaitBase: e.target.value })}
+                        rows={3}
+                        className="text-xs"
+                        placeholder="Forfait de base : 5 à 15 m de câble…"
+                      />
                     </div>
 
                     <details className="rounded-md border">

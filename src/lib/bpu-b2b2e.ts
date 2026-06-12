@@ -22,6 +22,7 @@ export type BpuBorne = {
   delestage: string;     // "Inclus" ou montant libre
   installMono: number;   // installation seule monophasé HT
   installTri: number;    // installation seule triphasé HT
+  forfaitBase: string;   // descriptif « Forfait de base : … » (éditable)
   // Caractéristiques techniques (texte libre, 2 colonnes)
   specPuissance: string;
   specCable: string;
@@ -41,6 +42,9 @@ export type BpuB2B2EConfig = {
   scopeLine: string;      // "Bornes ... · installation toute France métropolitaine"
   bornes: BpuBorne[];
 };
+
+const DEFAULT_FORFAIT_BASE =
+  "Forfait de base : 5 à 15 m de câble 3G10 mm² (mono) ou 5G10 mm² (tri), accessoires de raccordement, disjoncteur & interrupteur différentiel 2P, tube IRL Ø 20 mm, 1 percement de mur, main-d'œuvre.";
 
 const DEFAULT_SUPPLEMENTS: BpuSupplement[] = [
   { label: "Tranche de 5 m de câble supp.", mono: 75, tri: 139 },
@@ -79,6 +83,7 @@ export function defaultBpuB2B2E(): BpuB2B2EConfig {
         equipMono: 900, equipTri: 1000,
         delestage: "Inclus",
         installMono: 499, installTri: 739,
+        forfaitBase: DEFAULT_FORFAIT_BASE,
         specPuissance: "Compatible mono & triphasé, 7,4 kW à 22 kW",
         specCable: "Type 2 attaché (T2S)",
         specSupervision: "Compatible Beev Home Connect",
@@ -98,6 +103,7 @@ export function defaultBpuB2B2E(): BpuB2B2EConfig {
         equipMono: 1100, equipTri: 1160,
         delestage: "Inclus",
         installMono: 499, installTri: 739,
+        forfaitBase: DEFAULT_FORFAIT_BASE,
         specPuissance: "Compatible mono & triphasé, 7,4 kW à 22 kW",
         specCable: "Type 2 attaché (T2S)",
         specSupervision: "Principaux systèmes, dont Beev Connect",
@@ -122,6 +128,7 @@ export function newBpuBorne(): BpuBorne {
     equipMono: 0, equipTri: 0,
     delestage: "Inclus",
     installMono: 0, installTri: 0,
+    forfaitBase: DEFAULT_FORFAIT_BASE,
     specPuissance: "", specCable: "", specSupervision: "",
     specConnectivite: "", specRechargeSolaire: "", specBoitier: "", specGarantie: "",
     supplements: DEFAULT_SUPPLEMENTS.map((s) => ({ ...s })),
@@ -221,7 +228,7 @@ function installPage(b: BpuBorne, num: number, totalPages: { running: string }):
   <section class="page">
     <div class="page-head"><span class="page-num-tag">${numStr}</span><span class="page-borne">Borne ${esc(b.name)}</span></div>
     <h2 class="section-title">Tarifs d'installation</h2>
-    <div class="forfait-note">Forfait de base : 5 à 15 m de câble 3G10 mm² (mono) ou 5G10 mm² (tri), accessoires de raccordement, disjoncteur & interrupteur différentiel 2P, tube IRL Ø 20 mm, 1 percement de mur, main-d'œuvre.</div>
+    <div class="forfait-note">${esc(b.forfaitBase || DEFAULT_FORFAIT_BASE)}</div>
     <div class="install-cards">
       <div class="install-card rose">
         <div class="ic-label">${esc(b.monoLabel)}</div>
