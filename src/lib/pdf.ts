@@ -728,13 +728,13 @@ export async function generateProposalPdf(opts: {
     // 1) Tableau de bord visuel (KPI cards + barres empilées) en ouverture
     doc.addPage();
     drawHeader(doc, client, "vehicles");
-    drawTcoDashboard(doc, v, energy, client, "vehicles");
+    await drawTcoDashboard(doc, v, energy, client, "vehicles");
     // 1bis) Tableau détaillé : 1 ligne par véhicule avec TOUTES les composantes
     // (Loyer / Énergie / TVS / Malus CO2 / Malus poids / AND / AEN / TCO total /
     // Coût employeur complet) pour vérification ligne par ligne.
     doc.addPage();
     drawHeader(doc, client, "vehicles");
-    drawTcoDetailedTable(doc, v, energy);
+    await drawTcoDetailedTable(doc, v, energy);
     // Page « Bilan carbone » — argument RSE
     if (cfg.showCarbonImpact) {
       doc.addPage();
@@ -3113,7 +3113,7 @@ function vehicleLabel(v: { brand: string; model: string; version?: string }, max
 // empilées par véhicule (loyer + énergie + TVS + malus) en bas. Permet au
 // décideur de visualiser instantanément la structure du coût total et de
 // repérer où sont les écarts entre véhicules.
-function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams, client?: ClientInfo, type?: ProjectType) {
+async function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams, client?: ClientInfo, type?: ProjectType) {
   // Couleurs cohérentes avec les graphiques recharts dans l'app
   const COLOR_LOYER: [number, number, number] = [56, 9, 234]; // #3809EA LAVENDER
   const COLOR_ENERGIE: [number, number, number] = [53, 218, 118]; // #35DA76 ACCENT
@@ -3329,6 +3329,9 @@ function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
   doc.text("DÉTAIL CHARGES FISCALES ANNEXES PAR VÉHICULE", M, y);
   y += 8;
 
+  // Vignettes véhicule (mêmes que le comparateur)
+  const fiscalThumbs = await preloadVehicleThumbs(rows.map((r) => r.sv));
+
   autoTable(doc, {
     startY: y,
     theme: "plain",
@@ -3343,10 +3346,14 @@ function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
       { content: eur(r.coutEmployeur), styles: { halign: "right" as any, fontStyle: "bold" as any, textColor: LAVENDER } },
     ]),
     headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 7, fontStyle: "bold", font: BRAND_FONT, cellPadding: 4, halign: "center" as any },
-    bodyStyles: { fontSize: 8, cellPadding: 4, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
+    bodyStyles: { fontSize: 8, cellPadding: 4, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
     alternateRowStyles: { fillColor: BG },
-    columnStyles: { 0: { cellWidth: 130 } },
+    columnStyles: { 0: { cellWidth: 150, cellPadding: { left: 56, right: 4, top: 6, bottom: 6 }, minCellHeight: 48, valign: "middle" as any } },
     margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
+    didDrawCell: (data: any) => {
+      if (data.section !== "body" || data.column.index !== 0) return;
+      drawThumbCell(doc, data.cell, fiscalThumbs[data.row.index]);
+    },
   });
   y = (doc as any).lastAutoTable.finalY + 10;
 
@@ -3368,7 +3375,7 @@ function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
 // Malus poids / AND (×durée) / AEN employeur (×durée) / TCO total /
 // TCO employeur complet. Permet au commercial et au client de vérifier
 // chaque ligne du calcul.
-function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams) {
+async function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams) {
   let y = 116;
   const PINK: [number, number, number] = [244, 184, 170];
   doc.setFillColor(...PINK);
@@ -3446,7 +3453,7 @@ function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: Energy
     return [
       // Marque + modèle + version sur 1re ligne, durée/km sur 2e (séparation
       // claire pour distinguer 2 finitions d'un même modèle dans le tableau).
-      { content: `${vehicleLabel(sv.vehicle)}\n${sv.durationMonths} mois · ${(sv.kmPerYear / 1000).toFixed(0)}k km/an`, styles: { halign: "center" as any, fontStyle: "normal" as any, fontSize: 8.5 } },
+      { content: `${vehicleLabel(sv.vehicle)}\n${sv.durationMonths} mois · ${(sv.kmPerYear / 1000).toFixed(0)}k km/an`, styles: { halign: "left" as any, fontStyle: "normal" as any, fontSize: 8.5 } },
         { content: eur(r.loyerTotal), styles: { halign: "right" as any } },
         { content: eur(r.coutEnergie), styles: { halign: "right" as any } },
         { content: eur(r.tvsTotal), styles: r.tvsTotal > 0
@@ -3463,14 +3470,35 @@ function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: Energy
 
   // Corps du tableau : un intertitre par groupe de comparaison (si au moins un
   // groupe est nommé), puis les véhicules du groupe triés par TCO croissant.
+  // Couleurs d'intertitre par catégorie (charte Beev) — chaque groupe a sa
+  // couleur pour bien différencier les catégories.
+  const GROUP_COLORS: [number, number, number][] = [
+    [237, 246, 255], // bleu clair
+    [246, 245, 247], // violet clair
+    [232, 247, 233], // vert clair
+    [253, 241, 238], // rose clair
+    [255, 245, 230], // ambre clair
+  ];
+  // tcoBody + mapping ligne→véhicule (null pour les lignes d'intertitre).
   const tcoBody: any[] = [];
+  const rowVehicles: (SelectedVehicle | null)[] = [];
+  let groupIdx = 0;
   for (const g of groupOrder) {
     if (hasGroups) {
       const label = g === "__none__" ? "Autres véhicules" : g;
-      tcoBody.push([{ content: label.toUpperCase(), colSpan: 8, styles: { fillColor: GROUP_BG, textColor: INK, fontStyle: "bold" as any, fontSize: 9, halign: "center" as any, cellPadding: 6 } }]);
+      const gColor = GROUP_COLORS[groupIdx % GROUP_COLORS.length];
+      tcoBody.push([{ content: label.toUpperCase(), colSpan: 8, styles: { fillColor: gColor, textColor: INK, fontStyle: "bold" as any, fontSize: 9, halign: "center" as any, cellPadding: 6 } }]);
+      rowVehicles.push(null);
+      groupIdx++;
     }
-    for (const c of buckets.get(g)!) tcoBody.push(buildRow(c));
+    for (const c of buckets.get(g)!) { tcoBody.push(buildRow(c)); rowVehicles.push(c.sv); }
   }
+
+  // Vignettes véhicule (mêmes que le comparateur), mappées par véhicule.
+  const orderedSvs = rowVehicles.filter((s): s is SelectedVehicle => !!s);
+  const orderedThumbs = await preloadVehicleThumbs(orderedSvs);
+  const thumbMap = new Map<SelectedVehicle, LoadedImage | null>();
+  orderedSvs.forEach((sv, i) => thumbMap.set(sv, orderedThumbs[i]));
 
   autoTable(doc, {
     startY: y,
@@ -3490,16 +3518,22 @@ function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: Energy
     bodyStyles: { fontSize: 8.5, cellPadding: 6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
     alternateRowStyles: { fillColor: BG },
     columnStyles: {
-      0: { cellWidth: 110, halign: "center" as any },
-      1: { cellWidth: 55 },
-      2: { cellWidth: 50 },
-      3: { cellWidth: 50 },
-      4: { cellWidth: 50 },
-      5: { cellWidth: 50 },
-      6: { cellWidth: 60 },
+      0: { cellWidth: 150, halign: "left" as any, cellPadding: { left: 56, right: 4, top: 6, bottom: 6 }, minCellHeight: 48, valign: "middle" as any },
+      1: { cellWidth: 50 },
+      2: { cellWidth: 46 },
+      3: { cellWidth: 46 },
+      4: { cellWidth: 46 },
+      5: { cellWidth: 44 },
+      6: { cellWidth: 50 },
       7: { cellWidth: "auto" },
     },
     margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
+    didDrawCell: (data: any) => {
+      if (data.section !== "body" || data.column.index !== 0) return;
+      const sv = rowVehicles[data.row.index];
+      if (!sv) return; // ligne d'intertitre de groupe
+      drawThumbCell(doc, data.cell, thumbMap.get(sv) ?? null);
+    },
   });
   let y2 = (doc as any).lastAutoTable.finalY + 20;
 
@@ -3874,13 +3908,44 @@ function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
   );
 }
 
-// ============ COMPARATEUR VÉHICULES (specs côte à côte) ============
-// Page PDF type tableau comparatif des spécifications clés des véhicules
-// sélectionnés. Indépendant du TCO. Met en avant la meilleure valeur de
-// chaque ligne (cellule fond rose clair + texte bold).
-//
-// Limite : 4 véhicules max pour rester lisible sur A4 portrait. Si la
-// sélection dépasse 4, on prend les 4 premiers.
+// Précharge les images véhicule en miniatures JPEG APLATIES SUR FOND BLANC.
+// jsPDF ne gère pas l'alpha PNG (les zones transparentes deviennent noires) :
+// l'aplatissement sur blanc évite le « fond noir ». Réutilisé par le
+// comparateur et les tableaux TCO pour une vignette véhicule homogène.
+async function preloadVehicleThumbs(vehicles: SelectedVehicle[]): Promise<(LoadedImage | null)[]> {
+  return Promise.all(vehicles.map(async (sv) => {
+    const url = sv.vehicle.image?.trim();
+    if (!url) return null;
+    const li = await loadImage(url);
+    if (!li) return null;
+    try {
+      const flat = await flattenPngToJpeg(li.dataUrl, li.w, li.h, [255, 255, 255]);
+      return { dataUrl: flat, w: li.w, h: li.h, format: "JPEG" as const };
+    } catch {
+      return li;
+    }
+  }));
+}
+
+// Dessine une vignette véhicule (carte blanche + image contenue) à gauche d'une
+// cellule autoTable. Même taille partout (comparateur + tableaux TCO).
+function drawThumbCell(doc: jsPDF, cell: { x: number; y: number; height: number }, img: LoadedImage | null, boxW = 48, boxH = 36) {
+  const bx = cell.x + 3;
+  const by = cell.y + (cell.height - boxH) / 2;
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(bx, by, boxW, boxH, 4, 4, "F");
+  if (img) {
+    const pad = 4;
+    const ratio = Math.min((boxW - pad) / img.w, (boxH - pad) / img.h);
+    const w = img.w * ratio, h = img.h * ratio;
+    try { doc.addImage(img.dataUrl, img.format, bx + (boxW - w) / 2, by + (boxH - h) / 2, w, h); } catch { /* non bloquant */ }
+  }
+}
+
+// ============ COMPARATEUR VÉHICULES (vertical, véhicules en lignes) ============
+// Tableau comparatif vertical : chaque véhicule est une ligne (image + nom +
+// chip statut dans la colonne Véhicule, puis prix / loyer / autonomie / conso /
+// énergie). Gère n'importe quel nombre de véhicules sans débordement.
 async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], groupName?: string) {
   const PINK: [number, number, number] = [244, 184, 170];
   const PINK_LIGHT: [number, number, number] = [253, 241, 238];
@@ -3936,47 +4001,32 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
   // le nom et un chip de statut (flotte actuelle / proposition Beev), dessinés
   // via didDrawCell. Les colonnes numériques sont dimensionnées pour ne JAMAIS
   // tronquer la valeur (« 42 490 € » reste sur une ligne).
-  const GREEN_LIGHT: [number, number, number] = [219, 238, 220];
   const ROSE_TEXT: [number, number, number] = [181, 96, 79];
   const BEEV_BLUE: [number, number, number] = [56, 9, 234];
 
   const showLoyer = items.some((sv) => (sv.negotiatedMonthly ?? 0) > 0);
 
   // Conso par véhicule : kWh/100km (électrique) ou L/100km (autres).
-  const consoOf = (sv: SelectedVehicle): { txt: string; num: number } => {
+  const consoOf = (sv: SelectedVehicle): { txt: string } => {
     const v = sv.vehicle;
     const elec = v.energy === "Électrique";
     const c = elec ? (v.consumptionElec ?? v.consumption) : (v.consumptionThermal ?? v.consumption);
-    if (!c || c <= 0) return { txt: "—", num: NaN };
-    return { txt: elec ? `${c} kWh/100km` : `${c} L/100km`, num: c };
+    if (!c || c <= 0) return { txt: "—" };
+    return { txt: elec ? `${c} kWh/100km` : `${c} L/100km` };
   };
-  const consoSameUnit = items.every((sv) => sv.vehicle.energy === "Électrique") || items.every((sv) => sv.vehicle.energy !== "Électrique");
 
-  // Meilleures valeurs (ignore 0/manquant ; ≥2 valeurs comparables requises).
-  const bestOf = (vals: number[], dir: "min" | "max"): number | null => {
-    const valid = vals.filter((n) => Number.isFinite(n) && n > 0);
-    if (valid.length < 2 || valid.every((n) => n === valid[0])) return null;
-    return dir === "min" ? Math.min(...valid) : Math.max(...valid);
-  };
-  const priceMin = bestOf(items.map((sv) => sv.vehicle.priceTtc), "min");
-  const loyerMin = bestOf(items.map((sv) => sv.negotiatedMonthly ?? 0), "min");
-  const autoMax = bestOf(items.map((sv) => sv.vehicle.rangeWltp), "max");
-  const consoMin = consoSameUnit ? bestOf(items.map((sv) => consoOf(sv).num), "min") : null;
-
-  // Pré-chargement des images véhicule (didDrawCell est synchrone : on ne peut
-  // pas charger une image dedans, d'où ce préchargement en amont).
-  const vehImgs = await Promise.all(
-    items.map((sv) => (sv.vehicle.image && sv.vehicle.image.trim() ? loadImage(sv.vehicle.image) : Promise.resolve(null))),
-  );
+  const vehImgs = await preloadVehicleThumbs(items);
 
   type Col = { key: string; header: string; align: "left" | "right" | "center" };
+  // Toutes les colonnes de données sont CENTRÉES (en-tête + valeurs). La
+  // colonne Véhicule reste à gauche (image + nom + chip).
   const cols: Col[] = [
     { key: "veh", header: "Véhicule", align: "left" },
-    { key: "prix", header: "Prix TTC", align: "right" as const },
-    ...(showLoyer ? [{ key: "loyer", header: "Loyer/mois", align: "right" as const }] : []),
-    { key: "auto", header: "Autonomie", align: "right" as const },
-    { key: "conso", header: "Conso", align: "right" as const },
-    { key: "energie", header: "Énergie", align: "left" as const },
+    { key: "prix", header: "Prix TTC", align: "center" as const },
+    ...(showLoyer ? [{ key: "loyer", header: "Loyer/mois", align: "center" as const }] : []),
+    { key: "auto", header: "Autonomie", align: "center" as const },
+    { key: "conso", header: "Conso", align: "center" as const },
+    { key: "energie", header: "Énergie", align: "center" as const },
   ];
 
   const cellFor = (sv: SelectedVehicle, key: string): string => {
@@ -3994,16 +4044,16 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
   const head = [cols.map((c) => c.header)];
   const body = items.map((sv) => cols.map((c) => cellFor(sv, c.key)));
 
-  // Largeurs fixes pour les colonnes numériques (évite tout retour à la ligne).
-  const W: Record<string, number> = { veh: 170, prix: 58, loyer: 66, auto: 56, conso: 72 };
+  // Largeurs fixes : conso élargie pour « 16.6 kWh/100km » sur une ligne.
+  const W: Record<string, number> = { veh: 178, prix: 60, loyer: 66, auto: 56, conso: 80 };
   const columnStyles: any = {};
   cols.forEach((c, i) => {
     columnStyles[i] = { halign: c.align };
     if (W[c.key]) columnStyles[i].cellWidth = W[c.key];
     if (c.key === "veh") {
       // Réserve à gauche pour l'image + en bas pour le chip statut.
-      columnStyles[i].cellPadding = { left: 46, right: 4, top: 6, bottom: isBeforeAfter ? 18 : 6 };
-      columnStyles[i].minCellHeight = 46;
+      columnStyles[i].cellPadding = { left: 56, right: 4, top: 6, bottom: isBeforeAfter ? 18 : 6 };
+      columnStyles[i].minCellHeight = 48;
       columnStyles[i].valign = "middle";
     }
   });
@@ -4013,37 +4063,17 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
     theme: "plain",
     head,
     body,
-    headStyles: { fillColor: INK, textColor: 255, fontSize: 8, fontStyle: "bold", font: BRAND_FONT, cellPadding: 6, valign: "middle" as any },
+    headStyles: { fillColor: INK, textColor: 255, fontSize: 8, fontStyle: "bold", font: BRAND_FONT, cellPadding: 6, valign: "middle" as any, halign: "center" as any },
     bodyStyles: { fontSize: 8.5, cellPadding: 5, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
     alternateRowStyles: { fillColor: BG },
     columnStyles,
     margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
-    didParseCell: (data: any) => {
-      if (data.section !== "body") return;
-      const col = cols[data.column.index];
-      const sv = items[data.row.index];
-      if (!col || !sv) return;
-      const green = () => { data.cell.styles.fillColor = GREEN_LIGHT; data.cell.styles.fontStyle = "bold"; data.cell.styles.textColor = INK; };
-      if (col.key === "prix" && priceMin !== null && sv.vehicle.priceTtc === priceMin) green();
-      else if (col.key === "loyer" && loyerMin !== null && (sv.negotiatedMonthly ?? 0) === loyerMin) green();
-      else if (col.key === "auto" && autoMax !== null && sv.vehicle.rangeWltp === autoMax) green();
-      else if (col.key === "conso" && consoMin !== null && consoOf(sv).num === consoMin) green();
-    },
     didDrawCell: (data: any) => {
       if (data.section !== "body" || data.column.index !== 0) return;
       const sv = items[data.row.index];
       if (!sv) return;
       const cell = data.cell;
-      // Image véhicule (contain dans une boîte 40×30 à gauche de la cellule)
-      const img = vehImgs[data.row.index];
-      if (img) {
-        const boxW = 40, boxH = 30;
-        const bx = cell.x + 3;
-        const by = cell.y + (cell.height - boxH) / 2;
-        const ratio = Math.min(boxW / img.w, boxH / img.h);
-        const w = img.w * ratio, h = img.h * ratio;
-        try { doc.addImage(img.dataUrl, img.format, bx + (boxW - w) / 2, by + (boxH - h) / 2, w, h); } catch { /* non bloquant */ }
-      }
+      drawThumbCell(doc, cell, vehImgs[data.row.index]);
       // Chip statut (uniquement en mode mixte flotte / proposition)
       if (isBeforeAfter) {
         const isFleet = !!sv.vehicle.isCurrentFleet;
@@ -4051,7 +4081,7 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
         doc.setFont(BRAND_FONT, "bold");
         doc.setFontSize(6);
         const tw = doc.getTextWidth(label);
-        const chipX = cell.x + 46;
+        const chipX = cell.x + 56;
         const chipY = cell.y + cell.height - 14;
         doc.setFillColor(...(isFleet ? PINK : BLUE_LIGHT));
         doc.roundedRect(chipX, chipY, tw + 10, 11, 5.5, 5.5, "F");
@@ -4068,7 +4098,7 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
   doc.setTextColor(...SUB);
   doc.text(
     lookupText(TEXTS, "vehicles", "comparator_footnote",
-      "Données constructeur. Le CO2 est forcé à 0 g/km pour les véhicules électriques (convention Beev). Consommation en kWh/100 km (électrique) ou L/100 km (autres). Cellules vertes : meilleure valeur de la colonne."),
+      "Données constructeur. Le CO2 est forcé à 0 g/km pour les véhicules électriques (convention Beev). Consommation exprimée en kWh/100 km (électrique) ou L/100 km (autres motorisations)."),
     M, yEnd, { maxWidth: PAGE_W - M * 2 },
   );
 }
