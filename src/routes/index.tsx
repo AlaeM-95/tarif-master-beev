@@ -25,6 +25,7 @@ import { VehicleSpotlight } from "@/components/vehicle-spotlight";
 import { VehicleComparator } from "@/components/vehicle-comparator";
 import { PdfTextEditor, usePdfTextOverrides } from "@/components/pdf-text-editor";
 import { generateProposalPdfV2 } from "@/lib/pdf-v2";
+import { BpuB2B2EEditor } from "@/components/bpu-b2b2e-editor";
 import { CarPolicyImporter } from "@/components/car-policy-importer";
 import { LiveIndicator } from "@/components/live-indicator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -544,6 +545,7 @@ function App() {
     Object.values(selectedC).some((sc) => sc.charger.id === chargerId);
 
   const [marginDialog, setMarginDialog] = useState(false);
+  const [bpuB2B2EOpen, setBpuB2B2EOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const { config: pdfConfig, update: updatePdfConfig, reset: resetPdfConfig } = usePdfConfig();
   // Sous-titres de catalogue éditables par type de projet (depuis /admin/pdf).
@@ -840,6 +842,7 @@ function App() {
         }}
         onConfirm={doGeneratePdf}
       />
+      <BpuB2B2EEditor open={bpuB2B2EOpen} onOpenChange={setBpuB2B2EOpen} clientName={client.company} />
       <header className="fixed top-0 left-0 right-0 z-50 h-16 bg-background/95 backdrop-blur-md border-b border-border">
         <div className="container mx-auto px-6 h-full flex items-center justify-between gap-3 flex-nowrap overflow-x-auto">
           {/* ─── Identité Beev (gauche) ─── */}
@@ -1005,6 +1008,18 @@ function App() {
                   </div>
                   <p className="text-[10px] text-muted-foreground pl-5">
                     Bordereau de prix unitaires — design Beev 2026, ouvre une fenêtre prête à imprimer en PDF
+                  </p>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => setBpuB2B2EOpen(true)}
+                  className="cursor-pointer flex-col items-start gap-0.5 py-2.5"
+                >
+                  <div className="flex items-center gap-2 font-semibold">
+                    <Sparkles className="w-3.5 h-3.5 text-beev-bleu" /> BPU partenariat B2B2E (nouveau)
+                  </div>
+                  <p className="text-[10px] text-muted-foreground pl-5">
+                    Tarification partenariat recharge domicile : prix par borne + logo client sur la couverture
                   </p>
                 </DropdownMenuItem>
               </DropdownMenuContent>
