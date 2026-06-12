@@ -1211,6 +1211,7 @@ function App() {
               éphémère uniquement (perdu au refresh). */}
           {!tcoView && projectType === "vehicles" && (
             <CarPolicyImporter
+              catalogueVehicles={vehicles}
               importedVehicles={importedVehicles}
               onImported={setImportedVehicles}
               onClear={() => setImportedVehicles([])}

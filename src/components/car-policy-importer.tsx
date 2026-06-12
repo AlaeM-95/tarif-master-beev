@@ -31,9 +31,12 @@ export function CarPolicyImporter({
   onDeleteImported,
   onUpdateSelected,
   selectedIds,
+  catalogueVehicles = [],
 }: {
   /** Liste des véhicules actuellement importés (state React du parent) */
   importedVehicles: Vehicle[];
+  /** Catalogue véhicules (DB) — pour détecter les doublons à l'import */
+  catalogueVehicles?: Vehicle[];
   /** Callback : remplace la liste importée (après upload) */
   onImported: (vehicles: Vehicle[]) => void;
   /** Callback : vide totalement la liste importée */
@@ -55,6 +58,16 @@ export function CarPolicyImporter({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [report, setReport] = useState<ImportReport | null>(null);
   const [importing, setImporting] = useState(false);
+  // Véhicules importés qui existent déjà dans le catalogue (non importés) :
+  // on en informe le commercial pour qu'il les sélectionne directement.
+  const [duplicates, setDuplicates] = useState<Vehicle[]>([]);
+
+  // Clé de comparaison normalisée (marque + modèle + version, sans accents
+  // ni ponctuation) pour détecter un véhicule déjà présent au catalogue.
+  const dedupKey = (v: { brand: string; model: string; version?: string }) => {
+    const norm = (s: string) => (s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+    return `${norm(v.brand)}|${norm(v.model)}|${norm(v.version ?? "")}`;
+  };
   // Véhicule en cours d'édition (null = Dialog fermé). On stocke l'ID +
   // les valeurs en cours pour pouvoir annuler sans toucher au state parent.
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -76,10 +89,21 @@ export function CarPolicyImporter({
     try {
       const r = await importCarPolicy(file);
       setReport(r);
-      onImported(r.vehicles);
-      if (r.vehicles.length > 0) {
-        toast.success(`${r.vehicles.length} véhicule${r.vehicles.length > 1 ? "s" : ""} importé${r.vehicles.length > 1 ? "s" : ""} depuis ${file.name}`);
-      } else {
+      // Détection des doublons : un véhicule importé qui correspond (marque +
+      // modèle + version) à un véhicule DÉJÀ au catalogue n'est PAS importé —
+      // le commercial le sélectionne directement dans le catalogue ci-dessus
+      // (données, image, offres loueurs complètes).
+      const catKeys = new Set(catalogueVehicles.map(dedupKey));
+      const fresh = r.vehicles.filter((v) => !catKeys.has(dedupKey(v)));
+      const dupes = r.vehicles.filter((v) => catKeys.has(dedupKey(v)));
+      setDuplicates(dupes);
+      onImported(fresh);
+      if (dupes.length > 0) {
+        toast.info(`${dupes.length} véhicule${dupes.length > 1 ? "s" : ""} déjà au catalogue — non importé${dupes.length > 1 ? "s" : ""}, à sélectionner directement dans le catalogue ci-dessus`);
+      }
+      if (fresh.length > 0) {
+        toast.success(`${fresh.length} véhicule${fresh.length > 1 ? "s" : ""} importé${fresh.length > 1 ? "s" : ""} depuis ${file.name}`);
+      } else if (dupes.length === 0) {
         toast.error("Aucun véhicule détecté dans le fichier — voir les avertissements");
       }
     } catch (err) {
@@ -92,6 +116,7 @@ export function CarPolicyImporter({
 
   const handleClear = () => {
     setReport(null);
+    setDuplicates([]);
     onClear();
     if (fileInputRef.current) fileInputRef.current.value = "";
     toast.message("Car policy vidée");
@@ -175,6 +200,29 @@ export function CarPolicyImporter({
             )}
           </div>
         </div>
+
+        {/* Doublons : véhicules déjà au catalogue, non importés */}
+        {duplicates.length > 0 && (
+          <div className="text-xs px-1">
+            <div className="bg-beev-bleu-20/50 border border-beev-bleu/40 rounded-md p-2.5 text-beev-black flex gap-2 items-start">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-beev-bleu" />
+              <div className="space-y-1">
+                <p className="font-semibold text-[11px]">
+                  {duplicates.length} véhicule{duplicates.length > 1 ? "s" : ""} déjà présent{duplicates.length > 1 ? "s" : ""} dans le catalogue — non importé{duplicates.length > 1 ? "s" : ""}.
+                </p>
+                <p className="text-[10px] text-beev-black/70">
+                  Sélectionnez-{duplicates.length > 1 ? "les" : "le"} directement dans le catalogue véhicules ci-dessus (données, image et offres loueurs complètes) :
+                </p>
+                <ul className="text-[10px] list-disc pl-4 space-y-0.5">
+                  {duplicates.slice(0, 6).map((v) => (
+                    <li key={v.id}>{v.brand} {v.model}{v.version ? ` · ${v.version}` : ""}</li>
+                  ))}
+                  {duplicates.length > 6 && <li>… et {duplicates.length - 6} autre{duplicates.length - 6 > 1 ? "s" : ""}</li>}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Rapport d'import : colonnes détectées + warnings */}
         {report && (

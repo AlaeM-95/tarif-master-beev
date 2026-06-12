@@ -3277,11 +3277,19 @@ function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(9);
     doc.setTextColor(...INK);
-    doc.text(`${r.sv.vehicle.brand} ${r.sv.vehicle.model}`.slice(0, 22), M + 22, y + 8);
+    doc.text(`${r.sv.vehicle.brand} ${r.sv.vehicle.model}`.slice(0, 24), M + 22, y + 7);
+    // Version sur sa propre ligne (sub) pour distinguer 2 finitions du même
+    // modèle (ex. plusieurs HYUNDAI KONA) — indispensable au classement TCO.
+    const verRank = (r.sv.vehicle.version ?? "").trim();
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(7);
     doc.setTextColor(...SUB);
-    doc.text(`${r.par100km.toFixed(2)} €/100km · × ${r.sv.quantity}`, M + 22, y + 18);
+    if (verRank) {
+      doc.text(verRank.slice(0, 30), M + 22, y + 16);
+      doc.text(`${r.par100km.toFixed(2)} €/100km · × ${r.sv.quantity}`, M + 22, y + 25);
+    } else {
+      doc.text(`${r.par100km.toFixed(2)} €/100km · × ${r.sv.quantity}`, M + 22, y + 18);
+    }
 
     // Barre empilée (loyer + énergie + TVS + malus, largeur relative au max total)
     const scale = (barAreaW - 4) / maxTotal;
@@ -3380,9 +3388,8 @@ function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: Energy
   doc.text(introL, M, y);
   y += introL.length * 13 + 16;
 
-  // Calcul pour chaque véhicule + tri du meilleur (TCO le plus bas) au pire.
-  // Le véhicule recommandé apparaît donc en première ligne du tableau.
-  const rows = vehicles.map((sv) => {
+  // Calcul pour chaque véhicule.
+  const computed = vehicles.map((sv) => {
     const duree = sv.durationMonths / 12;
     const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
     const r = calculateTcoFull(sv.vehicle, {
@@ -3395,7 +3402,25 @@ function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: Energy
       remisePctOverride: sv.discountPct,
     }, sv.negotiatedMonthly);
     return { sv, r, duree };
-  }).sort((a, b) => a.r.tcoTotal - b.r.tcoTotal);
+  });
+
+  // Segmentation par GROUPE DE COMPARAISON (catégorie saisie par le commercial).
+  // Si au moins un groupe est nommé, on analyse le TCO PAR catégorie : un
+  // intertitre par groupe + tri du meilleur au pire DANS le groupe. Sinon,
+  // tableau global trié par TCO croissant (comportement historique).
+  const groupKey = (sv: SelectedVehicle) => (sv.comparisonGroup ?? "").trim();
+  const hasGroups = computed.some((c) => groupKey(c.sv));
+  const groupOrder: string[] = [];
+  const buckets = new Map<string, typeof computed>();
+  for (const c of computed) {
+    const g = groupKey(c.sv) || "__none__";
+    if (!buckets.has(g)) { buckets.set(g, []); groupOrder.push(g); }
+    buckets.get(g)!.push(c);
+  }
+  groupOrder.sort((a, b) => (a === "__none__" ? 1 : 0) - (b === "__none__" ? 1 : 0));
+  for (const g of groupOrder) buckets.get(g)!.sort((a, b) => a.r.tcoTotal - b.r.tcoTotal);
+  // Liste à plat triée (pour la légende / fallback)
+  const rows = groupOrder.flatMap((g) => buckets.get(g)!);
 
   // Tableau autoTable — 7 colonnes (au lieu de 10) pour rester lisible sur A4
   // portrait. Les composantes sont fusionnées : "Malus" = Malus CO2 + Poids,
@@ -3407,6 +3432,42 @@ function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: Energy
   //   serait trop pâle pour un texte de chiffre.
   const ALERT_BG: [number, number, number] = [252, 234, 229]; // #FCEAE5
   const ALERT_TEXT: [number, number, number] = [181, 96, 79];  // #B5604F
+  const GROUP_BG: [number, number, number] = [253, 241, 238];  // rose clair (intertitre groupe)
+
+  // Construit une ligne de données pour un véhicule.
+  const buildRow = ({ sv, r, duree }: (typeof computed)[number]) => {
+    const malusTotal = r.malusCO2 + r.malusPoids;
+    const andTotal = r.andAnnuel * duree;
+    const aenTotal = r.partEmployeurAnnuelle * duree;
+    return [
+      // Marque + modèle + version sur 1re ligne, durée/km sur 2e (séparation
+      // claire pour distinguer 2 finitions d'un même modèle dans le tableau).
+      { content: `${vehicleLabel(sv.vehicle)}\n${sv.durationMonths} mois · ${(sv.kmPerYear / 1000).toFixed(0)}k km/an`, styles: { fontStyle: "bold" as any, fontSize: 8.5 } },
+        { content: eur(r.loyerTotal), styles: { halign: "right" as any } },
+        { content: eur(r.coutEnergie), styles: { halign: "right" as any } },
+        { content: eur(r.tvsTotal), styles: r.tvsTotal > 0
+          ? { halign: "right" as any, fillColor: ALERT_BG, textColor: ALERT_TEXT, fontStyle: "bold" as any }
+          : { halign: "right" as any, textColor: SUB } },
+        { content: eur(malusTotal), styles: malusTotal > 0
+          ? { halign: "right" as any, fillColor: ALERT_BG, textColor: ALERT_TEXT, fontStyle: "bold" as any }
+          : { halign: "right" as any, textColor: SUB } },
+        { content: eur(andTotal), styles: { halign: "right" as any } },
+        { content: eur(aenTotal), styles: { halign: "right" as any } },
+        { content: eur(r.tcoEmployeurComplet), styles: { halign: "right" as any, fontStyle: "bold" as any, textColor: LAVENDER, fontSize: 10 } },
+      ];
+  };
+
+  // Corps du tableau : un intertitre par groupe de comparaison (si au moins un
+  // groupe est nommé), puis les véhicules du groupe triés par TCO croissant.
+  const tcoBody: any[] = [];
+  for (const g of groupOrder) {
+    if (hasGroups) {
+      const label = g === "__none__" ? "Autres véhicules" : g;
+      tcoBody.push([{ content: label.toUpperCase(), colSpan: 8, styles: { fillColor: GROUP_BG, textColor: INK, fontStyle: "bold" as any, fontSize: 9, halign: "left" as any, cellPadding: 6 } }]);
+    }
+    for (const c of buckets.get(g)!) tcoBody.push(buildRow(c));
+  }
+
   autoTable(doc, {
     startY: y,
     theme: "plain",
@@ -3420,27 +3481,7 @@ function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: Energy
       "AEN EMPL.\n(×durée)",
       "COÛT EMPL.\nCOMPLET",
     ]],
-    body: rows.map(({ sv, r, duree }) => {
-      const malusTotal = r.malusCO2 + r.malusPoids;
-      const andTotal = r.andAnnuel * duree;
-      const aenTotal = r.partEmployeurAnnuelle * duree;
-      return [
-        // Marque + modèle + version sur 1re ligne, durée/km sur 2e (séparation
-        // claire pour distinguer 2 finitions d'un même modèle dans le tableau).
-        { content: `${vehicleLabel(sv.vehicle)}\n${sv.durationMonths} mois · ${(sv.kmPerYear / 1000).toFixed(0)}k km/an`, styles: { fontStyle: "bold" as any, fontSize: 8.5 } },
-        { content: eur(r.loyerTotal), styles: { halign: "right" as any } },
-        { content: eur(r.coutEnergie), styles: { halign: "right" as any } },
-        { content: eur(r.tvsTotal), styles: r.tvsTotal > 0
-          ? { halign: "right" as any, fillColor: ALERT_BG, textColor: ALERT_TEXT, fontStyle: "bold" as any }
-          : { halign: "right" as any, textColor: SUB } },
-        { content: eur(malusTotal), styles: malusTotal > 0
-          ? { halign: "right" as any, fillColor: ALERT_BG, textColor: ALERT_TEXT, fontStyle: "bold" as any }
-          : { halign: "right" as any, textColor: SUB } },
-        { content: eur(andTotal), styles: { halign: "right" as any } },
-        { content: eur(aenTotal), styles: { halign: "right" as any } },
-        { content: eur(r.tcoEmployeurComplet), styles: { halign: "right" as any, fontStyle: "bold" as any, textColor: LAVENDER, fontSize: 10 } },
-      ];
-    }),
+    body: tcoBody,
     headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 7.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 5, halign: "center" as any, valign: "middle" as any },
     bodyStyles: { fontSize: 8.5, cellPadding: 6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
     alternateRowStyles: { fillColor: BG },
@@ -4049,32 +4090,14 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
   // Header véhicules : photo + marque/modèle + version
   // Photo en haut (cream rond) puis textes dessous. Permet une identification
   // visuelle immédiate des modèles comparés.
-  const photoH = 56;
-  const textH = 56;
+  const photoH = 52;
+  // textH agrandi pour loger, sous la version, un chip « flotte actuelle » /
+  // « proposition Beev » par véhicule (cf. plus bas). Ce chip par colonne
+  // remplace les anciens bandeaux pleine largeur qui se désalignaient à 4
+  // véhicules : chaque véhicule porte désormais son propre statut, sans
+  // géométrie fragile, quel que soit le nombre ou le mélange.
+  const textH = isBeforeAfter ? 74 : 58;
   const headH = photoH + textH;
-  // Mode FLOTTE ACTUELLE / PROPOSITION BEEV : on dessine une mini-row
-  // dédiée AU-DESSUS du tableau, avec backgrounds rose / bleu et libellés
-  // centrés. Cette row est SÉPARÉE de la ligne séparateur rose qui suit,
-  // pour éviter la superposition du texte sur la barre.
-  if (isBeforeAfter) {
-    const sectionRowH = 18;
-    const beforeWidth = nBefore * colW;
-    const afterWidth = (items.length - nBefore) * colW;
-    // Bandeau FLOTTE ACTUELLE (rose) à gauche
-    doc.setFillColor(...ROSE_LIGHT);
-    doc.rect(M + labelW, y, beforeWidth, sectionRowH, "F");
-    // Bandeau PROPOSITION BEEV (bleu) à droite
-    doc.setFillColor(...BLUE_LIGHT);
-    doc.rect(M + labelW + beforeWidth, y, afterWidth, sectionRowH, "F");
-    // Libellés centrés dans leurs bandeaux
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(8);
-    doc.setTextColor(...PINK);
-    doc.text("FLOTTE ACTUELLE", M + labelW + beforeWidth / 2, y + 12, { align: "center" });
-    doc.setTextColor(56, 9, 234); // lavender Beev
-    doc.text("PROPOSITION BEEV", M + labelW + beforeWidth + afterWidth / 2, y + 12, { align: "center" });
-    y += sectionRowH + 2;
-  }
   // Séparateur rose puis fond blanc des en-têtes véhicule
   doc.setFillColor(...PINK);
   doc.rect(M, y, PAGE_W - M * 2, 2, "F");
@@ -4119,6 +4142,23 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
     doc.setTextColor(...SUB);
     const versionLine = doc.splitTextToSize(sv.vehicle.version || "", colW - 12)[0] || "";
     doc.text(versionLine, cx + colW / 2, textBaseY + 42, { align: "center" });
+
+    // Chip statut par véhicule (uniquement en mode mixte flotte/proposition) :
+    // rose « FLOTTE ACTUELLE », bleu « PROPOSITION BEEV ». Centré sous la
+    // version, propre à chaque colonne — plus de bandeau pleine largeur fragile.
+    if (isBeforeAfter) {
+      const isFleet = !!sv.vehicle.isCurrentFleet;
+      const chipText = isFleet ? "FLOTTE ACTUELLE" : "PROPOSITION BEEV";
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(6);
+      const chipW = Math.min(colW - 8, doc.getTextWidth(chipText) + 12);
+      const chipX = cx + (colW - chipW) / 2;
+      const chipY = textBaseY + 50;
+      doc.setFillColor(...(isFleet ? PINK : BLUE_LIGHT));
+      doc.roundedRect(chipX, chipY, chipW, 13, 6.5, 6.5, "F");
+      doc.setTextColor(...(isFleet ? INK : ([56, 9, 234] as [number, number, number])));
+      doc.text(chipText, cx + colW / 2, chipY + 9, { align: "center" });
+    }
   }
   y += headH + 4;
 
