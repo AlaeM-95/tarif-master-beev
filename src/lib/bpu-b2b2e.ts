@@ -12,6 +12,8 @@ export type BpuSupplement = { label: string; mono: number; tri: number };
 
 export type BpuBorne = {
   id: string;
+  enabled: boolean;      // borne affichée dans le BPU (cochée par le commercial)
+  imageUrl: string;      // image produit affichée sur la fiche équipement
   name: string;          // "Ohme ePod S"
   monoLabel: string;     // "Monophasé 7,4 kW"
   triLabel: string;      // "Triphasé 11 kW"
@@ -69,6 +71,8 @@ export function defaultBpuB2B2E(): BpuB2B2EConfig {
     bornes: [
       {
         id: "ohme-epod-s",
+        enabled: true,
+        imageUrl: "",
         name: "Ohme ePod S",
         monoLabel: "Monophasé 7,4 kW",
         triLabel: "Triphasé 11 kW",
@@ -86,6 +90,8 @@ export function defaultBpuB2B2E(): BpuB2B2EConfig {
       },
       {
         id: "hager-witty-plus",
+        enabled: true,
+        imageUrl: "",
         name: "Hager Witty Plus",
         monoLabel: "Monophasé 7,4 kW",
         triLabel: "Triphasé 11 kW",
@@ -108,6 +114,8 @@ export function defaultBpuB2B2E(): BpuB2B2EConfig {
 export function newBpuBorne(): BpuBorne {
   return {
     id: `borne-${Math.random().toString(36).slice(2, 8)}`,
+    enabled: true,
+    imageUrl: "",
     name: "Nouvelle borne",
     monoLabel: "Monophasé 7,4 kW",
     triLabel: "Triphasé 11 kW",
@@ -173,10 +181,16 @@ function equipPage(b: BpuBorne, num: number, totalPages: { running: string }): s
   const [sl, sr] = splitTwo(specs);
   const specCol = (rows: Array<[string, string]>) =>
     rows.map(([k, v]) => `<div class="spec"><span class="spec-k">${esc(k)}</span><span class="spec-v">${esc(v)}</span></div>`).join("");
+  const imageBlock = b.imageUrl && b.imageUrl.trim()
+    ? `<div class="product-img"><img src="${esc(b.imageUrl)}" alt="${esc(b.name)}" /></div>`
+    : "";
   return `
   <section class="page">
     <div class="page-head"><span class="page-num-tag">${numStr}</span><span class="page-borne">Borne ${esc(b.name)}</span></div>
-    <h2 class="section-title">Équipement & caractéristiques</h2>
+    <div class="equip-top">
+      <h2 class="section-title">Équipement & caractéristiques</h2>
+      ${imageBlock}
+    </div>
     <table class="equip-table">
       <thead><tr><th>Équipement</th><th class="r">${esc(b.monoLabel)}</th><th class="r">${esc(b.triLabel)}</th></tr></thead>
       <tbody>
@@ -257,8 +271,10 @@ function fontFaceCss(fonts?: RoobertFonts): string {
 
 export function buildBpuB2B2EHtml(cfg: BpuB2B2EConfig, fonts?: RoobertFonts): string {
   const running = `Bordereau des prix unitaires · ${cfg.clientName ? cfg.clientName + " × " : ""}Beev`;
+  // Seules les bornes cochées (enabled) sont incluses dans le BPU.
+  const bornes = cfg.bornes.filter((b) => b.enabled !== false);
   const pages: string[] = [coverPage(cfg)];
-  cfg.bornes.forEach((b, i) => {
+  bornes.forEach((b, i) => {
     pages.push(equipPage(b, i + 1, { running }));
     pages.push(installPage(b, i + 1, { running }));
   });
@@ -298,6 +314,10 @@ ${fontFaceCss(fonts)}
   .page-num-tag { font-size: 13px; font-weight: 700; color: var(--ink); background: var(--rose); border-radius: 6px; padding: 3px 9px; }
   .page-borne { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; font-weight: 600; color: var(--sub); }
   .section-title { font-size: 30px; font-weight: 700; letter-spacing: -.01em; margin-bottom: 22px; }
+  .equip-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
+  .equip-top .section-title { margin-bottom: 0; }
+  .product-img { flex-shrink: 0; width: 200px; height: 130px; background: var(--beige); border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; margin-top: -6px; }
+  .product-img img { max-width: 88%; max-height: 88%; object-fit: contain; }
 
   .equip-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
   .equip-table th { text-align: left; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--sub); font-weight: 600; padding: 10px 12px; border-bottom: 2px solid var(--ink); }

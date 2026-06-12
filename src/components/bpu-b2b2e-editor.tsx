@@ -101,11 +101,20 @@ export function BpuB2B2EEditor({ open, onOpenChange, clientName }: { open: boole
           {cfg.bornes.map((b, bi) => {
             const isOpen = openBorne === b.id;
             return (
-              <div key={b.id} className="rounded-lg border">
+              <div key={b.id} className={`rounded-lg border ${b.enabled === false ? "opacity-55" : ""}`}>
                 <div className="flex items-center justify-between gap-2 p-2.5">
+                  <label className="flex items-center gap-2 cursor-pointer" title="Afficher cette borne dans le BPU">
+                    <input
+                      type="checkbox"
+                      checked={b.enabled !== false}
+                      onChange={(e) => patchBorne(b.id, { enabled: e.target.checked })}
+                      className="h-4 w-4 accent-beev-bleu"
+                    />
+                  </label>
                   <button type="button" className="flex items-center gap-2 flex-1 text-left" onClick={() => setOpenBorne(isOpen ? null : b.id)}>
                     <span className="text-[10px] font-bold bg-beev-rose text-beev-black rounded px-1.5 py-0.5">{String(bi + 1).padStart(2, "0")}</span>
                     <span className="text-sm font-semibold">{b.name || "Borne"}</span>
+                    {b.enabled === false && <span className="text-[10px] text-muted-foreground">(masquée)</span>}
                     <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`} />
                   </button>
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => delBorne(b.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
@@ -113,6 +122,10 @@ export function BpuB2B2EEditor({ open, onOpenChange, clientName }: { open: boole
                 {isOpen && (
                   <div className="border-t p-3 space-y-3">
                     <Txt label="Nom de la borne" value={b.name} onChange={(v) => patchBorne(b.id, { name: v })} />
+                    <div className="space-y-1">
+                      <Label className="text-[10px] uppercase text-muted-foreground tracking-wide">Image de la borne (fiche produit)</Label>
+                      <ImageUpload currentUrl={b.imageUrl} onChange={(url) => patchBorne(b.id, { imageUrl: url })} folder="chargers" label="Image borne" />
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
                       <Txt label="Libellé mono" value={b.monoLabel} onChange={(v) => patchBorne(b.id, { monoLabel: v })} />
                       <Txt label="Libellé tri" value={b.triLabel} onChange={(v) => patchBorne(b.id, { triLabel: v })} />
