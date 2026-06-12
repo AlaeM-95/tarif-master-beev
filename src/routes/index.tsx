@@ -561,7 +561,7 @@ function App() {
   // Génère le PDF avec try/catch + timeout pour ne jamais bloquer une re-génération.
   // En cas d'erreur (réseau Supabase, navigateur, etc.), affiche un toast
   // sans bloquer le bouton. Le commercial peut re-cliquer immédiatement.
-  const doGeneratePdf = async () => {
+  const doGeneratePdf = async (preview = false) => {
     if (isGenerating) return; // évite les double-clics rapides
     setIsGenerating(true);
     try {
@@ -620,6 +620,7 @@ function App() {
           // Stockées en localStorage par navigateur. Si vide, le PDF utilise
           // les valeurs DB / fallback comme avant.
           textOverrides: Object.keys(pdfTextOverrides).length > 0 ? pdfTextOverrides : undefined,
+          preview,
         }),
         timeout,
       ]);
@@ -633,7 +634,7 @@ function App() {
     }
   };
 
-  const exportPdf = async () => {
+  const exportPdf = async (preview = false) => {
     if (!client.company) { alert("Renseignez au moins le nom de la société client."); return; }
     // Validation : chaque véhicule du devis doit avoir une énergie ET une
     // consommation renseignées (sinon les calculs TCO / l'affichage conso sont
@@ -653,12 +654,13 @@ function App() {
     // Si l'offre contient des bornes site entreprise (peu importe le projectType
     // courant — utile pour les offres combinées véhicules + bornes), on ouvre
     // le dialogue de validation des marges avant génération du PDF client.
+    // L'aperçu saute la revue des marges (simple visualisation rapide).
     const hasSiteChargers = Object.values(selectedC).some((sc) => sc.charger.deployment === "site");
-    if (hasSiteChargers) {
+    if (hasSiteChargers && !preview) {
       setMarginDialog(true);
       return;
     }
-    await doGeneratePdf();
+    await doGeneratePdf(preview);
   };
 
   const chargersHome = chargers.filter((c) => c.deployment === "domicile");
@@ -854,7 +856,7 @@ function App() {
             return { ...s, [chargerId]: { ...sc, lineItems: newItems } };
           });
         }}
-        onConfirm={doGeneratePdf}
+        onConfirm={() => doGeneratePdf(false)}
       />
       <BpuB2B2EEditor open={bpuB2B2EOpen} onOpenChange={setBpuB2B2EOpen} clientName={client.company} />
       <header className="fixed top-0 left-0 right-0 z-50 h-16 bg-background/95 backdrop-blur-md border-b border-border">
@@ -994,8 +996,20 @@ function App() {
               <Sparkles className="w-3.5 h-3.5 text-beev-bleu" /> BPU partenariat
             </Button>
 
+            {/* Aperçu : ouvre le PDF dans un nouvel onglet sans télécharger. */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => exportPdf(true)}
+              disabled={visibleCount === 0 || isGenerating}
+              className="gap-1.5"
+              title="Aperçu du PDF dans un nouvel onglet (sans téléchargement)"
+            >
+              <FileText className="w-3.5 h-3.5" /> Aperçu
+            </Button>
+
             {/* CTA primaire : génération du PDF de proposition (jsPDF). */}
-            <Button size="sm" onClick={exportPdf} disabled={visibleCount === 0 || isGenerating} className="gap-1.5">
+            <Button size="sm" onClick={() => exportPdf(false)} disabled={visibleCount === 0 || isGenerating} className="gap-1.5">
               {isGenerating ? (
                 <><RotateCcw className="w-3.5 h-3.5 animate-spin" /> Génération...</>
               ) : (
@@ -1444,7 +1458,7 @@ function App() {
                     <Button variant="outline" onClick={() => setPresenting(true)} className="gap-2">
                       <Presentation className="w-4 h-4" /> Présenter
                     </Button>
-                    <Button onClick={exportPdf} className="gap-2">
+                    <Button onClick={() => exportPdf(false)} className="gap-2">
                       <FileDown className="w-4 h-4" /> PDF
                     </Button>
                   </div>

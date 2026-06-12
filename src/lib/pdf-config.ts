@@ -15,6 +15,7 @@ export type PdfDisplayConfig = {
   showCompetitorComparison: boolean; // page Mise en concurrence (offre client vs Beev sur même véhicule)
   showFinancialSummary: boolean; // page synthèse HT/TVA/TTC
   showFinancialSynthesis: boolean; // page synthèse financière enrichie (KPI cards, économies, CO2)
+  showFiscalAdvantages: boolean; // page avantages fiscaux 2026 (TVS, TVA, malus, AEN)
   showLegend: boolean; // page légende couleurs / icônes Beev
   showGuarantees: boolean; // page garanties Beev
   showJourney: boolean; // page parcours client
@@ -73,6 +74,7 @@ export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
   showCompetitorComparison: true,
   showFinancialSummary: false, // retirée sur demande utilisateur (info déjà dans le récap site)
   showFinancialSynthesis: true, // nouvelle synthèse complète (KPI + économies + CO2)
+  showFiscalAdvantages: true, // page avantages fiscaux 2026
   showLegend: true, // légende couleurs/icônes en fin de PDF
   showGuarantees: true,
   showJourney: true,
@@ -169,6 +171,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
       { key: "showCarbonImpact", label: "Bilan carbone (RSE)", description: "Page CO2 évité + équivalences (avion, arbres, km)", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showFinancialSummary", label: "Synthèse HT / TVA / TTC", description: "Tableau récap financier" },
       { key: "showFinancialSynthesis", label: "Synthèse financière enrichie", description: "KPI cards (total contrat, économies cumulées vs concurrents, TVS évitée, CO2 évité)" },
+      { key: "showFiscalAdvantages", label: "Avantages fiscaux 2026", description: "Page pédagogique : TVS, récupération TVA (utilitaires 100% électriques), malus, AEN", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showLegend", label: "Légende couleurs Beev", description: "Page finale qui explique la signification des couleurs et icônes du PDF" },
       { key: "showGuarantees", label: "Garanties Beev", description: "3 piliers d'engagement" },
       { key: "showJourney", label: "Parcours client", description: "Frise + 5 étapes" },

@@ -471,8 +471,11 @@ export async function generateProposalPdf(opts: {
    *  fallback. Reset à null après la génération pour ne pas polluer les
    *  appels suivants. */
   textOverrides?: import("./pdf-texts").PdfTextOverrides | null;
+  /** Si true, ouvre le PDF dans un nouvel onglet (aperçu) au lieu de le
+   *  télécharger directement. */
+  preview?: boolean;
 }) {
-  const { projectType, client, vehicles, chargers, energy, pdfConfig, b2b2eInput, textOverrides } = opts;
+  const { projectType, client, vehicles, chargers, energy, pdfConfig, b2b2eInput, textOverrides, preview } = opts;
   const cfg: PdfDisplayConfig = pdfConfig ?? DEFAULT_PDF_CONFIG;
   PDF_CFG = cfg; // expose la config pour les fonctions draw*
   // Active les overrides texte pour ce devis (priorité max dans lookupText
@@ -758,6 +761,13 @@ export async function generateProposalPdf(opts: {
     drawFinancialSynthesis(doc, v, energy);
   }
 
+  // Page avantages fiscaux 2026 (réservée aux projets véhicules)
+  if (cfg.showFiscalAdvantages && v.length > 0) {
+    doc.addPage();
+    drawHeader(doc, client, effectiveType);
+    drawFiscalAdvantages(doc, v, energy);
+  }
+
   // Page garanties & engagements (toggleable)
   if (cfg.showGuarantees) {
     doc.addPage();
@@ -808,7 +818,18 @@ export async function generateProposalPdf(opts: {
 
   const safe = (s: string) => s.replace(/[^a-z0-9]+/gi, "_").slice(0, 40) || "client";
   const tag = projectType === "vehicles" ? "Vehicules" : projectType === "home" ? "Bornes_Domicile" : "Bornes_Site";
-  doc.save(`Beev_${tag}_${safe(client.company)}_${client.date.replace(/\//g, "-")}.pdf`);
+  const fileName = `Beev_${tag}_${safe(client.company)}_${client.date.replace(/\//g, "-")}.pdf`;
+  if (preview) {
+    // Aperçu : ouvre le PDF dans un nouvel onglet sans télécharger.
+    try {
+      const url = doc.output("bloburl");
+      window.open(url as unknown as string, "_blank");
+    } catch {
+      doc.save(fileName); // repli si l'ouverture est bloquée
+    }
+  } else {
+    doc.save(fileName);
+  }
   // Reset des overrides texte pour ne pas polluer les générations suivantes
   // (un même processus peut générer plusieurs PDF pour plusieurs clients).
   setPdfTextOverrides(null);
@@ -5215,6 +5236,134 @@ function drawJourney(doc: jsPDF, type: ProjectType, _client: ClientInfo) {
 
     y = rowTop + rowH + gapBetween;
   });
+}
+
+// ============ AVANTAGES FISCAUX 2026 ============
+// Page pédagogique sur la fiscalité de l'électrification (B2B France 2026).
+// IMPORTANT : la TVA sur l'acquisition / LLD n'est récupérable QUE sur les
+// véhicules UTILITAIRES 100 % électriques — jamais sur les véhicules de
+// tourisme (VP), quelle que soit l'énergie. La TVA sur l'électricité de
+// recharge est, elle, récupérable à 100 %.
+function drawFiscalAdvantages(doc: jsPDF, vehicles: SelectedVehicle[], energy: EnergyParams) {
+  const ROSE_LIGHT: [number, number, number] = [253, 241, 238];
+  const BLUE_LIGHT: [number, number, number] = [237, 246, 255];
+  const GREEN_LIGHT: [number, number, number] = [219, 238, 220];
+  const VIOLET_LIGHT: [number, number, number] = [246, 245, 247];
+  const GREEN: [number, number, number] = [108, 190, 94];
+  const ROSE: [number, number, number] = [244, 184, 170];
+
+  let y = 130;
+  eyebrow(doc, lookupText(TEXTS, "common", "fiscal_eyebrow", "FISCALITÉ ENTREPRISE 2026"), y);
+  y += 32;
+  title(doc, lookupText(TEXTS, "common", "fiscal_title", "Vos avantages fiscaux à l'électrification."), y);
+  y += 36;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...SUB);
+  const intro = doc.splitTextToSize(
+    lookupText(TEXTS, "common", "fiscal_intro",
+      "L'électrification de votre flotte ouvre des leviers fiscaux concrets : exonération de TVS, récupération de TVA sur la recharge, absence de malus. Voici ce qui s'applique à votre projet."),
+    PAGE_W - M * 2);
+  doc.text(intro, M, y);
+  y += intro.length * 13 + 18;
+
+  // ─── Calculs ─────────────────────────────────────────────────────────
+  const isUtilitaire = (cat?: string) => /utilitaire|fourgon|camionnette|\butilit|\bvu\b/i.test(cat ?? "");
+  const utilEvs = vehicles.filter((sv) => sv.vehicle.energy === "Électrique" && isUtilitaire(sv.vehicle.category));
+  const currentFleet = vehicles.filter((sv) => sv.vehicle.isCurrentFleet && sv.vehicle.energy !== "Électrique");
+  let tvsEvitee = 0;
+  for (const sv of currentFleet) {
+    try {
+      const r = calculateTcoFull(sv.vehicle, {
+        dureeAnnees: sv.durationMonths / 12,
+        kmContrat: sv.kmPerYear * (sv.durationMonths / 12),
+        prixEssenceLitre: energy.fuelPriceL,
+        prixKwhDomicile: energy.kWhHome,
+        prixKwhPublic: energy.kWhPublic,
+        remisePctOverride: sv.discountPct,
+      }, sv.negotiatedMonthly);
+      tvsEvitee += r.tvsTotal * sv.quantity;
+    } catch { /* skip */ }
+  }
+
+  type Card = { label: string; value: string; sub: string; bg: [number, number, number]; accent: [number, number, number] };
+  const cards: Card[] = [
+    {
+      label: "TAXE SUR LES VÉHICULES DE SOCIÉTÉ",
+      value: "0 € de TVS",
+      sub: tvsEvitee > 0
+        ? `Véhicules électriques exonérés. Soit ${eur(tvsEvitee)} évités vs votre flotte thermique actuelle.`
+        : "Les véhicules 100 % électriques sont exonérés des taxes annuelles sur les véhicules de société (CO2 + ancienneté).",
+      bg: GREEN_LIGHT, accent: GREEN,
+    },
+    {
+      label: "MALUS À L'ACHAT",
+      value: "0 € de malus",
+      sub: "Les véhicules électriques sont exonérés du malus CO2 et du malus au poids — économie immédiate à l'acquisition.",
+      bg: ROSE_LIGHT, accent: ROSE,
+    },
+    {
+      label: "TVA SUR LA RECHARGE",
+      value: "Récupérable 100 %",
+      sub: "La TVA sur l'électricité consommée pour la recharge de la flotte est intégralement récupérable.",
+      bg: BLUE_LIGHT, accent: [56, 9, 234],
+    },
+    {
+      label: "TVA SUR LE VÉHICULE",
+      value: utilEvs.length > 0 ? `${utilEvs.length} utilitaire${utilEvs.length > 1 ? "s" : ""} éligible${utilEvs.length > 1 ? "s" : ""}` : "Utilitaires uniquement",
+      sub: "Récupérable UNIQUEMENT sur les véhicules utilitaires 100 % électriques. Sur les véhicules de tourisme, la TVA à l'achat / LLD n'est pas récupérable.",
+      bg: VIOLET_LIGHT, accent: [108, 94, 130],
+    },
+  ];
+
+  const gap = 12;
+  const cardW = (PAGE_W - M * 2 - gap) / 2;
+  const cardH = 112;
+  cards.forEach((c, i) => {
+    const col = i % 2, row = Math.floor(i / 2);
+    const cx = M + col * (cardW + gap);
+    const cy = y + row * (cardH + gap);
+    doc.setFillColor(...c.bg);
+    doc.roundedRect(cx, cy, cardW, cardH, 10, 10, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...c.accent);
+    doc.text(doc.splitTextToSize(c.label, cardW - 28), cx + 14, cy + 18);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(19);
+    doc.setTextColor(...INK);
+    doc.text(c.value, cx + 14, cy + 46);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...SUB);
+    doc.text(doc.splitTextToSize(c.sub, cardW - 28), cx + 14, cy + 64);
+  });
+  y += cardH * 2 + gap + 22;
+
+  // Encart "AND/AEN" + note précision TVA
+  doc.setFillColor(252, 251, 248);
+  doc.roundedRect(M, y, PAGE_W - M * 2, 64, 8, 8, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(...INK);
+  doc.text("AVANTAGE EN NATURE & AMORTISSEMENTS", M + 14, y + 18);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text(
+    "Les véhicules électriques bénéficient d'un abattement de 70 % sur l'avantage en nature (plafonné), et le plafond d'amortissement non déductible (AND) est relevé pour l'électrique. Ces leviers réduisent le coût employeur réel, intégré dans nos calculs TCO.",
+    M + 14, y + 34, { maxWidth: PAGE_W - M * 2 - 28 },
+  );
+  y += 64 + 16;
+
+  // Sources
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(...SUB);
+  doc.text(
+    "Sources : Code général des impôts, barèmes 2026 (TVS, AND/AEN, malus CO2 et poids), service-public.fr / impots.gouv.fr. Synthèse indicative à valider avec votre expert-comptable selon votre situation.",
+    M, y, { maxWidth: PAGE_W - M * 2 },
+  );
 }
 
 // ============ VALIDATION (varie par type) ============
