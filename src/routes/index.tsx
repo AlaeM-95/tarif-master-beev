@@ -24,7 +24,6 @@ import { B2B2ECalculator, useB2B2EInput } from "@/components/b2b2e-calculator";
 import { VehicleSpotlight } from "@/components/vehicle-spotlight";
 import { VehicleComparator } from "@/components/vehicle-comparator";
 import { PdfTextEditor, usePdfTextOverrides } from "@/components/pdf-text-editor";
-import { generateProposalPdfV2 } from "@/lib/pdf-v2";
 import { BpuB2B2EEditor } from "@/components/bpu-b2b2e-editor";
 import { CarPolicyImporter } from "@/components/car-policy-importer";
 import { LiveIndicator } from "@/components/live-indicator";
@@ -968,62 +967,26 @@ function App() {
               )}
             </Button>
 
-            {/* CTA primaire : dropdown 2 versions PDF.
-                Version classique : pipeline jsPDF actuel (toutes les slides).
-                Version premium : BPU HTML (Bordereau Prix Unitaires) au design
-                Claude Beev 2026, ouvert dans une nouvelle fenêtre prête à
-                imprimer en PDF. */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" disabled={visibleCount === 0 || isGenerating} className="gap-1.5">
-                  {isGenerating ? (
-                    <><RotateCcw className="w-3.5 h-3.5 animate-spin" /> Génération...</>
-                  ) : (
-                    <><FileDown className="w-3.5 h-3.5" /> Générer PDF <ChevronDown className="w-3.5 h-3.5" /></>
-                  )}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-72">
-                <DropdownMenuLabel>Choisissez la version</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={exportPdf} className="cursor-pointer flex-col items-start gap-0.5 py-2.5">
-                  <div className="flex items-center gap-2 font-semibold">
-                    <FileDown className="w-3.5 h-3.5" /> Version classique
-                  </div>
-                  <p className="text-[10px] text-muted-foreground pl-5">
-                    PDF complet (cover, fiches, TCO, comparateur, BPA) — généré par jsPDF
-                  </p>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => generateProposalPdfV2({
-                    client,
-                    vehicles: Object.values(selectedV),
-                    chargers: Object.values(selectedC),
-                    salesRep: client.salesRep,
-                  })}
-                  className="cursor-pointer flex-col items-start gap-0.5 py-2.5"
-                >
-                  <div className="flex items-center gap-2 font-semibold">
-                    <Sparkles className="w-3.5 h-3.5 text-beev-rose" /> Version BPU (nouveau)
-                  </div>
-                  <p className="text-[10px] text-muted-foreground pl-5">
-                    Bordereau de prix unitaires — design Beev 2026, ouvre une fenêtre prête à imprimer en PDF
-                  </p>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => setBpuB2B2EOpen(true)}
-                  className="cursor-pointer flex-col items-start gap-0.5 py-2.5"
-                >
-                  <div className="flex items-center gap-2 font-semibold">
-                    <Sparkles className="w-3.5 h-3.5 text-beev-bleu" /> BPU partenariat B2B2E (nouveau)
-                  </div>
-                  <p className="text-[10px] text-muted-foreground pl-5">
-                    Tarification partenariat recharge domicile : prix par borne + logo client sur la couverture
-                  </p>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {/* BPU partenariat B2B2E — accessible À TOUT MOMENT (barème de prix
+                indépendant de la sélection du devis). */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBpuB2B2EOpen(true)}
+              className="gap-1.5"
+              title="Bordereau des prix unitaires partenariat (recharge domicile)"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-beev-bleu" /> BPU partenariat
+            </Button>
+
+            {/* CTA primaire : génération du PDF de proposition (jsPDF). */}
+            <Button size="sm" onClick={exportPdf} disabled={visibleCount === 0 || isGenerating} className="gap-1.5">
+              {isGenerating ? (
+                <><RotateCcw className="w-3.5 h-3.5 animate-spin" /> Génération...</>
+              ) : (
+                <><FileDown className="w-3.5 h-3.5" /> Générer PDF</>
+              )}
+            </Button>
           </div>
         </div>
       </header>
