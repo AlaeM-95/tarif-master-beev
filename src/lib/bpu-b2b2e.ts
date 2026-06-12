@@ -240,7 +240,22 @@ function closingPage(cfg: BpuB2B2EConfig): string {
   </section>`;
 }
 
-export function buildBpuB2B2EHtml(cfg: BpuB2B2EConfig): string {
+// Bloc @font-face Roobert. Par défaut référence les .ttf servis par l'app ;
+// si des data-URLs base64 sont fournies (fonts), on les EMBARQUE pour garantir
+// le rendu Roobert dans la fenêtre d'impression (pas de dépendance réseau /
+// résolution de chemin, donc plus de fallback Times/Arial à l'impression).
+export type RoobertFonts = { regular?: string; medium?: string; semibold?: string };
+function fontFaceCss(fonts?: RoobertFonts): string {
+  const src = (dataUrl: string | undefined, path: string) =>
+    dataUrl ? `url('${dataUrl}') format('truetype')` : `url('${path}') format('truetype')`;
+  return `
+  @font-face { font-family: 'Roobert'; src: ${src(fonts?.regular, "/fonts/Roobert-Regular.ttf")}; font-weight: 400; font-display: block; }
+  @font-face { font-family: 'Roobert'; src: ${src(fonts?.medium, "/fonts/Roobert-Medium.ttf")}; font-weight: 500; font-display: block; }
+  @font-face { font-family: 'Roobert'; src: ${src(fonts?.semibold, "/fonts/Roobert-SemiBold.ttf")}; font-weight: 600; font-display: block; }
+  @font-face { font-family: 'Roobert'; src: ${src(fonts?.semibold, "/fonts/Roobert-SemiBold.ttf")}; font-weight: 700; font-display: block; }`;
+}
+
+export function buildBpuB2B2EHtml(cfg: BpuB2B2EConfig, fonts?: RoobertFonts): string {
   const running = `Bordereau des prix unitaires · ${cfg.clientName ? cfg.clientName + " × " : ""}Beev`;
   const pages: string[] = [coverPage(cfg)];
   cfg.bornes.forEach((b, i) => {
@@ -254,10 +269,7 @@ export function buildBpuB2B2EHtml(cfg: BpuB2B2EConfig): string {
 <base href="${origin}/" />
 <title>BPU ${esc(cfg.clientName)} × Beev</title>
 <style>
-  @font-face { font-family: 'Roobert'; src: url('/fonts/Roobert-Regular.ttf') format('truetype'); font-weight: 400; font-display: swap; }
-  @font-face { font-family: 'Roobert'; src: url('/fonts/Roobert-Medium.ttf') format('truetype'); font-weight: 500; font-display: swap; }
-  @font-face { font-family: 'Roobert'; src: url('/fonts/Roobert-SemiBold.ttf') format('truetype'); font-weight: 600; font-display: swap; }
-  @font-face { font-family: 'Roobert'; src: url('/fonts/Roobert-SemiBold.ttf') format('truetype'); font-weight: 700; font-display: swap; }
+${fontFaceCss(fonts)}
   :root { --ink:#1D1D1D; --beige:#FCF9F2; --rose:#F4B8AA; --bleu:#A5D2FF; --violet:#D3CCD8; --sub:#5F5F64; --rule:#E7E4DD; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   @page { size: A4; margin: 0; }
@@ -334,20 +346,54 @@ export function buildBpuB2B2EHtml(cfg: BpuB2B2EConfig): string {
 <body>
   <div class="toolbar"><button onclick="window.print()">Télécharger le PDF</button></div>
   ${pages.join("\n")}
+  <script>
+    // Attend que les polices Roobert soient prêtes avant de lancer l'impression,
+    // sinon le navigateur imprimerait avec une police de repli.
+    (function () {
+      function go() { try { window.focus(); window.print(); } catch (e) {} }
+      var ready = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+      ready.then(function () { setTimeout(go, 200); });
+    })();
+  </script>
 </body></html>`;
 }
 
-export function generateBpuB2B2EPdf(cfg: BpuB2B2EConfig): void {
-  const html = buildBpuB2B2EHtml(cfg);
+// Charge un fichier de police same-origin et le convertit en data-URL base64.
+async function fontToDataUrl(path: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(path);
+    if (!res.ok) return undefined;
+    const blob = await res.blob();
+    return await new Promise<string | undefined>((resolve) => {
+      const r = new FileReader();
+      r.onload = () => resolve(typeof r.result === "string" ? r.result : undefined);
+      r.onerror = () => resolve(undefined);
+      r.readAsDataURL(blob);
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+export async function generateBpuB2B2EPdf(cfg: BpuB2B2EConfig): Promise<void> {
+  // On ouvre la fenêtre SYNCHRONEMENT (dans le geste utilisateur) pour ne pas
+  // être bloqué par le bloqueur de popups, puis on embarque les polices avant
+  // d'écrire le document final.
   const win = window.open("", "_blank", "width=1200,height=900");
   if (!win) {
     alert("Le navigateur a bloqué la fenêtre d'impression. Autorisez les popups pour ce site puis relancez la génération.");
     return;
   }
+  win.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>BPU…</title></head><body style="font-family:system-ui;padding:48px;color:#5F5F64">Préparation du BPU…</body></html>');
+
+  const [regular, medium, semibold] = await Promise.all([
+    fontToDataUrl("/fonts/Roobert-Regular.ttf"),
+    fontToDataUrl("/fonts/Roobert-Medium.ttf"),
+    fontToDataUrl("/fonts/Roobert-SemiBold.ttf"),
+  ]);
+  const html = buildBpuB2B2EHtml(cfg, { regular, medium, semibold });
+
   win.document.open();
   win.document.write(html);
   win.document.close();
-  win.onload = () => {
-    setTimeout(() => { try { win.focus(); win.print(); } catch { /* impression manuelle */ } }, 500);
-  };
 }
