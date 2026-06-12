@@ -3360,11 +3360,11 @@ async function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: Ener
     body: rows.map((r) => [
       // Marque + modèle + version pour distinguer 2 finitions du même modèle
       vehicleLabel(r.sv.vehicle),
-      { content: eur(r.malus), styles: { halign: "right" as any, textColor: r.malus > 0 ? LAVENDER : SUB, fontStyle: r.malus > 0 ? "bold" as any : "normal" as any } },
-      { content: eur(r.tvs), styles: { halign: "right" as any, textColor: r.tvs > 0 ? LAVENDER : SUB, fontStyle: r.tvs > 0 ? "bold" as any : "normal" as any } },
-      { content: eur(r.andTotal), styles: { halign: "right" as any } },
-      { content: eur(r.aenTotal), styles: { halign: "right" as any } },
-      { content: eur(r.coutEmployeur), styles: { halign: "right" as any, fontStyle: "bold" as any, textColor: LAVENDER } },
+      { content: eur(r.malus), styles: { halign: "center" as any, textColor: r.malus > 0 ? LAVENDER : SUB, fontStyle: r.malus > 0 ? "bold" as any : "normal" as any } },
+      { content: eur(r.tvs), styles: { halign: "center" as any, textColor: r.tvs > 0 ? LAVENDER : SUB, fontStyle: r.tvs > 0 ? "bold" as any : "normal" as any } },
+      { content: eur(r.andTotal), styles: { halign: "center" as any } },
+      { content: eur(r.aenTotal), styles: { halign: "center" as any } },
+      { content: eur(r.coutEmployeur), styles: { halign: "center" as any, fontStyle: "bold" as any, textColor: LAVENDER } },
     ]),
     headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 7, fontStyle: "bold", font: BRAND_FONT, cellPadding: 4, halign: "center" as any },
     bodyStyles: { fontSize: 8, cellPadding: 4, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
@@ -3475,17 +3475,17 @@ async function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: 
       // Marque + modèle + version sur 1re ligne, durée/km sur 2e (séparation
       // claire pour distinguer 2 finitions d'un même modèle dans le tableau).
       { content: `${vehicleLabel(sv.vehicle)}\n${sv.durationMonths} mois · ${(sv.kmPerYear / 1000).toFixed(0)}k km/an`, styles: { halign: "left" as any, fontStyle: "normal" as any, fontSize: 8.5 } },
-        { content: eur(r.loyerTotal), styles: { halign: "right" as any } },
-        { content: eur(r.coutEnergie), styles: { halign: "right" as any } },
+        { content: eur(r.loyerTotal), styles: { halign: "center" as any } },
+        { content: eur(r.coutEnergie), styles: { halign: "center" as any } },
         { content: eur(r.tvsTotal), styles: r.tvsTotal > 0
-          ? { halign: "right" as any, fillColor: ALERT_BG, textColor: ALERT_TEXT, fontStyle: "bold" as any }
-          : { halign: "right" as any, textColor: SUB } },
+          ? { halign: "center" as any, fillColor: ALERT_BG, textColor: ALERT_TEXT, fontStyle: "bold" as any }
+          : { halign: "center" as any, textColor: SUB } },
         { content: eur(malusTotal), styles: malusTotal > 0
-          ? { halign: "right" as any, fillColor: ALERT_BG, textColor: ALERT_TEXT, fontStyle: "bold" as any }
-          : { halign: "right" as any, textColor: SUB } },
-        { content: eur(andTotal), styles: { halign: "right" as any } },
-        { content: eur(aenTotal), styles: { halign: "right" as any } },
-        { content: eur(r.tcoEmployeurComplet), styles: { halign: "right" as any, fontStyle: "bold" as any, textColor: LAVENDER, fontSize: 10 } },
+          ? { halign: "center" as any, fillColor: ALERT_BG, textColor: ALERT_TEXT, fontStyle: "bold" as any }
+          : { halign: "center" as any, textColor: SUB } },
+        { content: eur(andTotal), styles: { halign: "center" as any } },
+        { content: eur(aenTotal), styles: { halign: "center" as any } },
+        { content: eur(r.tcoEmployeurComplet), styles: { halign: "center" as any, fontStyle: "bold" as any, textColor: LAVENDER, fontSize: 10 } },
       ];
   };
 
@@ -4065,8 +4065,11 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
   const head = [cols.map((c) => c.header)];
   const body = items.map((sv) => cols.map((c) => cellFor(sv, c.key)));
 
-  // Largeurs fixes : conso élargie pour « 16.6 kWh/100km » sur une ligne.
-  const W: Record<string, number> = { veh: 178, prix: 60, loyer: 66, auto: 56, conso: 80 };
+  // Largeurs fixes. La colonne Énergie (auto = reste) doit rester assez large
+  // pour que « Hybride Rechargeable » s'enroule ENTRE les mots (et non au
+  // milieu de « Rechargeable »). On réduit donc les autres pour lui laisser
+  // ~80 pt de reste.
+  const W: Record<string, number> = { veh: 166, prix: 56, loyer: 62, auto: 54, conso: 74 };
   const columnStyles: any = {};
   cols.forEach((c, i) => {
     columnStyles[i] = { halign: c.align };
