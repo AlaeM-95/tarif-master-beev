@@ -3339,8 +3339,8 @@ async function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: Ener
   });
 
   // === Détail Charges fiscales annexes (AND/AEN) — récap par véhicule ===
-  // Toujours sur une NOUVELLE PAGE (lisibilité + évite le chevauchement avec
-  // les barres de classement et le footer).
+  // Désactivé par défaut (toggle showTcoFiscalDetail). Sur une nouvelle page.
+  if (!PDF_CFG.showTcoFiscalDetail) return;
   doc.addPage();
   if (client && type) drawHeader(doc, client, type);
   y = 116;
@@ -3536,16 +3536,18 @@ async function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: 
     ]],
     body: tcoBody,
     headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 7.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 5, halign: "center" as any, valign: "middle" as any },
-    bodyStyles: { fontSize: 8.5, cellPadding: 6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
+    // Police réduite + padding serré sur les colonnes chiffrées pour que les
+    // gros montants (« 53 305 € », « 99 777 € ») tiennent sur UNE ligne.
+    bodyStyles: { fontSize: 7.5, cellPadding: 4, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any, overflow: "visible" as any },
     alternateRowStyles: { fillColor: BG },
     columnStyles: {
-      0: { cellWidth: 150, halign: "left" as any, cellPadding: { left: 56, right: 4, top: 6, bottom: 6 }, minCellHeight: 48, valign: "middle" as any },
-      1: { cellWidth: 50 },
-      2: { cellWidth: 46 },
-      3: { cellWidth: 46 },
-      4: { cellWidth: 46 },
-      5: { cellWidth: 44 },
-      6: { cellWidth: 50 },
+      0: { cellWidth: 116, halign: "left" as any, cellPadding: { left: 54, right: 4, top: 6, bottom: 6 }, minCellHeight: 48, valign: "middle" as any, overflow: "linebreak" as any },
+      1: { cellWidth: 54 },
+      2: { cellWidth: 54 },
+      3: { cellWidth: 50 },
+      4: { cellWidth: 50 },
+      5: { cellWidth: 50 },
+      6: { cellWidth: 54 },
       7: { cellWidth: "auto" },
     },
     margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },

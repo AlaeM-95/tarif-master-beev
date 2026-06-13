@@ -9,6 +9,7 @@ export type PdfDisplayConfig = {
   showWhyBeev: boolean;
   showSocialProof: boolean; // chiffres clés + témoignage sur Pourquoi Beev
   showTcoComparison: boolean; // page comparaison TCO multi-véhicules
+  showTcoFiscalDetail: boolean; // page « Détail charges fiscales annexes » (off par défaut)
   showVehicleComparator: boolean; // page comparateur multi-véhicules (specs côte à côte)
   showCurrentFleetVehicle: boolean; // afficher la fiche détaillée des véhicules « flotte actuelle » (masqués par défaut)
   showProposalVehicle: boolean; // afficher la fiche détaillée des propositions Beev (masquées par défaut)
@@ -68,6 +69,7 @@ export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
   showWhyBeev: true,
   showSocialProof: true,
   showTcoComparison: true,
+  showTcoFiscalDetail: false, // page détail charges fiscales annexes : désactivée par défaut
   showVehicleComparator: true,
   showCurrentFleetVehicle: false, // masquée par défaut ; le commercial l'active dans la config PDF
   showProposalVehicle: false, // masquée par défaut ; le commercial l'active dans la config PDF
@@ -164,6 +166,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
       { key: "showWhyBeev", label: "Page Pourquoi Beev", description: "Intro, proposition de valeur" },
       { key: "showSocialProof", label: "Chiffres clés + témoignage", description: "Encart noir + citation client" },
       { key: "showTcoComparison", label: "Comparaison TCO flotte", description: "Page synthèse si 2+ véhicules", appliesTo: ["vehicles"] as unknown as string[] } as any,
+      { key: "showTcoFiscalDetail", label: "Détail charges fiscales annexes", description: "Page « Détail charges fiscales annexes par véhicule » (Malus / TVS / AND / AEN). Désactivée par défaut.", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showVehicleComparator", label: "Comparateur véhicules", description: "Tableau comparatif specs côte à côte (prix, autonomie, conso, fiscalité) si 2+ véhicules", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showCurrentFleetVehicle", label: "Fiche détaillée flotte actuelle", description: "Afficher la fiche véhicule complète des véhicules marqués « flotte actuelle » (masqués par défaut, visibles uniquement dans le comparateur)", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showProposalVehicle", label: "Fiche détaillée proposition Beev", description: "Afficher la fiche véhicule complète des propositions Beev (masquées par défaut, visibles dans le comparateur)", appliesTo: ["vehicles"] as unknown as string[] } as any,
