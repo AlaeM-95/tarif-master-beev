@@ -16,15 +16,30 @@ import {
   type BpuB2B2EConfig, type BpuBorne, type BpuSupplement,
 } from "@/lib/bpu-b2b2e";
 
-const SK = "beev_bpu_b2b2e_v1";
+const SK = "beev_bpu_b2b2e_v1";          // infos client (et ancien format combiné)
+const SK_BORNES = "beev_bpu_bornes_v1";  // bibliothèque de bornes, persistante et indépendante du client
 
+// Charge la config en combinant : les infos client (clé SK) et la bibliothèque
+// de bornes (clé SK_BORNES). Les bornes sont conservées séparément pour ne plus
+// disparaître à la réinitialisation du client. Migration douce : si la
+// bibliothèque n'existe pas encore mais que l'ancien format combiné contient
+// des bornes, on les récupère.
 function loadConfig(): BpuB2B2EConfig {
-  if (typeof window === "undefined") return defaultBpuB2B2E();
+  const base = defaultBpuB2B2E();
+  if (typeof window === "undefined") return base;
+  let cfg: BpuB2B2EConfig = { ...base };
   try {
     const raw = localStorage.getItem(SK);
-    if (raw) return { ...defaultBpuB2B2E(), ...JSON.parse(raw) };
+    if (raw) cfg = { ...cfg, ...JSON.parse(raw) };
   } catch { /* ignore */ }
-  return defaultBpuB2B2E();
+  try {
+    const rawBornes = localStorage.getItem(SK_BORNES);
+    if (rawBornes) {
+      const arr = JSON.parse(rawBornes);
+      if (Array.isArray(arr)) cfg.bornes = arr; // la bibliothèque fait foi si présente
+    }
+  } catch { /* ignore */ }
+  return cfg;
 }
 
 // Petits champs locaux
@@ -55,11 +70,19 @@ export function BpuB2B2EEditor({ open, onOpenChange, clientName }: { open: boole
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Persistance
+  // Persistance des infos client (sans les bornes : elles ont leur propre clé).
   useEffect(() => {
     if (typeof window === "undefined") return;
-    try { localStorage.setItem(SK, JSON.stringify(cfg)); } catch { /* ignore */ }
-  }, [cfg]);
+    const client = { clientName: cfg.clientName, clientLogoUrl: cfg.clientLogoUrl, year: cfg.year, subtitle: cfg.subtitle, scopeLine: cfg.scopeLine };
+    try { localStorage.setItem(SK, JSON.stringify(client)); } catch { /* ignore */ }
+  }, [cfg.clientName, cfg.clientLogoUrl, cfg.year, cfg.subtitle, cfg.scopeLine]);
+
+  // Persistance de la bibliothèque de bornes : indépendante du client, donc
+  // conservée même après une réinitialisation.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try { localStorage.setItem(SK_BORNES, JSON.stringify(cfg.bornes)); } catch { /* ignore */ }
+  }, [cfg.bornes]);
 
   const patch = (p: Partial<BpuB2B2EConfig>) => setCfg((c) => ({ ...c, ...p }));
   const patchBorne = (id: string, p: Partial<BpuBorne>) =>
@@ -97,8 +120,11 @@ export function BpuB2B2EEditor({ open, onOpenChange, clientName }: { open: boole
           </div>
         </div>
 
-        {/* Bornes */}
+        {/* Bornes — bibliothèque persistante */}
         <div className="space-y-2">
+          <p className="text-[11px] text-muted-foreground">
+            Bibliothèque de bornes : enregistrée et conservée même après réinitialisation du client. Cochez une borne pour la rattacher au BPU du client en cours, décochez pour la garder en bibliothèque sans l'afficher.
+          </p>
           {cfg.bornes.map((b, bi) => {
             const isOpen = openBorne === b.id;
             return (
@@ -189,7 +215,17 @@ export function BpuB2B2EEditor({ open, onOpenChange, clientName }: { open: boole
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => { setCfg(defaultBpuB2B2E()); }}>Réinitialiser</Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              const d = defaultBpuB2B2E();
+              // Ne réinitialise que les infos client ; la bibliothèque de bornes est conservée.
+              setCfg((c) => ({ ...c, clientName: "", clientLogoUrl: "", year: d.year, subtitle: d.subtitle, scopeLine: d.scopeLine }));
+            }}
+            title="Vide les informations client. Vos bornes sont conservées."
+          >
+            Réinitialiser le client
+          </Button>
           <Button className="gap-2" onClick={() => generateBpuB2B2EPdf(cfg)} disabled={cfg.bornes.length === 0}>
             <FileDown className="w-4 h-4" /> Télécharger le BPU
           </Button>
