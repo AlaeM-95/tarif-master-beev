@@ -884,7 +884,7 @@ function App() {
       <BpuB2B2EEditor open={bpuB2B2EOpen} onOpenChange={setBpuB2B2EOpen} clientName={client.company} />
       <AuditConseilEditor open={auditConseilOpen} onOpenChange={setAuditConseilOpen} clientName={client.company} />
       <header className="fixed top-0 left-0 right-0 z-50 h-16 bg-background/95 backdrop-blur-md border-b border-border">
-        <div className="container mx-auto px-6 h-full flex items-center justify-between gap-3 flex-nowrap overflow-x-auto">
+        <div className="w-full px-4 h-full flex items-center justify-between gap-3 flex-nowrap">
           {/* ─── Identité Beev (gauche) ─── */}
           <div className="flex items-center gap-3 flex-shrink-0">
             <img
@@ -900,7 +900,7 @@ function App() {
               }}
             />
             <div className="w-10 h-10 rounded-xl items-center justify-center bg-primary text-primary-foreground font-bold text-xl tracking-tight shadow-sm" style={{ display: "none" }}>B</div>
-            <div>
+            <div className="hidden lg:block">
               <p className="text-[10px] text-muted-foreground tracking-wide uppercase font-medium">Offre commerciale grand compte</p>
             </div>
             <Badge variant="outline" className="hidden md:inline-flex border-primary/30 bg-primary/5 text-primary text-[10px] font-semibold ml-2">{visibleCount} sélection(s)</Badge>
@@ -987,50 +987,48 @@ function App() {
               </span>
             )}
 
-            <Button variant="outline" size="sm" onClick={() => setPresenting(true)} disabled={visibleCount === 0} className="gap-1.5">
-              <Presentation className="w-3.5 h-3.5" /> Présenter
-            </Button>
-
-            {/* Bouton WYSIWYG : ouvre l'éditeur des textes PDF pour ce devis. */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPdfTextEditorOpen(true)}
-              disabled={visibleCount === 0}
-              className="gap-1.5 relative"
-              title="Personnaliser tous les textes du PDF avant génération"
-            >
-              <Sparkles className="w-3.5 h-3.5" /> Personnaliser
-              {Object.keys(pdfTextOverrides).length > 0 && (
-                <span className="absolute -top-1 -right-1 bg-beev-rose text-beev-black text-[9px] font-bold rounded-full px-1.5 py-0.5">
-                  {Object.keys(pdfTextOverrides).length}
-                </span>
-              )}
-            </Button>
-
-            {/* BPU partenariat B2B2E — accessible À TOUT MOMENT (barème de prix
-                indépendant de la sélection du devis). */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setBpuB2B2EOpen(true)}
-              className="gap-1.5"
-              title="Bordereau des prix unitaires partenariat (recharge domicile)"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-beev-bleu" /> BPU partenariat
-            </Button>
-
-            {/* Audit & conseil flotte — proposition autonome (audit car policy +
-                recommandations véhicules), indépendante de la sélection du devis. */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setAuditConseilOpen(true)}
-              className="gap-1.5"
-              title="Proposition d'audit et de conseil sur la car policy (approche TCO)"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-beev-rose" /> Audit & conseil
-            </Button>
+            {/* Menu « Documents » : regroupe les actions secondaires de
+                production de documents (présentation, personnalisation des
+                textes, BPU partenariat, audit & conseil) pour garder le header
+                sur une seule ligne sans scroll horizontal. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1.5 relative">
+                  <FileText className="w-3.5 h-3.5" /> Documents
+                  <ChevronDown className="w-3 h-3" />
+                  {Object.keys(pdfTextOverrides).length > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-beev-rose text-beev-black text-[9px] font-bold rounded-full px-1.5 py-0.5">
+                      {Object.keys(pdfTextOverrides).length}
+                    </span>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-60">
+                <DropdownMenuLabel>Devis en cours</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => setPresenting(true)} disabled={visibleCount === 0} className="cursor-pointer">
+                  <Presentation className="w-4 h-4 mr-2" /> Présenter
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setPdfTextEditorOpen(true)}
+                  disabled={visibleCount === 0}
+                  className="cursor-pointer"
+                  title="Personnaliser tous les textes du PDF avant génération"
+                >
+                  <Sparkles className="w-4 h-4 mr-2" /> Personnaliser les textes
+                  {Object.keys(pdfTextOverrides).length > 0 && (
+                    <span className="ml-auto text-[10px] font-bold text-beev-rose">{Object.keys(pdfTextOverrides).length}</span>
+                  )}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Documents autonomes</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => setBpuB2B2EOpen(true)} className="cursor-pointer">
+                  <Sparkles className="w-4 h-4 mr-2 text-beev-bleu" /> BPU partenariat
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setAuditConseilOpen(true)} className="cursor-pointer">
+                  <Sparkles className="w-4 h-4 mr-2 text-beev-rose" /> Audit & conseil
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             {/* Aperçu : ouvre le PDF dans un nouvel onglet sans télécharger. */}
             <Button
