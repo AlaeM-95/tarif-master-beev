@@ -19,6 +19,16 @@ export type AuditTarifRow = {
 };
 export type AuditEtape = { title: string; text: string };
 
+// Comparaison économique thermique vs électrique selon la taille de flotte.
+// Les coûts sont saisis par véhicule et par an (TCO complet) ; le graphique
+// projette le coût total et l'économie pour chaque taille de flotte.
+export type AuditComparison = {
+  enabled: boolean;
+  costThermique: number;   // € / an / véhicule (thermique)
+  costElectrique: number;  // € / an / véhicule (électrique)
+  fleetSizes: number[];    // tailles de flotte comparées, ex : [10, 25, 50, 80]
+};
+
 export type AuditConseilConfig = {
   clientName: string;      // "FEV Group France"
   clientLogoUrl: string;   // logo client (page de garde)
@@ -33,6 +43,7 @@ export type AuditConseilConfig = {
   tarifsSansEngagement: AuditTarifRow[];
   tarifsAvecEngagement: AuditTarifRow[];
   etapes: AuditEtape[];
+  comparison: AuditComparison;
   ctaText: string;         // bandeau de lancement (bas de page)
   signature: string;       // nom du signataire (commercial)
 };
@@ -78,6 +89,12 @@ export function defaultAuditConseil(): AuditConseilConfig {
       { title: "Restitution", text: "Présentation des recommandations à la direction." },
       { title: "Décision", text: "Arbitrage et plan de déploiement." },
     ],
+    comparison: {
+      enabled: true,
+      costThermique: 10800,
+      costElectrique: 8400,
+      fleetSizes: [10, 25, 50, 80],
+    },
     ctaText: "Pour lancer l'audit : transmettez votre fichier de parc (Excel) à votre interlocuteur Beev et confirmez les clauses de confidentialité. Nous revenons vers vous sous 48 h pour planifier le premier rendez-vous.",
     signature: "",
   };
@@ -89,6 +106,8 @@ export function newTarifRow(): AuditTarifRow { return { prestation: "Nouvelle pr
 export function newEtape(): AuditEtape { return { title: "Nouvelle étape", text: "" }; }
 
 const nbsp = (s: string) => s.replace(/ /g, " ").replace(/ /g, " ");
+const eurInt = (n: number) =>
+  nbsp(new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n || 0));
 const esc = (s: string): string =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
@@ -194,6 +213,74 @@ function etapesBlock(cfg: AuditConseilConfig): string {
   </div>`;
 }
 
+// Graphique SVG : coût total annuel thermique vs électrique pour chaque taille
+// de flotte, avec l'économie annuelle mise en avant. SVG vectoriel = rendu net
+// à l'impression.
+function comparisonBlock(cfg: AuditConseilConfig): string {
+  const c = cfg.comparison;
+  if (!c || !c.enabled) return "";
+  const sizes = (c.fleetSizes || []).filter((s) => s > 0);
+  if (!sizes.length) return "";
+  const data = sizes.map((s) => ({
+    s,
+    th: s * c.costThermique,
+    el: s * c.costElectrique,
+    eco: s * Math.max(0, c.costThermique - c.costElectrique),
+  }));
+  const maxV = Math.max(...data.map((d) => d.th), 1);
+
+  // Géométrie du graphique (coordonnées SVG, viewBox fixe).
+  const W = 720, H = 250, padT = 28, padB = 46, padL = 8, padR = 8;
+  const chartH = H - padT - padB;
+  const baseY = padT + chartH;
+  const groupW = (W - padL - padR) / data.length;
+  const barW = Math.min(40, groupW / 3.2);
+  const gap = 8;
+
+  const COL_TH = "#C9C1B2";   // thermique : gris chaud
+  const COL_EL = "#A5D2FF";   // électrique : bleu Beev
+  const COL_ECO = "#8A4A36";  // économie : rose foncé
+
+  const bars = data.map((d, i) => {
+    const cx = padL + groupW * i + groupW / 2;
+    const xTh = cx - barW - gap / 2;
+    const xEl = cx + gap / 2;
+    const hTh = Math.round((d.th / maxV) * chartH);
+    const hEl = Math.round((d.el / maxV) * chartH);
+    const yTh = baseY - hTh;
+    const yEl = baseY - hEl;
+    return `
+      <rect x="${xTh.toFixed(1)}" y="${yTh}" width="${barW.toFixed(1)}" height="${hTh}" rx="3" fill="${COL_TH}" />
+      <rect x="${xEl.toFixed(1)}" y="${yEl}" width="${barW.toFixed(1)}" height="${hEl}" rx="3" fill="${COL_EL}" />
+      <text x="${cx.toFixed(1)}" y="${(yEl - 8).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" fill="${COL_ECO}">- ${eurInt(d.eco)}</text>
+      <text x="${cx.toFixed(1)}" y="${baseY + 18}" text-anchor="middle" font-size="11" font-weight="700" fill="#1D1D1D">${d.s} véh.</text>
+      <text x="${cx.toFixed(1)}" y="${baseY + 32}" text-anchor="middle" font-size="9" fill="#5F5F64">économie / an</text>`;
+  }).join("");
+
+  const svg = `
+    <svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" role="img">
+      <line x1="${padL}" y1="${baseY}" x2="${W - padR}" y2="${baseY}" stroke="#E7E4DD" stroke-width="1" />
+      ${bars}
+    </svg>`;
+
+  const max = data[data.length - 1];
+  return `
+  <div class="block chart-block">
+    <div class="eyebrow">Comparaison économique · thermique vs électrique</div>
+    <div class="chart-card">
+      <div class="chart-head">
+        <div class="chart-legend">
+          <span class="lg"><span class="lg-dot" style="background:${COL_TH}"></span>Coût annuel thermique</span>
+          <span class="lg"><span class="lg-dot" style="background:${COL_EL}"></span>Coût annuel électrique</span>
+        </div>
+        <div class="chart-hl">Jusqu'à <strong>${eurInt(max.eco)}</strong> / an d'économies sur ${max.s} véhicules</div>
+      </div>
+      ${svg}
+      <div class="chart-foot">Base TCO : ${eurInt(c.costThermique)} / an / véhicule (thermique) contre ${eurInt(c.costElectrique)} / an / véhicule (électrique). Projection indicative, affinée lors de l'audit.</div>
+    </div>
+  </div>`;
+}
+
 function ctaBlock(cfg: AuditConseilConfig): string {
   if (!cfg.ctaText && !cfg.signature) return "";
   return `
@@ -215,11 +302,19 @@ ${fontFaceCss(fonts)}
   :root { --ink:#1D1D1D; --beige:#FCF9F2; --rose:#F4B8AA; --bleu:#A5D2FF; --violet:#D3CCD8; --sub:#5F5F64; --rule:#E7E4DD; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   @page { size: A4; margin: 0; }
-  html, body { font-family: 'Roobert','Inter',-apple-system,BlinkMacSystemFont,sans-serif; color: var(--ink); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .page { position: relative; width: 210mm; min-height: 297mm; padding: 16mm 16mm 14mm; background: var(--beige); }
+  html, body { font-family: 'Roobert','Inter',-apple-system,BlinkMacSystemFont,sans-serif; color: var(--ink); background: var(--beige); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  /* Le document s'écoule naturellement sur plusieurs pages A4 à l'impression.
+     Le fond beige est porté par body (full-bleed). Le padding latéral/vertical
+     vaut pour la 1re page ; les blocs sont protégés contre les coupures. */
+  .doc { padding: 16mm 16mm 14mm; }
 
   .eyebrow { font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--sub); font-weight: 600; margin-bottom: 12px; }
   .block { margin-top: 20px; }
+  /* Pagination : on évite de couper un bloc et d'orphéliner un en-tête de
+     section de son contenu (le bug d'alignement constaté sur les tarifs). */
+  .hero, .block, .enjeu, .liv-card, .cta, .foot { break-inside: avoid; page-break-inside: avoid; }
+  .tarif-table tr { break-inside: avoid; page-break-inside: avoid; }
+  .eyebrow { break-after: avoid; page-break-after: avoid; }
 
   /* Hero sombre */
   .hero { background: var(--ink); color: var(--beige); border-radius: 16px; padding: 26px 28px; }
@@ -273,22 +368,33 @@ ${fontFaceCss(fonts)}
   .cta-text { font-size: 13px; line-height: 1.6; color: rgba(252,249,242,.92); max-width: 78%; }
   .cta-sign { font-size: 13px; font-weight: 700; margin-top: 14px; }
 
+  /* Graphique comparaison économique */
+  .chart-card { background: #fff; border: 1px solid var(--rule); border-radius: 12px; padding: 18px 20px; }
+  .chart-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 10px; flex-wrap: wrap; }
+  .chart-legend { display: flex; gap: 16px; }
+  .lg { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--sub); font-weight: 600; }
+  .lg-dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .chart-hl { font-size: 12px; font-weight: 600; color: var(--ink); }
+  .chart-hl strong { font-size: 14px; }
+  .chart-foot { font-size: 10px; color: var(--sub); line-height: 1.5; margin-top: 10px; }
+
   .foot { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; font-size: 8.5px; color: var(--sub); border-top: 1px solid var(--rule); padding-top: 10px; }
   .foot .beev-mark { font-size: 14px; font-weight: 700; color: var(--ink); }
 
   .toolbar { position: fixed; top: 16px; right: 16px; z-index: 10; display: flex; gap: 8px; }
   .toolbar button { font-family: inherit; font-size: 13px; font-weight: 600; border: none; border-radius: 10px; padding: 10px 18px; cursor: pointer; background: var(--ink); color: #fff; }
   @media print { .toolbar { display: none; } }
-  @media screen { body { background: #ECEAE4; padding: 24px 0; } .page { margin: 0 auto; box-shadow: 0 8px 30px rgba(0,0,0,.12); } }
+  @media screen { body { background: #ECEAE4; padding: 24px 0; } .doc { width: 210mm; min-height: 297mm; margin: 0 auto; background: var(--beige); box-shadow: 0 8px 30px rgba(0,0,0,.12); } }
 </style></head>
 <body>
   <div class="toolbar"><button onclick="window.print()">Télécharger le PDF</button></div>
-  <section class="page">
+  <section class="doc">
     ${heroBlock(cfg)}
     ${enjeuxBlock(cfg)}
     ${livrablesBlock(cfg)}
     ${tarifTable("Tarification sans engagement", cfg.tarifsSansEngagement)}
     ${tarifTable("Tarification avec engagement", cfg.tarifsAvecEngagement)}
+    ${comparisonBlock(cfg)}
     ${etapesBlock(cfg)}
     ${ctaBlock(cfg)}
     <div class="foot"><span class="beev-mark">beev</span><span>${esc(foot)} · ${esc(cfg.date)}</span></div>

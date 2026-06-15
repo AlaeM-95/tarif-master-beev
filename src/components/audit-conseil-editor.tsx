@@ -37,6 +37,14 @@ function Txt({ label, value, onChange, placeholder }: { label: string; value: st
     </div>
   );
 }
+function Num({ label, value, onChange }: { label: string; value: number; onChange: (n: number) => void }) {
+  return (
+    <div className="space-y-1">
+      <Label className="text-[10px] uppercase text-muted-foreground tracking-wide">{label}</Label>
+      <Input type="number" value={Number.isFinite(value) ? value : 0} onChange={(e) => onChange(parseFloat(e.target.value) || 0)} className="h-8 text-sm" />
+    </div>
+  );
+}
 
 // Section repliable réutilisable (enjeux, livrables, tarifs, étapes).
 function Section({ title, count, children, onAdd, addLabel }: { title: string; count: number; children: ReactNode; onAdd: () => void; addLabel: string }) {
@@ -203,6 +211,35 @@ export function AuditConseilEditor({ open, onOpenChange, clientName }: { open: b
             </RowCard>
           ))}
         </Section>
+
+        {/* Comparaison économique thermique vs électrique */}
+        <div className="space-y-3 rounded-lg border p-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={cfg.comparison.enabled}
+              onChange={(e) => patch({ comparison: { ...cfg.comparison, enabled: e.target.checked } })}
+              className="h-4 w-4 accent-beev-bleu"
+            />
+            <span className="text-sm font-semibold">Graphique comparaison économique (thermique vs électrique)</span>
+          </label>
+          {cfg.comparison.enabled && (
+            <div className="space-y-2.5">
+              <div className="grid grid-cols-2 gap-2">
+                <Num label="Coût thermique (€/an/véhicule)" value={cfg.comparison.costThermique} onChange={(n) => patch({ comparison: { ...cfg.comparison, costThermique: n } })} />
+                <Num label="Coût électrique (€/an/véhicule)" value={cfg.comparison.costElectrique} onChange={(n) => patch({ comparison: { ...cfg.comparison, costElectrique: n } })} />
+              </div>
+              <Txt
+                label="Tailles de flotte comparées (séparées par des virgules)"
+                value={cfg.comparison.fleetSizes.join(", ")}
+                onChange={(v) => patch({ comparison: { ...cfg.comparison, fleetSizes: v.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => Number.isFinite(n) && n > 0) } })}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Économie annuelle par véhicule : {(cfg.comparison.costThermique - cfg.comparison.costElectrique).toLocaleString("fr-FR")} €. Le graphique projette le coût total et l'économie pour chaque taille de flotte.
+              </p>
+            </div>
+          )}
+        </div>
 
         {/* CTA */}
         <div className="space-y-3 rounded-lg border p-3">
