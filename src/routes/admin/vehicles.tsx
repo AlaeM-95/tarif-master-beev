@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Search, Plus, Trash2, Star, Pencil, Filter, Package, Sparkles, X, Copy } from "lucide-react";
+import { ArrowLeft, Search, Plus, Trash2, Star, Pencil, Filter, Package, Sparkles, X, Copy, Car, Tag, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,15 +40,29 @@ function AdminVehiclesPage() {
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  // Raccourci depuis la fiche produit (/admin/vehicles?edit=<id>) : ouvre
+  // directement la fiche pricing du véhicule concerné.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const id = new URLSearchParams(window.location.search).get("edit");
+    if (id) setEditingId(id);
+  }, []);
+
   // Stats globales
   const stats = useMemo(() => {
     const totalOffers = new Set(offers.map((o) => o.vehicleId));
+    // Loyer « à partir de » par véhicule : plus basse offre loueur, sinon loyer catalogue.
+    const startingRents = vehicles.map((v) => {
+      const vo = offers.filter((o) => o.vehicleId === v.id);
+      return vo.length ? Math.min(...vo.map((o) => o.monthlyPriceTtc)) : v.monthlyLld;
+    }).filter((n) => n > 0);
     return {
       total: vehicles.length,
       shortlist: vehicles.filter((v) => v.shortlist).length,
       stock: vehicles.filter((v) => v.availableStock).length,
       withOffer: totalOffers.size,
       avgPrice: vehicles.length > 0 ? vehicles.reduce((s, v) => s + v.priceTtc, 0) / vehicles.length : 0,
+      avgRent: startingRents.length ? startingRents.reduce((s, n) => s + n, 0) / startingRents.length : 0,
     };
   }, [vehicles, offers]);
 
@@ -111,15 +125,6 @@ function AdminVehiclesPage() {
             </div>
           </div>
 
-          {/* Stats bar */}
-          <div className="flex flex-wrap gap-3 mt-3 text-xs">
-            <StatChip label="Véhicules" value={stats.total} />
-            <StatChip label="Shortlist du mois" value={stats.shortlist} icon={<Sparkles className="w-3 h-3" />} accent="#FFB800" />
-            <StatChip label="Stock dispo" value={stats.stock} icon={<Package className="w-3 h-3" />} accent="#35DA76" />
-            <StatChip label="Avec offre loueur" value={stats.withOffer} accent="#3809EA" />
-            <StatChip label="Prix moyen" value={fmtEur(stats.avgPrice)} />
-          </div>
-
           {/* Filtres */}
           <div className="flex flex-wrap gap-2 mt-3">
             <Button variant={filter === "all" ? "default" : "outline"} size="sm" onClick={() => setFilter("all")}>Tous</Button>
@@ -146,6 +151,14 @@ function AdminVehiclesPage() {
       </header>
 
       <main className="container mx-auto px-6 py-4">
+        {/* Tableau de bord : KPIs en cartes */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+          <KpiCard label="Véhicules" value={stats.total} icon={<Car className="w-4 h-4" />} accent="#1A1A1A" />
+          <KpiCard label="Avec offre loueur" value={stats.withOffer} sub={`${stats.total ? Math.round((stats.withOffer / stats.total) * 100) : 0}% du parc`} icon={<Tag className="w-4 h-4" />} accent="#3809EA" />
+          <KpiCard label="Loyer moyen « à partir de »" value={`${fmtEur(stats.avgRent)}/m`} icon={<Receipt className="w-4 h-4" />} accent="#1FA463" />
+          <KpiCard label="Stock dispo" value={stats.stock} icon={<Package className="w-4 h-4" />} accent="#35DA76" />
+          <KpiCard label="Shortlist du mois" value={stats.shortlist} icon={<Sparkles className="w-4 h-4" />} accent="#FFB800" />
+        </div>
         {/* Table dense */}
         <Card>
           <CardContent className="p-0">
@@ -288,13 +301,16 @@ function AdminVehiclesPage() {
   );
 }
 
-// Petit chip de stat dans le header
-function StatChip({ label, value, icon, accent }: { label: string; value: string | number; icon?: React.ReactNode; accent?: string }) {
+// Carte KPI du tableau de bord backoffice
+function KpiCard({ label, value, sub, icon, accent }: { label: string; value: string | number; sub?: string; icon?: React.ReactNode; accent?: string }) {
   return (
-    <div className="inline-flex items-center gap-2 rounded-md border bg-card px-3 py-1.5">
-      {icon && <span style={{ color: accent }}>{icon}</span>}
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-semibold" style={{ color: accent }}>{value}</span>
+    <div className="rounded-xl border bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{label}</span>
+        {icon && <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg" style={{ color: accent, background: `${accent}14` }}>{icon}</span>}
+      </div>
+      <div className="mt-2 text-2xl font-bold leading-none" style={{ color: accent }}>{value}</div>
+      {sub && <div className="mt-1 text-[11px] text-muted-foreground">{sub}</div>}
     </div>
   );
 }
@@ -344,6 +360,7 @@ function VehicleEditForm({ vehicle, offers, onSave, onClose, onDelete }: {
         <FormSection title="Pricing commercial">
           <FieldRow>
             <NumField label="Prix catalogue TTC" value={current.priceTtc} onChange={(v) => set("priceTtc", v)} onBlur={() => commitField("priceTtc")} suffix="€" />
+            <NumField label="Loyer « à partir de » /mois" value={current.monthlyLld ?? 0} onChange={(v) => set("monthlyLld", v)} onBlur={() => commitField("monthlyLld")} suffix="€" />
             <NumField label="Remise totale" value={current.remise ?? 0} onChange={(v) => set("remise", v)} onBlur={() => commitField("remise")} suffix="%" step={0.5} />
             <NumField label="PCOM distributeur" value={current.pcomPct ?? 0} onChange={(v) => set("pcomPct", v)} onBlur={() => commitField("pcomPct")} suffix="%" step={0.5} />
             <NumField label="Commission Beev" value={current.commissionBeev ?? 0} onChange={(v) => set("commissionBeev", v)} onBlur={() => commitField("commissionBeev")} suffix="€" />

@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles, Copy, BarChart3 } from "lucide-react";
+import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles, Copy, BarChart3, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type EnergyParams } from "@/lib/store";
 import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
@@ -73,6 +73,9 @@ function App() {
   // pilote l'édition des fiches produit véhicule depuis le catalogue. Les
   // liens du menu Administration suivent les permissions backoffice.
   const canEditProduct = can("edit_product_sheet");
+  // Accès backoffice pricing (ops/admin) : conditionne le raccourci « Éditer le
+  // pricing » depuis la fiche produit vers /admin/vehicles.
+  const canEditPricing = can("backoffice_vehicles");
   // Pour la majorité des gates d'écriture (catalogue, pricing, templates PDF)
   // on utilise isOps (admin OU ops). isAdmin reste réservé aux actions
   // super-admin (gestion utilisateurs, etc. — pas exposées dans cette page).
@@ -943,6 +946,9 @@ function App() {
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuLabel>Administration</DropdownMenuLabel>
+                    <DropdownMenuItem asChild>
+                      <a href="/admin" className="cursor-pointer"><BarChart3 className="w-4 h-4 mr-2" /> Tableau de bord</a>
+                    </DropdownMenuItem>
                     {can("backoffice_vehicles") && (
                       <DropdownMenuItem asChild>
                         <a href="/admin/vehicles" className="cursor-pointer"><Car className="w-4 h-4 mr-2" /> Véhicules & loueurs</a>
@@ -1236,6 +1242,7 @@ function App() {
                 vehicles={filteredVehicles}
                 allVehicleCount={vehicles.length}
                 selectedV={selectedV}
+                canEditPricing={canEditPricing}
                 onToggle={toggleV}
                 onUpdate={isSales ? updateVehicle : undefined}
                 onDelete={isOps ? async (v) => {
@@ -1757,7 +1764,7 @@ function ClientCard({ client, setClient }: { client: any; setClient: (c: any) =>
 // Si l'utilisateur tape une recherche, les marques avec résultats sont
 // automatiquement dépliées pour rendre les véhicules trouvables.
 function VehicleCatalogByBrand({
-  vehicles, allVehicleCount, selectedV, onToggle, onUpdate, onDelete, onDuplicate, existingCategories, leaserOffers, hasActiveSearch, compareIds, onToggleCompare,
+  vehicles, allVehicleCount, selectedV, onToggle, onUpdate, onDelete, onDuplicate, existingCategories, leaserOffers, hasActiveSearch, compareIds, onToggleCompare, canEditPricing,
 }: {
   vehicles: Vehicle[];
   allVehicleCount: number;
@@ -1771,6 +1778,7 @@ function VehicleCatalogByBrand({
   hasActiveSearch: boolean;
   compareIds?: Set<string>;
   onToggleCompare?: (id: string) => void;
+  canEditPricing?: boolean;
 }) {
   // Groupement par marque (trie alphabétique sauf BMW/Audi/Mercedes/Tesla en tête)
   const byBrand = useMemo(() => {
@@ -1859,6 +1867,7 @@ function VehicleCatalogByBrand({
                         onDuplicate={onDuplicate ? () => onDuplicate(v) : undefined}
                         existingCategories={existingCategories}
                         leaserOffers={leaserOffers.filter((o) => o.vehicleId === v.id)}
+                        canEditPricing={canEditPricing}
                         isInCompare={compareIds?.has(v.id)}
                         onToggleCompare={onToggleCompare ? () => onToggleCompare(v.id) : undefined}
                       />
@@ -2411,8 +2420,13 @@ function ConfirmDeleteButton({ label, onConfirm }: { label: string; onConfirm: (
   );
 }
 
-function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existingCategories = [], leaserOffers = [], isInCompare, onToggleCompare, onDuplicate }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Vehicle>) => void; onDelete?: () => void; existingCategories?: string[]; leaserOffers?: LeaserOffer[]; isInCompare?: boolean; onToggleCompare?: () => void; onDuplicate?: () => void }) {
+function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existingCategories = [], leaserOffers = [], isInCompare, onToggleCompare, onDuplicate, canEditPricing }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Vehicle>) => void; onDelete?: () => void; existingCategories?: string[]; leaserOffers?: LeaserOffer[]; isInCompare?: boolean; onToggleCompare?: () => void; onDuplicate?: () => void; canEditPricing?: boolean }) {
   const [editing, setEditing] = useState(false);
+  // Loyer « À partir de » : la plus basse offre loueur disponible ; à défaut, le
+  // loyer catalogue saisi par l'ops/admin (monthlyLld).
+  const startingMonthly = leaserOffers.length > 0
+    ? Math.min(...leaserOffers.map((o) => o.monthlyPriceTtc))
+    : vehicle.monthlyLld;
   // Badge énergie — couleurs charte Beev 2026 (Rose / Bleu / Violet / Beige)
   const energyBadgeCls = vehicle.energy === "Électrique"
     ? "bg-beev-rose-30 text-beev-black border-beev-rose"
@@ -2454,6 +2468,16 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
         ) : (
           (onDelete || onDuplicate || onUpdate) && (
             <div className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-white/95 backdrop-blur-sm shadow-md px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              {canEditPricing && (
+                <a
+                  href={`/admin/vehicles?edit=${vehicle.id}`}
+                  className="inline-flex items-center justify-center h-7 w-7 rounded-md text-beev-bleu hover:bg-muted"
+                  title="Éditer le pricing de ce véhicule (backoffice)"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Receipt className="w-3.5 h-3.5" />
+                </a>
+              )}
               {onUpdate && (
                 <Button
                   variant="ghost"
@@ -2482,8 +2506,8 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
         )}
         {/* Bandeau loyer mensuel en bas de l'image (overlay) */}
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-beev-black via-beev-black/80 to-transparent p-3 pt-8">
-          <p className="text-[10px] text-beev-beige/70 uppercase tracking-wide">Loyer mensuel TTC</p>
-          <p className="text-xl font-bold text-beev-beige leading-tight">{fmtEur(vehicle.monthlyLld)}<span className="text-xs text-beev-beige/60 font-normal ml-1">/mois</span></p>
+          <p className="text-[10px] text-beev-beige/70 uppercase tracking-wide">À partir de</p>
+          <p className="text-xl font-bold text-beev-beige leading-tight">{fmtEur(startingMonthly)}<span className="text-xs text-beev-beige/60 font-normal ml-1">/mois TTC</span></p>
         </div>
       </div>
       <CardContent className="p-4 space-y-3">
