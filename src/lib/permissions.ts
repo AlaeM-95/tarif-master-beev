@@ -33,7 +33,7 @@ export const PERMISSION_ORDER: Permission[] = [
 // Repli aligné sur le comportement actuel de l'app.
 const DEFAULTS: Record<UserRole, RolePermissions> = {
   admin: { backoffice_vehicles: true, backoffice_pdf: true, manage_users: true, edit_product_sheet: true },
-  ops: { backoffice_vehicles: true, backoffice_pdf: true, manage_users: false, edit_product_sheet: true },
+  ops: { backoffice_vehicles: true, backoffice_pdf: false, manage_users: false, edit_product_sheet: true },
   sales: { backoffice_vehicles: false, backoffice_pdf: false, manage_users: false, edit_product_sheet: false },
   visitor: { backoffice_vehicles: false, backoffice_pdf: false, manage_users: false, edit_product_sheet: false },
 };
