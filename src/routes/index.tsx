@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles, Copy, BarChart3, Receipt } from "lucide-react";
+import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles, Copy, BarChart3, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type EnergyParams } from "@/lib/store";
 import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
@@ -65,6 +65,31 @@ export const Route = createFileRoute("/")({
     ],
   }),
 });
+
+// Réordonne une entrée dans un Record en préservant l'ordre d'insertion (utilisé
+// par Object.values pour le panneau droit ET le PDF). dir = -1 (monter) / +1 (descendre).
+function moveInRecord<T>(rec: Record<string, T>, key: string, dir: -1 | 1): Record<string, T> {
+  const keys = Object.keys(rec);
+  const i = keys.indexOf(key);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= keys.length) return rec;
+  const reordered = [...keys];
+  [reordered[i], reordered[j]] = [reordered[j], reordered[i]];
+  const next: Record<string, T> = {};
+  for (const k of reordered) next[k] = rec[k];
+  return next;
+}
+
+// Flèches monter/descendre pour réordonner un élément sélectionné (devis).
+function ReorderButtons({ index, total, onMove }: { index?: number; total?: number; onMove?: (dir: -1 | 1) => void }) {
+  if (!onMove || index === undefined || total === undefined || total < 2) return null;
+  return (
+    <div className="flex flex-col -my-0.5">
+      <button type="button" onClick={() => onMove(-1)} disabled={index === 0} title="Monter" className="text-muted-foreground hover:text-foreground disabled:opacity-30 leading-none"><ChevronUp className="w-3.5 h-3.5" /></button>
+      <button type="button" onClick={() => onMove(1)} disabled={index === total - 1} title="Descendre" className="text-muted-foreground hover:text-foreground disabled:opacity-30 leading-none"><ChevronDown className="w-3.5 h-3.5" /></button>
+    </div>
+  );
+}
 
 function App() {
   const { isAdmin, isOps, isSales, signOut } = useAuth();
@@ -1462,8 +1487,10 @@ function App() {
                       <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wide">
                         Véhicules ({counts.v})
                       </p>
-                      {Object.values(selectedV).map((sv) => (
+                      {Object.values(selectedV).map((sv, idx, arr) => (
                         <SelectedVehicleRow key={sv.vehicle.id} sv={sv} energy={energy}
+                          index={idx} total={arr.length}
+                          onMove={(dir) => setSelectedV((s) => moveInRecord(s, sv.vehicle.id, dir))}
                           onChange={(p) => setSelectedV((s) => ({ ...s, [sv.vehicle.id]: { ...(s[sv.vehicle.id] ?? sv), ...p } }))}
                           onRemove={() => toggleV(sv.vehicle)} />
                       ))}
@@ -1476,8 +1503,10 @@ function App() {
                       <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wide">
                         Bornes de recharge ({counts.c})
                       </p>
-                      {Object.values(selectedC).map((sc) => (
+                      {Object.values(selectedC).map((sc, idx, arr) => (
                         <SelectedChargerRow key={sc.instanceId} sc={sc}
+                          index={idx} total={arr.length}
+                          onMove={(dir) => setSelectedC((s) => moveInRecord(s, sc.instanceId, dir))}
                           onChange={(p) => setSelectedC((s) => {
                             const cur = s[sc.instanceId] ?? sc;
                             const merged = { ...cur, ...p };
@@ -2974,7 +3003,7 @@ function FiscalWarningBadge({ vehicle, durationMonths }: { vehicle: Vehicle; dur
   );
 }
 
-function SelectedVehicleRow({ sv, energy, onChange, onRemove }: { sv: SelectedVehicle; energy: EnergyParams; onChange: (p: Partial<SelectedVehicle>) => void; onRemove: () => void }) {
+function SelectedVehicleRow({ sv, energy, onChange, onRemove, index, total, onMove }: { sv: SelectedVehicle; energy: EnergyParams; onChange: (p: Partial<SelectedVehicle>) => void; onRemove: () => void; index?: number; total?: number; onMove?: (dir: -1 | 1) => void }) {
   const [tab, setTab] = useState<"none" | "svc" | "opt">("none");
   const [newSvc, setNewSvc] = useState("");
   const tco = computeTco(sv, energy);
@@ -2996,7 +3025,10 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove }: { sv: SelectedVe
           <p className="text-sm font-medium truncate">{sv.vehicle.brand} {sv.vehicle.model}</p>
           <p className="text-xs text-muted-foreground truncate">{sv.vehicle.version}</p>
         </div>
-        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onRemove}><Trash2 className="w-3 h-3" /></Button>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <ReorderButtons index={index} total={total} onMove={onMove} />
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onRemove}><Trash2 className="w-3 h-3" /></Button>
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <NumField label="Quantité" value={sv.quantity} onChange={(n) => onChange({ quantity: n })} />
@@ -3244,7 +3276,7 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove }: { sv: SelectedVe
   );
 }
 
-function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate }: { sc: SelectedCharger; onChange: (p: Partial<SelectedCharger>) => void; onRemove: () => void; onDuplicate?: () => void }) {
+function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total, onMove }: { sc: SelectedCharger; onChange: (p: Partial<SelectedCharger>) => void; onRemove: () => void; onDuplicate?: () => void; index?: number; total?: number; onMove?: (dir: -1 | 1) => void }) {
   const [openLi, setOpenLi] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const setLi = (i: number, p: Partial<LineItem>) => onChange({ lineItems: sc.lineItems.map((x, idx) => idx === i ? { ...x, ...p } : x) });
@@ -3272,6 +3304,7 @@ function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate }: { sc: Selec
           <p className="text-xs text-muted-foreground">{isHome ? "Domicile collaborateur" : "Site entreprise"} · {sc.charger.powerKw} kW · {fmtEur(totalClient)} HT client</p>
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
+          <ReorderButtons index={index} total={total} onMove={onMove} />
           {onDuplicate && (
             <Button variant="ghost" size="icon" className="h-6 w-6" title={isHome ? "Dupliquer pour un autre collaborateur" : "Dupliquer pour un autre site"} onClick={onDuplicate}><Copy className="w-3 h-3" /></Button>
           )}

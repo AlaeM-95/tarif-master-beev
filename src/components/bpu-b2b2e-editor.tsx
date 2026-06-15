@@ -12,8 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ImageUpload } from "@/components/image-upload";
 import {
-  defaultBpuB2B2E, newBpuBorne, generateBpuB2B2EPdf,
-  type BpuB2B2EConfig, type BpuBorne, type BpuSupplement,
+  defaultBpuB2B2E, newBpuBorne, newBpuAvantage, generateBpuB2B2EPdf,
+  type BpuB2B2EConfig, type BpuBorne, type BpuSupplement, type BpuAvantage,
 } from "@/lib/bpu-b2b2e";
 
 const SK = "beev_bpu_b2b2e_v1";          // infos client (et ancien format combiné)
@@ -73,9 +73,9 @@ export function BpuB2B2EEditor({ open, onOpenChange, clientName }: { open: boole
   // Persistance des infos client (sans les bornes : elles ont leur propre clé).
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const client = { clientName: cfg.clientName, clientLogoUrl: cfg.clientLogoUrl, year: cfg.year, subtitle: cfg.subtitle, scopeLine: cfg.scopeLine };
+    const client = { clientName: cfg.clientName, clientLogoUrl: cfg.clientLogoUrl, year: cfg.year, subtitle: cfg.subtitle, scopeLine: cfg.scopeLine, avantages: cfg.avantages };
     try { localStorage.setItem(SK, JSON.stringify(client)); } catch { /* ignore */ }
-  }, [cfg.clientName, cfg.clientLogoUrl, cfg.year, cfg.subtitle, cfg.scopeLine]);
+  }, [cfg.clientName, cfg.clientLogoUrl, cfg.year, cfg.subtitle, cfg.scopeLine, cfg.avantages]);
 
   // Persistance de la bibliothèque de bornes : indépendante du client, donc
   // conservée même après une réinitialisation.
@@ -95,6 +95,9 @@ export function BpuB2B2EEditor({ open, onOpenChange, clientName }: { open: boole
     setCfg((c) => ({ ...c, bornes: c.bornes.map((b) => b.id === bid ? { ...b, supplements: b.supplements.filter((_, i) => i !== idx) } : b) }));
   const addBorne = () => { const b = newBpuBorne(); setCfg((c) => ({ ...c, bornes: [...c.bornes, b] })); setOpenBorne(b.id); };
   const delBorne = (id: string) => setCfg((c) => ({ ...c, bornes: c.bornes.filter((b) => b.id !== id) }));
+  const addAvantage = () => setCfg((c) => ({ ...c, avantages: [...(c.avantages ?? []), newBpuAvantage()] }));
+  const patchAvantage = (idx: number, p: Partial<BpuAvantage>) => setCfg((c) => ({ ...c, avantages: (c.avantages ?? []).map((a, i) => (i === idx ? { ...a, ...p } : a)) }));
+  const delAvantage = (idx: number) => setCfg((c) => ({ ...c, avantages: (c.avantages ?? []).filter((_, i) => i !== idx) }));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -212,6 +215,24 @@ export function BpuB2B2EEditor({ open, onOpenChange, clientName }: { open: boole
             );
           })}
           <Button variant="outline" size="sm" className="w-full gap-1" onClick={addBorne}><Plus className="w-3.5 h-3.5" /> Ajouter une borne</Button>
+        </div>
+
+        {/* Avantages / remises collaborateur (facultatif) — ajoute une page dédiée au PDF. */}
+        <div className="space-y-2 rounded-lg border p-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="text-sm font-semibold">Avantages & remises collaborateur</Label>
+              <p className="text-[11px] text-muted-foreground">Facultatif. S'affiche en page dédiée du BPU si au moins un avantage est renseigné.</p>
+            </div>
+            <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={addAvantage}><Plus className="w-3 h-3" /> Avantage</Button>
+          </div>
+          {(cfg.avantages ?? []).map((a, i) => (
+            <div key={i} className="grid grid-cols-[1fr_1.4fr_28px] gap-1.5 items-start">
+              <Input value={a.label} onChange={(e) => patchAvantage(i, { label: e.target.value })} placeholder="Ex : Installation offerte" className="h-8 text-sm" />
+              <Input value={a.detail} onChange={(e) => patchAvantage(i, { detail: e.target.value })} placeholder="Détail (ex : forfait de base pris en charge par l'employeur)" className="h-8 text-sm" />
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => delAvantage(i)}><Trash2 className="w-3.5 h-3.5" /></Button>
+            </div>
+          ))}
         </div>
 
         <DialogFooter className="gap-2">
