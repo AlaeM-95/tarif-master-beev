@@ -37,6 +37,7 @@ import { SaveIndicator } from "@/components/save-indicator";
 import { useMaterials, materialToLineItem, MATERIAL_CATEGORIES, type Material } from "@/lib/materials";
 import { useBpuForfaits, bpuForfaitToLineItem, BPU_CATEGORIES, BPU_ZONE_COEFFICIENTS, type BpuForfait, type BpuZone } from "@/lib/bpu";
 import { useAuth } from "@/lib/auth";
+import { useMyCoordinates } from "@/lib/users";
 import { usePermissions } from "@/lib/permissions";
 import { useProposals, useProposal } from "@/lib/proposals";
 import { usePdfConfig } from "@/lib/pdf-config";
@@ -170,6 +171,26 @@ function App() {
     hydratedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Pré-remplissage des coordonnées commercial à partir du compte connecté.
+  // Ne s'applique QUE si les trois champs commercial sont vides (devis neuf) :
+  // on ne réécrit jamais des coordonnées déjà saisies / chargées d'un devis.
+  const { coordinates: myCoordinates } = useMyCoordinates();
+  const prefilledRef = useRef(false);
+  useEffect(() => {
+    if (prefilledRef.current || !hydratedRef.current || !myCoordinates) return;
+    setClient((prev) => {
+      const empty = !prev.salesRep?.trim() && !prev.salesRepEmail?.trim() && !prev.salesRepPhone?.trim();
+      if (!empty) return prev;
+      return {
+        ...prev,
+        salesRep: myCoordinates.name,
+        salesRepEmail: myCoordinates.email,
+        salesRepPhone: myCoordinates.phone,
+      };
+    });
+    prefilledRef.current = true;
+  }, [myCoordinates]);
 
   // Persistance automatique de chaque changement en localStorage (post-hydration).
   useEffect(() => {
@@ -1639,6 +1660,25 @@ function ImportTcoDialog({ onImport }: { onImport: (list: Vehicle[]) => void }) 
 function ClientCard({ client, setClient }: { client: any; setClient: (c: any) => void }) {
   const hasAnyField = Object.values(client).some((v) => typeof v === "string" && v.trim() !== "");
   const reset = () => setClient({ company: "", contact: "", email: "", salesRep: "", salesRepEmail: "", salesRepPhone: "", date: "", notes: "" });
+  const { coordinates: myCoordinates, save: saveCoordinates } = useMyCoordinates();
+
+  // Enregistre nom + téléphone du commercial sur son compte (l'email reste
+  // l'identifiant de connexion). Les prochains devis seront pré-remplis.
+  const handleSaveCoordinates = async () => {
+    try {
+      await saveCoordinates.mutateAsync({ name: client.salesRep ?? "", phone: client.salesRepPhone ?? "" });
+      toast.success("Coordonnées enregistrées sur votre compte");
+    } catch (e: any) {
+      toast.error(`Échec de l'enregistrement : ${e?.message ?? "erreur inconnue"}`);
+    }
+  };
+
+  // Recharge les coordonnées du compte dans les champs du devis.
+  const loadMyCoordinates = () => {
+    if (!myCoordinates) return;
+    setClient({ ...client, salesRep: myCoordinates.name, salesRepEmail: myCoordinates.email, salesRepPhone: myCoordinates.phone });
+    toast.success("Vos coordonnées ont été insérées");
+  };
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
@@ -1663,6 +1703,31 @@ function ClientCard({ client, setClient }: { client: any; setClient: (c: any) =>
         <Field label="Commercial Beev"><Input value={client.salesRep} onChange={(e) => setClient({ ...client, salesRep: e.target.value })} placeholder="Alaé Mahmoudi" /></Field>
         <Field label="Email commercial"><Input value={client.salesRepEmail} onChange={(e) => setClient({ ...client, salesRepEmail: e.target.value })} placeholder="alae@beev.co" /></Field>
         <Field label="Téléphone commercial"><Input value={client.salesRepPhone} onChange={(e) => setClient({ ...client, salesRepPhone: e.target.value })} placeholder="+33 6 ..." /></Field>
+        <div className="sm:col-span-2 flex flex-wrap items-center gap-2 -mt-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs gap-1"
+            onClick={handleSaveCoordinates}
+            disabled={saveCoordinates.isPending}
+            title="Enregistre votre nom et téléphone sur votre compte pour pré-remplir vos prochains devis"
+          >
+            {saveCoordinates.isPending ? "Enregistrement…" : "Enregistrer mes coordonnées"}
+          </Button>
+          {myCoordinates && (myCoordinates.name || myCoordinates.phone) && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs text-muted-foreground"
+              onClick={loadMyCoordinates}
+              title="Réinsère les coordonnées enregistrées sur votre compte"
+            >
+              Insérer mes coordonnées
+            </Button>
+          )}
+        </div>
         <Field label="Notes & conditions" className="sm:col-span-2">
           <Textarea rows={3} value={client.notes} onChange={(e) => setClient({ ...client, notes: e.target.value })} placeholder="Laisser vide pour appliquer les conditions standard du type de projet." />
         </Field>

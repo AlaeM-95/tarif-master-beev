@@ -154,7 +154,7 @@ function AdminVehiclesPage() {
                 <thead className="border-b bg-[#FAF8F4]">
                   <tr className="text-left text-muted-foreground uppercase text-[10px] tracking-wide">
                     <th className="py-2 px-3 w-10"></th>
-                    <th className="py-2 px-3">Marque / Modèle</th>
+                    <th className="py-2 px-3">Marque / Modèle / Version</th>
                     <th className="py-2 px-3">Catégorie</th>
                     <th className="py-2 px-3 text-right">Prix TTC</th>
                     <th className="py-2 px-3 text-right">Remise</th>
@@ -183,6 +183,7 @@ function AdminVehiclesPage() {
                         </td>
                         <td className="py-2 px-3">
                           <p className="font-medium">{v.brand} {v.model}</p>
+                          {v.version && <p className="text-[11px] text-foreground/70 font-medium">{v.version}</p>}
                           <p className="text-[10px] text-muted-foreground">
                             {v.ecoScoreBool && <span className="text-[#35DA76] font-semibold mr-1">éco-score</span>}
                             {v.rangeWltp ? `${v.rangeWltp} km · ` : ""}

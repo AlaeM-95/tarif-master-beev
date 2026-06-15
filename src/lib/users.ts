@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, type UserRole } from "./supabase";
+import { useAuth } from "./auth";
 
 export type AppUser = {
   id: string;
@@ -64,6 +65,58 @@ export function useUsers() {
   });
 
   return { users, isLoading, updateRole, inviteUser };
+}
+
+// Coordonnées commercial rattachées au compte connecté (table profiles).
+// Sert à pré-remplir et persister les champs « commercial » du devis.
+export type SalesCoordinates = {
+  name: string;
+  email: string;
+  phone: string;
+};
+
+export function useMyCoordinates() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const userId = user?.id ?? null;
+
+  const { data: coordinates, isLoading } = useQuery({
+    queryKey: ["my-coordinates", userId],
+    enabled: !!userId,
+    staleTime: 60_000,
+    queryFn: async (): Promise<SalesCoordinates | null> => {
+      if (!userId) return null;
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("email, sales_rep_name, sales_rep_phone")
+        .eq("id", userId)
+        .maybeSingle();
+      if (error) {
+        console.error("[users] fetch coordinates error:", error);
+        return null;
+      }
+      return {
+        name: (data as any)?.sales_rep_name ?? "",
+        email: data?.email ?? user?.email ?? "",
+        phone: (data as any)?.sales_rep_phone ?? "",
+      };
+    },
+  });
+
+  // Enregistre nom + téléphone sur le profil via la RPC sécurisée (l'email
+  // est l'identifiant du compte, non modifiable ici).
+  const save = useMutation({
+    mutationFn: async ({ name, phone }: { name: string; phone: string }) => {
+      const { error } = await supabase.rpc("update_my_sales_coordinates", {
+        p_name: name,
+        p_phone: phone,
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["my-coordinates", userId] }),
+  });
+
+  return { coordinates, isLoading, save };
 }
 
 // Étiquettes lisibles pour l'UI

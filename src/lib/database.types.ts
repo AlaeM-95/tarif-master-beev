@@ -226,11 +226,15 @@ export type Database = {
           email: string | null;
           role: "admin" | "visitor";
           created_at: string;
+          sales_rep_name: string | null;
+          sales_rep_phone: string | null;
         };
         Insert: {
           id: string;
           email?: string | null;
           role?: "admin" | "visitor";
+          sales_rep_name?: string | null;
+          sales_rep_phone?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
       };
@@ -344,6 +348,12 @@ export type Database = {
           internal_notes?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["proposals"]["Insert"]>;
+      };
+    };
+    Functions: {
+      update_my_sales_coordinates: {
+        Args: { p_name: string; p_phone: string };
+        Returns: undefined;
       };
     };
   };
