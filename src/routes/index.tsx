@@ -25,6 +25,7 @@ import { VehicleSpotlight } from "@/components/vehicle-spotlight";
 import { VehicleComparator } from "@/components/vehicle-comparator";
 import { PdfTextEditor, usePdfTextOverrides } from "@/components/pdf-text-editor";
 import { BpuB2B2EEditor } from "@/components/bpu-b2b2e-editor";
+import { AuditConseilEditor } from "@/components/audit-conseil-editor";
 import { CarPolicyImporter } from "@/components/car-policy-importer";
 import { LiveIndicator } from "@/components/live-indicator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -566,6 +567,7 @@ function App() {
 
   const [marginDialog, setMarginDialog] = useState(false);
   const [bpuB2B2EOpen, setBpuB2B2EOpen] = useState(false);
+  const [auditConseilOpen, setAuditConseilOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const { config: pdfConfig, update: updatePdfConfig, reset: resetPdfConfig } = usePdfConfig();
   // Sous-titres de catalogue éditables par type de projet (depuis /admin/pdf).
@@ -880,6 +882,7 @@ function App() {
         onConfirm={() => doGeneratePdf(false)}
       />
       <BpuB2B2EEditor open={bpuB2B2EOpen} onOpenChange={setBpuB2B2EOpen} clientName={client.company} />
+      <AuditConseilEditor open={auditConseilOpen} onOpenChange={setAuditConseilOpen} clientName={client.company} />
       <header className="fixed top-0 left-0 right-0 z-50 h-16 bg-background/95 backdrop-blur-md border-b border-border">
         <div className="container mx-auto px-6 h-full flex items-center justify-between gap-3 flex-nowrap overflow-x-auto">
           {/* ─── Identité Beev (gauche) ─── */}
@@ -1015,6 +1018,18 @@ function App() {
               title="Bordereau des prix unitaires partenariat (recharge domicile)"
             >
               <Sparkles className="w-3.5 h-3.5 text-beev-bleu" /> BPU partenariat
+            </Button>
+
+            {/* Audit & conseil flotte — proposition autonome (audit car policy +
+                recommandations véhicules), indépendante de la sélection du devis. */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAuditConseilOpen(true)}
+              className="gap-1.5"
+              title="Proposition d'audit et de conseil sur la car policy (approche TCO)"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-beev-rose" /> Audit & conseil
             </Button>
 
             {/* Aperçu : ouvre le PDF dans un nouvel onglet sans télécharger. */}
