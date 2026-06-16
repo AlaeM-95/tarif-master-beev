@@ -1491,6 +1491,7 @@ function App() {
                       {Object.values(selectedV).map((sv, idx, arr) => (
                         <SelectedVehicleRow key={sv.vehicle.id} sv={sv} energy={energy}
                           index={idx} total={arr.length}
+                          tripartiteUrl={sv.vehicle.tripartitePdfUrl || vehicles.find((vv) => vv.brand === sv.vehicle.brand && vv.tripartitePdfUrl)?.tripartitePdfUrl}
                           onMove={(dir) => setSelectedV((s) => moveInRecord(s, sv.vehicle.id, dir))}
                           onChange={(p) => setSelectedV((s) => ({ ...s, [sv.vehicle.id]: { ...(s[sv.vehicle.id] ?? sv), ...p } }))}
                           onRemove={() => toggleV(sv.vehicle)} />
@@ -1849,6 +1850,9 @@ function VehicleCatalogByBrand({
           const stockCount = list.filter((v) => v.availableStock).length;
           const selCount = selectedCountByBrand[brand] ?? 0;
           const minPrice = Math.min(...list.map((v) => v.priceTtc).filter((p) => p > 0)) || 0;
+          // Contrat tripartite au niveau du constructeur : dès qu'une fiche de la
+          // marque en a un, on l'affiche sur toutes les fiches de la marque.
+          const brandTripartiteUrl = list.find((v) => v.tripartitePdfUrl && v.tripartitePdfUrl.trim())?.tripartitePdfUrl;
           return (
             <div key={brand} className={`rounded-lg border ${isOpen ? "border-primary/40 bg-primary/5" : "bg-card"} ${selCount > 0 ? "ring-1 ring-[#35DA76]/40" : ""} transition-all`}>
               <button
@@ -1898,6 +1902,7 @@ function VehicleCatalogByBrand({
                         existingCategories={existingCategories}
                         leaserOffers={leaserOffers.filter((o) => o.vehicleId === v.id)}
                         canEditPricing={canEditPricing}
+                        brandTripartiteUrl={brandTripartiteUrl}
                         isInCompare={compareIds?.has(v.id)}
                         onToggleCompare={onToggleCompare ? () => onToggleCompare(v.id) : undefined}
                       />
@@ -2451,7 +2456,9 @@ function ConfirmDeleteButton({ label, onConfirm }: { label: string; onConfirm: (
   );
 }
 
-function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existingCategories = [], leaserOffers = [], isInCompare, onToggleCompare, onDuplicate, canEditPricing }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Vehicle>) => void; onDelete?: () => void; existingCategories?: string[]; leaserOffers?: LeaserOffer[]; isInCompare?: boolean; onToggleCompare?: () => void; onDuplicate?: () => void; canEditPricing?: boolean }) {
+function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existingCategories = [], leaserOffers = [], isInCompare, onToggleCompare, onDuplicate, canEditPricing, brandTripartiteUrl }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Vehicle>) => void; onDelete?: () => void; existingCategories?: string[]; leaserOffers?: LeaserOffer[]; isInCompare?: boolean; onToggleCompare?: () => void; onDuplicate?: () => void; canEditPricing?: boolean; brandTripartiteUrl?: string }) {
+  // Contrat tripartite : propre à la fiche, sinon celui du constructeur (marque).
+  const tripartiteUrl = (vehicle.tripartitePdfUrl && vehicle.tripartitePdfUrl.trim()) ? vehicle.tripartitePdfUrl : brandTripartiteUrl;
   const [editing, setEditing] = useState(false);
   // Loyer « À partir de » : la plus basse offre loueur disponible ; à défaut, le
   // loyer catalogue saisi par l'ops/admin (monthlyLld).
@@ -2599,8 +2606,8 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
           </div>
         )}
         {/* Bouton 'Voir conditions' si un PDF tripartite est uploadé */}
-        {vehicle.tripartitePdfUrl && (
-          <TripartiteViewerButton url={vehicle.tripartitePdfUrl} vehicleLabel={`${vehicle.brand} ${vehicle.model}`} />
+        {tripartiteUrl && (
+          <TripartiteViewerButton url={tripartiteUrl} vehicleLabel={`${vehicle.brand} ${vehicle.model}`} />
         )}
         {editing && onUpdate && (
           <div className="space-y-2 pt-2 border-t border-border/50">
@@ -3005,7 +3012,7 @@ function FiscalWarningBadge({ vehicle, durationMonths }: { vehicle: Vehicle; dur
   );
 }
 
-function SelectedVehicleRow({ sv, energy, onChange, onRemove, index, total, onMove }: { sv: SelectedVehicle; energy: EnergyParams; onChange: (p: Partial<SelectedVehicle>) => void; onRemove: () => void; index?: number; total?: number; onMove?: (dir: -1 | 1) => void }) {
+function SelectedVehicleRow({ sv, energy, onChange, onRemove, index, total, onMove, tripartiteUrl }: { sv: SelectedVehicle; energy: EnergyParams; onChange: (p: Partial<SelectedVehicle>) => void; onRemove: () => void; index?: number; total?: number; onMove?: (dir: -1 | 1) => void; tripartiteUrl?: string }) {
   const [tab, setTab] = useState<"none" | "svc" | "opt">("none");
   const [newSvc, setNewSvc] = useState("");
   const tco = computeTco(sv, energy);
@@ -3044,8 +3051,8 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove, index, total, onMo
         </div>
       </div>
       <TxtField label="N° de devis loueur" value={sv.leaserQuoteRef ?? ""} onChange={(s) => onChange({ leaserQuoteRef: s })} />
-      {sv.vehicle.tripartitePdfUrl && (
-        <TripartiteViewerButton url={sv.vehicle.tripartitePdfUrl} vehicleLabel={`${sv.vehicle.brand} ${sv.vehicle.model}`} />
+      {tripartiteUrl && (
+        <TripartiteViewerButton url={tripartiteUrl} vehicleLabel={`${sv.vehicle.brand} ${sv.vehicle.model}`} />
       )}
 
       {sv.includeTco && (
