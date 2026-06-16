@@ -2916,61 +2916,85 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
 // dans la charte Beev. Remplace le chiffrage à l'achat pour cette borne.
 function drawChargerLeaseBlock(doc: jsPDF, sc: SelectedCharger, y: number, client: ClientInfo, type: ProjectType): number {
   const L = computeChargerLease(sc);
-  y = ensureSpace(doc, y, 130, client, type);
+  // Montants exacts : pas d'arrondi, on n'affiche les centimes que s'ils existent.
+  const money = (n: number) => (Number.isInteger(n) ? eur(n) : eur2(n));
+  const fullW = PAGE_W - M * 2;
+  y = ensureSpace(doc, y, 200, client, type);
+
+  // En-tête
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...LAVENDER);
   doc.text("OFFRE EN LOCATION", M, y);
   y += 14;
-  // Périmètre de l'offre : matériel seul ou matériel + installation.
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
   doc.setTextColor(...SUB);
   doc.text(sc.leaseEquipmentOnly ? "Location du matériel seul · installation non comprise" : "Location du matériel, installation comprise", M, y);
   y += 16;
 
-  const gap = 10;
-  const cardW = (PAGE_W - M * 2 - gap * 3) / 4;
-  const cards: Array<[string, string]> = [
-    ["Loyer mensuel HT", `${eur(L.monthlyTotal)}/mois`],
-    ["Durée du contrat", `${L.duration} mois`],
-    ["Total des loyers HT", eur(L.totalRents)],
-    ["Option d'achat HT (10%)", eur(L.buyout)],
-  ];
-  cards.forEach((c, i) => {
-    const cx = M + i * (cardW + gap);
-    doc.setFillColor(...BG);
-    doc.rect(cx, y, cardW, 48, "F");
-    doc.setFillColor(...ACCENT);
-    doc.rect(cx, y, 3, 48, "F");
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(7);
-    doc.setTextColor(...SUB);
-    doc.text(c[0].toUpperCase(), cx + 10, y + 15);
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(11.5);
-    doc.setTextColor(...INK);
-    doc.text(c[1], cx + 10, y + 34);
-  });
-  y += 48 + 16;
+  // Panneau « financement » : nombre de bornes + calcul EXACT du total des loyers.
+  const qtyTerm = L.qty > 1 ? ` × ${L.qty} bornes` : "";
+  const formula = `${money(L.monthly)} HT/mois${qtyTerm} × ${L.duration} mois  =  ${money(L.totalRents)} HT`;
+  const panelH = 92;
+  doc.setFillColor(...BG);
+  doc.rect(M, y, fullW, panelH, "F");
+  doc.setFillColor(...ACCENT);
+  doc.rect(M, y, 4, panelH, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...SUB);
+  doc.text(`FINANCEMENT · ${L.qty} BORNE${L.qty > 1 ? "S" : ""} INCLUSE${L.qty > 1 ? "S" : ""}`, M + 14, y + 18);
+  // Libellé + calcul exact du total des loyers
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text("TOTAL DES LOYERS HT", M + 14, y + 38);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(13);
+  doc.setTextColor(...INK);
+  doc.text(formula, M + 14, y + 58);
+  // Option d'achat
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...SUB);
+  doc.text(`Option d'achat en fin de contrat (10% du total des loyers) : `, M + 14, y + 78);
+  const w = doc.getTextWidth(`Option d'achat en fin de contrat (10% du total des loyers) : `);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setTextColor(...INK);
+  doc.text(`${money(L.buyout)} HT`, M + 14 + w, y + 78);
+  y += panelH + 18;
 
+  // Coût global de résiliation anticipée : loyers restants + pénalité 10% = total HT à régler.
   if (L.schedule.length) {
-    y = ensureSpace(doc, y, 80, client, type);
+    y = ensureSpace(doc, y, 90, client, type);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...LAVENDER);
+    doc.text("COÛT DE RÉSILIATION ANTICIPÉE", M, y);
+    y += 12;
     autoTable(doc, {
       startY: y,
       theme: "plain",
-      head: [["Résiliation anticipée", "Loyers restants HT", "Pénalité due HT (× 1,10)"]],
+      head: [["Résiliation anticipée", "Loyers restants HT", "Pénalité 10% HT", "Total HT à régler"]],
       body: L.schedule.map((s) => {
         const years = Math.round(s.afterMonths / 12);
-        return [`Après ${years} an${years > 1 ? "s" : ""}`, eur(s.remainingRents), eur(s.penalty)];
+        const penalty10 = s.remainingRents * 0.10;
+        return [
+          `Après ${years} an${years > 1 ? "s" : ""}`,
+          money(s.remainingRents),
+          money(penalty10),
+          money(s.penalty),
+        ];
       }),
-      headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT, cellPadding: 7, halign: "left" },
+      headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 8.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 7, halign: "left" },
       bodyStyles: { fontSize: 9.5, cellPadding: 7, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
       alternateRowStyles: { fillColor: [252, 251, 248] as [number, number, number] },
       columnStyles: {
         0: { cellWidth: "auto" },
-        1: { halign: "right", cellWidth: 130 },
-        2: { halign: "right", cellWidth: 140, fontStyle: "bold" },
+        1: { halign: "right", cellWidth: 110 },
+        2: { halign: "right", cellWidth: 100 },
+        3: { halign: "right", cellWidth: 110, fontStyle: "bold", textColor: LAVENDER },
       },
       margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
     });
@@ -2978,11 +3002,11 @@ function drawChargerLeaseBlock(doc: jsPDF, sc: SelectedCharger, y: number, clien
   }
 
   // Clause
-  const clause = "Condition de résiliation anticipée : en cas de rupture du contrat avant son terme, une pénalité égale aux loyers restant dus, majorés de 10%, est exigible. À l'échéance du contrat, l'option d'achat de l'équipement s'élève à 10% du total des loyers versés.";
+  const clause = "Condition de résiliation anticipée : en cas de rupture du contrat avant son terme, une pénalité égale aux loyers restant dus, majorés de 10%, est exigible (« Total HT à régler »). À l'échéance du contrat, l'option d'achat de l'équipement s'élève à 10% du total des loyers versés.";
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  const cl = doc.splitTextToSize(clause, PAGE_W - M * 2);
+  const cl = doc.splitTextToSize(clause, fullW);
   const clH = cl.length * 11 + 8;
   y = ensureSpace(doc, y, clH + 6, client, type);
   doc.text(cl, M, y);
@@ -3172,9 +3196,10 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   }
   } // fin du gating showChargerLineItems
 
-  // En location du matériel seul, l'installation n'est pas comprise : on n'affiche
-  // pas l'encart des inclusions d'installation.
-  if (!PDF_CFG.showChargerInclusionNote || (sc.leaseEnabled && sc.leaseEquipmentOnly)) return;
+  if (!PDF_CFG.showChargerInclusionNote) return;
+  // Location du matériel seul : on remplace le contenu de l'encart par la seule
+  // mention « matériel seul, sans installation » (titre + item uniques).
+  const equipOnly = !!(sc.leaseEnabled && sc.leaseEquipmentOnly);
   // Encart "Inclus dans la prestation" en liste de bullets propres
   const fallbackInclusions = isHome
     ? [
@@ -3193,7 +3218,9 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
         // la garantie est désormais affichée sur la fiche produit borne, par
         // modèle (champ warranty éditable dans /admin/chargers).
       ];
-  const inclusions = lookupList(TEXTS, isHome ? "home" : "site", "charger_inclusion_items", fallbackInclusions);
+  const inclusions = equipOnly
+    ? ["Location du matériel seul, sans prestation d'installation"]
+    : lookupList(TEXTS, isHome ? "home" : "site", "charger_inclusion_items", fallbackInclusions);
   const lineH = 13;
   const padTop = 14;
   const padBottom = 12;
@@ -3207,12 +3234,14 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
     doc.setFontSize(8.5);
     doc.setTextColor(...LAVENDER);
     doc.text(
-      lookupText(
-        TEXTS,
-        isHome ? "home" : "site",
-        "charger_inclusion_title",
-        isHome ? "INCLUS DANS LE KIT INSTALLATION DOMICILE" : "INCLUS DANS LA PRESTATION CLÉ EN MAIN",
-      ),
+      equipOnly
+        ? "LOCATION DU MATÉRIEL SEUL"
+        : lookupText(
+            TEXTS,
+            isHome ? "home" : "site",
+            "charger_inclusion_title",
+            isHome ? "INCLUS DANS LE KIT INSTALLATION DOMICILE" : "INCLUS DANS LA PRESTATION CLÉ EN MAIN",
+          ),
       M + 16,
       y + padTop,
     );
