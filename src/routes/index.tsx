@@ -3043,6 +3043,9 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove, index, total, onMo
         </div>
       </div>
       <TxtField label="N° de devis loueur" value={sv.leaserQuoteRef ?? ""} onChange={(s) => onChange({ leaserQuoteRef: s })} />
+      {sv.vehicle.tripartitePdfUrl && (
+        <TripartiteViewerButton url={sv.vehicle.tripartitePdfUrl} vehicleLabel={`${sv.vehicle.brand} ${sv.vehicle.model}`} />
+      )}
 
       {sv.includeTco && (
         <div className="rounded-md bg-card p-2 text-[11px] grid grid-cols-3 gap-1">

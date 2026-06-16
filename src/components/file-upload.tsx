@@ -66,8 +66,8 @@ export function FileUpload({ currentUrl, onChange, folder, label = "Document", a
         <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
           <FileText className="w-4 h-4 text-[#5F5F64] flex-shrink-0" />
           <span className="text-xs truncate flex-1" title={fileName ?? ""}>{fileName}</span>
-          <Button asChild variant="ghost" size="icon" className="h-6 w-6" title="Ouvrir">
-            <a href={currentUrl} target="_blank" rel="noopener noreferrer"><ExternalLink className="w-3 h-3" /></a>
+          <Button asChild variant="outline" size="sm" className="h-7 text-xs gap-1 flex-shrink-0" title="Visualiser le document">
+            <a href={currentUrl} target="_blank" rel="noopener noreferrer"><ExternalLink className="w-3 h-3" /> Visualiser</a>
           </Button>
           <Button
             type="button"

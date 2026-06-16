@@ -351,6 +351,9 @@ function VehicleEditForm({ vehicle, offers, onSave, onClose, onDelete }: {
   };
 
   const current = { ...vehicle, ...draft };
+  // « Loyer à partir de » = la plus basse des offres loueurs si elles existent
+  // (cohérent avec la carte catalogue et le panneau droit). Sinon saisie manuelle.
+  const lowestOffer = offers.length ? Math.min(...offers.map((o) => o.monthlyPriceTtc)) : null;
 
   return (
     <>
@@ -376,8 +379,17 @@ function VehicleEditForm({ vehicle, offers, onSave, onClose, onDelete }: {
         <FormSection title="Pricing commercial">
           <FieldRow>
             <NumField label="Prix catalogue TTC" value={current.priceTtc} onChange={(v) => set("priceTtc", v)} onBlur={() => commitField("priceTtc")} suffix="€" />
-            <NumField label="Loyer « à partir de » /mois" value={current.monthlyLld ?? 0} onChange={(v) => set("monthlyLld", v)} onBlur={() => commitField("monthlyLld")} suffix="€" />
-            <NumField label="Remise tripartite (tout le modèle)" value={current.remise ?? 0} onChange={(v) => set("remise", v)} onBlur={() => commitField("remise")} suffix="%" step={0.5} />
+            {lowestOffer != null ? (
+              <div className="flex flex-col gap-1">
+                <Label className="text-[10px] uppercase text-muted-foreground leading-snug block min-h-[26px]">Loyer « à partir de » /mois</Label>
+                <div className="h-8 px-3 text-xs flex items-center rounded-md border bg-muted/40 font-semibold text-[#3809EA]">
+                  {fmtEur(lowestOffer)}<span className="text-muted-foreground font-normal ml-1">· plus bas des offres</span>
+                </div>
+              </div>
+            ) : (
+              <NumField label="Loyer « à partir de » /mois" value={current.monthlyLld ?? 0} onChange={(v) => set("monthlyLld", v)} onBlur={() => commitField("monthlyLld")} suffix="€" />
+            )}
+            <NumField label="Remise tripartite (modèle)" value={current.remise ?? 0} onChange={(v) => set("remise", v)} onBlur={() => commitField("remise")} suffix="%" step={0.5} />
             <NumField label="PCOM distributeur" value={current.pcomPct ?? 0} onChange={(v) => set("pcomPct", v)} onBlur={() => commitField("pcomPct")} suffix="%" step={0.5} />
             <NumField label="Commission Beev" value={current.commissionBeev ?? 0} onChange={(v) => set("commissionBeev", v)} onBlur={() => commitField("commissionBeev")} suffix="€" />
           </FieldRow>
@@ -649,8 +661,8 @@ function FieldRow({ children }: { children: React.ReactNode }) {
 
 function TxtField({ label, value, onChange, onBlur, placeholder }: { label: string; value: string; onChange: (v: string) => void; onBlur?: () => void; placeholder?: string }) {
   return (
-    <div className="space-y-1">
-      <Label className="text-[10px] uppercase text-muted-foreground">{label}</Label>
+    <div className="flex flex-col gap-1">
+      <Label className="text-[10px] uppercase text-muted-foreground leading-snug block min-h-[26px]">{label}</Label>
       <Input value={value} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} placeholder={placeholder} className="h-8 text-xs" />
     </div>
   );
@@ -658,8 +670,8 @@ function TxtField({ label, value, onChange, onBlur, placeholder }: { label: stri
 
 function NumField({ label, value, onChange, onBlur, suffix, step = 1 }: { label: string; value: number; onChange: (v: number) => void; onBlur?: () => void; suffix?: string; step?: number }) {
   return (
-    <div className="space-y-1">
-      <Label className="text-[10px] uppercase text-muted-foreground">{label}{suffix ? ` (${suffix})` : ""}</Label>
+    <div className="flex flex-col gap-1">
+      <Label className="text-[10px] uppercase text-muted-foreground leading-snug block min-h-[26px]">{label}{suffix ? ` (${suffix})` : ""}</Label>
       <Input
         type="number"
         step={step}
