@@ -10,6 +10,7 @@ import {
 
 import { AuthProvider } from "../lib/auth";
 import { Toaster } from "../components/ui/sonner";
+import { SharedProposalsNotifier } from "../components/shared-proposals-notifier";
 import appCss from "../styles.css?url";
 
 function NotFoundComponent() {
@@ -121,6 +122,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <Outlet />
+        <SharedProposalsNotifier />
         <Toaster position="top-right" richColors />
       </AuthProvider>
     </QueryClientProvider>

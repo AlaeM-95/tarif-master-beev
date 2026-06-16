@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Search, FileText, Car, Home as HomeIcon, Building2, Calendar, Trash2, Copy } from "lucide-react";
+import { ArrowLeft, Search, FileText, Car, Home as HomeIcon, Building2, Calendar, Trash2, Copy, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/lib/auth";
 import { useProposals, PROPOSAL_STATUS_LABEL, PROPOSAL_STATUS_COLOR, type ProposalStatus } from "@/lib/proposals";
+import { ShareProposalDialog } from "@/components/share-proposal-dialog";
 
 export const Route = createFileRoute("/proposals")({
   component: ProposalsPage,
@@ -31,6 +32,7 @@ function ProposalsPage() {
   const navigate = useNavigate();
   const { proposals, isLoading, remove, duplicate } = useProposals();
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+  const [shareId, setShareId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<ProposalStatus | "all">("all");
   // Onglet de visibilité : mine (créées par moi) / shared (partagées avec moi)
@@ -183,6 +185,15 @@ function ProposalsPage() {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 text-[#3809EA]"
+                      title="Partager cette proposition"
+                      onClick={() => setShareId(p.id)}
+                    >
+                      <Share2 className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-[#3809EA]"
                       disabled={duplicatingId === p.id}
                       title="Dupliquer cette proposition"
                       onClick={async () => {
@@ -236,6 +247,8 @@ function ProposalsPage() {
           </div>
         )}
       </main>
+
+      <ShareProposalDialog proposalId={shareId} onClose={() => setShareId(null)} />
     </div>
   );
 }
