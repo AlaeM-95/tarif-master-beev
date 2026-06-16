@@ -135,7 +135,32 @@ export type SelectedCharger = {
   technicianQuoteUrl?: string;
   /** Spécifications site personnalisables par le commercial. */
   siteSpecs?: SiteSpecs;
+  /** Mode LOCATION (leasing) : présente la borne en loyer mensuel plutôt qu'à
+   *  l'achat. Le commercial saisit le loyer et la durée ; option d'achat (10%
+   *  du total des loyers) et pénalité de résiliation anticipée (loyers restants
+   *  × 1,10) calculées automatiquement. Remplace le chiffrage à l'achat. */
+  leaseEnabled?: boolean;
+  leaseMonthly?: number;        // loyer mensuel TTC (par borne)
+  leaseDurationMonths?: number; // durée du contrat en mois
 };
+
+// Calculs de l'offre en location d'une borne (par instance).
+export function computeChargerLease(sc: SelectedCharger) {
+  const monthly = Math.max(0, sc.leaseMonthly ?? 0);
+  const duration = Math.max(0, Math.round(sc.leaseDurationMonths ?? 0));
+  const qty = Math.max(1, sc.quantity || 1);
+  const monthlyTotal = monthly * qty;             // loyer mensuel pour l'ensemble des bornes
+  const totalRents = monthlyTotal * duration;     // total des loyers sur le contrat
+  const buyout = totalRents * 0.10;               // option d'achat = 10% du total des loyers
+  // Pénalité de résiliation anticipée à la fin de chaque année : loyers restants × 1,10.
+  const schedule: Array<{ afterMonths: number; remainingMonths: number; remainingRents: number; penalty: number }> = [];
+  for (let m = 12; m < duration; m += 12) {
+    const remainingMonths = duration - m;
+    const remainingRents = remainingMonths * monthlyTotal;
+    schedule.push({ afterMonths: m, remainingMonths, remainingRents, penalty: remainingRents * 1.10 });
+  }
+  return { monthly, duration, qty, monthlyTotal, totalRents, buyout, schedule };
+}
 
 // Calcule le prix unitaire final (avec marge) qui sera présenté au client.
 // Le prix d'achat (unitHt) et la marge restent privés côté admin.
@@ -1994,6 +2019,8 @@ function drawSiteFinancialRecap(doc: jsPDF, chargers: SelectedCharger[]) {
   const installItems: number[] = [];
   const chargerItems: number[] = [];
   for (const sc of chargers) {
+    // Les bornes en location ne sont pas chiffrées à l'achat dans le récap.
+    if (sc.leaseEnabled) continue;
     for (const li of sc.lineItems) {
       const tot = lineItemClientTotal(li) * sc.quantity;
       const isInstall = /pose|forfait|raccord|installation|tranch[ée]|génie/i.test(li.label);
@@ -2070,8 +2097,8 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
     ? Math.max(0, parseFloat(t("site_pay_bureau_ht", "700")) || 700)
     : 0;
 
-  // Total recalculé pour cohérence avec la page récap financier.
-  const total = chargers.reduce((sum, sc) => sum + sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0) * sc.quantity, 0) + bureauControle;
+  // Total recalculé pour cohérence avec la page récap financier (hors bornes en location).
+  const total = chargers.reduce((sum, sc) => sc.leaseEnabled ? sum : sum + sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0) * sc.quantity, 0) + bureauControle;
   const ttc = total * 1.2;
   const acompte50 = ttc * 0.5;
 
@@ -2881,6 +2908,79 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
 }
 
 // ============ FICHE BORNE / SITE ============
+// Bloc « Offre en location » : chiffres clés (loyer, durée, total loyers,
+// option d'achat) + tableau de résiliation anticipée + clause. Présentation pro
+// dans la charte Beev. Remplace le chiffrage à l'achat pour cette borne.
+function drawChargerLeaseBlock(doc: jsPDF, sc: SelectedCharger, y: number, client: ClientInfo, type: ProjectType): number {
+  const L = computeChargerLease(sc);
+  y = ensureSpace(doc, y, 130, client, type);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...LAVENDER);
+  doc.text("OFFRE EN LOCATION", M, y);
+  y += 14;
+
+  const gap = 10;
+  const cardW = (PAGE_W - M * 2 - gap * 3) / 4;
+  const cards: Array<[string, string]> = [
+    ["Loyer mensuel", `${eur(L.monthlyTotal)}/mois`],
+    ["Durée du contrat", `${L.duration} mois`],
+    ["Total des loyers", eur(L.totalRents)],
+    ["Option d'achat (10%)", eur(L.buyout)],
+  ];
+  cards.forEach((c, i) => {
+    const cx = M + i * (cardW + gap);
+    doc.setFillColor(...BG);
+    doc.rect(cx, y, cardW, 48, "F");
+    doc.setFillColor(...ACCENT);
+    doc.rect(cx, y, 3, 48, "F");
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(...SUB);
+    doc.text(c[0].toUpperCase(), cx + 10, y + 15);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(11.5);
+    doc.setTextColor(...INK);
+    doc.text(c[1], cx + 10, y + 34);
+  });
+  y += 48 + 16;
+
+  if (L.schedule.length) {
+    y = ensureSpace(doc, y, 80, client, type);
+    autoTable(doc, {
+      startY: y,
+      theme: "plain",
+      head: [["Résiliation anticipée", "Loyers restants", "Pénalité due (× 1,10)"]],
+      body: L.schedule.map((s) => {
+        const years = Math.round(s.afterMonths / 12);
+        return [`Après ${years} an${years > 1 ? "s" : ""}`, eur(s.remainingRents), eur(s.penalty)];
+      }),
+      headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT, cellPadding: 7, halign: "left" },
+      bodyStyles: { fontSize: 9.5, cellPadding: 7, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
+      alternateRowStyles: { fillColor: [252, 251, 248] as [number, number, number] },
+      columnStyles: {
+        0: { cellWidth: "auto" },
+        1: { halign: "right", cellWidth: 130 },
+        2: { halign: "right", cellWidth: 140, fontStyle: "bold" },
+      },
+      margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
+    });
+    y = (doc as any).lastAutoTable.finalY + 12;
+  }
+
+  // Clause
+  const clause = "Condition de résiliation anticipée : en cas de rupture du contrat avant son terme, une pénalité égale aux loyers restant dus, majorés de 10%, est exigible. À l'échéance du contrat, l'option d'achat de l'équipement s'élève à 10% du total des loyers versés.";
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  const cl = doc.splitTextToSize(clause, PAGE_W - M * 2);
+  const clH = cl.length * 11 + 8;
+  y = ensureSpace(doc, y, clH + 6, client, type);
+  doc.text(cl, M, y);
+  y += clH;
+  return y;
+}
+
 async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectType, idx: number, total: number, client: ClientInfo) {
   const isHome = type === "home";
   eyebrow(doc, `${isHome ? "COLLABORATEUR" : "SITE"} ${idx} / ${total}`, 116);
@@ -2984,9 +3084,15 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   // Le prix d'achat (unitHt brut) et la marge restent invisibles côté client.
   const total_ = sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0);
   const grandTotal = total_ * Math.max(1, sc.quantity);
+  // Mode LOCATION : on présente l'offre en loyer (option d'achat + résiliation)
+  // à la place du chiffrage à l'achat.
+  if (sc.leaseEnabled) {
+    y = drawChargerLeaseBlock(doc, sc, y, client, type);
+  }
   // Le tableau de chiffrage et l'encart 'Pour N collaborateurs' sont gated
   // par showChargerLineItems. Si l'admin a décoché la case, on saute tout.
-  if (PDF_CFG.showChargerLineItems) {
+  // En mode location, le chiffrage à l'achat n'est pas affiché.
+  if (PDF_CFG.showChargerLineItems && !sc.leaseEnabled) {
   y = ensureSpace(doc, y, 110, client, type);
   // Pour le scope SITE, on supprime le footer "Total HT par site" : ce total
   // est partiel (n'inclut pas le bureau de contrôle 700 €), donc il

@@ -14,7 +14,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles, Copy, BarChart3, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type EnergyParams } from "@/lib/store";
-import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
+import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, computeChargerLease, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
 import { BEEV_JOURNEYS, MANDATORY_SERVICES, catalogTypeOf, createBlankCharger, createBlankVehicle, type CatalogType, type Charger, type LineItem, type ProjectType, type Vehicle } from "@/lib/catalog";
 import { AdminBadge } from "@/components/admin-badge";
 import { ImageUpload } from "@/components/image-upload";
@@ -3317,6 +3317,36 @@ function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total,
         <div className="col-span-2"><TxtField label="Adresse" value={sc.siteAddress} onChange={(s) => onChange({ siteAddress: s })} /></div>
         <NumField label={isHome ? "Nb collab." : "Quantité bornes"} value={sc.quantity} onChange={(n) => onChange({ quantity: n })} />
         <NumField label="Remise %" value={sc.discountPct} onChange={(n) => onChange({ discountPct: n })} step={0.5} />
+      </div>
+
+      {/* Mode Achat / Location (leasing). En location : loyer + durée saisis par
+          le commercial, option d'achat (10%) et résiliation calculées, présentés
+          dans le PDF à la place du chiffrage à l'achat. */}
+      <div className="rounded-md border p-2 space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wide">Mode de présentation</span>
+          <div className="flex rounded-md border overflow-hidden text-xs ml-auto">
+            <button type="button" onClick={() => onChange({ leaseEnabled: false })} className={`px-3 py-1 ${!sc.leaseEnabled ? "bg-foreground text-background font-semibold" : "hover:bg-muted"}`}>Achat</button>
+            <button type="button" onClick={() => onChange({ leaseEnabled: true })} className={`px-3 py-1 ${sc.leaseEnabled ? "bg-foreground text-background font-semibold" : "hover:bg-muted"}`}>Location</button>
+          </div>
+        </div>
+        {sc.leaseEnabled && (() => {
+          const L = computeChargerLease(sc);
+          return (
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <NumField label="Loyer mensuel TTC (par borne)" value={sc.leaseMonthly ?? 0} onChange={(n) => onChange({ leaseMonthly: n })} />
+                <NumField label="Durée du contrat (mois)" value={sc.leaseDurationMonths ?? 36} onChange={(n) => onChange({ leaseDurationMonths: n })} />
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-[11px] rounded-md bg-muted/40 p-2">
+                <div><div className="text-muted-foreground">Loyer mensuel total</div><div className="font-semibold">{fmtEur(L.monthlyTotal)}/m</div></div>
+                <div><div className="text-muted-foreground">Total des loyers</div><div className="font-semibold">{fmtEur(L.totalRents)}</div></div>
+                <div><div className="text-muted-foreground">Option d'achat (10%)</div><div className="font-semibold">{fmtEur(L.buyout)}</div></div>
+              </div>
+              <p className="text-[10px] text-muted-foreground">Pénalité de résiliation anticipée = loyers restants × 1,10 (détaillée par année dans le PDF). En mode location, le chiffrage à l'achat n'est pas affiché dans le PDF.</p>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Encart Site entreprise : upload devis technicien (privé, jamais dans le PDF client) */}
