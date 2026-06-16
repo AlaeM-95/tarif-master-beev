@@ -92,7 +92,7 @@ function ProposalDetailPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAF8F4]">
+    <div className="min-h-screen bg-[#FCF9F2]">
       <header className="border-b bg-white sticky top-0 z-10">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">

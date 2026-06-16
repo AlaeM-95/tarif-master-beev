@@ -3411,7 +3411,7 @@ function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total,
             const lineTotalAchat = li.qty * li.unitHt;
             const lineTotalClient = lineItemClientTotal(li);
             return (
-              <div key={i} className="rounded-md border border-border bg-[#FAF8F4]/40 p-2 space-y-1.5">
+              <div key={i} className="rounded-md border border-border bg-[#FCF9F2]/40 p-2 space-y-1.5">
                 {/* Ligne 1 : désignation pleine largeur + bouton supprimer */}
                 <div className="flex items-start gap-1">
                   <Input

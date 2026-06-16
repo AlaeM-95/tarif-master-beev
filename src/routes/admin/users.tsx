@@ -81,7 +81,7 @@ function AdminUsersPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAF8F4]">
+    <div className="min-h-screen bg-[#FCF9F2]">
       <header className="border-b bg-white sticky top-0 z-10">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
@@ -140,7 +140,7 @@ function AdminUsersPage() {
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="border-b bg-[#FAF8F4]">
+                <thead className="border-b bg-[#FCF9F2]">
                   <tr className="text-left text-muted-foreground uppercase text-[10px] tracking-wide">
                     <th className="py-3 px-4">Email</th>
                     <th className="py-3 px-4">Rôle actuel</th>
@@ -195,7 +195,7 @@ function AdminUsersPage() {
             </p>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="border-b bg-[#FAF8F4]">
+                <thead className="border-b bg-[#FCF9F2]">
                   <tr className="text-left text-muted-foreground uppercase text-[10px] tracking-wide">
                     <th className="py-3 px-4">Accès</th>
                     <th className="py-3 px-4 text-center">Admin</th>

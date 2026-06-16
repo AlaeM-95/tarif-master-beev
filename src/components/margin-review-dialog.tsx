@@ -52,7 +52,7 @@ export function MarginReviewDialog({ open, onClose, selectedChargers, onUpdateLi
 
             return (
               <div key={sc.instanceId} className="rounded-lg border border-border overflow-hidden">
-                <div className="bg-[#FAF8F4] px-4 py-3 border-b flex items-center justify-between flex-wrap gap-2">
+                <div className="bg-[#FCF9F2] px-4 py-3 border-b flex items-center justify-between flex-wrap gap-2">
                   <div>
                     <p className="font-semibold text-sm">{sc.charger.brand} {sc.charger.model}</p>
                     <p className="text-xs text-muted-foreground">{sc.siteName || "Site non nommé"} · {sc.quantity} borne(s)</p>
@@ -89,7 +89,7 @@ export function MarginReviewDialog({ open, onClose, selectedChargers, onUpdateLi
                   ))}
                 </div>
 
-                <div className="bg-[#FAF8F4] px-4 py-2 border-t flex justify-between items-center text-xs flex-wrap gap-2">
+                <div className="bg-[#FCF9F2] px-4 py-2 border-t flex justify-between items-center text-xs flex-wrap gap-2">
                   <span className="text-muted-foreground">Total achat <strong className="text-[#111111]">{fmt(totalAchat)}</strong></span>
                   <Badge variant="outline" className="text-[#3809EA] border-[#3809EA]/30">
                     Marge {fmt(margeSite)} ({margeSitePct.toFixed(1)} %)

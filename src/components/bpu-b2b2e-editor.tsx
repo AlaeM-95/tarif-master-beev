@@ -103,6 +103,7 @@ export function BpuB2B2EEditor({ open, onOpenChange, clientName }: { open: boole
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
+          <span className="block w-10 h-1 rounded-full bg-beev-rose mb-1" />
           <DialogTitle>BPU partenariat (nouveau) — B2B2E</DialogTitle>
           <DialogDescription>
             Définissez les prix de la tarification partenariat et le logo du client. Le PDF s'ouvre dans un nouvel onglet : utilisez « Enregistrer en PDF » dans la boîte d'impression.

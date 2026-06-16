@@ -144,6 +144,7 @@ export function AuditConseilEditor({ open, onOpenChange, clientName }: { open: b
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
+          <span className="block w-10 h-1 rounded-full bg-beev-rose mb-1" />
           <DialogTitle>Audit & conseil flotte</DialogTitle>
           <DialogDescription>
             Construisez la proposition d'audit et de recommandation flotte (approche TCO). Le PDF s'ouvre dans un nouvel onglet : utilisez « Enregistrer en PDF » dans la boîte d'impression.

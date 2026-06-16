@@ -874,7 +874,7 @@ export async function generateProposalPdf(opts: {
 async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nbC: number) {
   // Charte officielle Beev — couleurs synchronisées avec pdf_settings (admin)
   // INK     = colorInk    (texte principal, #111111 par défaut)
-  // BG      = colorBg     (fond cream, #FAF8F4 par défaut)
+  // BG      = colorBg     (fond cream, #FCF9F2 par défaut)
   // LAVENDER = colorLavender (accent primaire, #3809EA)
   // ACCENT  = colorAccent  (vert Beev, #35DA76)
   // Toute modification dans /admin/pdf > Apparence se répercute ici.

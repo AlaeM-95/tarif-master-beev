@@ -106,7 +106,7 @@ function AdminVehiclesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAF8F4]">
+    <div className="min-h-screen bg-[#FCF9F2]">
       <header className="border-b bg-white sticky top-0 z-10">
         <div className="container mx-auto px-6 py-3">
           <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -164,7 +164,7 @@ function AdminVehiclesPage() {
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
-                <thead className="border-b bg-[#FAF8F4]">
+                <thead className="border-b bg-[#FCF9F2]">
                   <tr className="text-left text-muted-foreground uppercase text-[10px] tracking-wide">
                     <th className="py-2 px-3 w-10"></th>
                     <th className="py-2 px-3">Marque / Modèle / Version</th>
@@ -619,7 +619,9 @@ function OfferRow({ offer, onUpdate, onDelete }: {
 function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-2">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b pb-1">{title}</h3>
+      <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b pb-1">
+        <span className="inline-block w-4 h-[3px] rounded-full bg-beev-rose" />{title}
+      </h3>
       {children}
     </section>
   );

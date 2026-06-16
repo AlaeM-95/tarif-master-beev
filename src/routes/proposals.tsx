@@ -69,7 +69,7 @@ function ProposalsPage() {
   if (!isSales) return null;
 
   return (
-    <div className="min-h-screen bg-[#FAF8F4]">
+    <div className="min-h-screen bg-[#FCF9F2]">
       <header className="border-b bg-white sticky top-0 z-10">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -152,7 +152,7 @@ function ProposalsPage() {
                 <Card key={p.id} className="hover:shadow-md transition-shadow">
                   <CardContent className="p-4 flex items-center gap-4">
                     <Link to="/proposals/$id" params={{ id: p.id }} className="flex-1 flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-[#FAF8F4] flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-lg bg-[#FCF9F2] flex items-center justify-center">
                         <ProjectIcon className="w-5 h-5 text-[#5F5F64]" />
                       </div>
                       <div className="flex-1 min-w-0">

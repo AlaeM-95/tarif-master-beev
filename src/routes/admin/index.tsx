@@ -47,7 +47,7 @@ function AdminHubPage() {
   if (!allowed) return null;
 
   return (
-    <div className="min-h-screen bg-[#FAF8F4]">
+    <div className="min-h-screen bg-[#FCF9F2]">
       <header className="border-b bg-white">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
