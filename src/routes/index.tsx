@@ -1936,12 +1936,13 @@ function TripartiteViewerButton({ url, vehicleLabel }: { url: string; vehicleLab
             <DialogTitle>Conditions tripartite — {vehicleLabel}</DialogTitle>
           </DialogHeader>
           <div className="flex-1 rounded-md border overflow-hidden bg-muted">
+            {/* iframe simple (sans sandbox) : Chrome bloque le rendu des PDF
+                dans une iframe sandboxée. La barre d'outils est masquée via
+                #toolbar=0 pour limiter le téléchargement (best effort). */}
             <iframe
               src={`${url}#toolbar=0&navpanes=0&scrollbar=1`}
               className="w-full h-full"
               title="Conditions tripartite"
-              // CSP-like restrictions via sandbox : autorise script (PDF.js) et same-origin lecture, bloque downloads/popups
-              sandbox="allow-scripts allow-same-origin"
             />
           </div>
           <p className="text-[10px] text-muted-foreground">

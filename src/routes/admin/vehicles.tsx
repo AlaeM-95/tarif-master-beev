@@ -294,6 +294,24 @@ function AdminVehiclesPage() {
                       return;
                     }
                   }
+                  // Contrat tripartite (PDF + nom) : il s'applique au CONSTRUCTEUR.
+                  // On le duplique sur toutes les fiches de la même marque.
+                  if (patch.tripartitePdfUrl !== undefined || patch.tripartiteContract !== undefined) {
+                    const tri: Partial<Vehicle> = {};
+                    if (patch.tripartitePdfUrl !== undefined) tri.tripartitePdfUrl = patch.tripartitePdfUrl;
+                    if (patch.tripartiteContract !== undefined) tri.tripartiteContract = patch.tripartiteContract;
+                    const brandSiblings = vehicles.filter((v) => {
+                      if (v.id === editingVehicle.id || v.brand !== editingVehicle.brand) return false;
+                      const needsPdf = patch.tripartitePdfUrl !== undefined && v.tripartitePdfUrl !== patch.tripartitePdfUrl;
+                      const needsContract = patch.tripartiteContract !== undefined && v.tripartiteContract !== patch.tripartiteContract;
+                      return needsPdf || needsContract;
+                    });
+                    if (brandSiblings.length) {
+                      await Promise.all(brandSiblings.map((v) => updateVehicle(v.id, tri)));
+                      toast.success(`Contrat tripartite appliqué à ${brandSiblings.length + 1} fiches ${editingVehicle.brand}`);
+                      return;
+                    }
+                  }
                   toast.success("Véhicule mis à jour");
                 } catch (e) {
                   toast.error(`Échec : ${e instanceof Error ? e.message : "erreur"}`);
