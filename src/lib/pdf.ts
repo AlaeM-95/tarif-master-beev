@@ -142,6 +142,9 @@ export type SelectedCharger = {
   leaseEnabled?: boolean;
   leaseMonthly?: number;        // loyer mensuel HT (par borne)
   leaseDurationMonths?: number; // durée du contrat en mois
+  /** Location du matériel SEUL (sans installation). Le PDF mentionne « matériel
+   *  seul » et n'affiche pas les inclusions d'installation. */
+  leaseEquipmentOnly?: boolean;
 };
 
 // Calculs de l'offre en location d'une borne (par instance).
@@ -2919,6 +2922,12 @@ function drawChargerLeaseBlock(doc: jsPDF, sc: SelectedCharger, y: number, clien
   doc.setTextColor(...LAVENDER);
   doc.text("OFFRE EN LOCATION", M, y);
   y += 14;
+  // Périmètre de l'offre : matériel seul ou matériel + installation.
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...SUB);
+  doc.text(sc.leaseEquipmentOnly ? "Location du matériel seul · installation non comprise" : "Location du matériel, installation comprise", M, y);
+  y += 16;
 
   const gap = 10;
   const cardW = (PAGE_W - M * 2 - gap * 3) / 4;
@@ -3163,7 +3172,9 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   }
   } // fin du gating showChargerLineItems
 
-  if (!PDF_CFG.showChargerInclusionNote) return;
+  // En location du matériel seul, l'installation n'est pas comprise : on n'affiche
+  // pas l'encart des inclusions d'installation.
+  if (!PDF_CFG.showChargerInclusionNote || (sc.leaseEnabled && sc.leaseEquipmentOnly)) return;
   // Encart "Inclus dans la prestation" en liste de bullets propres
   const fallbackInclusions = isHome
     ? [

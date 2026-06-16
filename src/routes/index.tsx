@@ -3338,6 +3338,15 @@ function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total,
                 <NumField label="Loyer mensuel HT (par borne)" value={sc.leaseMonthly ?? 0} onChange={(n) => onChange({ leaseMonthly: n })} />
                 <NumField label="Durée du contrat (mois)" value={sc.leaseDurationMonths ?? 36} onChange={(n) => onChange({ leaseDurationMonths: n })} />
               </div>
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!!sc.leaseEquipmentOnly}
+                  onChange={(e) => onChange({ leaseEquipmentOnly: e.target.checked })}
+                  className="h-4 w-4 accent-beev-bleu"
+                />
+                <span>Location du matériel seul (sans installation)</span>
+              </label>
               <div className="grid grid-cols-3 gap-2 text-[11px] rounded-md bg-muted/40 p-2">
                 <div><div className="text-muted-foreground">Loyer mensuel total HT</div><div className="font-semibold">{fmtEur(L.monthlyTotal)}/m</div></div>
                 <div><div className="text-muted-foreground">Total des loyers HT</div><div className="font-semibold">{fmtEur(L.totalRents)}</div></div>
