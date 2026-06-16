@@ -94,7 +94,7 @@ export function VehicleSpotlight({
                 <div className="text-right shrink-0">
                   <p className="text-[10px] uppercase text-beev-black/60">À partir de</p>
                   <p className="text-xl font-bold text-beev-black">{fmtEur(v.monthlyLld)}/mois</p>
-                  <p className="text-[10px] text-beev-black/60">LLD HT</p>
+                  <p className="text-[10px] text-beev-black/60">LLD TTC</p>
                 </div>
               </div>
 

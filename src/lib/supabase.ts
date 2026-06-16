@@ -16,3 +16,18 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, 
 });
 
 export type UserRole = "admin" | "ops" | "sales" | "visitor";
+
+// URL publique de l'application, utilisée pour les redirections des emails
+// d'authentification (invitation, lien magique, réinitialisation de mot de
+// passe). On privilégie l'origine réelle (preview Lovable, domaine custom),
+// sauf en local (localhost) ou en SSR où l'on retombe sur l'URL de production.
+const PROD_APP_URL = "https://tarif-master-beev.lovable.app";
+export function appUrl(path = ""): string {
+  const origin =
+    typeof window !== "undefined" &&
+    window.location?.origin &&
+    !/localhost|127\.0\.0\.1/.test(window.location.origin)
+      ? window.location.origin
+      : PROD_APP_URL;
+  return `${origin}${path}`;
+}

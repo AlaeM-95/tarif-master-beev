@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase, type UserRole } from "./supabase";
+import { supabase, appUrl, type UserRole } from "./supabase";
 import { useAuth } from "./auth";
 
 export type AppUser = {
@@ -55,8 +55,8 @@ export function useUsers() {
         email: email.trim().toLowerCase(),
         options: {
           shouldCreateUser: true,
-          // Redirection après clic sur le lien (page d'accueil de l'app)
-          emailRedirectTo: typeof window !== "undefined" ? window.location.origin : undefined,
+          // Redirection après clic sur le lien (URL publique de l'app, jamais localhost)
+          emailRedirectTo: appUrl(),
         },
       });
       if (error) throw new Error(error.message);

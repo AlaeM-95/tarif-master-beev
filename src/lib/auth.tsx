@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { supabase, type UserRole } from "./supabase";
+import { supabase, appUrl, type UserRole } from "./supabase";
 
 type AuthContextValue = {
   user: User | null;
@@ -97,14 +97,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error?.message ?? null };
   };
 
-  const redirectBase = typeof window !== "undefined" ? window.location.origin : undefined;
-
   // Lien magique : connecte sans mot de passe. shouldCreateUser:false pour ne
   // pas créer de compte depuis l'écran de login (l'invitation se fait par l'admin).
   const signInWithMagicLink = async (email: string) => {
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim().toLowerCase(),
-      options: { shouldCreateUser: false, emailRedirectTo: redirectBase },
+      options: { shouldCreateUser: false, emailRedirectTo: appUrl() },
     });
     return { error: error?.message ?? null };
   };
@@ -112,7 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Réinitialisation : envoie un email avec un lien qui ramène sur /set-password.
   const sendPasswordReset = async (email: string) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-      redirectTo: redirectBase ? `${redirectBase}/set-password` : undefined,
+      redirectTo: appUrl("/set-password"),
     });
     return { error: error?.message ?? null };
   };
