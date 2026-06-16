@@ -2951,7 +2951,11 @@ function drawChargerLeaseBlock(doc: jsPDF, sc: SelectedCharger, y: number, clien
   doc.setTextColor(...SUB);
   doc.text("TOTAL DES LOYERS HT", M + 14, y + 38);
   doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(13);
+  let fSize = 13;
+  doc.setFontSize(fSize);
+  // Auto-ajustement : réduit la taille si la formule dépasse la largeur du panneau.
+  const maxW = fullW - 28;
+  while (fSize > 8 && doc.getTextWidth(formula) > maxW) { fSize -= 0.5; doc.setFontSize(fSize); }
   doc.setTextColor(...INK);
   doc.text(formula, M + 14, y + 58);
   // Option d'achat

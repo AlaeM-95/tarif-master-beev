@@ -3398,10 +3398,13 @@ function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total,
         <SiteSpecsEditor sc={sc} onChange={onChange} />
       )}
 
-      <button type="button" onClick={() => setOpenLi((o) => !o)} className="w-full text-xs px-2 py-1.5 rounded-md border bg-card hover:bg-accent/40 flex justify-between">
-        <span>Chiffrage · {sc.lineItems.length} lignes · marge {margePct.toFixed(1)} %</span><span>{openLi ? "▴" : "▾"}</span>
-      </button>
-      {openLi && (
+      {/* Chiffrage à l'achat — masqué en mode location (non utilisé dans le PDF). */}
+      {!sc.leaseEnabled && (
+        <button type="button" onClick={() => setOpenLi((o) => !o)} className="w-full text-xs px-2 py-1.5 rounded-md border bg-card hover:bg-accent/40 flex justify-between">
+          <span>Chiffrage · {sc.lineItems.length} lignes · marge {margePct.toFixed(1)} %</span><span>{openLi ? "▴" : "▾"}</span>
+        </button>
+      )}
+      {openLi && !sc.leaseEnabled && (
         <div className="rounded-md border bg-card p-2 space-y-3">
           {sc.lineItems.map((li, i) => {
             const clientUnit = lineItemClientUnit(li);
