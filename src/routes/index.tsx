@@ -500,7 +500,8 @@ function App() {
       return {
         ...s,
         [v.id]: {
-          vehicle: v, quantity: 1, discountPct: 0,
+          // La remise est pré-remplie avec la remise tripartite catalogue (ops).
+          vehicle: v, quantity: 1, discountPct: v.remise ?? 0,
           negotiatedMonthly: negotiated,
           durationMonths: duration, kmPerYear: energy.kmPerYear,
           includeTco: false, services: [], options: [],
@@ -3041,6 +3042,8 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove, index, total, onMo
           <Label htmlFor={`tco-${sv.vehicle.id}`} className="text-[11px] leading-tight">Inclure TCO dans la présentation</Label>
         </div>
       </div>
+      <TxtField label="N° de devis loueur" value={sv.leaserQuoteRef ?? ""} onChange={(s) => onChange({ leaserQuoteRef: s })} />
+
       {sv.includeTco && (
         <div className="rounded-md bg-card p-2 text-[11px] grid grid-cols-3 gap-1">
           <div><div className="text-muted-foreground">Loyer/100km</div><div className="font-semibold">{tco.lease100.toFixed(2)} €</div></div>

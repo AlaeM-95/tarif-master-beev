@@ -63,6 +63,10 @@ export type SelectedVehicle = {
    *  apparaît dans le comparateur global. Exemples : "Groupe A", "Berlines",
    *  "Remplacement 3008". */
   comparisonGroup?: string;
+  /** N° de devis du loueur saisi par le commercial : permet de retrouver l'offre
+   *  préparée chez le loueur. Affiché dans le PDF sous « Proposition Beev /
+   *  Tarification LLD ». */
+  leaserQuoteRef?: string;
 };
 
 /** Spécifications site personnalisables par le commercial pour le rapport site
@@ -2599,6 +2603,16 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.text(noteLines, innerX, py);
 
   let y = mainY + mainH + 18;
+
+  // N° de devis loueur (sous la proposition Beev / tarification LLD) — aide à
+  // retrouver l'offre préparée chez le loueur.
+  if (sv.leaserQuoteRef && sv.leaserQuoteRef.trim()) {
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...SUB);
+    doc.text(`N° de devis loueur : ${sv.leaserQuoteRef.trim()}`, M, y);
+    y += 16;
+  }
 
   // Configurations alternatives — si le commercial a ajouté plusieurs scénarios
   // durée/km/loyer pour ce véhicule, on les présente en tableau comparatif

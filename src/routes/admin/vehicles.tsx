@@ -278,6 +278,22 @@ function AdminVehiclesPage() {
               onSave={async (patch) => {
                 try {
                   await updateVehicle(editingVehicle.id, patch);
+                  // Remise tripartite : elle s'applique à TOUT le modèle (même
+                  // marque + modèle), quelle que soit la version. Ex : Ford
+                  // Explorer 79 kWh Pack Select 24% → Pack Connect 24% aussi.
+                  if (patch.remise !== undefined) {
+                    const siblings = vehicles.filter(
+                      (v) => v.id !== editingVehicle.id
+                        && v.brand === editingVehicle.brand
+                        && v.model === editingVehicle.model
+                        && (v.remise ?? 0) !== patch.remise,
+                    );
+                    if (siblings.length) {
+                      await Promise.all(siblings.map((v) => updateVehicle(v.id, { remise: patch.remise })));
+                      toast.success(`Remise ${patch.remise}% appliquée à ${siblings.length + 1} versions ${editingVehicle.brand} ${editingVehicle.model}`);
+                      return;
+                    }
+                  }
                   toast.success("Véhicule mis à jour");
                 } catch (e) {
                   toast.error(`Échec : ${e instanceof Error ? e.message : "erreur"}`);
@@ -361,7 +377,7 @@ function VehicleEditForm({ vehicle, offers, onSave, onClose, onDelete }: {
           <FieldRow>
             <NumField label="Prix catalogue TTC" value={current.priceTtc} onChange={(v) => set("priceTtc", v)} onBlur={() => commitField("priceTtc")} suffix="€" />
             <NumField label="Loyer « à partir de » /mois" value={current.monthlyLld ?? 0} onChange={(v) => set("monthlyLld", v)} onBlur={() => commitField("monthlyLld")} suffix="€" />
-            <NumField label="Remise totale" value={current.remise ?? 0} onChange={(v) => set("remise", v)} onBlur={() => commitField("remise")} suffix="%" step={0.5} />
+            <NumField label="Remise tripartite (tout le modèle)" value={current.remise ?? 0} onChange={(v) => set("remise", v)} onBlur={() => commitField("remise")} suffix="%" step={0.5} />
             <NumField label="PCOM distributeur" value={current.pcomPct ?? 0} onChange={(v) => set("pcomPct", v)} onBlur={() => commitField("pcomPct")} suffix="%" step={0.5} />
             <NumField label="Commission Beev" value={current.commissionBeev ?? 0} onChange={(v) => set("commissionBeev", v)} onBlur={() => commitField("commissionBeev")} suffix="€" />
           </FieldRow>
