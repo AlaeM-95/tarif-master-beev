@@ -140,7 +140,7 @@ export type SelectedCharger = {
    *  du total des loyers) et pénalité de résiliation anticipée (loyers restants
    *  × 1,10) calculées automatiquement. Remplace le chiffrage à l'achat. */
   leaseEnabled?: boolean;
-  leaseMonthly?: number;        // loyer mensuel TTC (par borne)
+  leaseMonthly?: number;        // loyer mensuel HT (par borne)
   leaseDurationMonths?: number; // durée du contrat en mois
 };
 
@@ -2923,10 +2923,10 @@ function drawChargerLeaseBlock(doc: jsPDF, sc: SelectedCharger, y: number, clien
   const gap = 10;
   const cardW = (PAGE_W - M * 2 - gap * 3) / 4;
   const cards: Array<[string, string]> = [
-    ["Loyer mensuel", `${eur(L.monthlyTotal)}/mois`],
+    ["Loyer mensuel HT", `${eur(L.monthlyTotal)}/mois`],
     ["Durée du contrat", `${L.duration} mois`],
-    ["Total des loyers", eur(L.totalRents)],
-    ["Option d'achat (10%)", eur(L.buyout)],
+    ["Total des loyers HT", eur(L.totalRents)],
+    ["Option d'achat HT (10%)", eur(L.buyout)],
   ];
   cards.forEach((c, i) => {
     const cx = M + i * (cardW + gap);
@@ -2950,7 +2950,7 @@ function drawChargerLeaseBlock(doc: jsPDF, sc: SelectedCharger, y: number, clien
     autoTable(doc, {
       startY: y,
       theme: "plain",
-      head: [["Résiliation anticipée", "Loyers restants", "Pénalité due (× 1,10)"]],
+      head: [["Résiliation anticipée", "Loyers restants HT", "Pénalité due HT (× 1,10)"]],
       body: L.schedule.map((s) => {
         const years = Math.round(s.afterMonths / 12);
         return [`Après ${years} an${years > 1 ? "s" : ""}`, eur(s.remainingRents), eur(s.penalty)];

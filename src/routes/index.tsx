@@ -3335,13 +3335,13 @@ function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total,
           return (
             <div className="space-y-2">
               <div className="grid grid-cols-2 gap-2">
-                <NumField label="Loyer mensuel TTC (par borne)" value={sc.leaseMonthly ?? 0} onChange={(n) => onChange({ leaseMonthly: n })} />
+                <NumField label="Loyer mensuel HT (par borne)" value={sc.leaseMonthly ?? 0} onChange={(n) => onChange({ leaseMonthly: n })} />
                 <NumField label="Durée du contrat (mois)" value={sc.leaseDurationMonths ?? 36} onChange={(n) => onChange({ leaseDurationMonths: n })} />
               </div>
               <div className="grid grid-cols-3 gap-2 text-[11px] rounded-md bg-muted/40 p-2">
-                <div><div className="text-muted-foreground">Loyer mensuel total</div><div className="font-semibold">{fmtEur(L.monthlyTotal)}/m</div></div>
-                <div><div className="text-muted-foreground">Total des loyers</div><div className="font-semibold">{fmtEur(L.totalRents)}</div></div>
-                <div><div className="text-muted-foreground">Option d'achat (10%)</div><div className="font-semibold">{fmtEur(L.buyout)}</div></div>
+                <div><div className="text-muted-foreground">Loyer mensuel total HT</div><div className="font-semibold">{fmtEur(L.monthlyTotal)}/m</div></div>
+                <div><div className="text-muted-foreground">Total des loyers HT</div><div className="font-semibold">{fmtEur(L.totalRents)}</div></div>
+                <div><div className="text-muted-foreground">Option d'achat HT (10%)</div><div className="font-semibold">{fmtEur(L.buyout)}</div></div>
               </div>
               <p className="text-[10px] text-muted-foreground">Pénalité de résiliation anticipée = loyers restants × 1,10 (détaillée par année dans le PDF). En mode location, le chiffrage à l'achat n'est pas affiché dans le PDF.</p>
             </div>
