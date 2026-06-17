@@ -14,7 +14,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles, Copy, BarChart3, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type EnergyParams } from "@/lib/store";
-import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, computeChargerLease, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
+import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, computeChargerLease, getVehicleSpecRows, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
 import { BEEV_JOURNEYS, MANDATORY_SERVICES, catalogTypeOf, createBlankCharger, createBlankVehicle, type CatalogType, type Charger, type LineItem, type ProjectType, type Vehicle } from "@/lib/catalog";
 import { AdminBadge } from "@/components/admin-badge";
 import { ImageUpload } from "@/components/image-upload";
@@ -569,6 +569,7 @@ function App() {
           options: sv.options.map((o) => ({ ...o })),
           additionalConfigs: sv.additionalConfigs?.map((c) => ({ ...c })),
           competitorOffers: sv.competitorOffers?.map((c) => ({ ...c })),
+          hiddenSpecs: sv.hiddenSpecs ? [...sv.hiddenSpecs] : undefined,
         },
       };
     });
@@ -3088,7 +3089,30 @@ function FiscalWarningBadge({ vehicle, durationMonths }: { vehicle: Vehicle; dur
 function SelectedVehicleRow({ sv, energy, onChange, onRemove, onDuplicate, index, total, onMove, tripartiteUrl }: { sv: SelectedVehicle; energy: EnergyParams; onChange: (p: Partial<SelectedVehicle>) => void; onRemove: () => void; onDuplicate?: () => void; index?: number; total?: number; onMove?: (dir: -1 | 1) => void; tripartiteUrl?: string }) {
   const [tab, setTab] = useState<"none" | "svc" | "opt">("none");
   const [newSvc, setNewSvc] = useState("");
+  const [specsOpen, setSpecsOpen] = useState(false);
   const tco = computeTco(sv, energy);
+  // Caractéristiques techniques affichables sur la fiche (mêmes clés que le PDF).
+  // Le commercial choisit lesquelles afficher / masquer via sv.hiddenSpecs.
+  const { config: pdfConfig } = usePdfConfig();
+  const specToggles = (() => {
+    const rows = getVehicleSpecRows(sv.vehicle, pdfConfig);
+    const seen = new Set<string>();
+    const LABEL: Record<string, string> = { consumption: "Consommation" };
+    const out: { key: string; label: string }[] = [];
+    for (const r of rows) {
+      if (seen.has(r.key)) continue;
+      seen.add(r.key);
+      out.push({ key: r.key, label: LABEL[r.key] ?? r.label });
+    }
+    return out;
+  })();
+  const hiddenSpecs = new Set(sv.hiddenSpecs ?? []);
+  const hiddenCount = specToggles.filter((s) => hiddenSpecs.has(s.key)).length;
+  const toggleSpec = (key: string, show: boolean) => {
+    const next = new Set(sv.hiddenSpecs ?? []);
+    if (show) next.delete(key); else next.add(key);
+    onChange({ hiddenSpecs: Array.from(next) });
+  };
   const addSvc = () => {
     const t = newSvc.trim();
     if (!t) return;
@@ -3145,6 +3169,44 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove, onDuplicate, index
       <TxtField label="N° de devis loueur" value={sv.leaserQuoteRef ?? ""} onChange={(s) => onChange({ leaserQuoteRef: s })} />
       {tripartiteUrl && (
         <TripartiteViewerButton url={tripartiteUrl} vehicleLabel={`${sv.vehicle.brand} ${sv.vehicle.model}`} />
+      )}
+
+      {/* Caractéristiques techniques à afficher ou non sur la fiche PDF.
+          Par défaut tout est affiché ; le commercial décoche ce qu'il ne veut
+          pas montrer pour CE véhicule. */}
+      {specToggles.length > 0 && (
+        <div className="rounded-md border bg-card">
+          <button
+            type="button"
+            onClick={() => setSpecsOpen((o) => !o)}
+            className="w-full flex items-center justify-between px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground hover:bg-accent/30 rounded-md"
+          >
+            <span>Caractéristiques techniques affichées ({specToggles.length - hiddenCount}/{specToggles.length})</span>
+            {specsOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
+          {specsOpen && (
+            <div className="p-2 pt-0 space-y-1">
+              <div className="flex items-center justify-between pb-1">
+                <span className="text-[10px] text-muted-foreground">Décochez pour masquer du PDF</span>
+                <div className="flex gap-2">
+                  <button type="button" className="text-[10px] text-[#3809EA] hover:underline" onClick={() => onChange({ hiddenSpecs: [] })}>Tout afficher</button>
+                  <button type="button" className="text-[10px] text-[#3809EA] hover:underline" onClick={() => onChange({ hiddenSpecs: specToggles.map((s) => s.key) })}>Tout masquer</button>
+                </div>
+              </div>
+              {specToggles.map((s) => (
+                <label key={s.key} className="flex items-center gap-2 text-xs cursor-pointer p-1 rounded hover:bg-accent/30">
+                  <input
+                    type="checkbox"
+                    checked={!hiddenSpecs.has(s.key)}
+                    onChange={(e) => toggleSpec(s.key, e.target.checked)}
+                    className="h-4 w-4 accent-beev-bleu"
+                  />
+                  <span>{s.label}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {sv.includeTco && (

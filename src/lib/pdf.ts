@@ -72,7 +72,51 @@ export type SelectedVehicle = {
    *  préparée chez le loueur. Affiché dans le PDF sous « Proposition Beev /
    *  Tarification LLD ». */
   leaserQuoteRef?: string;
+  /** Clés de caractéristiques techniques MASQUÉES sur la fiche véhicule, choisies
+   *  par le commercial dans le panneau de droite (cf. getVehicleSpecRows pour les
+   *  clés). Par défaut vide = toutes les caractéristiques disponibles s'affichent. */
+  hiddenSpecs?: string[];
 };
+
+/** Une ligne de caractéristique technique de la fiche véhicule. */
+export type VehicleSpecRow = { key: string; label: string; value: string };
+
+/** Construit la liste des caractéristiques techniques CANDIDATES d'un véhicule
+ *  (énergie, autonomie, batterie, puissance, conso, CO2, recharges, etc.) en
+ *  respectant la disponibilité de la donnée, l'applicabilité selon l'énergie et
+ *  la config PDF globale. Source unique partagée par la fiche PDF et le panneau
+ *  de droite (cases à cocher afficher / masquer). Le commercial masque ensuite
+ *  les clés non souhaitées via SelectedVehicle.hiddenSpecs. */
+export function getVehicleSpecRows(v: Vehicle, cfg: PdfDisplayConfig): VehicleSpecRow[] {
+  const rows: VehicleSpecRow[] = [];
+  const isElec = v.energy === "Électrique";
+  const isPhev = v.energy === "Hybride Rechargeable";
+  rows.push({ key: "energy", label: "Énergie", value: v.energy });
+  rows.push({ key: "range", label: "Autonomie / distance WLTP", value: isElec || isPhev ? `${v.rangeWltp} km` : "—" });
+  rows.push({ key: "battery", label: "Capacité batterie", value: v.batteryKwh > 0 ? `${v.batteryKwh} kWh` : "—" });
+  rows.push({ key: "power", label: "Puissance", value: `${v.powerHp} ch` });
+  if (cfg.showVehicleConsumption) {
+    if (isElec) {
+      rows.push({ key: "consumption", label: "Consommation", value: `${v.consumptionElec ?? v.consumption} kWh/100 km` });
+    } else if (isPhev && (v.consumptionThermal || v.consumptionElec)) {
+      if (v.consumptionThermal) rows.push({ key: "consumption", label: "Conso thermique", value: `${v.consumptionThermal} L/100 km` });
+      if (v.consumptionElec) rows.push({ key: "consumption", label: "Conso électrique (mode EV)", value: `${v.consumptionElec} kWh/100 km` });
+    } else {
+      rows.push({ key: "consumption", label: "Consommation moyenne", value: `${v.consumptionThermal ?? v.consumption} L/100 km` });
+    }
+  }
+  if (cfg.showVehicleCo2) rows.push({ key: "co2", label: "CO2", value: `${v.co2} g/km` });
+  if (cfg.showVehicleFiscalHp) rows.push({ key: "fiscalHp", label: "Puissance fiscale", value: `${v.fiscalHp} CV` });
+  if (cfg.showVehicleEnvScore && v.envScore !== undefined) rows.push({ key: "envScore", label: "Score environnemental", value: `${v.envScore} / 100` });
+  if (cfg.showVehicleTrunk && v.trunkLitres) rows.push({ key: "trunk", label: "Volume de coffre", value: `${v.trunkLitres} L` });
+  if (isElec && cfg.showVehicleChargeAc && v.chargeAcMaxKw) rows.push({ key: "chargeAc", label: "Recharge AC max", value: `${v.chargeAcMaxKw} kW` });
+  if (isElec && cfg.showVehicleChargeDc && v.chargeDcMaxKw) rows.push({ key: "chargeDc", label: "Recharge DC max", value: `${v.chargeDcMaxKw} kW` });
+  if (isElec && cfg.showVehicleChargeTime2080Ac && v.chargeTime2080Ac) rows.push({ key: "chargeTime2080Ac", label: "Recharge 20-80 % AC", value: v.chargeTime2080Ac });
+  if (isElec && cfg.showVehicleChargeTime2080Dc && v.chargeTime2080Dc) rows.push({ key: "chargeTime2080Dc", label: "Recharge 20-80 % DC", value: v.chargeTime2080Dc });
+  if (cfg.showVehicleDimensions && v.dimensions) rows.push({ key: "dimensions", label: "Dimensions", value: v.dimensions });
+  if (cfg.showVehicleLeadTime && v.leadTime) rows.push({ key: "leadTime", label: "Délai de livraison", value: v.leadTime });
+  return rows;
+}
 
 /** Spécifications site personnalisables par le commercial pour le rapport site
  *  entreprise. Tous les champs sont optionnels — quand renseignés, ils
@@ -2690,57 +2734,24 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     y = (doc as any).lastAutoTable.finalY + 16;
   }
 
-  autoTable(doc, {
-    startY: y,
-    theme: "grid",
-    head: [["Caractéristique technique", "Valeur"]],
-    body: [
-      ["Énergie", v.energy],
-      ["Autonomie / distance WLTP", v.energy === "Électrique" || v.energy === "Hybride Rechargeable" ? `${v.rangeWltp} km` : "—"],
-      ["Capacité batterie", v.batteryKwh > 0 ? `${v.batteryKwh} kWh` : "—"],
-      ["Puissance", `${v.powerHp} ch`],
-      ...(PDF_CFG.showVehicleConsumption
-        ? (() => {
-            // Pour PHEV (Hybride Rechargeable), on affiche les 2 conso si elles
-            // sont distinctement renseignées (thermique L/100 + électrique
-            // kWh/100). Sinon fallback sur consumption legacy.
-            const isElec = v.energy === "Électrique";
-            const isPhev = v.energy === "Hybride Rechargeable";
-            if (isElec) {
-              return [["Consommation", `${v.consumptionElec ?? v.consumption} kWh/100 km`]];
-            }
-            if (isPhev && (v.consumptionThermal || v.consumptionElec)) {
-              const rows: string[][] = [];
-              if (v.consumptionThermal) rows.push(["Conso thermique", `${v.consumptionThermal} L/100 km`]);
-              if (v.consumptionElec) rows.push(["Conso électrique (mode EV)", `${v.consumptionElec} kWh/100 km`]);
-              return rows;
-            }
-            const consoL = v.consumptionThermal ?? v.consumption;
-            return [["Consommation moyenne", `${consoL} L/100 km`]];
-          })()
-        : []),
-      ...(PDF_CFG.showVehicleCo2 ? [["CO2", `${v.co2} g/km`]] : []),
-      ...(PDF_CFG.showVehicleFiscalHp ? [["Puissance fiscale", `${v.fiscalHp} CV`]] : []),
-      ...(PDF_CFG.showVehicleEnvScore && v.envScore !== undefined ? [["Score environnemental", `${v.envScore} / 100`]] : []),
-      // Specs étendues (migration 039) — affichées seulement si la donnée est
-      // renseignée, que le toggle correspondant est activé, ET (pour la
-      // recharge) que le véhicule est électrique. Les recharges AC/DC n'ont
-      // aucun sens sur un thermique ou un hybride léger ; on les masque
-      // automatiquement même si le commercial les a remplies par erreur.
-      ...(PDF_CFG.showVehicleTrunk && v.trunkLitres ? [["Volume de coffre", `${v.trunkLitres} L`]] : []),
-      ...(v.energy === "Électrique" && PDF_CFG.showVehicleChargeAc && v.chargeAcMaxKw ? [["Recharge AC max", `${v.chargeAcMaxKw} kW`]] : []),
-      ...(v.energy === "Électrique" && PDF_CFG.showVehicleChargeDc && v.chargeDcMaxKw ? [["Recharge DC max", `${v.chargeDcMaxKw} kW`]] : []),
-      ...(v.energy === "Électrique" && PDF_CFG.showVehicleChargeTime2080Ac && v.chargeTime2080Ac ? [["Recharge 20-80 % AC", v.chargeTime2080Ac]] : []),
-      ...(v.energy === "Électrique" && PDF_CFG.showVehicleChargeTime2080Dc && v.chargeTime2080Dc ? [["Recharge 20-80 % DC", v.chargeTime2080Dc]] : []),
-      ...(PDF_CFG.showVehicleDimensions && v.dimensions ? [["Dimensions", v.dimensions]] : []),
-      ...(PDF_CFG.showVehicleLeadTime && v.leadTime ? [["Délai de livraison", v.leadTime]] : []),
-    ],
-    headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT },
-    bodyStyles: { fontSize: 9.5, cellPadding: 6, textColor: INK, lineColor: RULE, font: BRAND_FONT },
-    columnStyles: { 1: { halign: "right", fontStyle: "bold" } },
-    margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
-  });
-  y = (doc as any).lastAutoTable.finalY + 14;
+  // Caractéristiques techniques : liste candidate (source unique partagée avec
+  // le panneau de droite) filtrée des clés que le commercial a choisi de masquer
+  // pour CE véhicule (sv.hiddenSpecs). Si tout est masqué, on saute le tableau.
+  const hiddenSpecKeys = new Set(sv.hiddenSpecs ?? []);
+  const specRows = getVehicleSpecRows(v, PDF_CFG).filter((r) => !hiddenSpecKeys.has(r.key));
+  if (specRows.length > 0) {
+    autoTable(doc, {
+      startY: y,
+      theme: "grid",
+      head: [["Caractéristique technique", "Valeur"]],
+      body: specRows.map((r) => [r.label, r.value]),
+      headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT },
+      bodyStyles: { fontSize: 9.5, cellPadding: 6, textColor: INK, lineColor: RULE, font: BRAND_FONT },
+      columnStyles: { 1: { halign: "right", fontStyle: "bold" } },
+      margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
+    });
+    y = (doc as any).lastAutoTable.finalY + 14;
+  }
 
   // Garde-fou espace : bloc TCO + encart fiscal = ~250px de haut.
   // Si on est trop bas dans la page, on saute le bloc pour éviter
