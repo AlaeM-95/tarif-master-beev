@@ -3800,12 +3800,17 @@ async function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: 
     "· Cellules en rose : charges fiscales à valider (Malus CO2 + poids, TVS non nulles)",
     "· Coût employeur complet = Loyer + Énergie + TVS + Malus + (AND × durée) + (AEN employeur × durée)",
     "· AND calculé sur le prix catalogue TTC (amortissement non déductible au-delà de 30 000 € pour un EV) ; « — » si le prix catalogue n'est pas renseigné",
+    "· AEN employeur = avantage en nature × 42 % ; abattement de 70 % uniquement si l'éco-score du véhicule est activé (sinon AEN plein)",
     "· Loyer total = loyer mensuel négocié × nombre de mois (TTC, TVA récupérable LLD)",
     "· Énergie = conso véhicule × km contrat × prix carburant ou kWh (mix 85 % domicile / 15 % public)",
   ];
+  // Avance la position en tenant compte du repli : une ligne longue occupe
+  // plusieurs lignes physiques, sinon les légendes se chevauchent.
+  const legendLineH = 12;
   legendLines.forEach((line) => {
-    doc.text(line, M, y2, { maxWidth: PAGE_W - M * 2 });
-    y2 += 13;
+    const wrapped = doc.splitTextToSize(line, PAGE_W - M * 2);
+    doc.text(wrapped, M, y2);
+    y2 += wrapped.length * legendLineH + 3;
   });
 
   // Bloc TOTAUX FLOTTE retiré sur demande utilisateur (il s'agit d'une
