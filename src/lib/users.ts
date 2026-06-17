@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase, appUrl, type UserRole } from "./supabase";
+import { supabase, createIsolatedAuthClient, type UserRole } from "./supabase";
 import { useAuth } from "./auth";
 
 export type AppUser = {
@@ -45,26 +45,29 @@ export function useUsers() {
     onSuccess: invalidate,
   });
 
-  // Envoi d'un lien magique d'inscription/connexion à un email donné.
-  // Si l'email n'existe pas en base, Supabase crée le user et envoie le lien.
-  // À la première connexion, le trigger handle_new_user() ajoute la ligne
-  // profiles avec rôle 'visitor'. L'admin assigne ensuite le bon rôle.
-  const inviteUser = useMutation({
-    mutationFn: async ({ email }: { email: string }) => {
-      const { error } = await supabase.auth.signInWithOtp({
+  // Création d'un compte SANS email : l'admin saisit email + mot de passe, on
+  // crée le compte via un client isolé (signUp) pour ne pas remplacer la
+  // session admin. Aucun email n'est envoyé tant que « Confirm email » est
+  // désactivé dans Supabase (réglage interne). Le trigger handle_new_user()
+  // crée la ligne profiles avec rôle 'visitor' ; l'admin assigne ensuite le
+  // bon rôle. Le mot de passe est communiqué directement au collaborateur.
+  const createUser = useMutation({
+    mutationFn: async ({ email, password }: { email: string; password: string }) => {
+      const tmp = createIsolatedAuthClient();
+      const { data, error } = await tmp.auth.signUp({
         email: email.trim().toLowerCase(),
-        options: {
-          shouldCreateUser: true,
-          // Redirection après clic sur le lien (URL publique de l'app, jamais localhost)
-          emailRedirectTo: appUrl(),
-        },
+        password,
       });
       if (error) throw new Error(error.message);
+      // Par sécurité, on déconnecte le client isolé (au cas où une session
+      // aurait été ouverte par le signUp quand la confirmation est désactivée).
+      try { await tmp.auth.signOut(); } catch { /* ignore */ }
+      return data.user?.id ?? null;
     },
     onSuccess: invalidate,
   });
 
-  return { users, isLoading, updateRole, inviteUser };
+  return { users, isLoading, updateRole, createUser };
 }
 
 // Coordonnées commercial rattachées au compte connecté (table profiles).

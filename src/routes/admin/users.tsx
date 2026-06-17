@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Mail, Send, Shield } from "lucide-react";
+import { ArrowLeft, Mail, KeyRound, Shield, UserPlus, Copy, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,9 +27,27 @@ function AdminUsersPage() {
     if (!loading && !isAdmin) navigate({ to: "/login" });
   }, [loading, isAdmin, navigate]);
 
-  const { users, isLoading, updateRole, inviteUser } = useUsers();
+  const { users, isLoading, updateRole, createUser } = useUsers();
   const perms = useRolePermissionsAdmin();
-  const [inviteEmail, setInviteEmail] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  // Dernier compte créé : on affiche les identifiants une fois pour que l'admin
+  // les transmette au collaborateur (aucun email n'est envoyé).
+  const [lastCreated, setLastCreated] = useState<{ email: string; password: string } | null>(null);
+
+  // Génère un mot de passe lisible (sans caractères ambigus) pour l'onboarding.
+  const genPassword = () => {
+    const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+    let s = "";
+    if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+      const arr = new Uint32Array(10);
+      crypto.getRandomValues(arr);
+      for (let i = 0; i < 10; i++) s += chars[arr[i] % chars.length];
+    } else {
+      for (let i = 0; i < 10; i++) s += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return `Beev-${s}`;
+  };
 
   // Rôles éditables dans la matrice (admin = tous droits, non modifiable).
   const EDITABLE_ROLES: UserRole[] = ["ops", "sales", "visitor"];
@@ -47,18 +65,36 @@ function AdminUsersPage() {
   }
   if (!isAdmin) return null;
 
-  const handleInvite = async () => {
-    const email = inviteEmail.trim().toLowerCase();
+  const handleCreate = async () => {
+    const email = newEmail.trim().toLowerCase();
     if (!email || !email.includes("@")) {
       toast.error("Email invalide");
       return;
     }
+    const password = newPassword.trim() || genPassword();
+    if (password.length < 6) {
+      toast.error("Mot de passe trop court (minimum 6 caractères)");
+      return;
+    }
     try {
-      await inviteUser.mutateAsync({ email });
-      toast.success(`Lien d'invitation envoyé à ${email}`);
-      setInviteEmail("");
+      await createUser.mutateAsync({ email, password });
+      setLastCreated({ email, password });
+      toast.success(`Compte créé pour ${email}`);
+      setNewEmail("");
+      setNewPassword("");
     } catch (e) {
-      toast.error(`Échec invitation : ${e instanceof Error ? e.message : "erreur"}`);
+      toast.error(`Échec création : ${e instanceof Error ? e.message : "erreur"}`);
+    }
+  };
+
+  const copyCreds = async () => {
+    if (!lastCreated) return;
+    const text = `Accès Beev tarif master\nURL : https://tarif-master-beev.lovable.app\nEmail : ${lastCreated.email}\nMot de passe : ${lastCreated.password}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Identifiants copiés");
+    } catch {
+      toast.error("Copie impossible, sélectionnez le texte manuellement");
     }
   };
 
@@ -92,7 +128,7 @@ function AdminUsersPage() {
               <h1 className="text-lg font-semibold flex items-center gap-2">
                 <Shield className="w-5 h-5 text-[#3809EA]" /> Utilisateurs et accès
               </h1>
-              <p className="text-xs text-muted-foreground">Invite des collaborateurs et gère leurs rôles (admin / ops / sales / visiteur).</p>
+              <p className="text-xs text-muted-foreground">Crée des comptes collaborateurs et gère leurs rôles (admin / ops / sales / visiteur).</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2 text-xs">
@@ -105,33 +141,77 @@ function AdminUsersPage() {
       </header>
 
       <main className="container mx-auto px-6 py-8 space-y-6">
-        {/* Bloc invitation */}
+        {/* Bloc création de compte — SANS email (onboarding interne) */}
         <Card>
           <CardContent className="p-5">
             <h2 className="text-sm font-semibold flex items-center gap-2 mb-3">
-              <Mail className="w-4 h-4 text-[#3809EA]" /> Inviter un nouvel utilisateur
+              <UserPlus className="w-4 h-4 text-[#3809EA]" /> Créer un compte collaborateur
             </h2>
             <p className="text-xs text-muted-foreground mb-3">
-              Le collaborateur reçoit un email avec un lien d'inscription Supabase. À sa première connexion,
-              il atterrit sur l'app avec le rôle <strong>visiteur</strong> par défaut — vous pourrez ensuite
-              l'élever à sales / ops / admin dans la liste ci-dessous.
+              Vous définissez l'email et le mot de passe : aucun email de confirmation n'est envoyé.
+              Communiquez les identifiants au collaborateur, qui se connecte directement avec son mot de passe.
+              Le compte démarre avec le rôle <strong>visiteur</strong> ; attribuez ensuite sales / ops / admin ci-dessous.
             </p>
-            <div className="flex gap-2 flex-wrap">
-              <div className="relative flex-1 min-w-[280px]">
-                <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="collaborateur@beev.co"
-                  className="pl-9"
-                  onKeyDown={(e) => { if (e.key === "Enter") handleInvite(); }}
-                />
+            <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto] items-end">
+              <div className="space-y-1">
+                <Label className="text-xs">Email</Label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    placeholder="collaborateur@beev.co"
+                    className="pl-9"
+                    onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
+                  />
+                </div>
               </div>
-              <Button onClick={handleInvite} disabled={!inviteEmail.trim() || inviteUser.isPending} className="gap-2">
-                <Send className="w-4 h-4" /> {inviteUser.isPending ? "Envoi..." : "Envoyer l'invitation"}
+              <div className="space-y-1">
+                <Label className="text-xs">Mot de passe</Label>
+                <div className="relative">
+                  <KeyRound className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Laissez vide pour générer"
+                    className="pl-9 pr-10"
+                    onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setNewPassword(genPassword())}
+                    title="Générer un mot de passe"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <Button onClick={handleCreate} disabled={!newEmail.trim() || createUser.isPending} className="gap-2">
+                <UserPlus className="w-4 h-4" /> {createUser.isPending ? "Création..." : "Créer le compte"}
               </Button>
             </div>
+
+            {lastCreated && (
+              <div className="mt-4 rounded-md border border-[#35DA76]/40 bg-[#35DA76]/10 p-3">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <p className="text-xs font-semibold text-[#1E7A3F]">Compte créé — transmettez ces identifiants</p>
+                  <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={copyCreds}>
+                    <Copy className="w-3 h-3" /> Copier
+                  </Button>
+                </div>
+                <div className="text-xs space-y-0.5 font-mono">
+                  <p>URL : https://tarif-master-beev.lovable.app</p>
+                  <p>Email : {lastCreated.email}</p>
+                  <p>Mot de passe : {lastCreated.password}</p>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-2">
+                  Ces identifiants ne seront plus affichés après avoir quitté la page. Le collaborateur pourra changer son mot de passe une fois connecté.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -150,7 +230,7 @@ function AdminUsersPage() {
                 </thead>
                 <tbody>
                   {users.length === 0 && (
-                    <tr><td colSpan={4} className="py-8 text-center text-muted-foreground">Aucun utilisateur. Invitez quelqu'un ci-dessus.</td></tr>
+                    <tr><td colSpan={4} className="py-8 text-center text-muted-foreground">Aucun utilisateur. Créez un compte ci-dessus.</td></tr>
                   )}
                   {users.map((u) => (
                     <tr key={u.id} className="border-b hover:bg-accent/30">
