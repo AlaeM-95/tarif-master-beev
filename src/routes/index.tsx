@@ -3455,12 +3455,46 @@ function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total,
                 />
                 <span>Location du matériel seul (sans installation)</span>
               </label>
-              <div className="grid grid-cols-3 gap-2 text-[11px] rounded-md bg-muted/40 p-2">
+              <div className="grid grid-cols-2 gap-2 text-[11px] rounded-md bg-muted/40 p-2">
                 <div><div className="text-muted-foreground">Loyer mensuel total HT</div><div className="font-semibold">{fmtEur(L.monthlyTotal)}/m</div></div>
+                <div><div className="text-muted-foreground">Prélèvement trimestriel HT</div><div className="font-semibold text-[#3809EA]">{fmtEur(L.quarterlyAmount)}/trim.</div></div>
                 <div><div className="text-muted-foreground">Total des loyers HT</div><div className="font-semibold">{fmtEur(L.totalRents)}</div></div>
                 <div><div className="text-muted-foreground">Option d'achat HT (10%)</div><div className="font-semibold">{fmtEur(L.buyout)}</div></div>
               </div>
-              <p className="text-[10px] text-muted-foreground">Pénalité de résiliation anticipée = loyers restants × 1,10 (détaillée par année dans le PDF). En mode location, le chiffrage à l'achat n'est pas affiché dans le PDF.</p>
+              {/* Échéancier de prélèvement trimestriel : loyer calculé au mois,
+                  prélevé tous les 3 mois. Aperçu identique au tableau du PDF. */}
+              {L.installments.length > 0 && (
+                <div className="rounded-md border border-[#3809EA]/20 overflow-hidden">
+                  <div className="px-2 py-1.5 bg-[#3809EA]/5 text-[10px] font-semibold uppercase tracking-wide text-[#3809EA]">
+                    Échéancier trimestriel ({L.installments.length} prélèvement{L.installments.length > 1 ? "s" : ""})
+                  </div>
+                  <div className="max-h-[180px] overflow-y-auto">
+                    <table className="w-full text-[11px]">
+                      <thead className="sticky top-0 bg-card">
+                        <tr className="text-left text-muted-foreground border-b">
+                          <th className="px-2 py-1 font-medium">Trimestre</th>
+                          <th className="px-2 py-1 font-medium">Période</th>
+                          <th className="px-2 py-1 font-medium text-right">Détail mensuel</th>
+                          <th className="px-2 py-1 font-medium text-right">Prélevé HT</th>
+                          <th className="px-2 py-1 font-medium text-right">Cumul HT</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {L.installments.map((q) => (
+                          <tr key={q.index} className="border-b last:border-0">
+                            <td className="px-2 py-1 font-semibold">T{q.index}</td>
+                            <td className="px-2 py-1 text-muted-foreground">Mois {q.fromMonth} à {q.toMonth}</td>
+                            <td className="px-2 py-1 text-right text-muted-foreground">{q.months} × {fmtEur(L.monthlyTotal)}</td>
+                            <td className="px-2 py-1 text-right font-semibold text-[#3809EA]">{fmtEur(q.amount)}</td>
+                            <td className="px-2 py-1 text-right">{fmtEur(q.cumulative)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              <p className="text-[10px] text-muted-foreground">Loyer calculé au mois, prélevé par trimestre (3 mois). Pénalité de résiliation anticipée = loyers restants × 1,10 (détaillée par année dans le PDF). En mode location, le chiffrage à l'achat n'est pas affiché dans le PDF.</p>
             </div>
           );
         })()}

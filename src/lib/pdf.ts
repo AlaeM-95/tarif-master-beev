@@ -164,6 +164,20 @@ export function computeChargerLease(sc: SelectedCharger) {
   const monthlyTotal = monthly * qty;             // loyer mensuel pour l'ensemble des bornes
   const totalRents = monthlyTotal * duration;     // total des loyers sur le contrat
   const buyout = totalRents * 0.10;               // option d'achat = 10% du total des loyers
+  // Échéancier de prélèvement TRIMESTRIEL : le loyer est calculé au mois mais
+  // prélevé tous les 3 mois (1 prélèvement = 3 loyers mensuels). Le dernier
+  // prélèvement couvre les mois restants si la durée n'est pas un multiple de 3.
+  const quarterlyAmount = monthlyTotal * 3;       // prélèvement trimestriel standard
+  const installments: Array<{ index: number; fromMonth: number; toMonth: number; months: number; amount: number; cumulative: number }> = [];
+  let cumulative = 0;
+  let qi = 0;
+  for (let m = 0; m < duration; m += 3) {
+    const months = Math.min(3, duration - m);
+    const amount = monthlyTotal * months;
+    cumulative += amount;
+    qi += 1;
+    installments.push({ index: qi, fromMonth: m + 1, toMonth: m + months, months, amount, cumulative });
+  }
   // Pénalité de résiliation anticipée à la fin de chaque année : loyers restants × 1,10.
   const schedule: Array<{ afterMonths: number; remainingMonths: number; remainingRents: number; penalty: number }> = [];
   for (let m = 12; m < duration; m += 12) {
@@ -171,7 +185,7 @@ export function computeChargerLease(sc: SelectedCharger) {
     const remainingRents = remainingMonths * monthlyTotal;
     schedule.push({ afterMonths: m, remainingMonths, remainingRents, penalty: remainingRents * 1.10 });
   }
-  return { monthly, duration, qty, monthlyTotal, totalRents, buyout, schedule };
+  return { monthly, duration, qty, monthlyTotal, totalRents, buyout, quarterlyAmount, installments, schedule };
 }
 
 // Calcule le prix unitaire final (avec marge) qui sera présenté au client.
@@ -2983,6 +2997,49 @@ function drawChargerLeaseBlock(doc: jsPDF, sc: SelectedCharger, y: number, clien
   doc.setTextColor(...INK);
   doc.text(`${money(L.buyout)} HT`, M + 14 + w, y + 78);
   y += panelH + 18;
+
+  // Échéancier de prélèvement TRIMESTRIEL : le loyer est calculé au mois et
+  // prélevé tous les 3 mois. Tableau clair et lisible pour le client (période,
+  // détail mensuel, montant prélevé, cumul).
+  if (L.installments.length) {
+    y = ensureSpace(doc, y, 110, client, type);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...LAVENDER);
+    doc.text("ÉCHÉANCIER DE PRÉLÈVEMENT · TRIMESTRIEL", M, y);
+    y += 12;
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...SUB);
+    const intro = `Loyer calculé au mois (${money(L.monthlyTotal)} HT/mois${L.qty > 1 ? ` pour ${L.qty} bornes` : ""}), prélevé par trimestre : ${money(L.quarterlyAmount)} HT tous les 3 mois.`;
+    const introLines = doc.splitTextToSize(intro, fullW);
+    doc.text(introLines, M, y);
+    y += introLines.length * 11 + 6;
+    autoTable(doc, {
+      startY: y,
+      theme: "plain",
+      head: [["Échéance", "Période", "Détail mensuel", "Montant prélevé HT", "Cumul HT"]],
+      body: L.installments.map((q) => [
+        `Trimestre ${q.index}`,
+        `Mois ${q.fromMonth} à ${q.toMonth}`,
+        `${q.months} × ${money(L.monthlyTotal)}`,
+        money(q.amount),
+        money(q.cumulative),
+      ]),
+      headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 8.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 7, halign: "left" },
+      bodyStyles: { fontSize: 9.5, cellPadding: 7, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
+      alternateRowStyles: { fillColor: [252, 251, 248] as [number, number, number] },
+      columnStyles: {
+        0: { cellWidth: 90, fontStyle: "bold" },
+        1: { cellWidth: 110 },
+        2: { halign: "right", cellWidth: 120 },
+        3: { halign: "right", cellWidth: 110, fontStyle: "bold", textColor: LAVENDER },
+        4: { halign: "right" },
+      },
+      margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
+    });
+    y = (doc as any).lastAutoTable.finalY + 18;
+  }
 
   // Coût global de résiliation anticipée : loyers restants + pénalité 10% = total HT à régler.
   if (L.schedule.length) {
