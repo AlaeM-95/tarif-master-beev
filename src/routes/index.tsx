@@ -179,7 +179,16 @@ function App() {
   // Hydratation depuis localStorage : exclusivement côté client, après mount.
   // Garantit un rendu SSR/client identique au premier passage.
   useEffect(() => {
-    setSelectedV(loadFromStorage(SK_V, {}));
+    // Normalise le state véhicules : garantit un instanceId sur chaque entrée et
+    // re-cle par instanceId (compat ancien format localStorage clé=vehicle.id).
+    // Permet de sélectionner plusieurs variantes du même modèle.
+    const rawV = loadFromStorage<Record<string, SelectedVehicle>>(SK_V, {});
+    const normV: Record<string, SelectedVehicle> = {};
+    for (const sv of Object.values(rawV)) {
+      const key = sv.instanceId ?? (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `inst-${Date.now()}-${Math.floor(Math.random() * 1e6)}`);
+      normV[key] = { ...sv, instanceId: key };
+    }
+    setSelectedV(normV);
     // Normalise le state bornes : garantit un instanceId sur chaque entrée et
     // re-cle par instanceId (compat ancien format localStorage clé=charger.id).
     const rawC = loadFromStorage<Record<string, SelectedCharger>>(SK_C, {});
@@ -253,15 +262,17 @@ function App() {
     setSelectedV((prev) => {
       let changed = false;
       const next: Record<string, SelectedVehicle> = {};
-      for (const [id, sv] of Object.entries(prev)) {
-        const fresh = vehicles.find((v) => v.id === id);
+      // La clé est l'instanceId du devis ; on retrouve la fiche catalogue via
+      // sv.vehicle.id (plusieurs variantes peuvent partager la même référence).
+      for (const [key, sv] of Object.entries(prev)) {
+        const fresh = vehicles.find((v) => v.id === sv.vehicle.id);
         if (fresh && fresh !== sv.vehicle) {
           // Remplace UNIQUEMENT vehicle (champs catalogue), on préserve tous
           // les champs du devis tels quels.
-          next[id] = { ...sv, vehicle: fresh };
+          next[key] = { ...sv, vehicle: fresh };
           changed = true;
         } else {
-          next[id] = sv;
+          next[key] = sv;
         }
       }
       return changed ? next : prev;
@@ -303,7 +314,12 @@ function App() {
       notes: loadedProposal.clientNotes,
     });
     const sv: Record<string, SelectedVehicle> = {};
-    loadedProposal.selectedVehicles.forEach((v) => { sv[v.vehicle.id] = v; });
+    // Clé par instanceId (multi-variante). Les devis enregistrés avant cette
+    // évolution n'ont pas d'instanceId : on en génère un (rétro-compatibilité).
+    loadedProposal.selectedVehicles.forEach((v) => {
+      const key = v.instanceId ?? newInstanceId();
+      sv[key] = { ...v, instanceId: key };
+    });
     setSelectedV(sv);
     const sc: Record<string, SelectedCharger> = {};
     // Clé par instanceId. Les devis sauvegardés avant le multi-instance n'ont
@@ -388,7 +404,10 @@ function App() {
   const applyTemplate = (t: { projectType: ProjectType; selectedVehicles: SelectedVehicle[]; selectedChargers: SelectedCharger[]; energyParams: EnergyParams | null }) => {
     setProjectType(t.projectType);
     const sv: Record<string, SelectedVehicle> = {};
-    t.selectedVehicles.forEach((v) => { sv[v.vehicle.id] = v; });
+    t.selectedVehicles.forEach((v) => {
+      const key = v.instanceId ?? newInstanceId();
+      sv[key] = { ...v, instanceId: key };
+    });
     setSelectedV(sv);
     const sc: Record<string, SelectedCharger> = {};
     t.selectedChargers.forEach((c) => {
@@ -488,32 +507,72 @@ function App() {
   // au commercial de générer un PDF même si la sélection mélange plusieurs types.
   const visibleCount = counts.v + counts.c;
 
+  // Génère un identifiant d'instance unique pour un élément ajouté au devis.
+  const newInstanceId = () =>
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `inst-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+
+  // Un modèle catalogue est "sélectionné" si au moins une variante existe dans
+  // le devis (plusieurs variantes peuvent partager la même référence véhicule).
+  const vehicleSelected = (vehicleId: string) =>
+    Object.values(selectedV).some((sv) => sv.vehicle.id === vehicleId);
+
   const toggleV = (v: Vehicle) => {
     setSelectedV((s) => {
-      if (s[v.id]) { const { [v.id]: _, ...rest } = s; return rest; }
+      // Toggle off : si au moins une variante de ce modèle existe, on retire
+      // TOUTES ses variantes. Sinon on ajoute une première variante.
+      const existing = Object.entries(s).filter(([, sv]) => sv.vehicle.id === v.id);
+      if (existing.length > 0) {
+        const next = { ...s };
+        for (const [key] of existing) delete next[key];
+        return next;
+      }
       // Pré-remplir le loyer négocié depuis la meilleure offre loueur matching.
       // Cherche d'abord match exact (49m/40k ou 37m/90k), sinon approximatif.
       // Si pas d'offre, fallback sur monthlyLld du catalogue.
       const matching = findBestOffer(leaserOffers, v.id, 48, energy.kmPerYear);
       const negotiated = matching ? matching.monthlyPriceTtc : v.monthlyLld;
       const duration = matching ? matching.durationMonths : 48;
+      // Km/an dérivé du kilométrage TOTAL contrat (offre loueur si dispo, sinon
+      // énergie globale). On stocke kmPerYear cohérent avec la durée retenue.
+      const totalKm = matching ? matching.kmTotal : energy.kmPerYear * energy.durationYears;
+      const kmPerYear = duration > 0 ? totalKm / (duration / 12) : energy.kmPerYear;
+      const instanceId = newInstanceId();
       return {
         ...s,
-        [v.id]: {
+        [instanceId]: {
+          instanceId,
           // La remise est pré-remplie avec la remise tripartite catalogue (ops).
           vehicle: v, quantity: 1, discountPct: v.remise ?? 0,
           negotiatedMonthly: negotiated,
-          durationMonths: duration, kmPerYear: energy.kmPerYear,
+          durationMonths: duration, kmPerYear,
           includeTco: false, services: [], options: [],
         },
       };
     });
   };
-  // Génère un identifiant d'instance unique pour une borne ajoutée au devis.
-  const newInstanceId = () =>
-    typeof crypto !== "undefined" && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `inst-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+
+  // Duplique une variante de véhicule (même référence catalogue) pour en
+  // proposer une seconde configuration au client : copie profonde des champs
+  // devis (options, prestations, configs alternatives), nouvel instanceId. Le
+  // commercial peut ainsi chiffrer le même modèle sans options et avec options.
+  const duplicateVehicleInstance = (sv: SelectedVehicle) => {
+    setSelectedV((s) => {
+      const instanceId = newInstanceId();
+      return {
+        ...s,
+        [instanceId]: {
+          ...sv,
+          instanceId,
+          services: [...sv.services],
+          options: sv.options.map((o) => ({ ...o })),
+          additionalConfigs: sv.additionalConfigs?.map((c) => ({ ...c })),
+          competitorOffers: sv.competitorOffers?.map((c) => ({ ...c })),
+        },
+      };
+    });
+  };
 
   const toggleC = (c: Charger) => {
     setSelectedC((s) => {
@@ -1272,7 +1331,7 @@ function App() {
                 onToggle={toggleV}
                 onUpdate={isSales ? updateVehicle : undefined}
                 onDelete={isOps ? async (v) => {
-                  if (selectedV[v.id]) toggleV(v);
+                  if (vehicleSelected(v.id)) toggleV(v);
                   const result = await removeVehicle(v.id);
                   if (result?.error) toast.error(`Échec suppression : ${result.error}`);
                   else toast.success(`${v.brand} ${v.model} supprimé définitivement`);
@@ -1488,14 +1547,18 @@ function App() {
                       <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wide">
                         Véhicules ({counts.v})
                       </p>
-                      {Object.values(selectedV).map((sv, idx, arr) => (
-                        <SelectedVehicleRow key={sv.vehicle.id} sv={sv} energy={energy}
+                      {Object.values(selectedV).map((sv, idx, arr) => {
+                        const key = sv.instanceId ?? sv.vehicle.id;
+                        return (
+                        <SelectedVehicleRow key={key} sv={sv} energy={energy}
                           index={idx} total={arr.length}
                           tripartiteUrl={sv.vehicle.tripartitePdfUrl || vehicles.find((vv) => vv.brand === sv.vehicle.brand && vv.tripartitePdfUrl)?.tripartitePdfUrl}
-                          onMove={(dir) => setSelectedV((s) => moveInRecord(s, sv.vehicle.id, dir))}
-                          onChange={(p) => setSelectedV((s) => ({ ...s, [sv.vehicle.id]: { ...(s[sv.vehicle.id] ?? sv), ...p } }))}
-                          onRemove={() => toggleV(sv.vehicle)} />
-                      ))}
+                          onMove={(dir) => setSelectedV((s) => moveInRecord(s, key, dir))}
+                          onChange={(p) => setSelectedV((s) => ({ ...s, [key]: { ...(s[key] ?? sv), ...p } }))}
+                          onDuplicate={() => duplicateVehicleInstance(sv)}
+                          onRemove={() => setSelectedV((s) => { const next = { ...s }; delete next[key]; return next; })} />
+                        );
+                      })}
                     </>
                   )}
                   {/* Section bornes — toujours affichée si au moins 1 sélectionnée */}
@@ -1894,7 +1957,7 @@ function VehicleCatalogByBrand({
                       <VehicleCard
                         key={v.id}
                         vehicle={v}
-                        selected={!!selectedV[v.id]}
+                        selected={Object.values(selectedV).some((sv) => sv.vehicle.id === v.id)}
                         onToggle={() => onToggle(v)}
                         onUpdate={onUpdate ? (p) => onUpdate(v.id, p) : undefined}
                         onDelete={onDelete ? () => onDelete(v) : undefined}
@@ -1990,7 +2053,7 @@ function TopShortlistSection({
       <CardContent>
         <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(shortlistVehicles.length, 5)}, minmax(0, 1fr))` }}>
           {shortlistVehicles.map((v) => {
-            const selected = !!selectedV[v.id];
+            const selected = Object.values(selectedV).some((sv) => sv.vehicle.id === v.id);
             const offers = leaserOffers.filter((o) => o.vehicleId === v.id).sort((a, b) => a.monthlyPriceTtc - b.monthlyPriceTtc);
             const best = offers[0];
             return (
@@ -2084,14 +2147,17 @@ function TcoCalculator({
       const tco100 = r.tcoParKm * 100;
       const lease100 = (r.loyerTotal / contractParams.kmContrat) * 100;
       const energy100 = (r.coutEnergie / contractParams.kmContrat) * 100;
-      return { sv, tco100, lease100, energy100, monthlyTco: r.tcoMensuel, totalContract: r.tcoTotal, full: r };
+      // key = instanceId (multi-variante) pour distinguer deux variantes du
+      // même modèle dans le tableau comparatif.
+      const key = sv.instanceId ?? sv.vehicle.id;
+      return { key, sv, tco100, lease100, energy100, monthlyTco: r.tcoMensuel, totalContract: r.tcoTotal, full: r };
     });
   }, [selectedV, energy]);
 
-  // Identifie le véhicule au TCO le plus bas pour le mettre en valeur
+  // Identifie la variante au TCO le plus bas pour la mettre en valeur (par key)
   const cheapestId = useMemo(() => {
     if (tcoRows.length === 0) return null;
-    return tcoRows.reduce((min, r) => r.tco100 < min.tco100 ? r : min, tcoRows[0]).sv.vehicle.id;
+    return tcoRows.reduce((min, r) => r.tco100 < min.tco100 ? r : min, tcoRows[0]).key;
   }, [tcoRows]);
 
   return (
@@ -2106,8 +2172,8 @@ function TcoCalculator({
           <Button variant="ghost" size="sm" onClick={resetEnergy} className="gap-2"><RotateCcw className="w-3 h-3" /> Reset</Button>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
-          <NumField label="Durée (années)" value={energy.durationYears} onChange={(n) => setEnergy({ ...energy, durationYears: n })} />
-          <NumField label="Km / an" value={energy.kmPerYear} onChange={(n) => setEnergy({ ...energy, kmPerYear: n })} />
+          <NumField label="Durée (années)" value={energy.durationYears} onChange={(n) => setEnergy({ ...energy, durationYears: n, kmPerYear: n > 0 ? (energy.kmPerYear * energy.durationYears) / n : energy.kmPerYear })} />
+          <NumField label="Km total (contrat)" value={Math.round(energy.kmPerYear * energy.durationYears)} onChange={(total) => setEnergy({ ...energy, kmPerYear: energy.durationYears > 0 ? total / energy.durationYears : total })} />
           <NumField label="Essence €/L" value={energy.fuelPriceL} onChange={(n) => setEnergy({ ...energy, fuelPriceL: n })} step={0.01} />
           <NumField label="kWh domicile €" value={energy.kWhHome} onChange={(n) => setEnergy({ ...energy, kWhHome: n })} step={0.01} />
           <NumField label="kWh public €" value={energy.kWhPublic} onChange={(n) => setEnergy({ ...energy, kWhPublic: n })} step={0.01} />
@@ -2125,7 +2191,8 @@ function TcoCalculator({
           <Input placeholder="Rechercher un véhicule..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-8" />
           <div className="grid gap-2 max-h-[400px] overflow-y-auto pr-1">
             {filtered.map((v) => {
-              const isSelected = !!selectedV[v.id];
+              const inst = Object.values(selectedV).find((sv) => sv.vehicle.id === v.id);
+              const isSelected = !!inst;
               return (
                 <button
                   key={v.id}
@@ -2140,8 +2207,8 @@ function TcoCalculator({
                     <p className="text-[11px] text-muted-foreground truncate">{v.version} · {v.energy}</p>
                   </div>
                   <div className="text-right text-xs flex-shrink-0">
-                    <p className="font-semibold">{fmtEur(selectedV[v.id]?.negotiatedMonthly ?? v.monthlyLld)}</p>
-                    <p className="text-[10px] text-muted-foreground">/mois TTC{selectedV[v.id] && selectedV[v.id].negotiatedMonthly !== v.monthlyLld ? " (négocié)" : ""}</p>
+                    <p className="font-semibold">{fmtEur(inst?.negotiatedMonthly ?? v.monthlyLld)}</p>
+                    <p className="text-[10px] text-muted-foreground">/mois TTC{inst && inst.negotiatedMonthly !== v.monthlyLld ? " (négocié)" : ""}</p>
                   </div>
                 </button>
               );
@@ -2173,9 +2240,9 @@ function TcoCalculator({
                 </thead>
                 <tbody>
                   {tcoRows.sort((a, b) => a.tco100 - b.tco100).map((r) => {
-                    const isCheapest = r.sv.vehicle.id === cheapestId;
+                    const isCheapest = r.key === cheapestId;
                     return (
-                      <tr key={r.sv.vehicle.id} className={`border-b ${isCheapest ? "bg-[#35DA76]/10" : ""}`}>
+                      <tr key={r.key} className={`border-b ${isCheapest ? "bg-[#35DA76]/10" : ""}`}>
                         <td className="py-2 px-2">
                           <p className="font-medium">{r.sv.vehicle.brand} {r.sv.vehicle.model}</p>
                           <p className="text-[10px] text-muted-foreground">{r.sv.vehicle.version}</p>
@@ -2195,10 +2262,10 @@ function TcoCalculator({
               <div className="mt-3 rounded-md bg-[#35DA76]/10 border border-[#35DA76]/30 p-3 text-xs">
                 <strong className="text-[#35DA76]">Recommandation Beev :</strong>
                 {" "}
-                {tcoRows.find((r) => r.sv.vehicle.id === cheapestId)?.sv.vehicle.brand}{" "}
-                {tcoRows.find((r) => r.sv.vehicle.id === cheapestId)?.sv.vehicle.model}
+                {tcoRows.find((r) => r.key === cheapestId)?.sv.vehicle.brand}{" "}
+                {tcoRows.find((r) => r.key === cheapestId)?.sv.vehicle.model}
                 {" "}offre le meilleur coût total de possession sur cette sélection, soit{" "}
-                <strong>{tcoRows.find((r) => r.sv.vehicle.id === cheapestId)?.tco100.toFixed(2)} € / 100 km</strong>.
+                <strong>{tcoRows.find((r) => r.key === cheapestId)?.tco100.toFixed(2)} € / 100 km</strong>.
               </div>
             )}
           </CardContent>
@@ -2237,7 +2304,7 @@ function TcoCalculator({
                 </thead>
                 <tbody>
                   {tcoRows.map((r) => (
-                    <tr key={r.sv.vehicle.id} className="border-b">
+                    <tr key={r.key} className="border-b">
                       <td className="py-2 px-2">
                         <p className="font-medium">{r.sv.vehicle.brand} {r.sv.vehicle.model}</p>
                         <p className="text-[10px] text-muted-foreground">{r.sv.vehicle.version}</p>
@@ -2286,10 +2353,16 @@ function fmt0(n: number): string {
 function TcoCharts({ rows }: { rows: Array<{ sv: SelectedVehicle; full: ReturnType<typeof calculateTcoFull> }> }) {
   // Données pour le bar chart : valeurs annuelles
   const barData = useMemo(() => {
+    // Désambiguïse les variantes du même modèle (ex. deux Tesla Model Y) en
+    // suffixant « (2) », « (3) »... pour que chaque barre soit lisible.
+    const seen: Record<string, number> = {};
     return rows.map((r) => {
       const annees = r.sv.durationMonths / 12;
+      const base = `${r.sv.vehicle.brand} ${r.sv.vehicle.model}`;
+      seen[base] = (seen[base] ?? 0) + 1;
+      const name = seen[base] > 1 ? `${base} (${seen[base]})` : base;
       return {
-        name: `${r.sv.vehicle.brand} ${r.sv.vehicle.model}`,
+        name,
         loyer: r.full.loyerTotal / annees,
         energie: r.full.coutEnergie / annees,
         tvs: r.full.tvsTotal / annees,
@@ -2412,8 +2485,8 @@ function EnergyCard({ energy, setEnergy, reset }: { energy: EnergyParams; setEne
         <Button variant="ghost" size="sm" onClick={reset} className="gap-2"><RotateCcw className="w-3 h-3" /> Reset</Button>
       </CardHeader>
       <CardContent className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
-        <NumField label="Durée (années)" value={energy.durationYears} onChange={(n) => setEnergy({ ...energy, durationYears: n })} />
-        <NumField label="Km / an" value={energy.kmPerYear} onChange={(n) => setEnergy({ ...energy, kmPerYear: n })} />
+        <NumField label="Durée (années)" value={energy.durationYears} onChange={(n) => setEnergy({ ...energy, durationYears: n, kmPerYear: n > 0 ? (energy.kmPerYear * energy.durationYears) / n : energy.kmPerYear })} />
+        <NumField label="Km total (contrat)" value={Math.round(energy.kmPerYear * energy.durationYears)} onChange={(total) => setEnergy({ ...energy, kmPerYear: energy.durationYears > 0 ? total / energy.durationYears : total })} />
         <NumField label="Essence €/L" value={energy.fuelPriceL} onChange={(n) => setEnergy({ ...energy, fuelPriceL: n })} step={0.01} />
         <NumField label="kWh domicile €" value={energy.kWhHome} onChange={(n) => setEnergy({ ...energy, kWhHome: n })} step={0.01} />
         <NumField label="kWh public €" value={energy.kWhPublic} onChange={(n) => setEnergy({ ...energy, kWhPublic: n })} step={0.01} />
@@ -3012,7 +3085,7 @@ function FiscalWarningBadge({ vehicle, durationMonths }: { vehicle: Vehicle; dur
   );
 }
 
-function SelectedVehicleRow({ sv, energy, onChange, onRemove, index, total, onMove, tripartiteUrl }: { sv: SelectedVehicle; energy: EnergyParams; onChange: (p: Partial<SelectedVehicle>) => void; onRemove: () => void; index?: number; total?: number; onMove?: (dir: -1 | 1) => void; tripartiteUrl?: string }) {
+function SelectedVehicleRow({ sv, energy, onChange, onRemove, onDuplicate, index, total, onMove, tripartiteUrl }: { sv: SelectedVehicle; energy: EnergyParams; onChange: (p: Partial<SelectedVehicle>) => void; onRemove: () => void; onDuplicate?: () => void; index?: number; total?: number; onMove?: (dir: -1 | 1) => void; tripartiteUrl?: string }) {
   const [tab, setTab] = useState<"none" | "svc" | "opt">("none");
   const [newSvc, setNewSvc] = useState("");
   const tco = computeTco(sv, energy);
@@ -3036,6 +3109,11 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove, index, total, onMo
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           <ReorderButtons index={index} total={total} onMove={onMove} />
+          {onDuplicate && (
+            <Button variant="ghost" size="icon" className="h-6 w-6 text-[#3809EA]" onClick={onDuplicate} title="Créer une variante de ce modèle (ex. avec / sans options)">
+              <Copy className="w-3 h-3" />
+            </Button>
+          )}
           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onRemove}><Trash2 className="w-3 h-3" /></Button>
         </div>
       </div>
@@ -3043,11 +3121,25 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove, index, total, onMo
         <NumField label="Quantité" value={sv.quantity} onChange={(n) => onChange({ quantity: n })} />
         <NumField label="Remise %" value={sv.discountPct} onChange={(n) => onChange({ discountPct: n })} step={0.5} />
         <NumField label="Loyer TTC/mois" value={sv.negotiatedMonthly} onChange={(n) => onChange({ negotiatedMonthly: n })} />
-        <NumField label="Durée (mois)" value={sv.durationMonths} onChange={(n) => onChange({ durationMonths: n })} />
-        <NumField label="Km / an" value={sv.kmPerYear} onChange={(n) => onChange({ kmPerYear: n })} />
+        {/* Durée : on préserve le KILOMÉTRAGE TOTAL contrat en recalculant le
+            km/an interne quand la durée change (le total est l'entrée pilote). */}
+        <NumField label="Durée (mois)" value={sv.durationMonths} onChange={(n) => {
+          if (n > 0) onChange({ durationMonths: n, kmPerYear: (sv.kmPerYear * sv.durationMonths) / n });
+          else onChange({ durationMonths: n });
+        }} />
+        {/* Kilométrage TOTAL du contrat (et non plus km/an). km/an reste calculé
+            en interne pour les coûts énergie/TCO : kmPerYear = total / (durée/12). */}
+        <NumField
+          label="Km total (contrat)"
+          value={Math.round(sv.kmPerYear * (sv.durationMonths / 12))}
+          onChange={(total) => {
+            const years = sv.durationMonths / 12;
+            onChange({ kmPerYear: years > 0 ? total / years : total });
+          }}
+        />
         <div className="flex items-end gap-2 pb-1">
-          <Switch id={`tco-${sv.vehicle.id}`} checked={sv.includeTco} onCheckedChange={(b) => onChange({ includeTco: b })} />
-          <Label htmlFor={`tco-${sv.vehicle.id}`} className="text-[11px] leading-tight">Inclure TCO dans la présentation</Label>
+          <Switch id={`tco-${sv.instanceId ?? sv.vehicle.id}`} checked={sv.includeTco} onCheckedChange={(b) => onChange({ includeTco: b })} />
+          <Label htmlFor={`tco-${sv.instanceId ?? sv.vehicle.id}`} className="text-[11px] leading-tight">Inclure TCO dans la présentation</Label>
         </div>
       </div>
       <TxtField label="N° de devis loueur" value={sv.leaserQuoteRef ?? ""} onChange={(s) => onChange({ leaserQuoteRef: s })} />
@@ -3138,11 +3230,12 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove, index, total, onMo
                   onChange({ competitorOffers: next });
                 }} />
                 <NumField label="Durée (mois)" value={offer.durationMonths} onChange={(n) => {
-                  const next = (sv.competitorOffers ?? []).map((c, i) => i === idx ? { ...c, durationMonths: n } : c);
+                  const next = (sv.competitorOffers ?? []).map((c, i) => i === idx ? { ...c, durationMonths: n, kmPerYear: n > 0 ? (c.kmPerYear * c.durationMonths) / n : c.kmPerYear } : c);
                   onChange({ competitorOffers: next });
                 }} />
-                <NumField label="Km / an" value={offer.kmPerYear} onChange={(n) => {
-                  const next = (sv.competitorOffers ?? []).map((c, i) => i === idx ? { ...c, kmPerYear: n } : c);
+                <NumField label="Km total (contrat)" value={Math.round(offer.kmPerYear * (offer.durationMonths / 12))} onChange={(totalKm) => {
+                  const years = offer.durationMonths / 12;
+                  const next = (sv.competitorOffers ?? []).map((c, i) => i === idx ? { ...c, kmPerYear: years > 0 ? totalKm / years : totalKm } : c);
                   onChange({ competitorOffers: next });
                 }} />
               </div>
@@ -3198,15 +3291,16 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove, index, total, onMo
               label={idx === 0 ? "Durée (mois)" : ""}
               value={cfg.durationMonths}
               onChange={(n) => {
-                const next = (sv.additionalConfigs ?? []).map((c) => c.id === cfg.id ? { ...c, durationMonths: n } : c);
+                const next = (sv.additionalConfigs ?? []).map((c) => c.id === cfg.id ? { ...c, durationMonths: n, kmPerYear: n > 0 ? (c.kmPerYear * c.durationMonths) / n : c.kmPerYear } : c);
                 onChange({ additionalConfigs: next });
               }}
             />
             <NumField
-              label={idx === 0 ? "Km / an" : ""}
-              value={cfg.kmPerYear}
-              onChange={(n) => {
-                const next = (sv.additionalConfigs ?? []).map((c) => c.id === cfg.id ? { ...c, kmPerYear: n } : c);
+              label={idx === 0 ? "Km total" : ""}
+              value={Math.round(cfg.kmPerYear * (cfg.durationMonths / 12))}
+              onChange={(totalKm) => {
+                const years = cfg.durationMonths / 12;
+                const next = (sv.additionalConfigs ?? []).map((c) => c.id === cfg.id ? { ...c, kmPerYear: years > 0 ? totalKm / years : totalKm } : c);
                 onChange({ additionalConfigs: next });
               }}
             />
@@ -4149,7 +4243,7 @@ function VehicleSlide({ sv, energy }: { sv: SelectedVehicle; energy: EnergyParam
         <div className="rounded-2xl bg-primary text-primary-foreground p-8 flex flex-col justify-center">
           <p className="text-xs uppercase opacity-70 mb-2">Loyer mensuel TTC · {sv.durationMonths} mois</p>
           <p className="text-6xl font-bold tracking-tight">{fmtEur(sv.negotiatedMonthly)}</p>
-          <p className="text-sm opacity-80 mt-2">× {sv.quantity} véhicule{sv.quantity > 1 ? "s" : ""} · {sv.kmPerYear.toLocaleString("fr-FR")} km/an</p>
+          <p className="text-sm opacity-80 mt-2">× {sv.quantity} véhicule{sv.quantity > 1 ? "s" : ""} · {Math.round(sv.kmPerYear * (sv.durationMonths / 12)).toLocaleString("fr-FR")} km (contrat)</p>
           {sv.discountPct > 0 && (
             <p className="text-xs opacity-70 mt-4">Prix catalogue {fmtEur(v.priceTtc)} TTC · remise négociée -{sv.discountPct}%</p>
           )}
@@ -4186,7 +4280,7 @@ function VehicleSlide({ sv, energy }: { sv: SelectedVehicle; energy: EnergyParam
 
       {sv.includeTco && (
         <div className="mt-8 border-l-4 border-primary bg-secondary/40 p-6 rounded-r-2xl">
-          <p className="text-xs uppercase text-muted-foreground mb-3">TCO aux 100 km · {sv.durationMonths} mois · {sv.kmPerYear.toLocaleString("fr-FR")} km/an</p>
+          <p className="text-xs uppercase text-muted-foreground mb-3">TCO aux 100 km · {sv.durationMonths} mois · {Math.round(sv.kmPerYear * (sv.durationMonths / 12)).toLocaleString("fr-FR")} km (contrat)</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             <KPI k="Loyer / 100 km" v={`${tco.lease100.toFixed(2)} €`} />
             <KPI k="Énergie / 100 km" v={`${tco.energy100.toFixed(2)} €`} />
@@ -4335,7 +4429,7 @@ function TcoSlide({ vehicles, energy }: { vehicles: SelectedVehicle[]; energy: E
           const widthPct = (row.r.tcoTotal / maxTotal) * 100;
           const isBest = idx === 0;
           return (
-            <div key={row.sv.vehicle.id} className="space-y-1.5">
+            <div key={row.sv.instanceId ?? `${row.sv.vehicle.id}-${idx}`} className="space-y-1.5">
               <div className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-3">
                   <span className={`w-6 h-6 rounded-full grid place-content-center text-xs font-bold ${isBest ? "bg-beev-rose text-beev-black" : "bg-muted text-foreground"}`}>{idx + 1}</span>

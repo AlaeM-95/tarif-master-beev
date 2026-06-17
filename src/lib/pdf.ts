@@ -31,6 +31,11 @@ export type PricingConfig = {
 };
 
 export type SelectedVehicle = {
+  /** Identifiant d'instance unique dans le devis. Permet de sélectionner
+   *  plusieurs variantes du MÊME modèle catalogue (ex. Tesla Model Y sans
+   *  options et une seconde avec options). Généré à la sélection / duplication.
+   *  Optionnel pour rétro-compat avec les devis enregistrés avant le multi-variante. */
+  instanceId?: string;
   vehicle: Vehicle;
   quantity: number;
   discountPct: number;
@@ -2598,7 +2603,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8);
   doc.setTextColor(...GREY_LABEL_DARK);
-  const noteText = `× ${sv.quantity} véhicule${sv.quantity > 1 ? "s" : ""} · ${fmt(sv.kmPerYear)} km/an · prestations incluses`;
+  const noteText = `× ${sv.quantity} véhicule${sv.quantity > 1 ? "s" : ""} · ${fmt(Math.round(sv.kmPerYear * sv.durationMonths / 12))} km (contrat) · prestations incluses`;
   const noteLines = doc.splitTextToSize(noteText, cardW - rowPad * 2);
   doc.text(noteLines, innerX, py);
 
@@ -2640,23 +2645,20 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       head: [[
         lookupText(TEXTS, "vehicles", "vehicle_scenarios_head_label", "Scénario"),
         lookupText(TEXTS, "vehicles", "vehicle_scenarios_head_duration", "Durée"),
-        lookupText(TEXTS, "vehicles", "vehicle_scenarios_head_kmyear", "Km / an"),
-        lookupText(TEXTS, "vehicles", "vehicle_scenarios_head_kmtotal", "Km total"),
+        lookupText(TEXTS, "vehicles", "vehicle_scenarios_head_kmtotal", "Km total (contrat)"),
         lookupText(TEXTS, "vehicles", "vehicle_scenarios_head_monthly", "Loyer mensuel TTC"),
       ]],
       body: [
         [
           { content: "Principal", styles: { fontStyle: "bold", textColor: LAVENDER } },
           `${sv.durationMonths} mois`,
-          fmt(sv.kmPerYear),
-          fmt(sv.kmPerYear * sv.durationMonths / 12),
+          fmt(Math.round(sv.kmPerYear * sv.durationMonths / 12)),
           { content: eurLoyer(sv.negotiatedMonthly), styles: { fontStyle: "bold", textColor: LAVENDER, halign: "right" } },
         ],
         ...altConfigs.map((c, i) => [
           { content: `Alternative ${i + 1}`, styles: { textColor: SUB } },
           `${c.durationMonths} mois`,
-          fmt(c.kmPerYear),
-          fmt(c.kmPerYear * c.durationMonths / 12),
+          fmt(Math.round(c.kmPerYear * c.durationMonths / 12)),
           { content: eurLoyer(c.negotiatedMonthly), styles: { fontStyle: "bold", halign: "right" } },
         ]),
       ],
@@ -2664,11 +2666,10 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       bodyStyles: { fontSize: 9.5, cellPadding: 6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
       alternateRowStyles: { fillColor: [252, 251, 248] as [number, number, number] },
       columnStyles: {
-        0: { cellWidth: 110 },
-        1: { halign: "center", cellWidth: 70 },
-        2: { halign: "right", cellWidth: 80 },
-        3: { halign: "right", cellWidth: 80 },
-        4: { halign: "right" },
+        0: { cellWidth: 130 },
+        1: { halign: "center", cellWidth: 80 },
+        2: { halign: "right", cellWidth: 110 },
+        3: { halign: "right" },
       },
       margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
     });
@@ -2758,7 +2759,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     doc.text(lookupText(TEXTS, "vehicles", "vehicle_tco_block_title", "COÛT TOTAL DE POSSESSION (TCO)"), M + 16, y + 16);
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(7.5);
-    doc.text(`${sv.durationMonths} mois · ${fmt(sv.kmPerYear)} km/an · estimation non contractuelle`, M + 16, y + 27);
+    doc.text(`${sv.durationMonths} mois · ${fmt(Math.round(sv.kmPerYear * sv.durationMonths / 12))} km (contrat) · estimation non contractuelle`, M + 16, y + 27);
 
     // Badge "TCO calculé via Beev 2026" si données synchronisées
     if (synced) {
@@ -3638,7 +3639,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: 
     return [
       // Marque + modèle + version sur 1re ligne, durée/km sur 2e (séparation
       // claire pour distinguer 2 finitions d'un même modèle dans le tableau).
-      { content: `${vehicleLabel(sv.vehicle)}\n${sv.durationMonths} mois · ${(sv.kmPerYear / 1000).toFixed(0)}k km/an`, styles: { halign: "left" as any, fontStyle: "normal" as any, fontSize: 8.5 } },
+      { content: `${vehicleLabel(sv.vehicle)}\n${sv.durationMonths} mois · ${((sv.kmPerYear * sv.durationMonths / 12) / 1000).toFixed(0)}k km (contrat)`, styles: { halign: "left" as any, fontStyle: "normal" as any, fontSize: 8.5 } },
         { content: eur(r.loyerTotal), styles: { halign: "center" as any } },
         { content: eur(r.coutEnergie), styles: { halign: "center" as any } },
         { content: eur(r.tvsTotal), styles: r.tvsTotal > 0
@@ -4408,7 +4409,7 @@ function drawCompetitorComparison(doc: jsPDF, vehicles: SelectedVehicle[]) {
       // (séparateur de charte Beev). Trait fin vertical dessiné entre les
       // deux pour bien marquer la séparation demandée.
       const durTxt = `${duration} mois`;
-      const kmTxt = `${kmPerYear.toLocaleString("fr-FR")} km/an`;
+      const kmTxt = `${Math.round(kmPerYear * (duration / 12)).toLocaleString("fr-FR")} km`;
       const lineY = y + 88;
       doc.text(durTxt, cx + 10, lineY);
       const durW = doc.getTextWidth(durTxt);
@@ -5034,7 +5035,7 @@ function drawExecutiveSummary(
       ? { label: "Durée LLD", value: `${vehicles[0].durationMonths} mois` }
       : { label: "Type", value: type === "home" ? "B2B2E" : "IRVE site" },
     type === "vehicles" && vehicles[0]
-      ? { label: "Kilométrage", value: `${fmt(vehicles[0].kmPerYear)} km/an` }
+      ? { label: "Kilométrage", value: `${fmt(Math.round(vehicles[0].kmPerYear * vehicles[0].durationMonths / 12))} km (contrat)` }
       : { label: "Modèles", value: String(chargers.length) },
   ]);
 
@@ -5730,7 +5731,7 @@ function drawFinancialSynthesis(
         vehicleLabel(sv.vehicle, 32),
         sv.vehicle.isCurrentFleet ? "Flotte actuelle" : "Proposition Beev",
         `${sv.quantity}`,
-        `${sv.durationMonths} mois · ${(sv.kmPerYear / 1000).toFixed(0)}k km/an`,
+        `${sv.durationMonths} mois · ${((sv.kmPerYear * sv.durationMonths / 12) / 1000).toFixed(0)}k km (contrat)`,
         eurLoyer(sv.negotiatedMonthly),
       ];
       return hasGroups ? [(sv.comparisonGroup ?? "").trim() || "—", ...base] : base;
