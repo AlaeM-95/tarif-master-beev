@@ -30,7 +30,7 @@ const STATUS_FILTERS: Array<{ key: ProposalStatus | "all"; label: string }> = [
 function ProposalsPage() {
   const { isSales, isOps, loading, user } = useAuth();
   const navigate = useNavigate();
-  const { proposals, isLoading, remove, duplicate } = useProposals();
+  const { proposals, isLoading, remove, duplicate, updateStatus } = useProposals();
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [shareId, setShareId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -181,6 +181,22 @@ function ProposalsPage() {
                         </p>
                       </div>
                     </Link>
+                    {/* Changement de statut directement depuis la liste, sans
+                        ouvrir la proposition. */}
+                    <select
+                      value={p.status}
+                      title="Changer le statut de cette proposition"
+                      onChange={async (e) => {
+                        const res = await updateStatus(p.id, e.target.value as ProposalStatus);
+                        if (res.error) toast.error(res.error);
+                        else toast.success(`Statut : ${PROPOSAL_STATUS_LABEL[e.target.value as ProposalStatus]}`);
+                      }}
+                      className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                    >
+                      {(["draft", "sent", "signed", "refused", "expired"] as ProposalStatus[]).map((s) => (
+                        <option key={s} value={s}>{PROPOSAL_STATUS_LABEL[s]}</option>
+                      ))}
+                    </select>
                     <Button
                       variant="ghost"
                       size="icon"
