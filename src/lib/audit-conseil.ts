@@ -58,7 +58,7 @@ export function defaultAuditConseil(): AuditConseilConfig {
     clientLogoUrl: "",
     date: mois.charAt(0).toUpperCase() + mois.slice(1),
     title: "Audit & recommandation flotte avec approche TCO",
-    approach: "Cartographie du parc, calcul du coût total de détention et recommandations véhicules.",
+    approach: "Cartographie de votre parc, calcul du coût total de détention et recommandations véhicules pour réduire vos coûts et cadrer votre transition électrique.",
     preparedBy: "",
     fleetSize: "~80 véhicules",
     sites: "Multi-sites",
@@ -76,7 +76,7 @@ export function defaultAuditConseil(): AuditConseilConfig {
       { title: "Restitution direction", text: "Présentation exécutive prête pour comité de direction, avec arbitrage." },
     ],
     tarifsSansEngagement: [
-      { prestation: "Audit TCO + recommandations", sub: "Livrables 01 à 06 — prestation autonome", modalite: "Prestation indépendante", modaliteStyle: "rose", tarif: "5 000 €" },
+      { prestation: "Audit TCO + recommandations", sub: "Livrables 01 à 06 · prestation autonome", modalite: "Prestation indépendante", modaliteStyle: "rose", tarif: "5 000 €" },
     ],
     tarifsAvecEngagement: [
       { prestation: "Audit TCO + recommandations + accompagnement", sub: "Sous réserve de la signature d'un contrat-cadre d'un an avec Beev : engagement de volume sur le renouvellement des véhicules, acquisition de la solution Fleet Manager, ou volume d'installations de bornes défini.", modalite: "Offert sous conditions", modaliteStyle: "bleu", tarif: "Inclus" },
@@ -226,8 +226,9 @@ function etapesBlock(cfg: AuditConseilConfig): string {
   </div>`;
 }
 
-// Graphique SVG : coût total annuel thermique vs électrique pour chaque taille
-// de flotte, avec l'économie annuelle mise en avant. Vert = électrique (gain).
+// Graphique SVG : TCO moyen annuel thermique vs électrique pour chaque taille
+// de flotte, avec l'économie annuelle mise en avant. Couleurs charte Beev :
+// rose (thermique, coût à réduire), bleu (électrique, solution Beev).
 function comparisonBlock(cfg: AuditConseilConfig): string {
   const c = cfg.comparison;
   if (!c || !c.enabled) return "";
@@ -248,9 +249,9 @@ function comparisonBlock(cfg: AuditConseilConfig): string {
   const barW = Math.min(38, groupW / 3.4);
   const gap = 9;
 
-  const COL_TH = "#C4BBA9";   // thermique : taupe
-  const COL_EL = "#1FA463";   // électrique : vert Beev
-  const COL_ECO = "#157A48";  // économie : vert foncé
+  const COL_TH = "#F4B8AA";   // thermique : rose Beev (coût à réduire)
+  const COL_EL = "#A5D2FF";   // électrique : bleu Beev (solution)
+  const COL_ECO = "#1D1D1D";  // économie : noir Beev (contraste, lisibilité)
 
   const bars = data.map((d, i) => {
     const cx = padL + groupW * i + groupW / 2;
@@ -275,19 +276,23 @@ function comparisonBlock(cfg: AuditConseilConfig): string {
     </svg>`;
 
   const max = data[data.length - 1];
+  const ecoUnit = Math.max(0, c.costThermique - c.costElectrique);
   return `
   <div class="section">
-    ${sectionLabel("Projection économique · thermique vs électrique", "vert")}
+    ${sectionLabel("Projection économique · thermique vs électrique", "bleu")}
     <div class="chart-card">
       <div class="chart-head">
         <div class="chart-legend">
-          <span class="lg"><span class="lg-dot" style="background:${COL_TH}"></span>Coût annuel thermique</span>
-          <span class="lg"><span class="lg-dot" style="background:${COL_EL}"></span>Coût annuel électrique</span>
+          <span class="lg"><span class="lg-dot" style="background:${COL_TH}"></span>TCO moyen thermique / an</span>
+          <span class="lg"><span class="lg-dot" style="background:${COL_EL}"></span>TCO moyen électrique / an</span>
         </div>
         <div class="chart-hl">Jusqu'à <strong>${eurInt(max.eco)}</strong> d'économies / an sur ${max.s} véhicules</div>
       </div>
       ${svg}
-      <div class="chart-foot">Base TCO : ${eurInt(c.costThermique)} / an / véhicule (thermique) contre ${eurInt(c.costElectrique)} / an / véhicule (électrique). Projection indicative, affinée lors de l'audit.</div>
+      <div class="chart-method">
+        <div class="chart-method-title">Comment lire ce calcul</div>
+        <p>Économie = écart de <strong>TCO moyen annuel</strong> (thermique − électrique) × nombre de véhicules, soit (${eurInt(c.costThermique)} − ${eurInt(c.costElectrique)}) = <strong>${eurInt(ecoUnit)} par véhicule et par an</strong>. Le TCO moyen intègre le loyer (LLD), l'énergie, l'entretien, l'assurance et la fiscalité (TVS, malus, avantage en nature). Moyennes de marché, affinées par segment lors de l'audit.</p>
+      </div>
     </div>
   </div>`;
 }
@@ -318,7 +323,7 @@ export function buildAuditConseilHtml(cfg: AuditConseilConfig, fonts?: RoobertFo
 ${fontFaceCss(fonts)}
   :root {
     --ink:#1A1A1A; --beige:#FBF8F1; --paper:#FFFFFF;
-    --rose:#F4B8AA; --bleu:#A5D2FF; --violet:#D3CCD8; --vert:#1FA463;
+    --rose:#F4B8AA; --bleu:#A5D2FF; --violet:#D3CCD8;
     --sub:#6A6A6F; --rule:#E8E4DC;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -334,7 +339,7 @@ ${fontFaceCss(fonts)}
 
   .sec-label { display: flex; align-items: center; gap: 9px; font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--sub); font-weight: 600; margin-bottom: 11px; }
   .sec-bar { width: 22px; height: 3px; border-radius: 2px; display: inline-block; }
-  .sec-bar.rose { background: var(--rose); } .sec-bar.bleu { background: var(--bleu); } .sec-bar.violet { background: var(--violet); } .sec-bar.vert { background: var(--vert); }
+  .sec-bar.rose { background: var(--rose); } .sec-bar.bleu { background: var(--bleu); } .sec-bar.violet { background: var(--violet); }
 
   /* Hero cover */
   .hero { background: var(--ink); color: var(--beige); border-radius: 18px; padding: 26px 30px 28px; position: relative; overflow: hidden; }
@@ -386,9 +391,13 @@ ${fontFaceCss(fonts)}
   .chart-legend { display: flex; gap: 18px; }
   .lg { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; color: var(--sub); font-weight: 600; }
   .lg-dot { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
-  .chart-hl { font-size: 12px; font-weight: 600; color: var(--ink); background: #E7F6EE; border: 1px solid #BFE6CF; border-radius: 999px; padding: 6px 14px; }
-  .chart-hl strong { color: var(--vert); }
-  .chart-foot { font-size: 10px; color: var(--sub); line-height: 1.5; margin-top: 12px; }
+  .chart-hl { font-size: 12px; font-weight: 600; color: var(--ink); background: #EDF6FF; border: 1px solid var(--bleu); border-radius: 999px; padding: 6px 14px; }
+  .chart-hl strong { color: var(--ink); }
+  .chart-method { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--rule); }
+  .chart-method-title { font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: var(--sub); font-weight: 700; margin-bottom: 6px; }
+  .chart-method p { font-size: 10.5px; color: var(--sub); line-height: 1.55; margin-bottom: 5px; }
+  .chart-method p:last-child { margin-bottom: 0; }
+  .chart-method strong { color: var(--ink); font-weight: 700; }
 
   /* Stepper */
   .steps { position: relative; display: grid; grid-template-columns: repeat(var(--steps), 1fr); gap: 8px; padding-top: 4px; }

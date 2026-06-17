@@ -227,8 +227,8 @@ export function AuditConseilEditor({ open, onOpenChange, clientName }: { open: b
           {cfg.comparison.enabled && (
             <div className="space-y-2.5">
               <div className="grid grid-cols-2 gap-2">
-                <Num label="Coût thermique (€/an/véhicule)" value={cfg.comparison.costThermique} onChange={(n) => patch({ comparison: { ...cfg.comparison, costThermique: n } })} />
-                <Num label="Coût électrique (€/an/véhicule)" value={cfg.comparison.costElectrique} onChange={(n) => patch({ comparison: { ...cfg.comparison, costElectrique: n } })} />
+                <Num label="TCO moyen thermique (€/an/véhicule)" value={cfg.comparison.costThermique} onChange={(n) => patch({ comparison: { ...cfg.comparison, costThermique: n } })} />
+                <Num label="TCO moyen électrique (€/an/véhicule)" value={cfg.comparison.costElectrique} onChange={(n) => patch({ comparison: { ...cfg.comparison, costElectrique: n } })} />
               </div>
               <Txt
                 label="Tailles de flotte comparées (séparées par des virgules)"
@@ -236,7 +236,7 @@ export function AuditConseilEditor({ open, onOpenChange, clientName }: { open: b
                 onChange={(v) => patch({ comparison: { ...cfg.comparison, fleetSizes: v.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => Number.isFinite(n) && n > 0) } })}
               />
               <p className="text-[11px] text-muted-foreground">
-                Économie annuelle par véhicule : {(cfg.comparison.costThermique - cfg.comparison.costElectrique).toLocaleString("fr-FR")} €. Le graphique projette le coût total et l'économie pour chaque taille de flotte.
+                Économie moyenne par véhicule et par an : {(cfg.comparison.costThermique - cfg.comparison.costElectrique).toLocaleString("fr-FR")} €. Saisissez des TCO moyens (loyer, énergie, entretien, assurance, fiscalité). Le PDF projette l'économie par taille de flotte et explique le calcul.
               </p>
             </div>
           )}
