@@ -1,11 +1,11 @@
 // Audit & conseil flotte — proposition commerciale « Audit & recommandation
-// flotte avec approche TCO ». Conçue d'après le modèle Beev × FEV Group France :
-// page de garde sombre (client, périmètre), contexte & enjeux identifiés, ce que
-// comprend l'audit (livrables numérotés), tarification sans / avec engagement,
-// processus en étapes, puis bandeau de lancement signé par le commercial.
+// flotte avec approche TCO ». Refonte v2 : branding Beev assumé (logo officiel,
+// charte rose / bleu / violet / noir / beige), hiérarchie typographique nette,
+// badges d'accent pleins, graphique de projection économique aux couleurs Beev
+// et méthode de calcul TCO explicitée (moyennes de marché).
 //
-// Même charte et même mécanique d'export que le BPU partenariat : HTML vectoriel
-// imprimé via la fenêtre du navigateur, polices Roobert embarquées en base64.
+// Même mécanique d'export que le BPU partenariat : HTML vectoriel imprimé via la
+// fenêtre du navigateur, polices Roobert et logos embarqués en base64.
 
 export type AuditEnjeu = { title: string; text: string };
 export type AuditLivrable = { title: string; text: string };
@@ -20,12 +20,12 @@ export type AuditTarifRow = {
 export type AuditEtape = { title: string; text: string };
 
 // Comparaison économique thermique vs électrique selon la taille de flotte.
-// Les coûts sont saisis par véhicule et par an (TCO complet) ; le graphique
-// projette le coût total et l'économie pour chaque taille de flotte.
+// Les coûts sont des TCO MOYENS annuels par véhicule ; le graphique projette le
+// coût total et l'économie pour chaque taille de flotte.
 export type AuditComparison = {
   enabled: boolean;
-  costThermique: number;   // € / an / véhicule (thermique)
-  costElectrique: number;  // € / an / véhicule (électrique)
+  costThermique: number;   // TCO moyen € / an / véhicule (thermique)
+  costElectrique: number;  // TCO moyen € / an / véhicule (électrique)
   fleetSizes: number[];    // tailles de flotte comparées, ex : [10, 25, 50, 80]
 };
 
@@ -70,7 +70,7 @@ export function defaultAuditConseil(): AuditConseilConfig {
     livrables: [
       { title: "Inventaire & analyse du parc actuel", text: "Cartographie complète des contrats, loyers, kilométrages et dates d'échéance." },
       { title: "Calcul TCO par segment", text: "LLD, entretien, énergie, fiscalité (TVS / CVAE) et avantages en nature collaborateurs." },
-      { title: "Recommandations véhicules", text: "Comparatif loyers VE, hybrides rechargeables et non rechargeables." },
+      { title: "Recommandations véhicules", text: "Comparatif loyers véhicules électrique, hybrides rechargeable et non rechargeable." },
       { title: "Projection d'économies", text: "Gains estimés sur 12 / 24 / 36 mois selon scénarios de renouvellement." },
       { title: "Plan déploiement bornes", text: "Offre nationale bornes domicile et sites, analyse fiscale." },
       { title: "Restitution direction", text: "Présentation exécutive prête pour comité de direction, avec arbitrage." },
@@ -111,7 +111,11 @@ const eurInt = (n: number) =>
 const esc = (s: string): string =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
-// Bloc @font-face Roobert (identique au BPU : embarque les data-URLs si fournies).
+// Logos Beev officiels embarqués (base64). logoLight = blanc (sur fond sombre),
+// logoDark = noir (sur fond clair).
+export type AuditAssets = { logoDark?: string; logoLight?: string };
+
+// Bloc @font-face Roobert (embarque les data-URLs si fournies, sinon /fonts).
 export type RoobertFonts = { regular?: string; medium?: string; semibold?: string };
 function fontFaceCss(fonts?: RoobertFonts): string {
   const src = (dataUrl: string | undefined, path: string) =>
@@ -123,27 +127,40 @@ function fontFaceCss(fonts?: RoobertFonts): string {
   @font-face { font-family: 'Roobert'; src: ${src(fonts?.semibold, "/fonts/Roobert-SemiBold.ttf")}; font-weight: 700; font-display: block; }`;
 }
 
+// Logo Beev (image officielle) ou repli wordmark texte.
+function beevLogo(assets: AuditAssets | undefined, light: boolean, cls: string): string {
+  const url = light ? assets?.logoLight : assets?.logoDark;
+  if (url) return `<img class="${cls}" src="${url}" alt="Beev" />`;
+  return `<span class="${cls} wordmark${light ? " light" : ""}">beev</span>`;
+}
+
 // Petit label de section : barre d'accent + intitulé en capitales espacées.
 function sectionLabel(text: string, accent = "rose"): string {
   return `<div class="sec-label"><span class="sec-bar ${accent}"></span>${esc(text)}</div>`;
 }
 
-function heroBlock(cfg: AuditConseilConfig): string {
+const ACCENTS = ["rose", "bleu", "violet"];
+
+function heroBlock(cfg: AuditConseilConfig, assets?: AuditAssets): string {
   const eyebrow = `Proposition commerciale${cfg.clientName ? " · " + esc(cfg.clientName) + " × Beev" : " · Beev"}`;
   const chips = [cfg.fleetSize, cfg.sites, cfg.date]
     .filter((c) => c && c.trim())
     .map((c) => `<span class="chip">${esc(c)}</span>`)
     .join("");
   const prepared = cfg.preparedBy ? `<div class="hero-prepared">Préparé par <strong>${esc(cfg.preparedBy)}</strong></div>` : "";
-  const logo = cfg.clientLogoUrl ? `<img class="hero-logo" src="${esc(cfg.clientLogoUrl)}" alt="Logo client" />` : "";
+  const clientLogo = cfg.clientLogoUrl
+    ? `<div class="hero-client"><img src="${esc(cfg.clientLogoUrl)}" alt="Logo client" /></div>`
+    : "";
   return `
   <div class="hero">
+    <span class="orb orb-rose"></span>
+    <span class="orb orb-bleu"></span>
     <div class="hero-top">
       <span class="hero-eyebrow">${eyebrow}</span>
-      <span class="hero-wordmark">beev</span>
+      ${beevLogo(assets, true, "hero-logo")}
     </div>
     <div class="hero-main">
-      ${logo ? `<div class="hero-logo-wrap">${logo}</div>` : ""}
+      ${clientLogo}
       <h1 class="hero-title">${esc(cfg.title)}</h1>
       <span class="hero-rule"></span>
       <div class="hero-approach">${esc(cfg.approach)}</div>
@@ -155,10 +172,9 @@ function heroBlock(cfg: AuditConseilConfig): string {
 
 function enjeuxBlock(cfg: AuditConseilConfig): string {
   if (!cfg.enjeux.length) return "";
-  const accents = ["rose", "bleu", "violet"];
   const items = cfg.enjeux.map((e, i) => `
-    <div class="enjeu ${accents[i % accents.length]}">
-      <span class="enjeu-num">${String(i + 1).padStart(2, "0")}</span>
+    <div class="enjeu ${ACCENTS[i % ACCENTS.length]}">
+      <span class="enjeu-badge">${String(i + 1).padStart(2, "0")}</span>
       <div class="enjeu-body">
         <div class="enjeu-title">${esc(e.title)}</div>
         <div class="enjeu-text">${esc(e.text)}</div>
@@ -174,7 +190,7 @@ function enjeuxBlock(cfg: AuditConseilConfig): string {
 function livrablesBlock(cfg: AuditConseilConfig): string {
   if (!cfg.livrables.length) return "";
   const cards = cfg.livrables.map((l, i) => `
-    <div class="liv-card">
+    <div class="liv-card ${ACCENTS[i % ACCENTS.length]}">
       <span class="liv-num">${String(i + 1).padStart(2, "0")}</span>
       <div class="liv-title">${esc(l.title)}</div>
       <div class="liv-text">${esc(l.text)}</div>
@@ -226,9 +242,9 @@ function etapesBlock(cfg: AuditConseilConfig): string {
   </div>`;
 }
 
-// Graphique SVG : TCO moyen annuel thermique vs électrique pour chaque taille
-// de flotte, avec l'économie annuelle mise en avant. Couleurs charte Beev :
-// rose (thermique, coût à réduire), bleu (électrique, solution Beev).
+// Graphique SVG : TCO moyen annuel thermique vs électrique pour chaque taille de
+// flotte. Couleurs charte Beev : rose (thermique, coût à réduire), bleu
+// (électrique, solution Beev), noir pour l'économie (lisibilité).
 function comparisonBlock(cfg: AuditConseilConfig): string {
   const c = cfg.comparison;
   if (!c || !c.enabled) return "";
@@ -242,16 +258,16 @@ function comparisonBlock(cfg: AuditConseilConfig): string {
   }));
   const maxV = Math.max(...data.map((d) => d.th), 1);
 
-  const W = 700, H = 248, padT = 30, padB = 48, padL = 6, padR = 6;
+  const W = 700, H = 220, padT = 26, padB = 46, padL = 6, padR = 6;
   const chartH = H - padT - padB;
   const baseY = padT + chartH;
   const groupW = (W - padL - padR) / data.length;
   const barW = Math.min(38, groupW / 3.4);
   const gap = 9;
 
-  const COL_TH = "#F4B8AA";   // thermique : rose Beev (coût à réduire)
-  const COL_EL = "#A5D2FF";   // électrique : bleu Beev (solution)
-  const COL_ECO = "#1D1D1D";  // économie : noir Beev (contraste, lisibilité)
+  const COL_TH = "#F4B8AA";   // thermique : rose Beev
+  const COL_EL = "#A5D2FF";   // électrique : bleu Beev
+  const COL_ECO = "#1D1D1D";  // économie : noir Beev
 
   const bars = data.map((d, i) => {
     const cx = padL + groupW * i + groupW / 2;
@@ -262,16 +278,16 @@ function comparisonBlock(cfg: AuditConseilConfig): string {
     const yTh = baseY - hTh;
     const yEl = baseY - hEl;
     return `
-      <rect x="${xTh.toFixed(1)}" y="${yTh}" width="${barW.toFixed(1)}" height="${hTh}" rx="4" fill="${COL_TH}" />
-      <rect x="${xEl.toFixed(1)}" y="${yEl}" width="${barW.toFixed(1)}" height="${hEl}" rx="4" fill="${COL_EL}" />
+      <rect x="${xTh.toFixed(1)}" y="${yTh}" width="${barW.toFixed(1)}" height="${hTh}" rx="5" fill="${COL_TH}" />
+      <rect x="${xEl.toFixed(1)}" y="${yEl}" width="${barW.toFixed(1)}" height="${hEl}" rx="5" fill="${COL_EL}" />
       <text x="${cx.toFixed(1)}" y="${(Math.min(yTh, yEl) - 9).toFixed(1)}" text-anchor="middle" font-size="11.5" font-weight="700" fill="${COL_ECO}">- ${eurInt(d.eco)}</text>
-      <text x="${cx.toFixed(1)}" y="${baseY + 19}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1A1A1A">${d.s} véhicules</text>
-      <text x="${cx.toFixed(1)}" y="${baseY + 33}" text-anchor="middle" font-size="9" fill="#5F5F64">économie / an</text>`;
+      <text x="${cx.toFixed(1)}" y="${baseY + 19}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1D1D1D">${d.s} véhicules</text>
+      <text x="${cx.toFixed(1)}" y="${baseY + 33}" text-anchor="middle" font-size="9" fill="#6A6A6F">économie / an</text>`;
   }).join("");
 
   const svg = `
     <svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" role="img">
-      <line x1="${padL}" y1="${baseY}" x2="${W - padR}" y2="${baseY}" stroke="#E8E4DC" stroke-width="1.5" />
+      <line x1="${padL}" y1="${baseY}" x2="${W - padR}" y2="${baseY}" stroke="#ECE7DD" stroke-width="1.5" />
       ${bars}
     </svg>`;
 
@@ -297,24 +313,26 @@ function comparisonBlock(cfg: AuditConseilConfig): string {
   </div>`;
 }
 
-function ctaBlock(cfg: AuditConseilConfig): string {
+function ctaBlock(cfg: AuditConseilConfig, assets?: AuditAssets): string {
   if (!cfg.ctaText && !cfg.signature) return "";
   return `
   <div class="cta">
+    <span class="orb orb-rose"></span>
     <div class="cta-inner">
       <div class="cta-label">Pour lancer l'audit</div>
       <div class="cta-text">${esc(cfg.ctaText)}</div>
+      <div class="cta-brand">${beevLogo(assets, true, "cta-logo")}</div>
     </div>
     ${cfg.signature ? `<div class="cta-sign"><span class="cta-sign-label">Votre interlocuteur Beev</span><span class="cta-sign-name">${esc(cfg.signature)}</span></div>` : ""}
   </div>`;
 }
 
-function pageFoot(cfg: AuditConseilConfig, n: number, total: number): string {
-  const foot = `Beev · 5 rue Pleyel, 93200 Saint-Denis · SAS au capital de 63 245,02 € · RCS Bobigny 851 682 807 · Prix HT`;
-  return `<div class="foot"><span class="foot-mark">beev</span><span class="foot-legal">${esc(foot)}</span><span class="foot-page">${esc(cfg.date)} · ${n}/${total}</span></div>`;
+function pageFoot(cfg: AuditConseilConfig, assets: AuditAssets | undefined, n: number, total: number): string {
+  const legal = `Beev · 5 rue Pleyel, 93200 Saint-Denis · SAS au capital de 63 245,02 € · RCS Bobigny 851 682 807 · Prix HT`;
+  return `<div class="foot">${beevLogo(assets, false, "foot-mark")}<span class="foot-legal">${esc(legal)}</span><span class="foot-page">${esc(cfg.date)} · ${n}/${total}</span></div>`;
 }
 
-export function buildAuditConseilHtml(cfg: AuditConseilConfig, fonts?: RoobertFonts): string {
+export function buildAuditConseilHtml(cfg: AuditConseilConfig, fonts?: RoobertFonts, assets?: AuditAssets): string {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8" />
 <base href="${origin}/" />
@@ -322,102 +340,114 @@ export function buildAuditConseilHtml(cfg: AuditConseilConfig, fonts?: RoobertFo
 <style>
 ${fontFaceCss(fonts)}
   :root {
-    --ink:#1A1A1A; --beige:#FBF8F1; --paper:#FFFFFF;
+    --ink:#1D1D1D; --beige:#FCF9F2; --paper:#FFFFFF;
     --rose:#F4B8AA; --bleu:#A5D2FF; --violet:#D3CCD8;
-    --sub:#6A6A6F; --rule:#E8E4DC;
+    --rose-soft:#FCEDE8; --bleu-soft:#EAF3FF; --violet-soft:#F2EFF4;
+    --sub:#6A6A6F; --rule:#ECE7DD;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   @page { size: A4; margin: 0; }
   html, body { font-family: 'Roobert','Inter',-apple-system,BlinkMacSystemFont,sans-serif; color: var(--ink); background: var(--beige); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
-  /* Pages A4 délibérées : saut de page propre entre pages, jamais au milieu
-     d'une section. */
-  .page { position: relative; width: 210mm; height: 297mm; padding: 12mm 15mm 16mm; background: var(--beige); page-break-after: always; overflow: hidden; }
+  .page { position: relative; width: 210mm; height: 297mm; padding: 13mm 15mm 16mm; background: var(--beige); page-break-after: always; overflow: hidden; }
   .page:last-child { page-break-after: auto; }
-  .section { margin-top: 16px; break-inside: avoid; page-break-inside: avoid; }
+  .section { margin-top: 17px; break-inside: avoid; page-break-inside: avoid; }
   .section:first-of-type { margin-top: 18px; }
 
-  .sec-label { display: flex; align-items: center; gap: 9px; font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--sub); font-weight: 600; margin-bottom: 11px; }
-  .sec-bar { width: 22px; height: 3px; border-radius: 2px; display: inline-block; }
+  .wordmark { font-weight: 700; letter-spacing: -.02em; }
+  .wordmark.light { color: var(--beige); }
+
+  .sec-label { display: flex; align-items: center; gap: 10px; font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: var(--sub); font-weight: 700; margin-bottom: 12px; }
+  .sec-bar { width: 24px; height: 3px; border-radius: 2px; display: inline-block; }
   .sec-bar.rose { background: var(--rose); } .sec-bar.bleu { background: var(--bleu); } .sec-bar.violet { background: var(--violet); }
 
-  /* Hero cover */
-  .hero { background: var(--ink); color: var(--beige); border-radius: 18px; padding: 26px 30px 28px; position: relative; overflow: hidden; }
-  .hero::after { content: ""; position: absolute; right: -60px; top: -60px; width: 220px; height: 220px; border-radius: 50%; background: radial-gradient(circle, rgba(244,184,170,.22), transparent 70%); }
+  /* Hero cover — panneau noir Beev avec orbes de couleur charte */
+  .hero { position: relative; background: var(--ink); color: var(--beige); border-radius: 22px; padding: 30px 34px 32px; overflow: hidden; }
+  .orb { position: absolute; border-radius: 50%; filter: blur(2px); pointer-events: none; }
+  .orb-rose { right: -70px; top: -70px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(244,184,170,.30), transparent 68%); }
+  .orb-bleu { left: -90px; bottom: -110px; width: 280px; height: 280px; background: radial-gradient(circle, rgba(165,210,255,.22), transparent 70%); }
   .hero-top { display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 1; }
-  .hero-eyebrow { font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: rgba(251,248,241,.72); font-weight: 600; }
-  .hero-wordmark { font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
-  .hero-main { position: relative; z-index: 1; margin-top: 22px; }
-  .hero-logo-wrap { margin-bottom: 16px; }
-  .hero-logo { max-height: 40px; max-width: 170px; object-fit: contain; }
-  .hero-title { font-size: 33px; line-height: 1.07; font-weight: 700; letter-spacing: -.025em; max-width: 88%; }
-  .hero-rule { display: block; width: 52px; height: 4px; border-radius: 2px; background: var(--rose); margin: 14px 0; }
-  .hero-approach { font-size: 13.5px; line-height: 1.55; color: rgba(251,248,241,.85); max-width: 82%; }
-  .chips { display: flex; gap: 9px; margin-top: 16px; flex-wrap: wrap; }
-  .chip { font-size: 11px; font-weight: 600; border: 1px solid rgba(251,248,241,.28); color: var(--beige); border-radius: 999px; padding: 6px 14px; }
-  .hero-prepared { font-size: 12px; color: rgba(251,248,241,.7); margin-top: 14px; }
+  .hero-eyebrow { font-size: 10px; letter-spacing: .24em; text-transform: uppercase; color: rgba(252,249,242,.7); font-weight: 700; }
+  .hero-logo { height: 22px; width: auto; object-fit: contain; }
+  span.hero-logo { font-size: 21px; }
+  .hero-main { position: relative; z-index: 1; margin-top: 26px; }
+  .hero-client { display: inline-flex; align-items: center; background: #fff; border-radius: 12px; padding: 9px 13px; margin-bottom: 18px; }
+  .hero-client img { max-height: 34px; max-width: 150px; object-fit: contain; display: block; }
+  .hero-title { font-size: 34px; line-height: 1.06; font-weight: 700; letter-spacing: -.028em; max-width: 90%; }
+  .hero-rule { display: block; width: 56px; height: 4px; border-radius: 2px; background: var(--rose); margin: 16px 0; }
+  .hero-approach { font-size: 13.5px; line-height: 1.6; color: rgba(252,249,242,.86); max-width: 84%; }
+  .chips { display: flex; gap: 9px; margin-top: 18px; flex-wrap: wrap; }
+  .chip { font-size: 11px; font-weight: 600; background: rgba(252,249,242,.08); border: 1px solid rgba(252,249,242,.3); color: var(--beige); border-radius: 999px; padding: 6px 14px; }
+  .hero-prepared { font-size: 12px; color: rgba(252,249,242,.7); margin-top: 16px; }
   .hero-prepared strong { color: var(--beige); font-weight: 700; }
 
-  /* Enjeux : carte à liseré d'accent + numéro */
-  .enjeux { display: flex; flex-direction: column; gap: 9px; }
-  .enjeu { display: flex; gap: 16px; background: var(--paper); border: 1px solid var(--rule); border-left-width: 4px; border-radius: 12px; padding: 13px 16px; break-inside: avoid; }
+  /* Enjeux : carte à liseré + badge plein dans la couleur d'accent */
+  .enjeux { display: flex; flex-direction: column; gap: 10px; }
+  .enjeu { display: flex; gap: 16px; align-items: flex-start; background: var(--paper); border: 1px solid var(--rule); border-left-width: 4px; border-radius: 13px; padding: 15px 18px; break-inside: avoid; }
   .enjeu.rose { border-left-color: var(--rose); } .enjeu.bleu { border-left-color: var(--bleu); } .enjeu.violet { border-left-color: var(--violet); }
-  .enjeu-num { font-size: 18px; font-weight: 700; color: var(--rule); line-height: 1; flex-shrink: 0; width: 28px; }
-  .enjeu.rose .enjeu-num { color: var(--rose); } .enjeu.bleu .enjeu-num { color: var(--bleu); } .enjeu.violet .enjeu-num { color: var(--violet); }
+  .enjeu-badge { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; font-size: 13px; font-weight: 700; color: var(--ink); }
+  .enjeu.rose .enjeu-badge { background: var(--rose); } .enjeu.bleu .enjeu-badge { background: var(--bleu); } .enjeu.violet .enjeu-badge { background: var(--violet); }
   .enjeu-title { font-size: 14.5px; font-weight: 700; margin-bottom: 4px; }
   .enjeu-text { font-size: 12px; color: var(--sub); line-height: 1.55; }
 
-  /* Livrables : grille 3 colonnes */
-  .liv-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 11px; }
-  .liv-card { background: var(--paper); border: 1px solid var(--rule); border-radius: 14px; padding: 15px; break-inside: avoid; }
-  .liv-num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: var(--beige); color: var(--ink); font-size: 12px; font-weight: 700; }
-  .liv-title { font-size: 14px; font-weight: 700; margin: 9px 0 6px; line-height: 1.22; }
+  /* Livrables : grille 3 colonnes, chip numéro coloré par accent */
+  .liv-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .liv-card { position: relative; background: var(--paper); border: 1px solid var(--rule); border-radius: 14px; padding: 16px; break-inside: avoid; }
+  .liv-card::before { content: ""; position: absolute; top: 0; left: 16px; right: 16px; height: 3px; border-radius: 0 0 3px 3px; }
+  .liv-card.rose::before { background: var(--rose); } .liv-card.bleu::before { background: var(--bleu); } .liv-card.violet::before { background: var(--violet); }
+  .liv-num { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; font-size: 12px; font-weight: 700; color: var(--ink); }
+  .liv-card.rose .liv-num { background: var(--rose-soft); } .liv-card.bleu .liv-num { background: var(--bleu-soft); } .liv-card.violet .liv-num { background: var(--violet-soft); }
+  .liv-title { font-size: 14px; font-weight: 700; margin: 11px 0 6px; line-height: 1.22; }
   .liv-text { font-size: 11.5px; color: var(--sub); line-height: 1.55; }
 
   /* Tarifs : carte avec en-tête + lignes */
   .tarif-card { background: var(--paper); border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; }
-  .tarif-head { display: grid; grid-template-columns: 1fr 170px 130px; gap: 16px; padding: 12px 20px; background: #F6F2E9; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--sub); font-weight: 600; }
+  .tarif-head { display: grid; grid-template-columns: 1fr 170px 130px; gap: 16px; padding: 12px 20px; background: #F6F2E9; font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: var(--sub); font-weight: 700; }
   .tarif-head .r { text-align: right; }
-  .tarif-row { display: grid; grid-template-columns: 1fr 170px 130px; gap: 16px; align-items: center; padding: 14px 20px; border-top: 1px solid var(--rule); }
+  .tarif-row { display: grid; grid-template-columns: 1fr 170px 130px; gap: 16px; align-items: center; padding: 15px 20px; border-top: 1px solid var(--rule); }
   .tarif-presta-title { font-size: 14.5px; font-weight: 700; }
   .tarif-presta-sub { font-size: 10.5px; color: var(--sub); line-height: 1.5; margin-top: 5px; }
   .tarif-tarif { font-size: 17px; font-weight: 700; text-align: right; white-space: nowrap; }
   .pill { display: inline-block; font-size: 10px; font-weight: 700; border-radius: 999px; padding: 5px 12px; white-space: nowrap; }
-  .pill.rose { background: #FBE6DF; color: #99503A; } .pill.bleu { background: #E2F0FF; color: #1E5A99; } .pill.neutre { background: #EFEDE7; color: var(--sub); }
+  .pill.rose { background: var(--rose-soft); color: #9A503A; } .pill.bleu { background: var(--bleu-soft); color: #1E5A99; } .pill.neutre { background: #EFEDE7; color: var(--sub); }
 
   /* Graphique */
-  .chart-card { background: var(--paper); border: 1px solid var(--rule); border-radius: 14px; padding: 16px 20px; break-inside: avoid; }
+  .chart-card { background: var(--paper); border: 1px solid var(--rule); border-radius: 14px; padding: 17px 20px; break-inside: avoid; }
   .chart-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 8px; flex-wrap: wrap; }
   .chart-legend { display: flex; gap: 18px; }
   .lg { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; color: var(--sub); font-weight: 600; }
   .lg-dot { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
-  .chart-hl { font-size: 12px; font-weight: 600; color: var(--ink); background: #EDF6FF; border: 1px solid var(--bleu); border-radius: 999px; padding: 6px 14px; }
+  .chart-hl { font-size: 12px; font-weight: 600; color: var(--ink); background: var(--bleu-soft); border: 1px solid var(--bleu); border-radius: 999px; padding: 6px 14px; }
   .chart-hl strong { color: var(--ink); }
   .chart-method { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--rule); }
-  .chart-method-title { font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: var(--sub); font-weight: 700; margin-bottom: 6px; }
-  .chart-method p { font-size: 10.5px; color: var(--sub); line-height: 1.55; margin-bottom: 5px; }
-  .chart-method p:last-child { margin-bottom: 0; }
+  .chart-method-title { font-size: 9px; letter-spacing: .16em; text-transform: uppercase; color: var(--sub); font-weight: 700; margin-bottom: 6px; }
+  .chart-method p { font-size: 10.5px; color: var(--sub); line-height: 1.55; }
   .chart-method strong { color: var(--ink); font-weight: 700; }
 
   /* Stepper */
   .steps { position: relative; display: grid; grid-template-columns: repeat(var(--steps), 1fr); gap: 8px; padding-top: 4px; }
   .steps-line { position: absolute; top: 16px; left: 8%; right: 8%; height: 2px; background: var(--rule); }
   .step { position: relative; text-align: center; z-index: 1; }
-  .step-dot { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 999px; background: var(--ink); color: var(--beige); font-size: 12px; font-weight: 700; margin-bottom: 10px; }
+  .step-dot { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 999px; background: var(--ink); color: var(--beige); font-size: 12px; font-weight: 700; margin-bottom: 10px; }
   .step-title { font-size: 12px; font-weight: 700; }
   .step-text { font-size: 10px; color: var(--sub); line-height: 1.45; margin-top: 4px; padding: 0 4px; }
 
   /* CTA */
-  .cta { background: var(--ink); color: var(--beige); border-radius: 16px; padding: 22px 28px; margin-top: 18px; display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; break-inside: avoid; }
-  .cta-label { font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: rgba(251,248,241,.7); font-weight: 600; margin-bottom: 10px; }
-  .cta-text { font-size: 13px; line-height: 1.6; color: rgba(251,248,241,.92); max-width: 460px; }
-  .cta-sign { text-align: right; flex-shrink: 0; }
-  .cta-sign-label { display: block; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: rgba(251,248,241,.6); margin-bottom: 4px; }
+  .cta { position: relative; overflow: hidden; background: var(--ink); color: var(--beige); border-radius: 18px; padding: 24px 30px; margin-top: 18px; display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; break-inside: avoid; }
+  .cta-inner { position: relative; z-index: 1; }
+  .cta-label { font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: rgba(252,249,242,.7); font-weight: 700; margin-bottom: 10px; }
+  .cta-text { font-size: 13px; line-height: 1.6; color: rgba(252,249,242,.92); max-width: 470px; }
+  .cta-brand { margin-top: 16px; }
+  .cta-logo { height: 18px; width: auto; }
+  span.cta-logo { font-size: 17px; }
+  .cta-sign { position: relative; z-index: 1; text-align: right; flex-shrink: 0; }
+  .cta-sign-label { display: block; font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: rgba(252,249,242,.6); margin-bottom: 4px; }
   .cta-sign-name { font-size: 15px; font-weight: 700; }
 
   /* Pied de page */
-  .foot { position: absolute; left: 16mm; right: 16mm; bottom: 11mm; display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 8px; color: var(--sub); border-top: 1px solid var(--rule); padding-top: 9px; }
-  .foot-mark { font-size: 13px; font-weight: 700; color: var(--ink); }
+  .foot { position: absolute; left: 15mm; right: 15mm; bottom: 11mm; display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 8px; color: var(--sub); border-top: 1px solid var(--rule); padding-top: 10px; }
+  .foot-mark { height: 13px; width: auto; }
+  span.foot-mark { font-size: 13px; font-weight: 700; color: var(--ink); }
   .foot-legal { flex: 1; text-align: center; }
   .foot-page { white-space: nowrap; font-weight: 600; }
 
@@ -429,18 +459,18 @@ ${fontFaceCss(fonts)}
 <body>
   <div class="toolbar"><button onclick="window.print()">Télécharger le PDF</button></div>
   <section class="page">
-    ${heroBlock(cfg)}
+    ${heroBlock(cfg, assets)}
     ${enjeuxBlock(cfg)}
     ${livrablesBlock(cfg)}
-    ${pageFoot(cfg, 1, 2)}
+    ${pageFoot(cfg, assets, 1, 2)}
   </section>
   <section class="page">
     ${comparisonBlock(cfg)}
     ${tarifTable("Tarification sans engagement", cfg.tarifsSansEngagement, "rose")}
     ${tarifTable("Tarification avec engagement", cfg.tarifsAvecEngagement, "bleu")}
     ${etapesBlock(cfg)}
-    ${ctaBlock(cfg)}
-    ${pageFoot(cfg, 2, 2)}
+    ${ctaBlock(cfg, assets)}
+    ${pageFoot(cfg, assets, 2, 2)}
   </section>
   <script>
     (function () {
@@ -474,14 +504,16 @@ export async function generateAuditConseilPdf(cfg: AuditConseilConfig): Promise<
     alert("Le navigateur a bloqué la fenêtre d'impression. Autorisez les popups pour ce site puis relancez la génération.");
     return;
   }
-  win.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Audit…</title></head><body style="font-family:system-ui;padding:48px;color:#5F5F64">Préparation de la proposition…</body></html>');
+  win.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Audit…</title></head><body style="font-family:system-ui;padding:48px;color:#6A6A6F">Préparation de la proposition…</body></html>');
 
-  const [regular, medium, semibold] = await Promise.all([
+  const [regular, medium, semibold, logoDark, logoLight] = await Promise.all([
     fontToDataUrl("/fonts/Roobert-Regular.ttf"),
     fontToDataUrl("/fonts/Roobert-Medium.ttf"),
     fontToDataUrl("/fonts/Roobert-SemiBold.ttf"),
+    fontToDataUrl("/images/logo-beev-noir.png"),
+    fontToDataUrl("/images/logo-beev-white.png"),
   ]);
-  const html = buildAuditConseilHtml(cfg, { regular, medium, semibold });
+  const html = buildAuditConseilHtml(cfg, { regular, medium, semibold }, { logoDark, logoLight });
 
   win.document.open();
   win.document.write(html);
