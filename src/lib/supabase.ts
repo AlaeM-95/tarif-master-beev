@@ -17,17 +17,17 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, 
 
 export type UserRole = "admin" | "ops" | "sales" | "visitor";
 
-// URL publique de l'application, utilisée pour les redirections des emails
+// URL CANONIQUE de l'application, utilisée pour les redirections des emails
 // d'authentification (invitation, lien magique, réinitialisation de mot de
-// passe). On privilégie l'origine réelle (preview Lovable, domaine custom),
-// sauf en local (localhost) ou en SSR où l'on retombe sur l'URL de production.
+// passe). On retourne TOUJOURS cette URL, jamais window.location.origin :
+//  - une invitation envoyée depuis un domaine de preview Lovable produirait
+//    sinon une redirect_url absente de l'allowlist Supabase, ce qui fait
+//    retomber Supabase sur la « Site URL » (par défaut http://localhost:3000) ;
+//  - résultat : le mail de confirmation affichait localhost:3000.
+// En forçant une seule URL déterministe, il n'y a qu'UNE redirect URL à
+// autoriser dans Supabase (Authentication → URL Configuration). Si un jour un
+// domaine custom est mis en place, il suffit de changer PROD_APP_URL ici.
 const PROD_APP_URL = "https://tarif-master-beev.lovable.app";
 export function appUrl(path = ""): string {
-  const origin =
-    typeof window !== "undefined" &&
-    window.location?.origin &&
-    !/localhost|127\.0\.0\.1/.test(window.location.origin)
-      ? window.location.origin
-      : PROD_APP_URL;
-  return `${origin}${path}`;
+  return `${PROD_APP_URL}${path}`;
 }
