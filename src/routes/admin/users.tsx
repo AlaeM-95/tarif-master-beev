@@ -1,12 +1,13 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Mail, KeyRound, Shield, UserPlus, Copy, RefreshCw } from "lucide-react";
+import { ArrowLeft, Mail, KeyRound, Shield, UserPlus, Copy, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/lib/auth";
 import { useUsers, ROLE_LABELS, ROLE_COLORS, type AppUser } from "@/lib/users";
 import { useRolePermissionsAdmin, PERMISSION_LABELS, PERMISSION_ORDER, type Permission, type RolePermissions } from "@/lib/permissions";
@@ -19,7 +20,7 @@ export const Route = createFileRoute("/admin/users")({
 const ROLES: UserRole[] = ["admin", "ops", "sales", "visitor"];
 
 function AdminUsersPage() {
-  const { isAdmin, loading } = useAuth();
+  const { isAdmin, loading, user } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -27,7 +28,7 @@ function AdminUsersPage() {
     if (!loading && !isAdmin) navigate({ to: "/login" });
   }, [loading, isAdmin, navigate]);
 
-  const { users, isLoading, updateRole, createUser } = useUsers();
+  const { users, isLoading, updateRole, createUser, deleteUser } = useUsers();
   const perms = useRolePermissionsAdmin();
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -105,6 +106,15 @@ function AdminUsersPage() {
       toast.success(`${u.email} → ${ROLE_LABELS[newRole]}`);
     } catch (e) {
       toast.error(`Échec : ${e instanceof Error ? e.message : "erreur"}`);
+    }
+  };
+
+  const handleDelete = async (u: AppUser) => {
+    try {
+      await deleteUser.mutateAsync({ id: u.id });
+      toast.success(`Compte ${u.email} supprimé`);
+    } catch (e) {
+      toast.error(`Échec suppression : ${e instanceof Error ? e.message : "erreur"}`);
     }
   };
 
@@ -226,11 +236,12 @@ function AdminUsersPage() {
                     <th className="py-3 px-4">Rôle actuel</th>
                     <th className="py-3 px-4">Modifier le rôle</th>
                     <th className="py-3 px-4">Créé le</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {users.length === 0 && (
-                    <tr><td colSpan={4} className="py-8 text-center text-muted-foreground">Aucun utilisateur. Créez un compte ci-dessus.</td></tr>
+                    <tr><td colSpan={5} className="py-8 text-center text-muted-foreground">Aucun utilisateur. Créez un compte ci-dessus.</td></tr>
                   )}
                   {users.map((u) => (
                     <tr key={u.id} className="border-b hover:bg-accent/30">
@@ -253,6 +264,37 @@ function AdminUsersPage() {
                       </td>
                       <td className="py-3 px-4 text-xs text-muted-foreground">
                         {new Date(u.createdAt).toLocaleDateString("fr-FR")}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        {u.id === user?.id ? (
+                          <span className="text-[10px] text-muted-foreground italic">vous</span>
+                        ) : (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" title="Supprimer ce compte">
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Supprimer ce compte ?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Le compte <strong>{u.email}</strong> sera supprimé définitivement (accès révoqué).
+                                  L'adresse email pourra ensuite être réutilisée pour créer un nouveau compte.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Annuler</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleDelete(u)}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                >
+                                  Supprimer définitivement
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
                       </td>
                     </tr>
                   ))}

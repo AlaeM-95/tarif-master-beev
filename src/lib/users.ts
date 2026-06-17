@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase, createIsolatedAuthClient, type UserRole } from "./supabase";
+import { supabase, type UserRole } from "./supabase";
 import { useAuth } from "./auth";
 
 export type AppUser = {
@@ -45,29 +45,40 @@ export function useUsers() {
     onSuccess: invalidate,
   });
 
-  // Création d'un compte SANS email : l'admin saisit email + mot de passe, on
-  // crée le compte via un client isolé (signUp) pour ne pas remplacer la
-  // session admin. Aucun email n'est envoyé tant que « Confirm email » est
-  // désactivé dans Supabase (réglage interne). Le trigger handle_new_user()
-  // crée la ligne profiles avec rôle 'visitor' ; l'admin assigne ensuite le
-  // bon rôle. Le mot de passe est communiqué directement au collaborateur.
+  // Création d'un compte SANS email : passe par l'Edge Function « admin-users »
+  // qui crée le compte avec email_confirm:true (aucun email envoyé, quel que
+  // soit le réglage Supabase) côté serveur via le service_role. La session
+  // admin n'est jamais affectée. Le trigger handle_new_user() crée la ligne
+  // profiles avec rôle 'visitor' ; l'admin assigne ensuite le bon rôle. Le mot
+  // de passe est communiqué directement au collaborateur.
   const createUser = useMutation({
     mutationFn: async ({ email, password }: { email: string; password: string }) => {
-      const tmp = createIsolatedAuthClient();
-      const { data, error } = await tmp.auth.signUp({
-        email: email.trim().toLowerCase(),
-        password,
+      const { data, error } = await supabase.functions.invoke("admin-users", {
+        body: { action: "create", email: email.trim().toLowerCase(), password },
       });
-      if (error) throw new Error(error.message);
-      // Par sécurité, on déconnecte le client isolé (au cas où une session
-      // aurait été ouverte par le signUp quand la confirmation est désactivée).
-      try { await tmp.auth.signOut(); } catch { /* ignore */ }
-      return data.user?.id ?? null;
+      if (error) throw new Error((data as any)?.error || error.message);
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return (data as any)?.id ?? null;
     },
     onSuccess: invalidate,
   });
 
-  return { users, isLoading, updateRole, createUser };
+  // Suppression définitive d'un compte (auth + profil) via l'Edge Function.
+  // Réservé à l'admin (vérifié côté serveur). Permet de supprimer un compte
+  // erroné puis d'en recréer un (même email réutilisable après suppression).
+  const deleteUser = useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      const { data, error } = await supabase.functions.invoke("admin-users", {
+        body: { action: "delete", id },
+      });
+      if (error) throw new Error((data as any)?.error || error.message);
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return true;
+    },
+    onSuccess: invalidate,
+  });
+
+  return { users, isLoading, updateRole, createUser, deleteUser };
 }
 
 // Coordonnées commercial rattachées au compte connecté (table profiles).

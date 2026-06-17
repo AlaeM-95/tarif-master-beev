@@ -15,22 +15,6 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, 
   },
 });
 
-// Client d'authentification ISOLÉ : permet à l'admin de créer un compte
-// (signUp avec mot de passe) SANS remplacer sa propre session. persistSession
-// false + storageKey dédié garantissent qu'aucune session n'est écrite ni lue
-// dans le stockage de la session principale. Utilisé pour l'onboarding interne
-// sans email : l'admin crée le compte et communique le mot de passe au sales.
-export function createIsolatedAuthClient() {
-  return createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-      storageKey: "beev-admin-signup",
-    },
-  });
-}
-
 export type UserRole = "admin" | "ops" | "sales" | "visitor";
 
 // URL CANONIQUE de l'application, utilisée pour les redirections des emails
