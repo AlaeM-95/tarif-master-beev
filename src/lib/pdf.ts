@@ -3693,10 +3693,15 @@ async function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: 
     const malusTotal = r.malusCO2 + r.malusPoids;
     const andTotal = r.andAnnuel * duree;
     const aenTotal = r.partEmployeurAnnuelle * duree;
+    // Affichage hiérarchisé : Marque + Modèle sur la 1re ligne, Version sur la
+    // 2e (ou plusieurs si longue), durée/km sur la dernière. Sépare clairement
+    // deux finitions d'un même modèle dans le tableau.
+    const brandModel = `${sv.vehicle.brand} ${sv.vehicle.model}`.trim();
+    const ver = (sv.vehicle.version ?? "").trim();
+    const durKm = `${sv.durationMonths} mois · ${((sv.kmPerYear * sv.durationMonths / 12) / 1000).toFixed(0)}k km`;
+    const label = [brandModel, ver, durKm].filter(Boolean).join("\n");
     return [
-      // Marque + modèle + version sur 1re ligne, durée/km sur 2e (séparation
-      // claire pour distinguer 2 finitions d'un même modèle dans le tableau).
-      { content: `${vehicleLabel(sv.vehicle)}\n${sv.durationMonths} mois · ${((sv.kmPerYear * sv.durationMonths / 12) / 1000).toFixed(0)}k km (contrat)`, styles: { halign: "left" as any, fontStyle: "normal" as any, fontSize: 8.5 } },
+      { content: label, styles: { halign: "left" as any, fontStyle: "normal" as any, fontSize: 8.5 } },
         { content: eur(r.loyerTotal), styles: { halign: "center" as any } },
         { content: eur(r.coutEnergie), styles: { halign: "center" as any } },
         { content: eur(r.tvsTotal), styles: r.tvsTotal > 0
@@ -3705,7 +3710,12 @@ async function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: 
         { content: eur(malusTotal), styles: malusTotal > 0
           ? { halign: "center" as any, fillColor: ALERT_BG, textColor: ALERT_TEXT, fontStyle: "bold" as any }
           : { halign: "center" as any, textColor: SUB } },
-        { content: eur(andTotal), styles: { halign: "center" as any } },
+        // AND calculé sur le PRIX CATALOGUE TTC du véhicule. Si ce prix n'est pas
+        // renseigné dans le catalogue, l'AND ne peut pas être calculé : on affiche
+        // « — » plutôt qu'un « 0 € » trompeur, pour signaler la donnée manquante.
+        (sv.vehicle.priceTtc ?? 0) <= 0
+          ? { content: "—", styles: { halign: "center" as any, textColor: SUB } }
+          : { content: eur(andTotal), styles: { halign: "center" as any } },
         { content: eur(aenTotal), styles: { halign: "center" as any } },
         { content: eur(r.tcoEmployeurComplet), styles: { halign: "center" as any, fontStyle: "bold" as any, textColor: LAVENDER, fontSize: 10 } },
       ];
@@ -3763,13 +3773,13 @@ async function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: 
     bodyStyles: { fontSize: 7.5, cellPadding: 4, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any, overflow: "visible" as any },
     alternateRowStyles: { fillColor: BG },
     columnStyles: {
-      0: { cellWidth: 116, halign: "left" as any, cellPadding: { left: 54, right: 4, top: 6, bottom: 6 }, minCellHeight: 48, valign: "middle" as any, overflow: "linebreak" as any },
-      1: { cellWidth: 54 },
-      2: { cellWidth: 54 },
-      3: { cellWidth: 50 },
-      4: { cellWidth: 50 },
-      5: { cellWidth: 50 },
-      6: { cellWidth: 54 },
+      0: { cellWidth: 150, halign: "left" as any, cellPadding: { left: 54, right: 6, top: 6, bottom: 6 }, minCellHeight: 48, valign: "middle" as any, overflow: "linebreak" as any },
+      1: { cellWidth: 50 },
+      2: { cellWidth: 50 },
+      3: { cellWidth: 46 },
+      4: { cellWidth: 46 },
+      5: { cellWidth: 46 },
+      6: { cellWidth: 52 },
       7: { cellWidth: "auto" },
     },
     margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
@@ -3789,6 +3799,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: 
   const legendLines = [
     "· Cellules en rose : charges fiscales à valider (Malus CO2 + poids, TVS non nulles)",
     "· Coût employeur complet = Loyer + Énergie + TVS + Malus + (AND × durée) + (AEN employeur × durée)",
+    "· AND calculé sur le prix catalogue TTC (amortissement non déductible au-delà de 30 000 € pour un EV) ; « — » si le prix catalogue n'est pas renseigné",
     "· Loyer total = loyer mensuel négocié × nombre de mois (TTC, TVA récupérable LLD)",
     "· Énergie = conso véhicule × km contrat × prix carburant ou kWh (mix 85 % domicile / 15 % public)",
   ];
