@@ -3205,6 +3205,12 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove, onDuplicate, index
           <Switch id={`tco-${sv.instanceId ?? sv.vehicle.id}`} checked={sv.includeTco} onCheckedChange={(b) => onChange({ includeTco: b })} />
           <Label htmlFor={`tco-${sv.instanceId ?? sv.vehicle.id}`} className="text-[11px] leading-tight">Inclure TCO dans la présentation</Label>
         </div>
+        {/* Masquer la remise commerciale dans le PDF (par véhicule). La remise
+            reste prise en compte dans le calcul de l'AND. */}
+        <div className="flex items-end gap-2 pb-1">
+          <Switch id={`disc-${sv.instanceId ?? sv.vehicle.id}`} checked={!!sv.hideDiscount} onCheckedChange={(b) => onChange({ hideDiscount: b })} />
+          <Label htmlFor={`disc-${sv.instanceId ?? sv.vehicle.id}`} className="text-[11px] leading-tight">Masquer la remise dans le PDF</Label>
+        </div>
       </div>
       <TxtField label="N° de devis loueur" value={sv.leaserQuoteRef ?? ""} onChange={(s) => onChange({ leaserQuoteRef: s })} />
       {tripartiteUrl && (

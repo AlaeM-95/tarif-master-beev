@@ -39,6 +39,11 @@ export type SelectedVehicle = {
   vehicle: Vehicle;
   quantity: number;
   discountPct: number;
+  /** Masque la remise commerciale (lignes « Remise commerciale » + « Prix
+   *  remisé TTC ») sur la fiche véhicule du PDF, PAR véhicule. La remise reste
+   *  prise en compte dans le calcul de l'AND (via discountPct). Géré sur la
+   *  carte du panneau de droite. Par défaut false = remise affichée. */
+  hideDiscount?: boolean;
   /** Loyer mensuel TTC de la configuration PRINCIPALE (rétro-compat). */
   negotiatedMonthly: number;
   /** Durée de la configuration principale. */
@@ -2632,11 +2637,12 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     py += 12;
   }
 
-  // Rows « Remise commerciale » + « Prix remisé TTC » : masquables par le
-  // commercial (toggle showVehicleDiscount). Le pourcentage de remise reste
-  // TOUJOURS pris en compte dans le calcul de l'AND (via sv.discountPct →
-  // remisePctOverride), qu'il soit affiché ou non.
-  if (PDF_CFG.showVehicleDiscount) {
+  // Rows « Remise commerciale » + « Prix remisé TTC » : masquables soit
+  // globalement (toggle showVehicleDiscount), soit véhicule par véhicule
+  // (sv.hideDiscount, case sur la carte du panneau de droite). Le pourcentage
+  // de remise reste TOUJOURS pris en compte dans le calcul de l'AND (via
+  // sv.discountPct → remisePctOverride), qu'il soit affiché ou non.
+  if (PDF_CFG.showVehicleDiscount && !sv.hideDiscount) {
     // Row 3 : Remise commerciale (sur catalogue + options)
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(9);
