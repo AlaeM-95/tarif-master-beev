@@ -700,17 +700,14 @@ function App() {
       const timeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("Génération trop longue (30s). Vérifiez votre connexion.")), 30000),
       );
-      // En mode TCO, on force une config focalisée : pas de page Pourquoi
-      // Beev, ni Garanties, ni Parcours, ni Synthèse exec. La page TCO
-      // comparative + les blocs TCO par véhicule sont le seul contenu utile.
-      // Les véhicules sélectionnés ont automatiquement includeTco=true pour
-      // que le bloc TCO s'affiche sur chaque fiche.
-      // En vue TCO on masque les sections « commerciales » (Pourquoi Beev,
-      // garanties, parcours, synthèse exec, services/options) pour rester
-      // focalisé. En revanche, le CHOIX des pages d'analyse TCO (tableau de
-      // bord, détail des composantes, bilan carbone) reste au commercial via
-      // le panneau Configuration PDF : on n'écrase plus showTcoComparison /
-      // showTcoDetailedTable / showCarbonImpact.
+      // En mode TCO (vue dédiée), on force une config focalisée : pas de page
+      // Pourquoi Beev, garanties, parcours, synthèse exec, services/options.
+      // Les pages d'analyse TCO (tableau de bord + détail des composantes) sont
+      // FORCÉES à l'affichage : la vue TCO existe pour ça, sinon elle est vide.
+      // Le CHOIX par page (showTcoComparison / showTcoDetailedTable) s'applique
+      // à la proposition complète (hors vue TCO), via le panneau Configuration
+      // PDF. Les véhicules ont includeTco=true pour que le bloc TCO par fiche
+      // s'affiche (cf. vehiclesForPdf plus bas).
       const tcoFocusedConfig = tcoView ? {
         ...pdfConfig,
         showWhyBeev: false,
@@ -719,6 +716,8 @@ function App() {
         showGuarantees: false,
         showJourney: false,
         showExecutiveSummary: false,
+        showTcoComparison: true,
+        showTcoDetailedTable: true,
         showVehicleTcoBlock: true,
         showVehicleServices: false,
         showVehicleOptions: false,
