@@ -79,7 +79,7 @@ export function ImageUpload({ currentUrl, onChange, folder, label = "Image" }: I
       console.error("[upload] Échec :", result.error);
       let msg = result.error.message;
       if (msg?.toLowerCase().includes("policy") || msg?.toLowerCase().includes("permission")) {
-        msg = "Permissions insuffisantes — vérifiez que votre compte a role='admin' dans la table profiles.";
+        msg = "Permissions insuffisantes. Si le problème persiste, appliquez la migration 043 (upload images ouvert à Sales/Ops/Admin) sur Supabase.";
       } else if (msg?.toLowerCase().includes("bucket") || msg?.toLowerCase().includes("not found")) {
         msg = "Aucun bucket de stockage configuré. Lancez le SQL 005_image_buckets.sql sur Supabase.";
       } else if (msg?.toLowerCase().includes("size") || msg?.toLowerCase().includes("payload")) {
