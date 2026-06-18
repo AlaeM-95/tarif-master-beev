@@ -56,8 +56,13 @@ function coverSlide(cfg: AuditConseilConfig, assets?: AuditAssets): string {
     .filter((c) => c && c.trim())
     .map((c) => `<span>${esc(c)}</span>`)
     .join("");
-  const cobrand = cfg.clientName
-    ? `<div class="cobrand"><span class="cb-label">En partenariat avec</span><span class="cb-sep"></span><span class="cb-wordmark">${esc(cfg.clientName)}</span></div>`
+  // Cobranding : on privilégie le LOGO du client (uploadé dans l'éditeur) ;
+  // à défaut seulement, on retombe sur son nom en toutes lettres.
+  const cobrandInner = cfg.clientLogoUrl
+    ? `<img class="cb-logo" src="${esc(cfg.clientLogoUrl)}" alt="${esc(cfg.clientName || "Logo client")}" />`
+    : (cfg.clientName ? `<span class="cb-wordmark">${esc(cfg.clientName)}</span>` : "");
+  const cobrand = cobrandInner
+    ? `<div class="cobrand"><span class="cb-label">En partenariat avec</span><span class="cb-sep"></span>${cobrandInner}</div>`
     : "";
   const prep = cfg.preparedBy ? `<p class="cover-prep">Préparé par <b>${esc(cfg.preparedBy)}</b>, votre interlocuteur Beev.</p>` : "";
   const meta = `${cfg.clientName ? esc(cfg.clientName) + "&nbsp;× Beev&nbsp;· " : ""}${esc(cfg.date)}`;
@@ -323,6 +328,7 @@ span.cover-logo{font-size:40px;}
 .cobrand .cb-label{font-size:14px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--fg-3); max-width:9ch; line-height:1.25;}
 .cobrand .cb-sep{width:1px; height:40px; background:var(--border-subtle);}
 .cb-wordmark{font-size:26px; font-weight:600; letter-spacing:-.01em; color:var(--fg-1); line-height:1; white-space:nowrap;}
+.cb-logo{max-height:46px; max-width:240px; width:auto; object-fit:contain; display:block;}
 .cover-eyebrow{font-size:22px; font-weight:600; letter-spacing:.20em; text-transform:uppercase; color:var(--accent); margin-bottom:26px;}
 .cover-title{font-size:96px; line-height:.98; font-weight:600; letter-spacing:-.025em; color:var(--beige); margin:0;}
 .cover-meta{font-size:25px; color:rgba(252,249,242,.78); margin:28px 0 0; font-weight:500;}

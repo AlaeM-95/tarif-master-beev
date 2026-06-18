@@ -770,6 +770,40 @@ export async function generateProposalPdf(opts: {
     drawHeader(doc, client, effectiveType);
     await drawVehiclePage(doc, vehiclesForDetail[i], energy, i + 1, vehiclesForDetail.length, client, effectiveType);
   }
+
+  // ─── ANALYSE TCO VÉHICULES — placée JUSTE APRÈS les fiches véhicule ───
+  // Ordre voulu : devis véhicule → TCO véhicule → bornes B2B2E → TCO B2B2E →
+  // bornes site. La mise en concurrence (véhicules) et les pages d'analyse TCO
+  // suivent donc immédiatement le bloc véhicules, AVANT les bornes.
+  // Slide « Mise en concurrence » — si au moins un véhicule a une offre
+  // concurrente avec un loyer > 0.
+  const withCompetitor = v.filter((sv) =>
+    sv.competitorOffers && sv.competitorOffers.some((co) => co.monthlyTtc > 0),
+  );
+  if (cfg.showCompetitorComparison && withCompetitor.length > 0) {
+    doc.addPage();
+    drawHeader(doc, client, "vehicles");
+    drawCompetitorComparison(doc, withCompetitor);
+  }
+  // Pages d'analyse TCO multi-véhicules, chacune activable indépendamment.
+  // Requièrent 2+ véhicules avec includeTco (sauf bilan carbone : 1 suffit).
+  const tcoEligible = v.length >= 2 && v.some((sv) => sv.includeTco);
+  if (cfg.showTcoComparison && tcoEligible) {
+    doc.addPage();
+    drawHeader(doc, client, "vehicles");
+    await drawTcoDashboard(doc, v, energy, client, "vehicles");
+  }
+  if (cfg.showTcoDetailedTable && tcoEligible) {
+    doc.addPage();
+    drawHeader(doc, client, "vehicles");
+    await drawTcoDetailedTable(doc, v, energy);
+  }
+  if (cfg.showCarbonImpact && v.length >= 1) {
+    doc.addPage();
+    drawHeader(doc, client, "vehicles");
+    drawCarbonImpact(doc, v, energy);
+  }
+
   // Boucle bornes : on regroupe par deployment (domicile puis site) pour
   // une présentation cohérente
   const chargersHome = c.filter((sc) => sc.charger.deployment === "domicile");
@@ -782,7 +816,7 @@ export async function generateProposalPdf(opts: {
 
   // Page TCO B2B2E (Bornes domicile) — incluse si projet "home", calculateur
   // activé côté UI, et au moins 1 borne domicile sélectionnée.
-  if (effectiveType === "home" && b2b2eInput && chargersHome.length > 0 && cfg.showB2B2ETco !== false) {
+  if (b2b2eInput && chargersHome.length > 0 && cfg.showB2B2ETco !== false) {
     doc.addPage();
     drawHeader(doc, client, "home");
     drawB2B2ETco(doc, b2b2eInput);
@@ -807,45 +841,6 @@ export async function generateProposalPdf(opts: {
     doc.addPage();
     drawHeader(doc, client, "site");
     drawSiteSupervision(doc, "beev_connect");
-  }
-
-  // Slide « Mise en concurrence » — affichée si au moins un véhicule a au
-  // moins UNE offre concurrente avec un loyer > 0. Le commercial voit côte
-  // à côte les N offres concurrentes vs l'offre Beev sur le MÊME véhicule.
-  const withCompetitor = v.filter((sv) =>
-    sv.competitorOffers && sv.competitorOffers.some((c) => c.monthlyTtc > 0),
-  );
-  if (cfg.showCompetitorComparison && withCompetitor.length > 0) {
-    doc.addPage();
-    drawHeader(doc, client, "vehicles");
-    drawCompetitorComparison(doc, withCompetitor);
-  }
-
-  // Pages d'analyse TCO multi-véhicules. Chaque page est désormais activable
-  // indépendamment par le commercial (panneau Configuration PDF) : le tableau
-  // de bord et le détail des composantes ne sont plus liés. Toutes requièrent
-  // 2+ véhicules avec includeTco.
-  const tcoEligible = v.length >= 2 && v.some((sv) => sv.includeTco);
-  // 1) Tableau de bord visuel (KPI cards + barres empilées)
-  if (cfg.showTcoComparison && tcoEligible) {
-    doc.addPage();
-    drawHeader(doc, client, "vehicles");
-    await drawTcoDashboard(doc, v, energy, client, "vehicles");
-  }
-  // 2) Tableau détaillé : 1 ligne par véhicule avec TOUTES les composantes
-  // (Loyer / Énergie / TVS / Malus CO2 / Malus poids / AND / AEN / TCO total /
-  // Coût employeur complet) pour vérification ligne par ligne.
-  if (cfg.showTcoDetailedTable && tcoEligible) {
-    doc.addPage();
-    drawHeader(doc, client, "vehicles");
-    await drawTcoDetailedTable(doc, v, energy);
-  }
-  // 3) Page « Bilan carbone » — argument RSE. Toggle indépendant (un seul
-  // véhicule suffit) : ne dépend plus de l'affichage des pages TCO.
-  if (cfg.showCarbonImpact && v.length >= 1) {
-    doc.addPage();
-    drawHeader(doc, client, "vehicles");
-    drawCarbonImpact(doc, v, energy);
   }
 
   // Page synthèse financière (toggleable)
@@ -4355,6 +4350,11 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
     theme: "plain",
     head,
     body,
+    // Empêche une ligne véhicule (image + nom multi-lignes + chip) d'être
+    // coupée en deux par un saut de page : sinon les cellules numériques
+    // tombaient « dans le vide » et la ligne réapparaissait vide sur la page
+    // suivante. La ligne entière bascule sur la page d'après.
+    rowPageBreak: "avoid",
     headStyles: { fillColor: INK, textColor: 255, fontSize: 8, fontStyle: "bold", font: BRAND_FONT, cellPadding: 6, valign: "middle" as any, halign: "center" as any },
     bodyStyles: { fontSize: 8.5, cellPadding: 5, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
     alternateRowStyles: { fillColor: BG },

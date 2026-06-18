@@ -732,7 +732,11 @@ function App() {
           vehicles: vehiclesForPdf,
           chargers: freshChargers,
           pdfConfig: tcoFocusedConfig,
-          b2b2eInput: projectType === "home" && b2b2eIncludeInPdf ? b2b2eInput : undefined,
+          // On transmet le calculateur B2B2E dès qu'il est activé ET qu'il y a
+          // au moins une borne domicile sélectionnée, même dans une offre
+          // combinée (véhicules + bornes), pour que « TCO borne B2B2E »
+          // s'insère après les fiches bornes domicile.
+          b2b2eInput: b2b2eIncludeInPdf && Object.values(selectedC).some((sc) => sc.charger.deployment === "domicile") ? b2b2eInput : undefined,
           // Surcharges WYSIWYG saisies par le commercial dans le PdfTextEditor.
           // Stockées en localStorage par navigateur. Si vide, le PDF utilise
           // les valeurs DB / fallback comme avant.
@@ -767,6 +771,28 @@ function App() {
       const names = invalid.map((sv) => `${sv.vehicle.brand} ${sv.vehicle.model}`.trim()).join(", ");
       toast.error(`Énergie ou consommation manquante sur : ${names}. Complétez la fiche véhicule avant de générer le PDF.`);
       return;
+    }
+    // Information (non bloquant) : produits sans image. Le PDF s'affichera sans
+    // visuel ; on prévient le commercial pour qu'il ajoute une image s'il le
+    // souhaite (bouton « Éditer » de la fiche, disponible même sélectionnée).
+    const noImage = [
+      ...Object.values(selectedV).filter((sv) => !sv.vehicle.image || !sv.vehicle.image.trim()).map((sv) => `${sv.vehicle.brand} ${sv.vehicle.model}`.trim()),
+      ...Object.values(selectedC).filter((sc) => !sc.charger.image || !sc.charger.image.trim()).map((sc) => `${sc.charger.brand} ${sc.charger.model}`.trim()),
+    ];
+    if (noImage.length > 0) {
+      toast.warning(`Aucune image sur : ${noImage.join(", ")}. Le PDF sera généré sans visuel produit. Ajoutez une image depuis « Éditer » sur la fiche pour un rendu complet.`);
+    }
+    // Erreur de complétude (non bloquant) : données batterie manquantes sur des
+    // véhicules électriques (capacité kWh et/ou autonomie WLTP). Sans elles, la
+    // comparaison ne se fait pas sur la même base. On laisse générer mais on
+    // signale clairement les fiches à compléter.
+    const noBattery = Object.values(selectedV).filter((sv) => {
+      const v = sv.vehicle;
+      if (v.energy !== "Électrique") return false;
+      return !(v.batteryKwh && v.batteryKwh > 0) || !(v.rangeWltp && v.rangeWltp > 0);
+    }).map((sv) => `${sv.vehicle.brand} ${sv.vehicle.model}`.trim());
+    if (noBattery.length > 0) {
+      toast.error(`Données batterie incomplètes (capacité kWh / autonomie WLTP) sur : ${noBattery.join(", ")}. Complétez-les pour comparer les véhicules sur la même base.`);
     }
     // Si l'offre contient des bornes site entreprise (peu importe le projectType
     // courant — utile pour les offres combinées véhicules + bornes), on ouvre
@@ -2578,13 +2604,14 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
             Les actions admin (corbeille / dupliquer / éditer) sont placées sur
             l'image avec fond semi-transparent pour libérer le bloc prix qui
             était écrasé sur 3 lignes. */}
-        {selected ? (
-          <div className="absolute top-2 right-2 w-8 h-8 rounded-full bg-primary text-primary-foreground grid place-content-center text-sm font-bold shadow-lg">
-            ✓
-          </div>
-        ) : (
-          (onDelete || onDuplicate || onUpdate) && (
-            <div className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-white/95 backdrop-blur-sm shadow-md px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        {/* Actions admin (édition / duplication / suppression) TOUJOURS
+            accessibles, y compris quand le véhicule est sélectionné dans le
+            devis : le commercial peut corriger une fiche (batterie, prix,
+            image…) sans avoir à la retirer. L'indicateur ✓ signale la
+            sélection à côté de la barre d'actions. */}
+        <div className="absolute top-2 right-2 flex items-center gap-1">
+          {(onDelete || onDuplicate || onUpdate) && (
+            <div className="flex items-center gap-1 rounded-full bg-white/95 backdrop-blur-sm shadow-md px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
               {canEditPricing && (
                 <a
                   href={`/admin/vehicles?edit=${vehicle.id}`}
@@ -2619,8 +2646,13 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
               )}
               {onDelete && <ConfirmDeleteButton label={`${vehicle.brand} ${vehicle.model}`} onConfirm={onDelete} />}
             </div>
-          )
-        )}
+          )}
+          {selected && (
+            <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground grid place-content-center text-xs font-bold shadow-lg">
+              ✓
+            </div>
+          )}
+        </div>
         {/* Bandeau loyer mensuel en bas de l'image (overlay) */}
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-beev-black via-beev-black/80 to-transparent p-3 pt-8">
           <p className="text-[10px] text-beev-beige/70 uppercase tracking-wide">À partir de</p>
@@ -2838,14 +2870,12 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete, onDuplic
           </Badge>
           {charger.custom && <Badge className="bg-beev-beige text-beev-black text-[10px]">Custom</Badge>}
         </div>
-        {/* Coin haut droite : check sélection OU barre actions admin (hover). */}
-        {selected ? (
-          <div className="absolute top-2 right-2 w-8 h-8 rounded-full bg-primary text-primary-foreground grid place-content-center text-sm font-bold shadow-lg">
-            ✓
-          </div>
-        ) : (
-          (onDelete || onDuplicate || onUpdate) && (
-            <div className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-white/95 backdrop-blur-sm shadow-md px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        {/* Actions admin TOUJOURS accessibles, même borne sélectionnée : le
+            commercial peut corriger la fiche (image, prix, caractéristiques)
+            sans la retirer du devis. Le ✓ signale la sélection. */}
+        <div className="absolute top-2 right-2 flex items-center gap-1">
+          {(onDelete || onDuplicate || onUpdate) && (
+            <div className="flex items-center gap-1 rounded-full bg-white/95 backdrop-blur-sm shadow-md px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
               {onUpdate && (
                 <Button
                   variant="ghost"
@@ -2870,8 +2900,13 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete, onDuplic
               )}
               {onDelete && <ConfirmDeleteButton label={`${charger.brand} ${charger.model}`} onConfirm={onDelete} />}
             </div>
-          )
-        )}
+          )}
+          {selected && (
+            <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground grid place-content-center text-xs font-bold shadow-lg">
+              ✓
+            </div>
+          )}
+        </div>
         {/* Bandeau prix en bas de l'image (overlay) */}
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-beev-black via-beev-black/80 to-transparent p-3 pt-8">
           <p className="text-[10px] text-beev-beige/70 uppercase tracking-wide">{isHome ? "Forfait clé en main HT" : "Borne HT"}</p>
