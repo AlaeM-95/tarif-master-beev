@@ -300,6 +300,23 @@ const FOOTER_LIMIT = PAGE_H - 78; // footer enrichi (2 lignes) prend ~22pt + fil
 // chevaucher le footer. 72pt garantit un espace propre au-dessus du footer.
 const TABLE_BOTTOM_MARGIN = 72;
 
+// Garantit qu'un bloc de hauteur `needed` (pt) tient avant le footer. Sinon,
+// nouvelle page (avec header si `client` fourni) et retourne le y de départ en
+// haut de la nouvelle page. Évite que les notes méthodologiques dessinées après
+// un grand tableau chevauchent le pied de page.
+function ensureBottomSpace(
+  doc: jsPDF,
+  y: number,
+  needed: number,
+  client?: ClientInfo,
+  type: ProjectType = "vehicles",
+): number {
+  if (y + needed <= FOOTER_LIMIT) return y;
+  doc.addPage();
+  if (client) drawHeader(doc, client, type);
+  return 116;
+}
+
 // ============ TCO ============
 export function computeTco(sv: SelectedVehicle, e: EnergyParams) {
   const mix = e.mixHomePct / 100;
@@ -740,20 +757,20 @@ export async function generateProposalPdf(opts: {
         if (groupVehicles.length < 2) continue;
         doc.addPage();
         drawHeader(doc, client, "vehicles");
-        await drawVehicleComparator(doc, groupVehicles, groupName);
+        await drawVehicleComparator(doc, groupVehicles, groupName, client);
       }
       // Véhicules sans groupe : slide globale uniquement s'il y en a 2+
       const ungrouped = v.filter((sv) => !(sv.comparisonGroup ?? "").trim());
       if (ungrouped.length >= 2) {
         doc.addPage();
         drawHeader(doc, client, "vehicles");
-        await drawVehicleComparator(doc, ungrouped);
+        await drawVehicleComparator(doc, ungrouped, undefined, client);
       }
     } else {
       // Pas de groupes : comparateur global classique
       doc.addPage();
       drawHeader(doc, client, "vehicles");
-      await drawVehicleComparator(doc, v);
+      await drawVehicleComparator(doc, v, undefined, client);
     }
   }
 
@@ -796,12 +813,12 @@ export async function generateProposalPdf(opts: {
   if (cfg.showTcoDetailedTable && tcoEligible) {
     doc.addPage();
     drawHeader(doc, client, "vehicles");
-    await drawTcoDetailedTable(doc, v, energy);
+    await drawTcoDetailedTable(doc, v, energy, client);
   }
   if (cfg.showCarbonImpact && v.length >= 1) {
     doc.addPage();
     drawHeader(doc, client, "vehicles");
-    drawCarbonImpact(doc, v, energy);
+    drawCarbonImpact(doc, v, energy, client);
   }
 
   // Boucle bornes : on regroupe par deployment (domicile puis site) pour
@@ -3619,7 +3636,8 @@ async function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: Ener
   });
   y = (doc as any).lastAutoTable.finalY + 10;
 
-  // Pied : note méthodologie
+  // Pied : note méthodologie (paginée si le tableau remplit la page)
+  y = ensureBottomSpace(doc, y, 50, client, type ?? "vehicles");
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(7.5);
   doc.setTextColor(...SUB);
@@ -3637,7 +3655,7 @@ async function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: Ener
 // Malus poids / AND (×durée) / AEN employeur (×durée) / TCO total /
 // TCO employeur complet. Permet au commercial et au client de vérifier
 // chaque ligne du calcul.
-async function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams) {
+async function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams, client?: ClientInfo) {
   let y = 116;
   const PINK: [number, number, number] = [244, 184, 170];
   doc.setFillColor(...PINK);
@@ -3823,11 +3841,27 @@ async function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: 
     "· Loyer total = loyer mensuel négocié × nombre de mois (TTC, TVA récupérable LLD)",
     "· Énergie = conso véhicule × km contrat × prix carburant ou kWh (mix 85 % domicile / 15 % public)",
   ];
-  // Avance la position en tenant compte du repli : une ligne longue occupe
-  // plusieurs lignes physiques, sinon les légendes se chevauchent.
+  // On pré-wrappe avec la police déjà fixée (8.5pt) pour mesurer la hauteur
+  // réelle. Si la légende ne tient pas avant le footer (tableau long), on la
+  // bascule sur une nouvelle page : sinon les notes chevauchaient le pied de
+  // page (bug observé). Garde-fou par ligne au cas où.
   const legendLineH = 12;
-  legendLines.forEach((line) => {
-    const wrapped = doc.splitTextToSize(line, PAGE_W - M * 2);
+  const wrappedAll = legendLines.map((line) => doc.splitTextToSize(line, PAGE_W - M * 2) as string[]);
+  const totalLegendH = wrappedAll.reduce((s, w) => s + w.length * legendLineH + 3, 0);
+  if (y2 + totalLegendH > FOOTER_LIMIT) {
+    doc.addPage();
+    if (client) drawHeader(doc, client, "vehicles");
+    y2 = 116;
+  }
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  wrappedAll.forEach((wrapped) => {
+    if (y2 + wrapped.length * legendLineH > FOOTER_LIMIT) {
+      doc.addPage();
+      if (client) drawHeader(doc, client, "vehicles");
+      y2 = 116;
+    }
     doc.text(wrapped, M, y2);
     y2 += wrapped.length * legendLineH + 3;
   });
@@ -4050,7 +4084,7 @@ function drawB2B2ETco(doc: jsPDF, input: B2B2ECalculatorInput) {
 // électrique vs un équivalent thermique de référence. Affichage en
 // équivalences concrètes (allers-retours, arbres) pour parler à un
 // décideur non-technique.
-function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams) {
+function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams, client?: ClientInfo) {
   let y = 116;
   const ROSE: [number, number, number] = [244, 184, 170];
   doc.setFillColor(...ROSE);
@@ -4180,9 +4214,10 @@ function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
     columnStyles: { 0: { halign: "center" as any }, 1: { halign: "center" as any }, 2: { halign: "center" as any }, 3: { halign: "center" as any }, 4: { halign: "center" as any }, 5: { halign: "center" as any }, 6: { halign: "center" as any } },
     margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
   });
-  const y2 = (doc as any).lastAutoTable.finalY + 16;
+  let y2 = (doc as any).lastAutoTable.finalY + 16;
 
-  // Note méthodologique
+  // Note méthodologique (paginée si le tableau remplit la page)
+  y2 = ensureBottomSpace(doc, y2, 48, client, "vehicles");
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(7.5);
   doc.setTextColor(...SUB);
@@ -4230,7 +4265,7 @@ function drawThumbCell(doc: jsPDF, cell: { x: number; y: number; height: number 
 // Tableau comparatif vertical : chaque véhicule est une ligne (image + nom +
 // chip statut dans la colonne Véhicule, puis prix / loyer / autonomie / conso /
 // énergie). Gère n'importe quel nombre de véhicules sans débordement.
-async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], groupName?: string) {
+async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], groupName?: string, client?: ClientInfo) {
   const PINK: [number, number, number] = [244, 184, 170];
   const PINK_LIGHT: [number, number, number] = [253, 241, 238];
   const BLUE_LIGHT: [number, number, number] = [237, 246, 255]; // beev-bleu-20
@@ -4382,9 +4417,10 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
       }
     },
   });
-  const yEnd = (doc as any).lastAutoTable.finalY + 14;
+  let yEnd = (doc as any).lastAutoTable.finalY + 14;
 
-  // Note de bas de page
+  // Note de bas de page (paginée si le tableau remplit la page)
+  yEnd = ensureBottomSpace(doc, yEnd, 40, client, "vehicles");
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(7.5);
   doc.setTextColor(...SUB);
