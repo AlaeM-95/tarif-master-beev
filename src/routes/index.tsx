@@ -705,11 +705,16 @@ function App() {
       // comparative + les blocs TCO par véhicule sont le seul contenu utile.
       // Les véhicules sélectionnés ont automatiquement includeTco=true pour
       // que le bloc TCO s'affiche sur chaque fiche.
+      // En vue TCO on masque les sections « commerciales » (Pourquoi Beev,
+      // garanties, parcours, synthèse exec, services/options) pour rester
+      // focalisé. En revanche, le CHOIX des pages d'analyse TCO (tableau de
+      // bord, détail des composantes, bilan carbone) reste au commercial via
+      // le panneau Configuration PDF : on n'écrase plus showTcoComparison /
+      // showTcoDetailedTable / showCarbonImpact.
       const tcoFocusedConfig = tcoView ? {
         ...pdfConfig,
         showWhyBeev: false,
         showSocialProof: false,
-        showTcoComparison: true,
         showFinancialSummary: false,
         showGuarantees: false,
         showJourney: false,

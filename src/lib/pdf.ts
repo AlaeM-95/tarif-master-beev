@@ -821,24 +821,31 @@ export async function generateProposalPdf(opts: {
     drawCompetitorComparison(doc, withCompetitor);
   }
 
-  // Page comparaison TCO multi-véhicules (toggleable) — toujours si 2+ véhicules
-  if (cfg.showTcoComparison && v.length >= 2 && v.some((sv) => sv.includeTco)) {
-    // 1) Tableau de bord visuel (KPI cards + barres empilées) en ouverture
+  // Pages d'analyse TCO multi-véhicules. Chaque page est désormais activable
+  // indépendamment par le commercial (panneau Configuration PDF) : le tableau
+  // de bord et le détail des composantes ne sont plus liés. Toutes requièrent
+  // 2+ véhicules avec includeTco.
+  const tcoEligible = v.length >= 2 && v.some((sv) => sv.includeTco);
+  // 1) Tableau de bord visuel (KPI cards + barres empilées)
+  if (cfg.showTcoComparison && tcoEligible) {
     doc.addPage();
     drawHeader(doc, client, "vehicles");
     await drawTcoDashboard(doc, v, energy, client, "vehicles");
-    // 1bis) Tableau détaillé : 1 ligne par véhicule avec TOUTES les composantes
-    // (Loyer / Énergie / TVS / Malus CO2 / Malus poids / AND / AEN / TCO total /
-    // Coût employeur complet) pour vérification ligne par ligne.
+  }
+  // 2) Tableau détaillé : 1 ligne par véhicule avec TOUTES les composantes
+  // (Loyer / Énergie / TVS / Malus CO2 / Malus poids / AND / AEN / TCO total /
+  // Coût employeur complet) pour vérification ligne par ligne.
+  if (cfg.showTcoDetailedTable && tcoEligible) {
     doc.addPage();
     drawHeader(doc, client, "vehicles");
     await drawTcoDetailedTable(doc, v, energy);
-    // Page « Bilan carbone » — argument RSE
-    if (cfg.showCarbonImpact) {
-      doc.addPage();
-      drawHeader(doc, client, "vehicles");
-      drawCarbonImpact(doc, v, energy);
-    }
+  }
+  // 3) Page « Bilan carbone » — argument RSE. Toggle indépendant (un seul
+  // véhicule suffit) : ne dépend plus de l'affichage des pages TCO.
+  if (cfg.showCarbonImpact && v.length >= 1) {
+    doc.addPage();
+    drawHeader(doc, client, "vehicles");
+    drawCarbonImpact(doc, v, energy);
   }
 
   // Page synthèse financière (toggleable)
@@ -1092,12 +1099,18 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(13);
   doc.setTextColor(...BG);
-  doc.text(c.company || "—", M, nameY, { maxWidth: colWidth - 20 });
+  // La raison sociale peut s'étaler sur 2 lignes : on dessine les lignes
+  // explicitement et on descend le contact en conséquence pour éviter le
+  // chevauchement nom client / contact (bug observé sur les noms longs).
+  const companyLines = doc.splitTextToSize(c.company || "—", colWidth - 20) as string[];
+  const NAME_LINE_H = 15;
+  doc.text(companyLines, M, nameY);
+  const contactY = nameY + (companyLines.length - 1) * NAME_LINE_H + (lineY - nameY);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9.5);
   doc.setTextColor(...GREY_LINE);
-  if (c.contact) doc.text(c.contact, M, lineY);
-  if (c.email) doc.text(c.email, M, lineY + 14);
+  if (c.contact) doc.text(c.contact, M, contactY);
+  if (c.email) doc.text(c.email, M, contactY + 14);
 
   // Col 2 : Préparée par
   const col2X = M + colWidth + 10;
@@ -4146,7 +4159,7 @@ function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
   autoTable(doc, {
     startY: y + 4,
     theme: "plain",
-    head: [["Véhicule", "Km contrat", "Émissions g/km", "CO2 émis", "CO2 évité"]],
+    head: [["Véhicule", "Version", "Motorisation", "Km contrat", "Émissions g/km", "CO2 émis", "CO2 évité"]],
     body: vehicles.map((sv) => {
       const duree = sv.durationMonths / 12;
       const km = sv.kmPerYear * duree * (sv.quantity || 1);
@@ -4156,16 +4169,20 @@ function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
       const isElec = sv.vehicle.energy === "Électrique";
       return [
         `${sv.vehicle.brand} ${sv.vehicle.model}${(sv.quantity || 1) > 1 ? ` × ${sv.quantity}` : ""}`,
+        sv.vehicle.version || "—",
+        sv.vehicle.energy || "—",
         `${(km / 1000).toFixed(0)} k km`,
         isElec ? "0 g (EL)" : `${co2gKm} g`,
         isElec ? "0 kg" : `${co2Emi.toFixed(0)} kg`,
-        { content: `${(co2Ref - co2Emi).toFixed(0)} kg`, styles: { fontStyle: "bold" as any, textColor: ROSE } },
+        { content: `${(co2Ref - co2Emi).toFixed(0)} kg`, styles: { fontStyle: "bold" as any, textColor: ROSE, halign: "center" as any } },
       ];
     }),
-    headStyles: { fillColor: INK, textColor: 255, fontSize: 8.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 6 },
-    bodyStyles: { fontSize: 9, cellPadding: 6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
+    // Données centrées dans toutes les colonnes (demande commercial) ; le nom
+    // et la version restent lisibles, les 4 colonnes chiffrées sont alignées.
+    headStyles: { fillColor: INK, textColor: 255, fontSize: 8, fontStyle: "bold", font: BRAND_FONT, cellPadding: 5, halign: "center" },
+    bodyStyles: { fontSize: 8.5, cellPadding: 5, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, halign: "center", valign: "middle" },
     alternateRowStyles: { fillColor: BG },
-    columnStyles: { 1: { halign: "right" as any }, 2: { halign: "right" as any }, 3: { halign: "right" as any }, 4: { halign: "right" as any } },
+    columnStyles: { 0: { halign: "center" as any }, 1: { halign: "center" as any }, 2: { halign: "center" as any }, 3: { halign: "center" as any }, 4: { halign: "center" as any }, 5: { halign: "center" as any }, 6: { halign: "center" as any } },
     margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
   });
   const y2 = (doc as any).lastAutoTable.finalY + 16;
