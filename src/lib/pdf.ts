@@ -3766,6 +3766,10 @@ async function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: 
           ? { content: "—", styles: { halign: "center" as any, textColor: SUB } }
           : { content: eur(andTotal), styles: { halign: "center" as any } },
         { content: eur(aenTotal), styles: { halign: "center" as any } },
+        // AEN salarié /mois : avantage en nature imposable côté salarié, forfait
+        // 50 % du loyer mensuel SANS CARBURANT (abattement 70 % si EV éco-score).
+        // Affiché à titre INFORMATIF — n'entre PAS dans le coût employeur complet.
+        { content: eur(r.aenMensuel), styles: { halign: "center" as any, textColor: SUB, fontStyle: "italic" as any } },
         { content: eur(r.tcoEmployeurComplet), styles: { halign: "center" as any, fontStyle: "bold" as any, textColor: LAVENDER, fontSize: 10 } },
       ];
   };
@@ -3789,7 +3793,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: 
     if (hasGroups) {
       const label = g === "__none__" ? "Autres véhicules" : g;
       const gColor = GROUP_COLORS[groupIdx % GROUP_COLORS.length];
-      tcoBody.push([{ content: label.toUpperCase(), colSpan: 8, styles: { fillColor: gColor, textColor: INK, fontStyle: "bold" as any, fontSize: 9, halign: "center" as any, cellPadding: 6 } }]);
+      tcoBody.push([{ content: label.toUpperCase(), colSpan: 9, styles: { fillColor: gColor, textColor: INK, fontStyle: "bold" as any, fontSize: 9, halign: "center" as any, cellPadding: 6 } }]);
       rowVehicles.push(null);
       groupIdx++;
     }
@@ -3813,6 +3817,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: 
       "MALUS\n(achat)",
       "AND\n(×durée)",
       "AEN EMPL.\n(×durée)",
+      "AEN SAL.\n/mois (info)",
       "COÛT EMPL.\nCOMPLET",
     ]],
     body: tcoBody,
@@ -3822,14 +3827,15 @@ async function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: 
     bodyStyles: { fontSize: 7.5, cellPadding: 4, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any, overflow: "visible" as any },
     alternateRowStyles: { fillColor: BG },
     columnStyles: {
-      0: { cellWidth: 150, halign: "left" as any, cellPadding: { left: 54, right: 6, top: 6, bottom: 6 }, minCellHeight: 48, valign: "middle" as any, overflow: "linebreak" as any },
-      1: { cellWidth: 50 },
-      2: { cellWidth: 50 },
-      3: { cellWidth: 46 },
-      4: { cellWidth: 46 },
-      5: { cellWidth: 46 },
-      6: { cellWidth: 52 },
-      7: { cellWidth: "auto" },
+      0: { cellWidth: 130, halign: "left" as any, cellPadding: { left: 54, right: 4, top: 6, bottom: 6 }, minCellHeight: 48, valign: "middle" as any, overflow: "linebreak" as any },
+      1: { cellWidth: 46 },
+      2: { cellWidth: 44 },
+      3: { cellWidth: 40 },
+      4: { cellWidth: 40 },
+      5: { cellWidth: 40 },
+      6: { cellWidth: 46 },
+      7: { cellWidth: 46 },
+      8: { cellWidth: "auto" },
     },
     margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
     didDrawCell: (data: any) => {
@@ -3850,6 +3856,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: 
     "· Coût employeur complet = Loyer + Énergie + TVS + Malus + (AND × durée) + (AEN employeur × durée)",
     "· AND calculé sur le prix catalogue TTC (amortissement non déductible au-delà de 30 000 € pour un EV) ; « — » si le prix catalogue n'est pas renseigné",
     "· AEN employeur = avantage en nature × 42 % ; abattement de 70 % uniquement si l'éco-score du véhicule est activé (sinon AEN plein)",
+    "· AEN salarié /mois = loyer mensuel TTC × 50 % (forfait sans carburant), moins abattement 70 % si véhicule électrique avec éco-score. Avantage en nature imposable du salarié, affiché à titre informatif : NON inclus dans le coût employeur complet ni dans le TCO.",
     "· Loyer total = loyer mensuel négocié × nombre de mois (TTC, TVA récupérable LLD)",
     "· Énergie = conso véhicule × km contrat × prix carburant ou kWh (mix 85 % domicile / 15 % public)",
   ];
