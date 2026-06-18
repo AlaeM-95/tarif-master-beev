@@ -65,10 +65,16 @@ function Section({ title, count, children, onAdd, addLabel }: { title: string; c
   );
 }
 
-function RowCard({ onDelete, children }: { onDelete: () => void; children: ReactNode }) {
+function RowCard({ enabled = true, onToggle, onDelete, children }: { enabled?: boolean; onToggle?: (b: boolean) => void; onDelete: () => void; children: ReactNode }) {
   return (
-    <div className="rounded-md border bg-card p-2.5 space-y-2">
-      <div className="flex justify-end">
+    <div className={`rounded-md border bg-card p-2.5 space-y-2 ${enabled ? "" : "opacity-55"}`}>
+      <div className="flex items-center justify-between gap-2">
+        {onToggle ? (
+          <label className="flex items-center gap-2 text-[11px] font-medium cursor-pointer select-none">
+            <input type="checkbox" checked={enabled} onChange={(e) => onToggle(e.target.checked)} className="h-4 w-4 accent-beev-bleu" />
+            <span className={enabled ? "" : "text-muted-foreground"}>{enabled ? "Affiché dans le PDF" : "Masqué du PDF"}</span>
+          </label>
+        ) : <span />}
         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onDelete}><Trash2 className="w-3.5 h-3.5" /></Button>
       </div>
       {children}
@@ -113,7 +119,7 @@ export function AuditConseilEditor({ open, onOpenChange, clientName }: { open: b
   const tarifSection = (key: "tarifsSansEngagement" | "tarifsAvecEngagement", title: string) => (
     <Section title={title} count={cfg[key].length} onAdd={() => addArr(key, newTarifRow())} addLabel="Ajouter une ligne">
       {cfg[key].map((r: AuditTarifRow, i) => (
-        <RowCard key={i} onDelete={() => delArr(key, i)}>
+        <RowCard key={i} enabled={r.enabled !== false} onToggle={(b) => patchArr(key, i, { enabled: b })} onDelete={() => delArr(key, i)}>
           <Txt label="Prestation" value={r.prestation} onChange={(v) => patchArr(key, i, { prestation: v })} />
           <div className="space-y-1">
             <Label className="text-[10px] uppercase text-muted-foreground tracking-wide">Sous-titre</Label>
@@ -176,7 +182,7 @@ export function AuditConseilEditor({ open, onOpenChange, clientName }: { open: b
         {/* Enjeux */}
         <Section title="Contexte & enjeux identifiés" count={cfg.enjeux.length} onAdd={() => addArr("enjeux", newEnjeu())} addLabel="Ajouter un enjeu">
           {cfg.enjeux.map((e, i) => (
-            <RowCard key={i} onDelete={() => delArr("enjeux", i)}>
+            <RowCard key={i} enabled={e.enabled !== false} onToggle={(b) => patchArr("enjeux", i, { enabled: b })} onDelete={() => delArr("enjeux", i)}>
               <Txt label="Titre" value={e.title} onChange={(v) => patchArr("enjeux", i, { title: v })} />
               <div className="space-y-1">
                 <Label className="text-[10px] uppercase text-muted-foreground tracking-wide">Description</Label>
@@ -189,7 +195,7 @@ export function AuditConseilEditor({ open, onOpenChange, clientName }: { open: b
         {/* Livrables */}
         <Section title="Ce que comprend l'audit" count={cfg.livrables.length} onAdd={() => addArr("livrables", newLivrable())} addLabel="Ajouter un livrable">
           {cfg.livrables.map((l, i) => (
-            <RowCard key={i} onDelete={() => delArr("livrables", i)}>
+            <RowCard key={i} enabled={l.enabled !== false} onToggle={(b) => patchArr("livrables", i, { enabled: b })} onDelete={() => delArr("livrables", i)}>
               <Txt label={`Livrable ${String(i + 1).padStart(2, "0")}`} value={l.title} onChange={(v) => patchArr("livrables", i, { title: v })} />
               <div className="space-y-1">
                 <Label className="text-[10px] uppercase text-muted-foreground tracking-wide">Description</Label>
@@ -206,7 +212,7 @@ export function AuditConseilEditor({ open, onOpenChange, clientName }: { open: b
         {/* Étapes */}
         <Section title="Processus" count={cfg.etapes.length} onAdd={() => addArr("etapes", newEtape())} addLabel="Ajouter une étape">
           {cfg.etapes.map((e, i) => (
-            <RowCard key={i} onDelete={() => delArr("etapes", i)}>
+            <RowCard key={i} enabled={e.enabled !== false} onToggle={(b) => patchArr("etapes", i, { enabled: b })} onDelete={() => delArr("etapes", i)}>
               <Txt label={`Étape ${i + 1}`} value={e.title} onChange={(v) => patchArr("etapes", i, { title: v })} />
               <Txt label="Description courte" value={e.text} onChange={(v) => patchArr("etapes", i, { text: v })} />
             </RowCard>

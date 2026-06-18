@@ -7,8 +7,10 @@
 // Même mécanique d'export que le BPU partenariat : HTML vectoriel imprimé via la
 // fenêtre du navigateur, polices Roobert et logos embarqués en base64.
 
-export type AuditEnjeu = { title: string; text: string };
-export type AuditLivrable = { title: string; text: string };
+// `enabled` (optionnel) : le commercial peut afficher / masquer chaque ligne
+// dans le PDF depuis l'éditeur. undefined ou true = affiché ; false = masqué.
+export type AuditEnjeu = { title: string; text: string; enabled?: boolean };
+export type AuditLivrable = { title: string; text: string; enabled?: boolean };
 export type AuditTarifRow = {
   prestation: string;
   sub: string;
@@ -16,8 +18,12 @@ export type AuditTarifRow = {
   // Couleur de la pastille « modalité » : rose (indépendant), bleu (offre), neutre.
   modaliteStyle: "rose" | "bleu" | "neutre";
   tarif: string;
+  enabled?: boolean;
 };
-export type AuditEtape = { title: string; text: string };
+export type AuditEtape = { title: string; text: string; enabled?: boolean };
+
+// Une ligne est affichée tant qu'elle n'est pas explicitement désactivée.
+const isOn = <T extends { enabled?: boolean }>(x: T): boolean => x.enabled !== false;
 
 // Comparaison économique thermique vs électrique selon la taille de flotte.
 // Les coûts sont des TCO MOYENS annuels par véhicule ; le graphique projette le
@@ -171,8 +177,9 @@ function heroBlock(cfg: AuditConseilConfig, assets?: AuditAssets): string {
 }
 
 function enjeuxBlock(cfg: AuditConseilConfig): string {
-  if (!cfg.enjeux.length) return "";
-  const items = cfg.enjeux.map((e, i) => `
+  const list = cfg.enjeux.filter(isOn);
+  if (!list.length) return "";
+  const items = list.map((e, i) => `
     <div class="enjeu ${ACCENTS[i % ACCENTS.length]}">
       <span class="enjeu-badge">${String(i + 1).padStart(2, "0")}</span>
       <div class="enjeu-body">
@@ -188,8 +195,9 @@ function enjeuxBlock(cfg: AuditConseilConfig): string {
 }
 
 function livrablesBlock(cfg: AuditConseilConfig): string {
-  if (!cfg.livrables.length) return "";
-  const cards = cfg.livrables.map((l, i) => `
+  const list = cfg.livrables.filter(isOn);
+  if (!list.length) return "";
+  const cards = list.map((l, i) => `
     <div class="liv-card ${ACCENTS[i % ACCENTS.length]}">
       <span class="liv-num">${String(i + 1).padStart(2, "0")}</span>
       <div class="liv-title">${esc(l.title)}</div>
@@ -203,8 +211,9 @@ function livrablesBlock(cfg: AuditConseilConfig): string {
 }
 
 function tarifTable(title: string, rows: AuditTarifRow[], accent: string): string {
-  if (!rows.length) return "";
-  const body = rows.map((r) => `
+  const list = rows.filter(isOn);
+  if (!list.length) return "";
+  const body = list.map((r) => `
     <div class="tarif-row">
       <div class="tarif-presta">
         <div class="tarif-presta-title">${esc(r.prestation)}</div>
@@ -224,9 +233,10 @@ function tarifTable(title: string, rows: AuditTarifRow[], accent: string): strin
 }
 
 function etapesBlock(cfg: AuditConseilConfig): string {
-  if (!cfg.etapes.length) return "";
-  const n = cfg.etapes.length;
-  const steps = cfg.etapes.map((e, i) => `
+  const list = cfg.etapes.filter(isOn);
+  if (!list.length) return "";
+  const n = list.length;
+  const steps = list.map((e, i) => `
     <div class="step">
       <span class="step-dot">${i + 1}</span>
       <div class="step-title">${esc(e.title)}</div>
@@ -351,8 +361,8 @@ ${fontFaceCss(fonts)}
 
   .page { position: relative; width: 210mm; height: 297mm; padding: 13mm 15mm 16mm; background: var(--beige); page-break-after: always; overflow: hidden; }
   .page:last-child { page-break-after: auto; }
-  .section { margin-top: 17px; break-inside: avoid; page-break-inside: avoid; }
-  .section:first-of-type { margin-top: 18px; }
+  .section { margin-top: 13px; break-inside: avoid; page-break-inside: avoid; }
+  .section:first-of-type { margin-top: 14px; }
 
   .wordmark { font-weight: 700; letter-spacing: -.02em; }
   .wordmark.light { color: var(--beige); }
@@ -362,7 +372,7 @@ ${fontFaceCss(fonts)}
   .sec-bar.rose { background: var(--rose); } .sec-bar.bleu { background: var(--bleu); } .sec-bar.violet { background: var(--violet); }
 
   /* Hero cover — panneau noir Beev avec orbes de couleur charte */
-  .hero { position: relative; background: var(--ink); color: var(--beige); border-radius: 22px; padding: 30px 34px 32px; overflow: hidden; }
+  .hero { position: relative; background: var(--ink); color: var(--beige); border-radius: 22px; padding: 24px 30px 26px; overflow: hidden; }
   .orb { position: absolute; border-radius: 50%; filter: blur(2px); pointer-events: none; }
   .orb-rose { right: -70px; top: -70px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(244,184,170,.30), transparent 68%); }
   .orb-bleu { left: -90px; bottom: -110px; width: 280px; height: 280px; background: radial-gradient(circle, rgba(165,210,255,.22), transparent 70%); }
@@ -370,35 +380,35 @@ ${fontFaceCss(fonts)}
   .hero-eyebrow { font-size: 10px; letter-spacing: .24em; text-transform: uppercase; color: rgba(252,249,242,.7); font-weight: 700; }
   .hero-logo { height: 22px; width: auto; object-fit: contain; }
   span.hero-logo { font-size: 21px; }
-  .hero-main { position: relative; z-index: 1; margin-top: 26px; }
-  .hero-client { display: inline-flex; align-items: center; background: #fff; border-radius: 12px; padding: 9px 13px; margin-bottom: 18px; }
-  .hero-client img { max-height: 34px; max-width: 150px; object-fit: contain; display: block; }
-  .hero-title { font-size: 34px; line-height: 1.06; font-weight: 700; letter-spacing: -.028em; max-width: 90%; }
-  .hero-rule { display: block; width: 56px; height: 4px; border-radius: 2px; background: var(--rose); margin: 16px 0; }
-  .hero-approach { font-size: 13.5px; line-height: 1.6; color: rgba(252,249,242,.86); max-width: 84%; }
-  .chips { display: flex; gap: 9px; margin-top: 18px; flex-wrap: wrap; }
-  .chip { font-size: 11px; font-weight: 600; background: rgba(252,249,242,.08); border: 1px solid rgba(252,249,242,.3); color: var(--beige); border-radius: 999px; padding: 6px 14px; }
-  .hero-prepared { font-size: 12px; color: rgba(252,249,242,.7); margin-top: 16px; }
+  .hero-main { position: relative; z-index: 1; margin-top: 20px; }
+  .hero-client { display: inline-flex; align-items: center; background: #fff; border-radius: 12px; padding: 8px 12px; margin-bottom: 13px; }
+  .hero-client img { max-height: 32px; max-width: 150px; object-fit: contain; display: block; }
+  .hero-title { font-size: 30px; line-height: 1.07; font-weight: 700; letter-spacing: -.028em; max-width: 92%; }
+  .hero-rule { display: block; width: 52px; height: 4px; border-radius: 2px; background: var(--rose); margin: 12px 0; }
+  .hero-approach { font-size: 12.5px; line-height: 1.5; color: rgba(252,249,242,.86); max-width: 86%; }
+  .chips { display: flex; gap: 9px; margin-top: 13px; flex-wrap: wrap; }
+  .chip { font-size: 11px; font-weight: 600; background: rgba(252,249,242,.08); border: 1px solid rgba(252,249,242,.3); color: var(--beige); border-radius: 999px; padding: 5px 13px; }
+  .hero-prepared { font-size: 12px; color: rgba(252,249,242,.7); margin-top: 12px; }
   .hero-prepared strong { color: var(--beige); font-weight: 700; }
 
   /* Enjeux : carte à liseré + badge plein dans la couleur d'accent */
-  .enjeux { display: flex; flex-direction: column; gap: 10px; }
-  .enjeu { display: flex; gap: 16px; align-items: flex-start; background: var(--paper); border: 1px solid var(--rule); border-left-width: 4px; border-radius: 13px; padding: 15px 18px; break-inside: avoid; }
+  .enjeux { display: flex; flex-direction: column; gap: 8px; }
+  .enjeu { display: flex; gap: 14px; align-items: flex-start; background: var(--paper); border: 1px solid var(--rule); border-left-width: 4px; border-radius: 13px; padding: 12px 16px; break-inside: avoid; }
   .enjeu.rose { border-left-color: var(--rose); } .enjeu.bleu { border-left-color: var(--bleu); } .enjeu.violet { border-left-color: var(--violet); }
-  .enjeu-badge { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; font-size: 13px; font-weight: 700; color: var(--ink); }
+  .enjeu-badge { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; font-size: 12.5px; font-weight: 700; color: var(--ink); }
   .enjeu.rose .enjeu-badge { background: var(--rose); } .enjeu.bleu .enjeu-badge { background: var(--bleu); } .enjeu.violet .enjeu-badge { background: var(--violet); }
   .enjeu-title { font-size: 14.5px; font-weight: 700; margin-bottom: 4px; }
   .enjeu-text { font-size: 12px; color: var(--sub); line-height: 1.55; }
 
   /* Livrables : grille 3 colonnes, chip numéro coloré par accent */
-  .liv-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-  .liv-card { position: relative; background: var(--paper); border: 1px solid var(--rule); border-radius: 14px; padding: 16px; break-inside: avoid; }
-  .liv-card::before { content: ""; position: absolute; top: 0; left: 16px; right: 16px; height: 3px; border-radius: 0 0 3px 3px; }
+  .liv-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .liv-card { position: relative; background: var(--paper); border: 1px solid var(--rule); border-radius: 14px; padding: 13px 14px; break-inside: avoid; }
+  .liv-card::before { content: ""; position: absolute; top: 0; left: 14px; right: 14px; height: 3px; border-radius: 0 0 3px 3px; }
   .liv-card.rose::before { background: var(--rose); } .liv-card.bleu::before { background: var(--bleu); } .liv-card.violet::before { background: var(--violet); }
-  .liv-num { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; font-size: 12px; font-weight: 700; color: var(--ink); }
+  .liv-num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; font-size: 12px; font-weight: 700; color: var(--ink); }
   .liv-card.rose .liv-num { background: var(--rose-soft); } .liv-card.bleu .liv-num { background: var(--bleu-soft); } .liv-card.violet .liv-num { background: var(--violet-soft); }
-  .liv-title { font-size: 14px; font-weight: 700; margin: 11px 0 6px; line-height: 1.22; }
-  .liv-text { font-size: 11.5px; color: var(--sub); line-height: 1.55; }
+  .liv-title { font-size: 13.5px; font-weight: 700; margin: 9px 0 5px; line-height: 1.2; }
+  .liv-text { font-size: 11px; color: var(--sub); line-height: 1.5; }
 
   /* Tarifs : carte avec en-tête + lignes */
   .tarif-card { background: var(--paper); border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; }
