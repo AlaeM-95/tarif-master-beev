@@ -437,8 +437,11 @@ span.cover-logo{font-size:40px;}
 .contact-card .cc-line .cl-v{font-size:22px; font-weight:500; color:var(--beige); display:flex; align-items:center; gap:11px;}
 .contact-card .cc-line .cl-v svg{width:19px; height:19px; stroke-width:1.75; color:var(--accent); flex:none;}
 .closing{position:relative; display:flex; flex-direction:column; padding:96px 104px;}
-.closing-mono{height:52px; width:auto;}
-span.closing-mono{font-size:48px;}
+/* align-self:flex-start + object-fit empêchent l'étirement horizontal du
+   logo : sans ça, le conteneur flex-column (align-items:stretch par défaut)
+   force l'img à toute la largeur et déforme le logo (lettres « melted »). */
+.closing-mono{height:52px; width:auto; align-self:flex-start; object-fit:contain;}
+span.closing-mono{font-size:48px; align-self:flex-start;}
 .closing-center{flex:1; display:flex; flex-direction:column; justify-content:center;}
 .closing-kicker{font-size:24px; color:rgba(252,249,242,.62); margin:0 0 28px; letter-spacing:.01em;}
 .closing-tagline{font-size:140px; line-height:.94; font-weight:600; letter-spacing:-.03em; margin:0; color:var(--beige);}
