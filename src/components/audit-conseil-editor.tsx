@@ -5,7 +5,7 @@
 // localStorage pour ne pas perdre la saisie.
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Plus, Trash2, FileDown, ChevronDown } from "lucide-react";
+import { Plus, Trash2, FileDown, ChevronDown, Presentation } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,6 +17,7 @@ import {
   defaultAuditConseil, newEnjeu, newLivrable, newTarifRow, newEtape, generateAuditConseilPdf,
   type AuditConseilConfig, type AuditTarifRow,
 } from "@/lib/audit-conseil";
+import { generateAuditDeckPdf } from "@/lib/audit-conseil-deck";
 
 const SK = "beev_audit_conseil_v1";
 
@@ -259,6 +260,9 @@ export function AuditConseilEditor({ open, onOpenChange, clientName }: { open: b
 
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => setCfg(defaultAuditConseil())}>Réinitialiser</Button>
+          <Button variant="outline" className="gap-2" onClick={() => generateAuditDeckPdf(cfg)}>
+            <Presentation className="w-4 h-4" /> Présentation (16:9)
+          </Button>
           <Button className="gap-2" onClick={() => generateAuditConseilPdf(cfg)}>
             <FileDown className="w-4 h-4" /> Télécharger la proposition
           </Button>
