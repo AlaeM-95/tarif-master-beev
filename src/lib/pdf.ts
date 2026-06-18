@@ -2632,29 +2632,35 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     py += 12;
   }
 
-  // Row 3 : Remise commerciale (sur catalogue + options)
-  doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(9);
-  doc.setTextColor(...GREY_LABEL_DARK);
-  doc.text(lookupText(TEXTS, "vehicles", "vehicle_discount_label", "REMISE COMMERCIALE"), innerX, py);
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(10);
-  doc.setTextColor(...BEIGE);
-  doc.text(`−${sv.discountPct.toFixed(1)} %`, innerR, py, { align: "right" });
-  py += 9;
-  doc.line(innerX, py, innerR, py);
-  py += 12;
+  // Rows « Remise commerciale » + « Prix remisé TTC » : masquables par le
+  // commercial (toggle showVehicleDiscount). Le pourcentage de remise reste
+  // TOUJOURS pris en compte dans le calcul de l'AND (via sv.discountPct →
+  // remisePctOverride), qu'il soit affiché ou non.
+  if (PDF_CFG.showVehicleDiscount) {
+    // Row 3 : Remise commerciale (sur catalogue + options)
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...GREY_LABEL_DARK);
+    doc.text(lookupText(TEXTS, "vehicles", "vehicle_discount_label", "REMISE COMMERCIALE"), innerX, py);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...BEIGE);
+    doc.text(`−${sv.discountPct.toFixed(1)} %`, innerR, py, { align: "right" });
+    py += 9;
+    doc.line(innerX, py, innerR, py);
+    py += 12;
 
-  // Row 3 : Prix remisé
-  doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(9);
-  doc.setTextColor(...GREY_LABEL_DARK);
-  doc.text(lookupText(TEXTS, "vehicles", "vehicle_price_remise_label", "PRIX REMISÉ TTC"), innerX, py);
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(10);
-  doc.setTextColor(...BEIGE);
-  doc.text(eur(discounted), innerR, py, { align: "right" });
-  py += 16;
+    // Row 4 : Prix remisé
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...GREY_LABEL_DARK);
+    doc.text(lookupText(TEXTS, "vehicles", "vehicle_price_remise_label", "PRIX REMISÉ TTC"), innerX, py);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...BEIGE);
+    doc.text(eur(discounted), innerR, py, { align: "right" });
+    py += 16;
+  }
 
   // Séparateur épais avant le bloc loyer
   doc.setDrawColor(70, 67, 62);

@@ -30,6 +30,7 @@ export type PdfDisplayConfig = {
   showVehicleEnvScore: boolean;
   showVehicleServices: boolean;
   showVehicleOptions: boolean;
+  showVehicleDiscount: boolean; // affiche la remise commerciale + prix remisé sur la fiche (le calcul AND l'utilise toujours)
   showVehicleTcoBlock: boolean; // bloc TCO par véhicule (graphique barres)
   // Specs étendues (migration 039) — chaque ligne du tableau caractéristique
   // technique est désormais togglable indépendamment pour ne pas polluer la
@@ -89,6 +90,7 @@ export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
   showVehicleEnvScore: false, // par défaut désactivé (info non standard)
   showVehicleServices: true,
   showVehicleOptions: true,
+  showVehicleDiscount: true, // remise commerciale affichée par défaut sur la fiche
   showVehicleTcoBlock: true,
   showVehicleLeadTime: true, // délai de livraison affiché si renseigné
   showVehicleTrunk: true,
@@ -194,6 +196,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
       { key: "showVehicleEnvScore", label: "Score environnemental" },
       { key: "showVehicleServices", label: "Services inclus" },
       { key: "showVehicleOptions", label: "Options & accessoires" },
+      { key: "showVehicleDiscount", label: "Remise commerciale", description: "Affiche « Remise commerciale » et « Prix remisé TTC » sur la fiche véhicule. Décochez pour masquer la remise au client : elle reste prise en compte dans le calcul de l'AND." },
       { key: "showVehicleTcoBlock", label: "Bloc TCO graphique", description: "Comparaison vs essence" },
       { key: "showVehicleLeadTime", label: "Délai de livraison", description: "Délai indiqué dans la fiche produit (saisi par l'ops). Affiché sur la fiche véhicule et le comparateur." },
       { key: "showVehicleTrunk", label: "Volume de coffre" },
