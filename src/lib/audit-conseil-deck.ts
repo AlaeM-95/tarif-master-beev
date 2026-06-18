@@ -148,7 +148,7 @@ function comparisonSlide(cfg: AuditConseilConfig, n: number, assets?: AuditAsset
     <div class="frame">
       ${head("03", "Projection économique", assets)}
       <h2 class="stitle sm">Thermique vs électrique</h2>
-      <div class="body split" style="margin-top:34px;">
+      <div class="body split" style="margin:30px 0 26px;">
         <div style="display:flex; flex-direction:column; min-width:0;">
           <div class="savings-hero">
             <span class="beev-chip ghost sh-chip"><i data-lucide="piggy-bank"></i></span>
@@ -315,7 +315,10 @@ span.brand-mark{font-size:30px;}
 .body{flex:1; min-height:0; display:flex; flex-direction:column; margin-top:46px;}
 .body.split{flex-direction:row; gap:64px; align-items:stretch;}
 .body.split > *{flex:1; min-width:0;}
-.note{font-size:19px; color:var(--fg-3); line-height:1.45; border-left:3px solid var(--accent); padding-left:20px; margin-top:auto;}
+/* margin-top:0 (et le margin-bottom du .body.split au-dessus garantit l'écart) :
+   éviter le margin-top:auto qui collait la note au bloc précédent et la faisait
+   chevaucher la carte noire. */
+.note{font-size:18px; color:var(--fg-3); line-height:1.4; border-left:3px solid var(--accent); padding-left:20px; margin-top:0; flex:none;}
 b,strong{font-weight:600;}
 
 /* cover */
@@ -370,13 +373,13 @@ span.cover-logo{font-size:40px;}
 .scope p{font-size:18.5px; line-height:1.4; color:var(--fg-2); margin:0;}
 
 /* projection */
-.savings-hero{display:flex; align-items:center; gap:22px; background:var(--black); color:var(--beige); border-radius:20px; padding:24px 32px; margin-top:4px; flex:none;}
+.savings-hero{display:flex; align-items:center; gap:22px; background:var(--black); color:var(--beige); border-radius:20px; padding:20px 30px; margin-top:4px; flex:none;}
 .savings-hero .sh-chip{width:56px; height:56px; border-radius:15px;}
 .savings-hero .sh-chip svg{width:28px; height:28px;}
 .savings-hero .sh-text{display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; min-width:0;}
 .savings-hero .sh-big{font-size:46px; font-weight:600; letter-spacing:-.02em; color:var(--accent); font-variant-numeric:tabular-nums;}
 .savings-hero .sh-txt{font-size:24px; font-weight:500; color:var(--beige);}
-.chart{display:flex; align-items:flex-end; gap:34px; flex:1; min-height:0; margin-top:34px; padding-bottom:14px; border-bottom:1px solid var(--border-subtle);}
+.chart{display:flex; align-items:flex-end; gap:34px; flex:1; min-height:0; margin-top:22px; padding-bottom:14px; border-bottom:1px solid var(--border-subtle);}
 .bar-col{flex:1; display:flex; flex-direction:column; align-items:center; height:100%; justify-content:flex-end; gap:14px;}
 .bar-val{font-size:36px; font-weight:600; letter-spacing:-.025em; color:var(--fg-1); font-variant-numeric:tabular-nums;}
 .bar{width:100%; background:var(--accent); border-radius:14px 14px 0 0; min-height:8px;}
