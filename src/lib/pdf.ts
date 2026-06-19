@@ -3924,19 +3924,21 @@ function drawB2B2ETco(doc: jsPDF, input: B2B2ECalculatorInput) {
   y += introL.length * 13 + 18;
 
   // === Bandeau ÉCONOMIE (la valeur reine) ===
+  // Fond rose charte (#F4B8AA) : texte en NOIR (#1D1D1D) pour le contraste —
+  // le texte blanc sur rose clair était illisible (bug charte).
   doc.setFillColor(...LAVENDER);
   doc.roundedRect(M, y, PAGE_W - M * 2, 100, 8, 8, "F");
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
-  doc.setTextColor(255, 255, 255);
+  doc.setTextColor(...INK);
   doc.text("ÉCONOMIE TOTALE SUR CONTRAT", M + 16, y + 20);
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(34);
-  doc.setTextColor(255, 255, 255);
+  doc.setTextColor(...INK);
   doc.text(eur(result.economieFlotteTotale), M + 16, y + 60);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
-  doc.setTextColor(220, 220, 255);
+  doc.setTextColor(...INK);
   doc.text(
     `soit ${eur(result.economieFlotteAnnuelle)} / an · ${eur(result.economieParCollabParAn)} par collaborateur / an · ${result.economiePct.toFixed(1)} % moins cher que le thermique`,
     M + 16, y + 80,
@@ -3977,55 +3979,72 @@ function drawB2B2ETco(doc: jsPDF, input: B2B2ECalculatorInput) {
   // === Décomposition 2 colonnes : Beev vs Thermique ===
   const colW = (PAGE_W - M * 2 - 20) / 2;
 
-  // Colonne gauche : Beev
+  // Colonne gauche : Beev — fond rose très clair (charte 2026, rose-20 #FDF1EE)
+  // au lieu de l'ancien lavande #EEE8FE hors charte.
   const colH = 200;
-  doc.setFillColor(56, 9, 234, 0.08 as any);
-  // Note : roundedRect avec fillStyle "F" et opacity n'est pas natif jsPDF.
-  // On dessine un rect plein lavande très clair via mix.
-  doc.setFillColor(238, 232, 254); // #EEE8FE
+  doc.setFillColor(253, 241, 238); // #FDF1EE rose-20 charte
   doc.roundedRect(M, y, colW, colH, 8, 8, "F");
   // Header
   doc.setFillColor(...LAVENDER);
   doc.roundedRect(M, y, colW, 28, 8, 8, "F");
   doc.rect(M, y + 14, colW, 14, "F");
+  // En-tête rose : texte noir (contraste charte) au lieu de blanc illisible.
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(10);
-  doc.setTextColor(255, 255, 255);
+  doc.setTextColor(...INK);
   doc.text("SOLUTION BEEV", M + 14, y + 18);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8);
+  doc.setTextColor(...INK);
   doc.text("Recharge domicile + itinérance + supervision Home Charging", M + 14, y + 38);
 
-  // Lignes décomposition Beev
-  const beevLines = [
-    { l: "Énergie électrique (mix domicile + itinérance)", v: eur(result.energieBeevFlotteTotale) },
-    { l: "Supervision Beev Home Charging", v: eur(result.supervisionFlotteTotale) },
-    { l: "Investissement bornes installées", v: eur(result.investBorneFlotte) },
-  ];
-  let by = y + 64;
-  beevLines.forEach((line) => {
+  // Postes de coût. Les TOTAUX des deux colonnes sont posés à une position
+  // FIXE en bas de carte (totalLabelY) pour rester alignés sur la même ligne
+  // quel que soit le nombre de postes — on ne remplit donc plus la colonne
+  // thermique avec des « — » disgracieux. Le séparateur de chaque poste suit
+  // la hauteur réelle du libellé (qui peut s'enrouler sur 2 lignes).
+  const lineTop = y + 60;
+  const minStep = 24;
+  const labelW = colW - 96; // réserve à droite pour le montant
+  const totalLabelY = y + colH - 30; // ligne des totaux, identique pour les 2 colonnes
+
+  const drawCostLine = (x: number, label: string, value: string, yPos: number): number => {
     doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(9);
+    doc.setFontSize(8.5);
     doc.setTextColor(...SUB);
-    doc.text(line.l, M + 14, by, { maxWidth: colW - 100 });
+    const ll = doc.splitTextToSize(label, labelW) as string[];
+    doc.text(ll, x + 14, yPos);
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(10);
     doc.setTextColor(...INK);
-    doc.text(line.v, M + colW - 14, by, { align: "right" });
-    by += 22;
+    doc.text(value, x + colW - 14, yPos, { align: "right" });
+    const next = yPos + Math.max(minStep, ll.length * 11 + 10);
     doc.setDrawColor(...RULE);
-    doc.line(M + 14, by - 4, M + colW - 14, by - 4);
-  });
-  // Total Beev
-  by += 8;
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(8);
-  doc.setTextColor(...LAVENDER);
-  doc.text("COÛT TOTAL BEEV", M + 14, by);
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(16);
-  doc.setTextColor(...LAVENDER);
-  doc.text(eur(result.coutBeevFlotteTotal), M + colW - 14, by + 4, { align: "right" });
+    doc.setLineWidth(0.4);
+    doc.line(x + 14, next - 8, x + colW - 14, next - 8);
+    return next;
+  };
+
+  const drawColTotal = (x: number, label: string, value: string) => {
+    doc.setDrawColor(...RULE);
+    doc.setLineWidth(0.6);
+    doc.line(x + 14, totalLabelY - 14, x + colW - 14, totalLabelY - 14);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...SUB);
+    doc.text(label, x + 14, totalLabelY);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(...INK); // noir lisible (le rose pâle de la charte était illisible en texte)
+    doc.text(value, x + colW - 14, totalLabelY + 4, { align: "right" });
+  };
+
+  // Colonne Beev
+  let by = lineTop;
+  by = drawCostLine(M, "Énergie électrique (mix domicile + itinérance)", eur(result.energieBeevFlotteTotale), by);
+  by = drawCostLine(M, "Supervision Beev Home Charging", eur(result.supervisionFlotteTotale), by);
+  by = drawCostLine(M, "Investissement bornes installées", eur(result.investBorneFlotte), by);
+  drawColTotal(M, "COÛT TOTAL BEEV", eur(result.coutBeevFlotteTotal));
 
   // Colonne droite : Thermique
   const rx = M + colW + 20;
@@ -4042,34 +4061,8 @@ function drawB2B2ETco(doc: jsPDF, input: B2B2ECalculatorInput) {
   doc.setFontSize(8);
   doc.text(`Carburant SP95 / Diesel via station-service (${input.consoCarbL100} L/100 km)`, rx + 14, y + 38);
 
-  const carbLines = [
-    { l: `Carburant (${input.prixCarbL.toFixed(2)} €/L × ${(result.energieCarbParCollab * input.nbCollabs).toFixed(0)} L)`, v: eur(result.coutCarbFlotteTotal) },
-    { l: "—", v: "—" },
-    { l: "—", v: "—" },
-  ];
-  let cy = y + 64;
-  carbLines.forEach((line) => {
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(...SUB);
-    doc.text(line.l, rx + 14, cy, { maxWidth: colW - 100 });
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(10);
-    doc.setTextColor(line.v === "—" ? SUB[0] : INK[0], line.v === "—" ? SUB[1] : INK[1], line.v === "—" ? SUB[2] : INK[2]);
-    doc.text(line.v, rx + colW - 14, cy, { align: "right" });
-    cy += 22;
-    doc.setDrawColor(...RULE);
-    doc.line(rx + 14, cy - 4, rx + colW - 14, cy - 4);
-  });
-  cy += 8;
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(8);
-  doc.setTextColor(...INK);
-  doc.text("COÛT TOTAL THERMIQUE", rx + 14, cy);
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(16);
-  doc.setTextColor(...INK);
-  doc.text(eur(result.coutCarbFlotteTotal), rx + colW - 14, cy + 4, { align: "right" });
+  drawCostLine(rx, `Carburant (${input.prixCarbL.toFixed(2)} €/L × ${(result.energieCarbParCollab * input.nbCollabs).toFixed(0)} L)`, eur(result.coutCarbFlotteTotal), lineTop);
+  drawColTotal(rx, "COÛT TOTAL THERMIQUE", eur(result.coutCarbFlotteTotal));
 
   y += colH + 20;
 
