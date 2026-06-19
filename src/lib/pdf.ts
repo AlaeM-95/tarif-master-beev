@@ -4142,7 +4142,16 @@ async function drawChargerComparatorB2B2E(doc: jsPDF, chargers: SelectedCharger[
   doc.setFontSize(28);
   doc.setTextColor(...INK);
   doc.text("Comparatif des bornes", M, y + 18);
-  y += 52;
+  y += 36;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...SUB);
+  const introC = doc.splitTextToSize(
+    "Les bornes recommandées pour vos collaborateurs, comparées sur les critères clés : puissance, alimentation, garantie, supervision et prix d'installation tout compris.",
+    PAGE_W - M * 2,
+  ) as string[];
+  doc.text(introC, M, y);
+  y += introC.length * 13 + 18;
 
   const list = chargers.slice(0, 4);
   const cols = Math.max(1, list.length);
@@ -4159,34 +4168,42 @@ async function drawChargerComparatorB2B2E(doc: jsPDF, chargers: SelectedCharger[
     const txtLabel: [number, number, number] = premium ? [200, 200, 200] : SUB;
     const lineCol: [number, number, number] = premium ? [70, 67, 62] : CARD_BORDER;
 
-    // Corps de carte
-    if (premium) {
-      doc.setFillColor(...INK);
-      doc.roundedRect(x, ct, cardW, cardH, 10, 10, "F");
-    } else {
-      doc.setFillColor(255, 255, 255);
-      doc.roundedRect(x, ct, cardW, cardH, 10, 10, "F");
+    // Corps de carte (fond plein)
+    doc.setFillColor(...(premium ? INK : [255, 255, 255] as [number, number, number]));
+    doc.roundedRect(x, ct, cardW, cardH, 10, 10, "F");
+    // Bandeau d'en-tête bicolore (charte) : beige clair sur carte claire, ton
+    // sombre sur la carte premium. Coins hauts arrondis, bas équerré.
+    const headZ: [number, number, number] = premium ? [40, 40, 42] : BG;
+    doc.setFillColor(headZ[0], headZ[1], headZ[2]);
+    doc.roundedRect(x, ct, cardW, 140, 10, 10, "F");
+    doc.rect(x, ct + 130, cardW, 10, "F");
+    // Bordure de carte (claire) par-dessus les fonds
+    if (!premium) {
       doc.setDrawColor(...CARD_BORDER);
       doc.setLineWidth(0.6);
       doc.roundedRect(x, ct, cardW, cardH, 10, 10, "S");
     }
+    // Filet de séparation en-tête / caractéristiques
+    doc.setDrawColor(lineCol[0], lineCol[1], lineCol[2]);
+    doc.setLineWidth(0.5);
+    doc.line(x + 10, ct + 140, x + cardW - 10, ct + 140);
     // Badge
     doc.setFillColor(...(premium ? BLEU : PINK));
-    doc.roundedRect(x + 10, ct + 10, cardW - 20, 18, 5, 5, "F");
+    doc.roundedRect(x + 10, ct + 12, cardW - 20, 18, 5, 5, "F");
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(7.5);
     doc.setTextColor(...INK);
-    doc.text(premium ? "Premium" : "Rapport qualité/prix", x + cardW / 2, ct + 22, { align: "center" });
+    doc.text(premium ? "Premium" : "Rapport qualité/prix", x + cardW / 2, ct + 24, { align: "center" });
     // Nom
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(11);
     doc.setTextColor(txtMain[0], txtMain[1], txtMain[2]);
     const nameLines = (doc.splitTextToSize(`${ch.brand} ${ch.model}`, cardW - 16) as string[]).slice(0, 2);
-    doc.text(nameLines, x + cardW / 2, ct + 46, { align: "center" });
-    // Image
+    doc.text(nameLines, x + cardW / 2, ct + 48, { align: "center" });
+    // Image (fond = bandeau d'en-tête pour un fondu propre)
     const imgUrl = (ch.marketingImageUrl && ch.marketingImageUrl.trim()) || ch.image;
     if (imgUrl && imgUrl.trim()) {
-      try { await drawImageContain(doc, imgUrl, x + cardW / 2 - 32, ct + 72, 64, 56, premium ? INK : [255, 255, 255]); } catch { /* non bloquant */ }
+      try { await drawImageContain(doc, imgUrl, x + cardW / 2 - 32, ct + 78, 64, 50, headZ); } catch { /* non bloquant */ }
     }
     // Specs : caractéristiques techniques (dérivées de la puissance/type) puis
     // services et prix. Libellé à gauche, valeur à droite, chacun limité à sa
@@ -4209,7 +4226,7 @@ async function drawChargerComparatorB2B2E(doc: jsPDF, chargers: SelectedCharger[
       ["Prix 10 m", `${eur(chargerInstall10m(ch))} HT`],
     ];
     const halfW = (cardW - 24) * 0.48;
-    let sy = ct + 146;
+    let sy = ct + 154;
     for (const [l, v] of specs) {
       doc.setFont(BRAND_FONT, "normal");
       doc.setFontSize(7);
@@ -4236,6 +4253,19 @@ async function drawChargerComparatorB2B2E(doc: jsPDF, chargers: SelectedCharger[
     doc.setTextColor(ctaTxt[0], ctaTxt[1], ctaTxt[2]);
     doc.text(`Installation 5 m  ${eur(chargerInstall5m(ch))} HT`, x + cardW / 2, ftY + 15, { align: "center" });
   }
+
+  // Note de bas de page (charte) : accent rose + précision sur les forfaits.
+  const noteY = ct + cardH + 24;
+  doc.setDrawColor(...PINK);
+  doc.setLineWidth(2);
+  doc.line(M, noteY - 9, M, noteY + 4);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...SUB);
+  doc.text(
+    "Prix HT, pose comprise jusqu'à la distance indiquée (5 ou 10 m depuis le tableau électrique). Au-delà ou en cas de contrainte technique, un devis sur mesure est établi après visite. Bornes installées et supervisées par Beev.",
+    M + 12, noteY, { maxWidth: PAGE_W - M * 2 - 12 },
+  );
 }
 
 
