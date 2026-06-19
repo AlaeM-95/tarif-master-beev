@@ -4205,9 +4205,9 @@ async function drawChargerComparatorB2B2E(doc: jsPDF, chargers: SelectedCharger[
     }
     rowSteps.push(Math.max(20, maxLines * 9 + 9));
   }
-  const specsTop = ct + 156;
+  const specsTop = ct + 150;
   const specsH = rowSteps.reduce((a, b) => a + b, 0);
-  const cardH = specsTop - ct + specsH + 14 + 40; // specs + marge + pied CTA
+  const cardH = specsTop - ct + specsH + 16 + 40; // specs + marge + pied CTA
 
   for (let i = 0; i < list.length; i++) {
     const ch = list[i].charger;
@@ -4263,21 +4263,37 @@ async function drawChargerComparatorB2B2E(doc: jsPDF, chargers: SelectedCharger[
       try { await drawImageContain(doc, imgUrl, tileX + 6, tileY + 5, tileW - 12, tileH - 10, [255, 255, 255]); } catch { /* non bloquant */ }
     }
     // Caractéristiques — hauteurs partagées → lignes alignées entre cartes.
-    let sy = specsTop;
+    // Chaque cellule est CENTRÉE verticalement dans son emplacement : si une
+    // valeur d'une autre carte impose 2 lignes, la valeur courte de cette carte
+    // ne « flotte » plus en haut avec un vide en dessous (rythme régulier).
+    let slotTop = specsTop;
     for (let r = 0; r < specs.length; r++) {
       const [l, v] = specs[r];
       doc.setFont(BRAND_FONT, "normal");
       doc.setFontSize(7);
+      const ll = (doc.splitTextToSize(l, halfW) as string[]).slice(0, 2);
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(8);
+      const vv = (doc.splitTextToSize(v, halfW) as string[]).slice(0, 2);
+      const lines = Math.max(ll.length, vv.length);
+      const slotH = rowSteps[r];
+      // baseline de la 1re ligne, bloc centré verticalement dans l'emplacement
+      const baseY = slotTop + (slotH - lines * 9) / 2 + 6.5;
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(7);
       doc.setTextColor(txtLabel[0], txtLabel[1], txtLabel[2]);
-      doc.text((doc.splitTextToSize(l, halfW) as string[]).slice(0, 2), x + 12, sy);
+      doc.text(ll, x + 12, baseY);
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(8);
       doc.setTextColor(txtMain[0], txtMain[1], txtMain[2]);
-      doc.text((doc.splitTextToSize(v, halfW) as string[]).slice(0, 2), x + cardW - 12, sy, { align: "right" });
-      sy += rowSteps[r];
-      doc.setDrawColor(lineCol[0], lineCol[1], lineCol[2]);
-      doc.setLineWidth(0.3);
-      doc.line(x + 12, sy - 6, x + cardW - 12, sy - 6);
+      doc.text(vv, x + cardW - 12, baseY, { align: "right" });
+      slotTop += slotH;
+      // Filet de séparation au bas de l'emplacement (sauf après la dernière ligne)
+      if (r < specs.length - 1) {
+        doc.setDrawColor(lineCol[0], lineCol[1], lineCol[2]);
+        doc.setLineWidth(0.3);
+        doc.line(x + 12, slotTop, x + cardW - 12, slotTop);
+      }
     }
     // Pied CTA
     const ftY = ct + cardH - 32;
