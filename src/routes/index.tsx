@@ -20,7 +20,7 @@ import { AdminBadge } from "@/components/admin-badge";
 import { ImageUpload } from "@/components/image-upload";
 import { FileUpload } from "@/components/file-upload";
 import { TechnicianQuoteImportDialog } from "@/components/technician-quote-import-dialog";
-import { B2B2ECalculator, useB2B2EInput } from "@/components/b2b2e-calculator";
+import { B2B2ECalculator, useB2B2EInput, DEFAULT_HOME_SUPERVISION_FEATURES, DEFAULT_HOME_SUPERVISION_PRICE } from "@/components/b2b2e-calculator";
 import { VehicleSpotlight } from "@/components/vehicle-spotlight";
 import { VehicleComparator } from "@/components/vehicle-comparator";
 import { PdfTextEditor, usePdfTextOverrides } from "@/components/pdf-text-editor";
@@ -154,7 +154,7 @@ function App() {
   const [importedVehicles, setImportedVehicles] = useState<Vehicle[]>([]);
   // Éditeur WYSIWYG des textes PDF, par devis.
   const [pdfTextEditorOpen, setPdfTextEditorOpen] = useState(false);
-  const { overrides: pdfTextOverrides } = usePdfTextOverrides();
+  const { overrides: pdfTextOverrides, setOne: setPdfTextOverride, removeOne: removePdfTextOverride } = usePdfTextOverrides();
   // Calculateur TCO B2B2E (Bornes domicile) — toggle d'inclusion PDF persisté
   const { input: b2b2eInput, update: setB2B2EInput, reset: resetB2B2EInput } = useB2B2EInput();
   const [b2b2eIncludeInPdf, setB2B2EIncludeInPdf] = useState<boolean>(() => {
@@ -1499,6 +1499,17 @@ function App() {
               suggestedNbCollabs={Object.values(selectedC)
                 .filter((sc) => sc.charger.deployment === "domicile")
                 .reduce((sum, sc) => sum + (sc.quantity || 1), 0)}
+              supervisionPriceDisplay={(pdfTextOverrides["site:site_sup_home_price_value"] as string) ?? DEFAULT_HOME_SUPERVISION_PRICE}
+              onSupervisionPriceDisplay={(v) => {
+                if (!v.trim()) removePdfTextOverride("site:site_sup_home_price_value");
+                else setPdfTextOverride("site:site_sup_home_price_value", v);
+              }}
+              supervisionFeatures={(pdfTextOverrides["site:site_sup_home_features"] as string[]) ?? DEFAULT_HOME_SUPERVISION_FEATURES}
+              onSupervisionFeatures={(lines) => {
+                const clean = lines.map((l) => l.trim()).filter(Boolean);
+                if (clean.length === 0) removePdfTextOverride("site:site_sup_home_features");
+                else setPdfTextOverride("site:site_sup_home_features", lines);
+              }}
             />
           )}
 

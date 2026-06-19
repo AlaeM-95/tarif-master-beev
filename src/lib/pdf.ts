@@ -1818,7 +1818,7 @@ function drawSiteSupervision(doc: jsPDF, plan: "beev_connect" | "beev_home_charg
   doc.setTextColor(...SUB);
   doc.text("FONCTIONNALITÉS INCLUSES", M, y);
   y += 14;
-  features.forEach((f) => {
+  features.filter((f) => f && f.trim()).forEach((f) => {
     doc.setFillColor(...PINK);
     doc.circle(M + 4, y + 4, 2.5, "F");
     doc.setFont(BRAND_FONT, "normal");

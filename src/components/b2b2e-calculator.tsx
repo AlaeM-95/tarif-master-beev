@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import {
   calculateB2B2ETco,
   DEFAULT_B2B2E_INPUT,
@@ -21,6 +22,18 @@ import {
 } from "@/lib/tco-calculator";
 
 const STORAGE_KEY = "beev_b2b2e_input_v1";
+
+// Fonctionnalités par défaut de la slide « Supervision Beev Home Charging »
+// (doit rester aligné avec le fallback de drawSiteSupervision dans pdf.ts).
+export const DEFAULT_HOME_SUPERVISION_FEATURES = [
+  "Comptage précis kWh par session domicile",
+  "Tarif électricité indexé sur le contrat collaborateur",
+  "Versement mensuel automatisé sur RIB salarié",
+  "Reporting employeur",
+  "Conformité fiscale URSSAF",
+  "Application mobile collaborateur",
+];
+export const DEFAULT_HOME_SUPERVISION_PRICE = "8 € HT";
 
 const fmtEur = (n: number) =>
   new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
@@ -60,9 +73,15 @@ type Props = {
    *  (∑ quantity). Si différent de input.nbCollabs, le composant affiche
    *  un encart avec un bouton "Appliquer" pour synchroniser. */
   suggestedNbCollabs?: number;
+  /** Contenu éditable de la slide Supervision (PDF), piloté ici plutôt que
+   *  dans l'éditeur de textes PDF. Prix affiché + liste de fonctionnalités. */
+  supervisionPriceDisplay: string;
+  onSupervisionPriceDisplay: (v: string) => void;
+  supervisionFeatures: string[];
+  onSupervisionFeatures: (v: string[]) => void;
 };
 
-export function B2B2ECalculator({ input, update, reset, includeInPdf, setIncludeInPdf, suggestedNbCollabs }: Props) {
+export function B2B2ECalculator({ input, update, reset, includeInPdf, setIncludeInPdf, suggestedNbCollabs, supervisionPriceDisplay, onSupervisionPriceDisplay, supervisionFeatures, onSupervisionFeatures }: Props) {
   const [openDetails, setOpenDetails] = useState(false);
   const result = calculateB2B2ETco(input);
 
@@ -169,6 +188,35 @@ export function B2B2ECalculator({ input, update, reset, includeInPdf, setInclude
           <Param label="Mix domicile %" value={input.mixDomicilePct} onChange={(n) => update({ mixDomicilePct: n })} step={5} suffix="%" />
         </div>
 
+        {/* === SUPERVISION — éditable ici (panneau droit), sans passer par
+            l'éditeur de textes PDF. Le coût €/mois/collab pilote le TCO ; le
+            prix affiché et les fonctionnalités pilotent la slide Supervision. === */}
+        <div className="rounded-lg border border-[#3809EA]/20 bg-[#3809EA]/[0.03] p-3 space-y-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#3809EA]">Supervision Beev Home Charging</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Param label="Coût €/mois/collab (TCO)" value={input.supervisionParMoisParCollab} onChange={(n) => update({ supervisionParMoisParCollab: n })} step={1} />
+            <div>
+              <Label className="text-[10px] uppercase text-muted-foreground tracking-wide">Prix affiché (slide PDF)</Label>
+              <Input
+                value={supervisionPriceDisplay}
+                onChange={(e) => onSupervisionPriceDisplay(e.target.value)}
+                className="h-8 text-xs"
+                placeholder={DEFAULT_HOME_SUPERVISION_PRICE}
+              />
+            </div>
+          </div>
+          <div>
+            <Label className="text-[10px] uppercase text-muted-foreground tracking-wide">Fonctionnalités incluses (1 par ligne)</Label>
+            <Textarea
+              rows={6}
+              value={supervisionFeatures.join("\n")}
+              onChange={(e) => onSupervisionFeatures(e.target.value.split("\n"))}
+              className="text-xs mt-1"
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">Apparaît sur la slide Supervision du PDF. Videz le champ pour revenir au texte par défaut.</p>
+          </div>
+        </div>
+
         {/* === BLOC DÉPLIABLE — Hypothèses détaillées (replié par défaut) === */}
         <button
           type="button"
@@ -187,7 +235,6 @@ export function B2B2ECalculator({ input, update, reset, includeInPdf, setInclude
               <Param label="Prix SP95 / Diesel €/L" value={input.prixCarbL} onChange={(n) => update({ prixCarbL: n })} step={0.05} />
               <Param label="Prix kWh domicile" value={input.prixKwhDom} onChange={(n) => update({ prixKwhDom: n })} step={0.01} />
               <Param label="Prix kWh itinérance" value={input.prixKwhPub} onChange={(n) => update({ prixKwhPub: n })} step={0.01} />
-              <Param label="Supervision €/mois/collab" value={input.supervisionParMoisParCollab} onChange={(n) => update({ supervisionParMoisParCollab: n })} step={1} />
               <Param label="Invest borne / collab HT" value={input.investBorneParCollabHt} onChange={(n) => update({ investBorneParCollabHt: n })} step={100} />
             </div>
 
