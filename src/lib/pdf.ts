@@ -870,6 +870,13 @@ export async function generateProposalPdf(opts: {
     drawHeader(doc, client, "home");
     drawSiteSupervision(doc, "beev_home_charging");
   }
+  // Kit collaborateur Beev Home Connect — opt-in, uniquement en supervision
+  // domicile (parcours B2B2E avec bornes domicile).
+  if (cfg.showHomeConnectKit && chargersHome.length > 0) {
+    doc.addPage();
+    drawHeader(doc, client, "home");
+    drawHomeConnectKit(doc, client);
+  }
 
   for (let i = 0; i < chargersSite.length; i++) {
     doc.addPage();
@@ -4158,10 +4165,53 @@ async function drawChargerComparatorB2B2E(doc: jsPDF, chargers: SelectedCharger[
   const gap = 12;
   const cardW = (PAGE_W - M * 2 - gap * (cols - 1)) / cols;
   const ct = y;
-  const cardH = 388;
+  const halfW = (cardW - 24) * 0.48;
+
+  // Caractéristiques de chaque borne. Les MÊMES lignes pour toutes les cartes,
+  // dans le même ordre → on peut leur donner une hauteur uniforme par ligne.
+  const buildSpecs = (ch: Charger): Array<[string, string]> => {
+    const isTri = /tri/i.test(ch.type) || (ch.powerKw >= 11 && !/mono/i.test(ch.type));
+    const ampMax = isTri
+      ? Math.round((ch.powerKw * 1000) / (400 * Math.sqrt(3)))
+      : Math.round((ch.powerKw * 1000) / 230);
+    const kwLabel = String(ch.powerKw).replace(".", ",");
+    const connector = /type\s*2/i.test(ch.type) ? "Type 2" : (ch.type.split(/[·\-]/)[0] || "Type 2").trim();
+    return [
+      ["Puissance", `${kwLabel} kW`],
+      ["Alimentation", isTri ? "Triphasé" : "Monophasé"],
+      ["Courant max", `${ampMax} A`],
+      ["Connecteur", connector],
+      ["Garantie / protection", (ch.warranty && ch.warranty.trim()) || "36 + 24 mois option"],
+      ["Casawatt", ch.casawattEligible ? "Oui" : "Non"],
+      ["Autre supervision", ch.otherSupervision ? "Oui" : "Non"],
+      ["Prix 5 m", `${eur(chargerInstall5m(ch))} HT`],
+      ["Prix 10 m", `${eur(chargerInstall10m(ch))} HT`],
+    ];
+  };
+  const allSpecs = list.map((sc) => buildSpecs(sc.charger));
+  const rowCount = allSpecs[0]?.length ?? 0;
+  // Hauteur uniforme PAR LIGNE = max de lignes nécessaires sur toutes les cartes
+  // (ex. une garantie longue sur 2 lignes décale d'autant la même ligne PARTOUT,
+  // pour que les lignes restent alignées d'une carte à l'autre).
+  const rowSteps: number[] = [];
+  for (let r = 0; r < rowCount; r++) {
+    let maxLines = 1;
+    for (const sp of allSpecs) {
+      doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(7);
+      const lL = Math.min(2, (doc.splitTextToSize(sp[r][0], halfW) as string[]).length);
+      doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(8);
+      const vL = Math.min(2, (doc.splitTextToSize(sp[r][1], halfW) as string[]).length);
+      maxLines = Math.max(maxLines, lL, vL);
+    }
+    rowSteps.push(Math.max(20, maxLines * 9 + 9));
+  }
+  const specsTop = ct + 156;
+  const specsH = rowSteps.reduce((a, b) => a + b, 0);
+  const cardH = specsTop - ct + specsH + 14 + 40; // specs + marge + pied CTA
 
   for (let i = 0; i < list.length; i++) {
     const ch = list[i].charger;
+    const specs = allSpecs[i];
     const x = M + i * (cardW + gap);
     const premium = ch.comparatorBadge === "premium";
     const txtMain: [number, number, number] = premium ? [252, 249, 242] : INK;
@@ -4171,12 +4221,11 @@ async function drawChargerComparatorB2B2E(doc: jsPDF, chargers: SelectedCharger[
     // Corps de carte (fond plein)
     doc.setFillColor(...(premium ? INK : [255, 255, 255] as [number, number, number]));
     doc.roundedRect(x, ct, cardW, cardH, 10, 10, "F");
-    // Bandeau d'en-tête bicolore (charte) : beige clair sur carte claire, ton
-    // sombre sur la carte premium. Coins hauts arrondis, bas équerré.
+    // Bandeau d'en-tête bicolore (charte) : beige clair / ton sombre (premium).
     const headZ: [number, number, number] = premium ? [40, 40, 42] : BG;
     doc.setFillColor(headZ[0], headZ[1], headZ[2]);
-    doc.roundedRect(x, ct, cardW, 140, 10, 10, "F");
-    doc.rect(x, ct + 130, cardW, 10, "F");
+    doc.roundedRect(x, ct, cardW, 142, 10, 10, "F");
+    doc.rect(x, ct + 132, cardW, 10, "F");
     // Bordure de carte (claire) par-dessus les fonds
     if (!premium) {
       doc.setDrawColor(...CARD_BORDER);
@@ -4186,7 +4235,7 @@ async function drawChargerComparatorB2B2E(doc: jsPDF, chargers: SelectedCharger[
     // Filet de séparation en-tête / caractéristiques
     doc.setDrawColor(lineCol[0], lineCol[1], lineCol[2]);
     doc.setLineWidth(0.5);
-    doc.line(x + 10, ct + 140, x + cardW - 10, ct + 140);
+    doc.line(x + 10, ct + 142, x + cardW - 10, ct + 142);
     // Badge
     doc.setFillColor(...(premium ? BLEU : PINK));
     doc.roundedRect(x + 10, ct + 12, cardW - 20, 18, 5, 5, "F");
@@ -4200,45 +4249,32 @@ async function drawChargerComparatorB2B2E(doc: jsPDF, chargers: SelectedCharger[
     doc.setTextColor(txtMain[0], txtMain[1], txtMain[2]);
     const nameLines = (doc.splitTextToSize(`${ch.brand} ${ch.model}`, cardW - 16) as string[]).slice(0, 2);
     doc.text(nameLines, x + cardW / 2, ct + 48, { align: "center" });
-    // Image (fond = bandeau d'en-tête pour un fondu propre)
+    // Tuile photo blanche (rendu uniforme : les visuels produit ont des fonds
+    // variés — JPEG blanc, PNG transparent — on les pose sur une tuile blanche
+    // pour un cadrage propre, y compris sur la carte premium sombre).
+    const tileW = Math.min(96, cardW - 40);
+    const tileX = x + (cardW - tileW) / 2;
+    const tileY = ct + 70;
+    const tileH = 60;
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(tileX, tileY, tileW, tileH, 8, 8, "F");
     const imgUrl = (ch.marketingImageUrl && ch.marketingImageUrl.trim()) || ch.image;
     if (imgUrl && imgUrl.trim()) {
-      try { await drawImageContain(doc, imgUrl, x + cardW / 2 - 32, ct + 78, 64, 50, headZ); } catch { /* non bloquant */ }
+      try { await drawImageContain(doc, imgUrl, tileX + 6, tileY + 5, tileW - 12, tileH - 10, [255, 255, 255]); } catch { /* non bloquant */ }
     }
-    // Specs : caractéristiques techniques (dérivées de la puissance/type) puis
-    // services et prix. Libellé à gauche, valeur à droite, chacun limité à sa
-    // moitié de carte pour éviter le chevauchement même en colonnes étroites.
-    const isTri = /tri/i.test(ch.type) || (ch.powerKw >= 11 && !/mono/i.test(ch.type));
-    const ampMax = isTri
-      ? Math.round((ch.powerKw * 1000) / (400 * Math.sqrt(3)))
-      : Math.round((ch.powerKw * 1000) / 230);
-    const kwLabel = String(ch.powerKw).replace(".", ",");
-    const connector = /type\s*2/i.test(ch.type) ? "Type 2" : (ch.type.split(/[·\-]/)[0] || "Type 2").trim();
-    const specs: Array<[string, string]> = [
-      ["Puissance", `${kwLabel} kW`],
-      ["Alimentation", isTri ? "Triphasé" : "Monophasé"],
-      ["Courant max", `${ampMax} A`],
-      ["Connecteur", connector],
-      ["Garantie / protection", (ch.warranty && ch.warranty.trim()) || "36 + 24 mois option"],
-      ["Casawatt", ch.casawattEligible ? "Oui" : "Non"],
-      ["Autre supervision", ch.otherSupervision ? "Oui" : "Non"],
-      ["Prix 5 m", `${eur(chargerInstall5m(ch))} HT`],
-      ["Prix 10 m", `${eur(chargerInstall10m(ch))} HT`],
-    ];
-    const halfW = (cardW - 24) * 0.48;
-    let sy = ct + 154;
-    for (const [l, v] of specs) {
+    // Caractéristiques — hauteurs partagées → lignes alignées entre cartes.
+    let sy = specsTop;
+    for (let r = 0; r < specs.length; r++) {
+      const [l, v] = specs[r];
       doc.setFont(BRAND_FONT, "normal");
       doc.setFontSize(7);
       doc.setTextColor(txtLabel[0], txtLabel[1], txtLabel[2]);
-      const ll = (doc.splitTextToSize(l, halfW) as string[]).slice(0, 2);
-      doc.text(ll, x + 12, sy);
+      doc.text((doc.splitTextToSize(l, halfW) as string[]).slice(0, 2), x + 12, sy);
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(8);
       doc.setTextColor(txtMain[0], txtMain[1], txtMain[2]);
-      const vv = (doc.splitTextToSize(v, halfW) as string[]).slice(0, 2);
-      doc.text(vv, x + cardW - 12, sy, { align: "right" });
-      sy += Math.max(20, Math.max(ll.length, vv.length) * 9 + 9);
+      doc.text((doc.splitTextToSize(v, halfW) as string[]).slice(0, 2), x + cardW - 12, sy, { align: "right" });
+      sy += rowSteps[r];
       doc.setDrawColor(lineCol[0], lineCol[1], lineCol[2]);
       doc.setLineWidth(0.3);
       doc.line(x + 12, sy - 6, x + cardW - 12, sy - 6);
@@ -4266,6 +4302,132 @@ async function drawChargerComparatorB2B2E(doc: jsPDF, chargers: SelectedCharger[
     "Prix HT, pose comprise jusqu'à la distance indiquée (5 ou 10 m depuis le tableau électrique). Au-delà ou en cas de contrainte technique, un devis sur mesure est établi après visite. Bornes installées et supervisées par Beev.",
     M + 12, noteY, { maxWidth: PAGE_W - M * 2 - 12 },
   );
+}
+
+// ============ KIT COLLABORATEUR · BEEV HOME CONNECT (supervision B2B2E) ============
+// Insert pédagogique optionnel destiné aux collaborateurs : explique la
+// supervision Beev Home Connect (Casawatt) et le remboursement automatisé des
+// recharges à domicile. Affiché uniquement sur le parcours bornes domicile.
+function drawHomeConnectKit(doc: jsPDF, _client: ClientInfo) {
+  const PINK: [number, number, number] = [244, 184, 170];
+  const BLEU: [number, number, number] = [165, 210, 255];
+  const VIOLET: [number, number, number] = [211, 204, 216];
+  const CARD_BORDER: [number, number, number] = [225, 222, 216];
+
+  let y = 116;
+  doc.setFillColor(...PINK);
+  doc.rect(M, y - 8, 22, 2, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text("KIT COLLABORATEUR · BEEV HOME CONNECT", M + 30, y - 4);
+  y += 14;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(26);
+  doc.setTextColor(...INK);
+  doc.text("La recharge à domicile, remboursée sans paperasse", M, y + 16, { maxWidth: PAGE_W - M * 2 });
+  y += 44;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...SUB);
+  const intro = doc.splitTextToSize(
+    "Beev Home Connect certifie automatiquement les recharges réalisées au domicile de vos collaborateurs et génère, chaque mois, le justificatif prêt pour le remboursement. Simplifiée, automatique et certifiée.",
+    PAGE_W - M * 2,
+  ) as string[];
+  doc.text(intro, M, y);
+  y += intro.length * 13 + 16;
+
+  // --- Comment ça marche : 3 cartes ---
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(...INK);
+  doc.text("Comment ça marche", M, y);
+  y += 12;
+  const steps = [
+    { n: "1", t: "Détection automatique", d: "Le véhicule connecté et le compteur Linky détectent chaque session de recharge, sans aucune action du collaborateur.", c: PINK },
+    { n: "2", t: "Classification", d: "Les recharges à domicile sont distinguées de l'itinérance et de la consommation du foyer, automatiquement.", c: BLEU },
+    { n: "3", t: "Justificatif mensuel", d: "Un justificatif clair (date, énergie, montant) est généré et envoyé chaque mois, prêt pour le remboursement.", c: VIOLET },
+  ];
+  const cgap = 14;
+  const cW = (PAGE_W - M * 2 - cgap * 2) / 3;
+  const cH = 116;
+  const cTop = y;
+  steps.forEach((s, i) => {
+    const cx = M + i * (cW + cgap);
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(cx, cTop, cW, cH, 10, 10, "F");
+    doc.setDrawColor(...CARD_BORDER);
+    doc.setLineWidth(0.6);
+    doc.roundedRect(cx, cTop, cW, cH, 10, 10, "S");
+    doc.setFillColor(...s.c);
+    doc.circle(cx + 22, cTop + 24, 11, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...INK);
+    doc.text(s.n, cx + 22, cTop + 28, { align: "center" });
+    doc.setFontSize(11);
+    doc.setTextColor(...INK);
+    doc.text((doc.splitTextToSize(s.t, cW - 24) as string[]).slice(0, 2), cx + 14, cTop + 52);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...SUB);
+    doc.text((doc.splitTextToSize(s.d, cW - 28) as string[]).slice(0, 5), cx + 14, cTop + 72);
+  });
+  y = cTop + cH + 22;
+
+  // --- Bandeau noir : ce que ça change ---
+  const bandH = 96;
+  doc.setFillColor(...INK);
+  doc.roundedRect(M, y, PAGE_W - M * 2, bandH, 10, 10, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...PINK);
+  doc.text("CE QUE ÇA CHANGE POUR LE COLLABORATEUR", M + 18, y + 22);
+  const changes = [
+    "Plus de relevé manuel du compteur kilométrique",
+    "Plus d'estimation des kilomètres rechargés à la maison",
+    "Recharges à domicile détectées et catégorisées",
+    "Un justificatif envoyé chaque mois, sans y penser",
+  ];
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(9.5);
+  const colX = [M + 18, M + (PAGE_W - M * 2) / 2 + 8];
+  changes.forEach((ch, i) => {
+    const cx = colX[i % 2];
+    const cy = y + 44 + Math.floor(i / 2) * 20;
+    doc.setFillColor(...PINK);
+    doc.circle(cx + 2, cy - 3, 2, "F");
+    doc.setTextColor(252, 249, 242);
+    doc.text((doc.splitTextToSize(ch, (PAGE_W - M * 2) / 2 - 30) as string[]).slice(0, 1), cx + 10, cy);
+  });
+  y += bandH + 22;
+
+  // --- Comment démarrer ---
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(...INK);
+  doc.text("Comment démarrer", M, y);
+  y += 16;
+  const starts = [
+    "Le collaborateur reçoit une invitation par e-mail (bornes@beev.co).",
+    "Il connecte son véhicule et son compteur Linky — en ligne, en moins de 5 minutes.",
+    "Données privées : rien n'est partagé avec l'employeur, consentement révocable à tout moment.",
+  ];
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(9.5);
+  doc.setTextColor(...INK);
+  starts.forEach((s) => {
+    doc.setFillColor(...BLEU);
+    doc.circle(M + 3, y - 3, 2.4, "F");
+    const sl = doc.splitTextToSize(s, PAGE_W - M * 2 - 16) as string[];
+    doc.text(sl, M + 12, y);
+    y += sl.length * 12 + 6;
+  });
+  y += 6;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...SUB);
+  doc.text("Accompagnement Beev à chaque étape · bornes@beev.co", M, y);
 }
 
 

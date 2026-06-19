@@ -1535,6 +1535,8 @@ function App() {
                 if (clean.length === 0) removePdfTextOverride("site:site_sup_home_features");
                 else setPdfTextOverride("site:site_sup_home_features", lines);
               }}
+              includeHomeKit={pdfConfig.showHomeConnectKit ?? false}
+              setIncludeHomeKit={(v) => updatePdfConfig({ showHomeConnectKit: v })}
             />
           )}
 
