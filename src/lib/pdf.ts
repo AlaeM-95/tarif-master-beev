@@ -261,6 +261,9 @@ const RULE: [number, number, number] = [220, 218, 212];     // #DCDAD4 filets
 let BG: [number, number, number] = [252, 249, 242];         // #FCF9F2 Beige charte
 let ACCENT: [number, number, number] = [244, 184, 170];     // #F4B8AA Rose charte (était vert)
 let LAVENDER: [number, number, number] = [244, 184, 170];   // alias Rose pour code legacy
+// Rose FONCÉ lisible pour le TEXTE accentué (totaux, montants mis en avant) :
+// le rose charte #F4B8AA est trop pâle pour du texte sur fond clair.
+const ACCENT_TEXT: [number, number, number] = [181, 96, 79]; // #B5604F
 
 // Contenus éditables depuis l'admin (chargés depuis pdf_settings + journey_steps).
 let PDF_CONTENT: {
@@ -2162,7 +2165,7 @@ function drawSiteFinancialRecap(doc: jsPDF, chargers: SelectedCharger[]) {
     foot: [
       [{ content: t("site_fin_total_ht_label", "Total projet HT"), colSpan: 2, styles: { halign: "right", fontStyle: "bold", textColor: INK, fillColor: BG } }, { content: eur(totalHt), styles: { halign: "right", fontStyle: "bold", textColor: INK, fillColor: BG } }],
       [{ content: `TVA ${tvaRate.toString().replace(".", ",")} %`, colSpan: 2, styles: { halign: "right", textColor: SUB, fillColor: BG } }, { content: eur(tva), styles: { halign: "right", textColor: SUB, fillColor: BG } }],
-      [{ content: t("site_fin_total_ttc_label", "Total TTC"), colSpan: 2, styles: { halign: "right", fontStyle: "bold", textColor: LAVENDER, fillColor: BG, fontSize: 12 } }, { content: eur(totalTtc), styles: { halign: "right", fontStyle: "normal", textColor: LAVENDER, fillColor: BG, fontSize: 12, font: BRAND_FONT } }],
+      [{ content: t("site_fin_total_ttc_label", "Total TTC"), colSpan: 2, styles: { halign: "right", fontStyle: "bold", textColor: ACCENT_TEXT, fillColor: BG, fontSize: 12 } }, { content: eur(totalTtc), styles: { halign: "right", fontStyle: "bold", textColor: ACCENT_TEXT, fillColor: BG, fontSize: 12, font: BRAND_FONT } }],
     ],
     headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT, cellPadding: 7 },
     bodyStyles: { fontSize: 10, cellPadding: 7, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
@@ -3282,7 +3285,7 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
       },
       {
         content: eur(total_),
-        styles: { halign: "right", fontStyle: "normal", textColor: LAVENDER, fillColor: BG, cellPadding: 8, fontSize: 12, font: BRAND_FONT },
+        styles: { halign: "right", fontStyle: "bold", textColor: ACCENT_TEXT, fillColor: BG, cellPadding: 8, fontSize: 12, font: BRAND_FONT },
       },
     ]] : undefined,
     headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT, cellPadding: 7, halign: "left" },
@@ -3895,9 +3898,11 @@ async function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: 
 // entre la solution Beev (recharge domicile + itinérance + supervision)
 // et la solution thermique de référence (carburant SP95/Diesel).
 function drawB2B2ETco(doc: jsPDF, input: B2B2ECalculatorInput) {
-  // Charte Beev officielle : LAVENDER (primaire), ACCENT (vert), INK (neutre)
-  // BG (cream). Pas de couleurs hardcodées hors charte.
-  const PINK: [number, number, number] = [244, 184, 170]; // eyebrow stripe Beev
+  // Charte Beev 2026 : Rose #F4B8AA · Bleu #A5D2FF · Violet #D3CCD8 · Black ·
+  // Beige. On utilise les 3 accents (rose/bleu/violet) pour varier les KPI.
+  const PINK: [number, number, number] = [244, 184, 170]; // rose charte
+  const BLEU: [number, number, number] = [165, 210, 255]; // #A5D2FF bleu charte
+  const VIOLET: [number, number, number] = [211, 204, 216]; // #D3CCD8 violet charte
   const result = calculateB2B2ETco(input);
 
   let y = 116;
@@ -3949,9 +3954,9 @@ function drawB2B2ETco(doc: jsPDF, input: B2B2ECalculatorInput) {
   const kpiW = (PAGE_W - M * 2 - 30) / 4;
   const kpiH = 80;
   const kpis = [
-    { label: "ÉCONOMIE / COLLAB / AN", value: eur(result.economieParCollabParAn), color: ACCENT, sub: "vs solution thermique" },
-    { label: "ROI BORNE", value: result.roiMois > 0 && result.roiMois < 120 ? `${result.roiMois.toFixed(0)} mois` : "—", color: LAVENDER, sub: "avant amortissement complet" },
-    { label: "CO2 ÉVITÉ", value: `${result.co2EviteTonnes.toFixed(1)} t`, color: ACCENT, sub: `sur ${input.dureeAnnees} ans (135 g/km évité)` },
+    { label: "ÉCONOMIE / COLLAB / AN", value: eur(result.economieParCollabParAn), color: PINK, sub: "vs solution thermique" },
+    { label: "ROI BORNE", value: result.roiMois > 0 && result.roiMois < 120 ? `${result.roiMois.toFixed(0)} mois` : "—", color: VIOLET, sub: "avant amortissement complet" },
+    { label: "CO2 ÉVITÉ", value: `${result.co2EviteTonnes.toFixed(1)} t`, color: BLEU, sub: `sur ${input.dureeAnnees} ans (135 g/km évité)` },
     { label: "KM CONTRAT / COLLAB", value: `${(result.kmTotalParCollab / 1000).toFixed(0)} k km`, color: INK, sub: `${input.kmParAnParCollab.toLocaleString("fr-FR")} km/an` },
   ];
   kpis.forEach((k, i) => {
@@ -4057,8 +4062,10 @@ function drawB2B2ETco(doc: jsPDF, input: B2B2ECalculatorInput) {
   doc.setFontSize(10);
   doc.setTextColor(255, 255, 255);
   doc.text("SOLUTION THERMIQUE (RÉFÉRENCE)", rx + 14, y + 18);
+  // Sous-titre sur le corps beige : couleur grise (était blanc → invisible).
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8);
+  doc.setTextColor(...SUB);
   doc.text(`Carburant SP95 / Diesel via station-service (${input.consoCarbL100} L/100 km)`, rx + 14, y + 38);
 
   drawCostLine(rx, `Carburant (${input.prixCarbL.toFixed(2)} €/L × ${(result.energieCarbParCollab * input.nbCollabs).toFixed(0)} L)`, eur(result.coutCarbFlotteTotal), lineTop);
