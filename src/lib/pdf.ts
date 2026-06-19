@@ -837,12 +837,16 @@ export async function generateProposalPdf(opts: {
   // Remplace les fiches bornes détaillées sur ce parcours.
   if (chargersHome.length > 0) {
     const mode = cfg.b2b2eChargerMode ?? "both";
+    // Chaque section est isolée : une erreur de rendu sur l'une ne doit pas
+    // faire échouer toute la génération du PDF (page blanche / aucun aperçu).
     if (mode === "comparator" || mode === "both") {
-      for (let i = 0; i < chargersHome.length; i += 4) {
-        doc.addPage();
-        drawHeader(doc, client, "home");
-        await drawChargerComparatorB2B2E(doc, chargersHome.slice(i, i + 4), client);
-      }
+      try {
+        for (let i = 0; i < chargersHome.length; i += 4) {
+          doc.addPage();
+          drawHeader(doc, client, "home");
+          await drawChargerComparatorB2B2E(doc, chargersHome.slice(i, i + 4), client);
+        }
+      } catch (e) { console.error("[pdf] comparateur bornes B2B2E :", e); }
       // Fiche produit par borne (format « fiche technique » Beev, même rendu que
       // les fiches officielles), à la suite du comparateur. Pas de bandeau noir :
       // la fiche dessine son propre fond beige + en-tête.
@@ -851,17 +855,21 @@ export async function generateProposalPdf(opts: {
         const key = `${sc.charger.brand}-${sc.charger.model}`;
         if (seenModels.has(key)) continue; // une fiche par modèle unique
         seenModels.add(key);
-        doc.addPage();
-        await drawChargerProductSheet(doc, sc.charger, client);
+        try {
+          doc.addPage();
+          await drawChargerProductSheet(doc, sc.charger, client);
+        } catch (e) { console.error("[pdf] fiche produit borne :", key, e); }
       }
     }
     if (mode === "catalogue" || mode === "both") {
       // Catalogue = fiche détaillée par collaborateur (format complet : points
       // forts, présentation, chiffrage Total HT par collaborateur).
       for (let i = 0; i < chargersHome.length; i++) {
-        doc.addPage();
-        drawHeader(doc, client, "home");
-        await drawChargerPage(doc, chargersHome[i], "home", i + 1, chargersHome.length, client);
+        try {
+          doc.addPage();
+          drawHeader(doc, client, "home");
+          await drawChargerPage(doc, chargersHome[i], "home", i + 1, chargersHome.length, client);
+        } catch (e) { console.error("[pdf] fiche borne collaborateur :", e); }
       }
     }
   }
