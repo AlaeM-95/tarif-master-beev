@@ -276,6 +276,13 @@ export type Charger = {
   installPrice10mHt?: number;
   /** Badge mis en avant dans le comparateur. */
   comparatorBadge?: "premium" | "value" | "none";
+  // === Fiche produit B2B2E (caractéristiques clés, format « fiche technique ») ===
+  /** Indice de protection, ex. « IP55 · IK10 » (sinon extrait de warranty). */
+  ipRating?: string;
+  /** Dimensions hors-tout, ex. « 370×250×150 » mm (H×L×P). */
+  dimensions?: string;
+  /** Plage de température d'usage, ex. « −25 à 50 °C ». */
+  tempRange?: string;
 };
 
 // ===== Helpers création items custom =====

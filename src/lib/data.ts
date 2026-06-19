@@ -139,6 +139,9 @@ function dbToCharger(row: ChargerRow): Charger {
     installPrice5mHt: (row as any).install_price_5m_ht ?? undefined,
     installPrice10mHt: (row as any).install_price_10m_ht ?? undefined,
     comparatorBadge: ((row as any).comparator_badge ?? undefined) as Charger["comparatorBadge"],
+    ipRating: (row as any).ip_rating ?? undefined,
+    dimensions: (row as any).dimensions ?? undefined,
+    tempRange: (row as any).temp_range ?? undefined,
   };
 }
 
@@ -184,6 +187,9 @@ function chargerToDb(c: Charger): ChargerInsert {
   if (c.installPrice5mHt !== undefined && c.installPrice5mHt !== null) (row as any).install_price_5m_ht = c.installPrice5mHt;
   if (c.installPrice10mHt !== undefined && c.installPrice10mHt !== null) (row as any).install_price_10m_ht = c.installPrice10mHt;
   if (c.comparatorBadge && c.comparatorBadge !== "none") (row as any).comparator_badge = c.comparatorBadge;
+  if (c.ipRating !== undefined && c.ipRating !== null && c.ipRating !== "") (row as any).ip_rating = c.ipRating;
+  if (c.dimensions !== undefined && c.dimensions !== null && c.dimensions !== "") (row as any).dimensions = c.dimensions;
+  if (c.tempRange !== undefined && c.tempRange !== null && c.tempRange !== "") (row as any).temp_range = c.tempRange;
   return row;
 }
 
@@ -326,6 +332,7 @@ export function useChargersData() {
   const OPTIONAL_CHARGER_COLS = [
     "warranty", "casawatt_eligible", "other_supervision",
     "install_price_5m_ht", "install_price_10m_ht", "comparator_badge",
+    "ip_rating", "dimensions", "temp_range",
   ];
   const stripMissingCols = (row: any, msg: string) => {
     const rest = { ...row };

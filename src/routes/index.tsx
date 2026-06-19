@@ -3025,6 +3025,10 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete, onDuplic
                       <option value="premium">Premium (bleu, carte sombre)</option>
                     </select>
                   </div>
+                  {/* Champs « fiche produit » (caractéristiques clés). */}
+                  <TxtField label="Protection (IP / IK)" value={charger.ipRating ?? ""} onChange={(s) => onUpdate({ ipRating: s })} placeholder="IP55 · IK10" />
+                  <TxtField label="Dimensions (H×L×P mm)" value={charger.dimensions ?? ""} onChange={(s) => onUpdate({ dimensions: s })} placeholder="370×250×150" />
+                  <TxtField label="Température d'usage" value={charger.tempRange ?? ""} onChange={(s) => onUpdate({ tempRange: s })} placeholder="−25 à 50 °C" />
                 </div>
               </div>
             )}

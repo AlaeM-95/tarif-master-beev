@@ -843,6 +843,17 @@ export async function generateProposalPdf(opts: {
         drawHeader(doc, client, "home");
         await drawChargerComparatorB2B2E(doc, chargersHome.slice(i, i + 4), client);
       }
+      // Fiche produit par borne (format « fiche technique » Beev, même rendu que
+      // les fiches officielles), à la suite du comparateur. Pas de bandeau noir :
+      // la fiche dessine son propre fond beige + en-tête.
+      const seenModels = new Set<string>();
+      for (const sc of chargersHome) {
+        const key = `${sc.charger.brand}-${sc.charger.model}`;
+        if (seenModels.has(key)) continue; // une fiche par modèle unique
+        seenModels.add(key);
+        doc.addPage();
+        await drawChargerProductSheet(doc, sc.charger, client);
+      }
     }
     if (mode === "catalogue" || mode === "both") {
       // Catalogue = fiche détaillée par collaborateur (format complet : points
@@ -4318,6 +4329,171 @@ async function drawChargerComparatorB2B2E(doc: jsPDF, chargers: SelectedCharger[
     "Prix HT, pose comprise jusqu'à la distance indiquée (5 ou 10 m depuis le tableau électrique). Au-delà ou en cas de contrainte technique, un devis sur mesure est établi après visite. Bornes installées et supervisées par Beev.",
     M + 12, noteY, { maxWidth: PAGE_W - M * 2 - 12 },
   );
+}
+
+// ============ FICHE PRODUIT BORNE (format « fiche technique » Beev) ============
+// Reproduit la maquette des fiches produit officielles : en-tête FICHE
+// TECHNIQUE, titre, description, 3 atouts, photo, grille de 6 caractéristiques
+// clés. Une page par borne. Fond beige pleine page (pas le bandeau noir).
+function chargerProtection(ch: Charger): string {
+  if (ch.ipRating && ch.ipRating.trim()) return ch.ipRating.trim();
+  const w = ch.warranty ?? "";
+  const ip = w.match(/IP\s*\d{2}/i)?.[0];
+  const ik = w.match(/IK\s*\d{1,2}/i)?.[0];
+  if (ip || ik) return [ip, ik].filter(Boolean).join(" · ").replace(/\s+/g, " ");
+  return "IP54 · IK10";
+}
+// Petit pictogramme dans une pastille bleue (jeu d'icônes simplifié, dessiné
+// uniquement avec line/circle/roundedRect — jsPDF n'a pas de primitive polygone).
+function drawTileIcon(doc: jsPDF, kind: string, cx: number, cy: number) {
+  doc.setDrawColor(29, 29, 29);
+  doc.setFillColor(29, 29, 29);
+  doc.setLineWidth(1.1);
+  const s = 4.5;
+  switch (kind) {
+    case "power": // éclair (zigzag)
+      doc.line(cx + 1.5, cy - s, cx - 2, cy);
+      doc.line(cx - 2, cy, cx + 1, cy);
+      doc.line(cx + 1, cy, cx - 1.5, cy + s);
+      break;
+    case "current": // jauge
+      doc.circle(cx, cy, s - 0.5, "S");
+      doc.line(cx, cy, cx + 2.5, cy - 2.5);
+      break;
+    case "plug": // prise
+      doc.line(cx - 2, cy - s, cx - 2, cy - 1);
+      doc.line(cx + 2, cy - s, cx + 2, cy - 1);
+      doc.line(cx - 3.5, cy - 1, cx + 3.5, cy - 1);
+      doc.line(cx, cy - 1, cx, cy + s);
+      break;
+    case "shield": // bouclier
+      doc.roundedRect(cx - 3, cy - s, 6, 6.5, 1.5, 1.5, "S");
+      doc.line(cx, cy + 1.5, cx, cy + s);
+      break;
+    case "dim": // dimensions
+      doc.roundedRect(cx - s, cy - s, s * 2, s * 2, 1, 1, "S");
+      break;
+    case "temp": // thermomètre
+      doc.line(cx, cy - s, cx, cy + 1);
+      doc.circle(cx, cy + 2.5, 1.8, "S");
+      break;
+    default:
+      doc.circle(cx, cy, 1.8, "F");
+  }
+}
+async function drawChargerProductSheet(doc: jsPDF, ch: Charger, _client: ClientInfo) {
+  const BLEU_30: [number, number, number] = [228, 242, 255]; // pastille icône claire
+  const CARD_BORDER: [number, number, number] = [228, 226, 220];
+
+  // Fond beige pleine page (charte) — pas de bandeau noir sur cette page.
+  doc.setFillColor(...BG);
+  doc.rect(0, 0, PAGE_W, PAGE_H, "F");
+
+  // En-tête : logo Beev (noir) + « FICHE TECHNIQUE / Borne de recharge AC »
+  // drawImageContain aplatit la transparence PNG sur le beige (pas de carré noir)
+  // et cale le logo en haut à gauche.
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(20);
+  doc.setTextColor(...INK);
+  doc.text("Beev", M, 62); // repli si le logo ne charge pas
+  try { await drawImageContain(doc, "/images/logo-beev-noir.png", M, 44, 78, 22, BG); } catch { /* repli texte ci-dessus */ }
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...SUB);
+  doc.text("F I C H E   T E C H N I Q U E", PAGE_W - M, 50, { align: "right" });
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(...INK);
+  doc.text("Borne de recharge AC", PAGE_W - M, 64, { align: "right" });
+  doc.setDrawColor(...CARD_BORDER);
+  doc.setLineWidth(0.6);
+  doc.line(M, 84, PAGE_W - M, 84);
+
+  // Titre + description
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(34);
+  doc.setTextColor(...INK);
+  const title = `${ch.brand} ${ch.model}`.trim();
+  const titleLines = (doc.splitTextToSize(title, PAGE_W - M * 2) as string[]).slice(0, 2);
+  doc.text(titleLines, M, 124);
+  let y = 124 + (titleLines.length - 1) * 34 + 24;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(11);
+  doc.setTextColor(...SUB);
+  const desc = ch.description && ch.description.trim()
+    ? ch.description.trim()
+    : `Borne de recharge ${ch.powerKw} kW${/tri/i.test(ch.type) ? " triphasée" : " monophasée"}, ${ch.type}.`;
+  const descLines = (doc.splitTextToSize(desc, PAGE_W - M * 2) as string[]).slice(0, 3);
+  doc.text(descLines, M, y);
+  y += descLines.length * 14 + 24;
+
+  // Colonne gauche : 3 atouts · Colonne droite : photo
+  const leftW = 300;
+  const atoutTop = y;
+  const atouts = (ch.features ?? []).filter((f) => f && f.trim()).slice(0, 3);
+  atouts.forEach((f, i) => {
+    const ay = atoutTop + i * 56;
+    doc.setFillColor(...BLEU_30);
+    doc.roundedRect(M, ay, 30, 30, 8, 8, "F");
+    drawTileIcon(doc, ["power", "shield", "current"][i] ?? "dot", M + 15, ay + 15);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...INK);
+    doc.text((doc.splitTextToSize(f, leftW - 46) as string[]).slice(0, 2), M + 42, ay + 13);
+  });
+  // Photo dans une carte blanche
+  const photoX = M + leftW + 16;
+  const photoW = PAGE_W - M - photoX;
+  const photoY = atoutTop - 6;
+  const photoH = 170;
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(photoX, photoY, photoW, photoH, 14, 14, "F");
+  const imgUrl = (ch.marketingImageUrl && ch.marketingImageUrl.trim()) || ch.image;
+  if (imgUrl && imgUrl.trim()) {
+    try { await drawImageContain(doc, imgUrl, photoX + 16, photoY + 16, photoW - 32, photoH - 32, [255, 255, 255]); } catch { /* */ }
+  }
+
+  // Caractéristiques clés
+  let cy = Math.max(atoutTop + 3 * 56, photoY + photoH) + 30;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(...INK);
+  doc.text("C A R A C T É R I S T I Q U E S   C L É S", M, cy);
+  cy += 18;
+  const isTri = /tri/i.test(ch.type) || (ch.powerKw >= 11 && !/mono/i.test(ch.type));
+  const amp = isTri ? Math.round((ch.powerKw * 1000) / (400 * Math.sqrt(3))) : Math.round((ch.powerKw * 1000) / 230);
+  const kw = String(ch.powerKw).replace(".", ",");
+  const tiles: Array<{ icon: string; value: string; label: string }> = [
+    { icon: "power", value: `${kw} kW`, label: isTri ? "Mono ou triphasé" : "Monophasé" },
+    { icon: "current", value: `${amp} A`, label: "Intensité max / phase" },
+    { icon: "plug", value: /type\s*2/i.test(ch.type) ? "Type 2" : "Type 2", label: "Prise ou câble fixe" },
+    { icon: "shield", value: chargerProtection(ch), label: "Intérieur / extérieur" },
+    { icon: "dim", value: ch.dimensions && ch.dimensions.trim() ? ch.dimensions.trim() : "—", label: "mm (H×L×P)" },
+    { icon: "temp", value: ch.tempRange && ch.tempRange.trim() ? ch.tempRange.trim() : "−25 à 50 °C", label: "Température d'usage" },
+  ];
+  const tgap = 14;
+  const tW = (PAGE_W - M * 2 - tgap * 2) / 3;
+  const tH = 88;
+  tiles.forEach((t, i) => {
+    const tx = M + (i % 3) * (tW + tgap);
+    const ty = cy + Math.floor(i / 3) * (tH + tgap);
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(tx, ty, tW, tH, 12, 12, "F");
+    doc.setDrawColor(...CARD_BORDER);
+    doc.setLineWidth(0.5);
+    doc.roundedRect(tx, ty, tW, tH, 12, 12, "S");
+    doc.setFillColor(...BLEU_30);
+    doc.roundedRect(tx + 14, ty + 14, 26, 26, 7, 7, "F");
+    drawTileIcon(doc, t.icon, tx + 27, ty + 27);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(15);
+    doc.setTextColor(...INK);
+    doc.text((doc.splitTextToSize(t.value, tW - 24) as string[]).slice(0, 1), tx + 14, ty + 62);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...SUB);
+    doc.text((doc.splitTextToSize(t.label, tW - 24) as string[]).slice(0, 1), tx + 14, ty + 76);
+  });
 }
 
 // ============ KIT COLLABORATEUR · BEEV HOME CONNECT (supervision B2B2E) ============
