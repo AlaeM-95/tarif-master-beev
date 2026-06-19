@@ -845,10 +845,12 @@ export async function generateProposalPdf(opts: {
       }
     }
     if (mode === "catalogue" || mode === "both") {
-      for (let i = 0; i < chargersHome.length; i += 6) {
+      // Catalogue = fiche détaillée par collaborateur (format complet : points
+      // forts, présentation, chiffrage Total HT par collaborateur).
+      for (let i = 0; i < chargersHome.length; i++) {
         doc.addPage();
         drawHeader(doc, client, "home");
-        await drawChargerCatalogueB2B2E(doc, chargersHome.slice(i, i + 6), client);
+        await drawChargerPage(doc, chargersHome[i], "home", i + 1, chargersHome.length, client);
       }
     }
   }
@@ -4223,84 +4225,6 @@ async function drawChargerComparatorB2B2E(doc: jsPDF, chargers: SelectedCharger[
   }
 }
 
-// ============ CATALOGUE BORNES B2B2E (1 modèle par carte + forfait de base) ============
-async function drawChargerCatalogueB2B2E(doc: jsPDF, chargers: SelectedCharger[], _client: ClientInfo) {
-  const PINK: [number, number, number] = [244, 184, 170];
-  const CARD_BORDER: [number, number, number] = [225, 222, 216];
-
-  let y = 116;
-  doc.setFillColor(...PINK);
-  doc.rect(M, y - 8, 22, 2, "F");
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(8.5);
-  doc.setTextColor(...SUB);
-  doc.text("CATALOGUE · BORNES DOMICILE", M + 30, y - 4);
-  y += 14;
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(28);
-  doc.setTextColor(...INK);
-  doc.text("Nos bornes recommandées", M, y + 18);
-  y += 50;
-
-  const list = chargers.slice(0, 6);
-  const gap = 16;
-  const cardW = (PAGE_W - M * 2 - gap) / 2;
-  const cardH = 152;
-  for (let i = 0; i < list.length; i++) {
-    const ch = list[i].charger;
-    const col = i % 2;
-    const row = Math.floor(i / 2);
-    const x = M + col * (cardW + gap);
-    const cy = y + row * (cardH + 14);
-    doc.setFillColor(255, 255, 255);
-    doc.roundedRect(x, cy, cardW, cardH, 10, 10, "F");
-    doc.setDrawColor(...CARD_BORDER);
-    doc.setLineWidth(0.6);
-    doc.roundedRect(x, cy, cardW, cardH, 10, 10, "S");
-    // Image à gauche
-    const imgW = 96;
-    const imgUrl = (ch.marketingImageUrl && ch.marketingImageUrl.trim()) || ch.image;
-    if (imgUrl && imgUrl.trim()) {
-      try { await drawImageContain(doc, imgUrl, x + 12, cy + 18, imgW, cardH - 36, [255, 255, 255]); } catch { /* non bloquant */ }
-    }
-    const tx = x + imgW + 24;
-    const tw = x + cardW - 14 - tx;
-    // Nom + type
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(12);
-    doc.setTextColor(...INK);
-    const nameLines = (doc.splitTextToSize(`${ch.brand} ${ch.model}`, tw) as string[]).slice(0, 2);
-    doc.text(nameLines, tx, cy + 24);
-    let ty = cy + 24 + nameLines.length * 14 + 4;
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(...SUB);
-    doc.text(`${ch.type} · ${ch.powerKw} kW`, tx, ty, { maxWidth: tw });
-    ty += 16;
-    // Features (max 3)
-    (ch.features ?? []).slice(0, 3).forEach((f) => {
-      doc.setFillColor(...PINK);
-      doc.circle(tx + 2, ty - 2.5, 1.6, "F");
-      doc.setFont(BRAND_FONT, "normal");
-      doc.setFontSize(8);
-      doc.setTextColor(...INK);
-      const fl = (doc.splitTextToSize(f, tw - 12) as string[]).slice(0, 1);
-      doc.text(fl, tx + 10, ty);
-      ty += 13;
-    });
-    // Forfait de base (borne + pose) en bas
-    const base = ch.priceHt + ch.installPriceHt;
-    const fbY = cy + cardH - 16;
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(7.5);
-    doc.setTextColor(...SUB);
-    doc.text("Forfait de base (borne + pose)", tx, fbY - 10);
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(14);
-    doc.setTextColor(...INK);
-    doc.text(`${eur(base)} HT`, tx, fbY + 4);
-  }
-}
 
 // ============ BILAN CARBONE — Page dédiée RSE ============
 // Argument vente RSE : montre les émissions CO2 évitées par la flotte
