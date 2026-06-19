@@ -4149,7 +4149,7 @@ async function drawChargerComparatorB2B2E(doc: jsPDF, chargers: SelectedCharger[
   const gap = 12;
   const cardW = (PAGE_W - M * 2 - gap * (cols - 1)) / cols;
   const ct = y;
-  const cardH = 326;
+  const cardH = 388;
 
   for (let i = 0; i < list.length; i++) {
     const ch = list[i].charger;
@@ -4188,30 +4188,43 @@ async function drawChargerComparatorB2B2E(doc: jsPDF, chargers: SelectedCharger[
     if (imgUrl && imgUrl.trim()) {
       try { await drawImageContain(doc, imgUrl, x + cardW / 2 - 32, ct + 72, 64, 56, premium ? INK : [255, 255, 255]); } catch { /* non bloquant */ }
     }
-    // Specs
+    // Specs : caractéristiques techniques (dérivées de la puissance/type) puis
+    // services et prix. Libellé à gauche, valeur à droite, chacun limité à sa
+    // moitié de carte pour éviter le chevauchement même en colonnes étroites.
+    const isTri = /tri/i.test(ch.type) || (ch.powerKw >= 11 && !/mono/i.test(ch.type));
+    const ampMax = isTri
+      ? Math.round((ch.powerKw * 1000) / (400 * Math.sqrt(3)))
+      : Math.round((ch.powerKw * 1000) / 230);
+    const kwLabel = String(ch.powerKw).replace(".", ",");
+    const connector = /type\s*2/i.test(ch.type) ? "Type 2" : (ch.type.split(/[·\-]/)[0] || "Type 2").trim();
     const specs: Array<[string, string]> = [
+      ["Puissance", `${kwLabel} kW`],
+      ["Alimentation", isTri ? "Triphasé" : "Monophasé"],
+      ["Courant max", `${ampMax} A`],
+      ["Connecteur", connector],
+      ["Garantie / protection", (ch.warranty && ch.warranty.trim()) || "36 + 24 mois option"],
       ["Casawatt", ch.casawattEligible ? "Oui" : "Non"],
       ["Autre supervision", ch.otherSupervision ? "Oui" : "Non"],
-      ["Garantie", (ch.warranty && ch.warranty.trim()) || "36 + 24 mois option"],
       ["Prix 5 m", `${eur(chargerInstall5m(ch))} HT`],
       ["Prix 10 m", `${eur(chargerInstall10m(ch))} HT`],
     ];
-    let sy = ct + 150;
+    const halfW = (cardW - 24) * 0.48;
+    let sy = ct + 146;
     for (const [l, v] of specs) {
       doc.setFont(BRAND_FONT, "normal");
-      doc.setFontSize(7.5);
+      doc.setFontSize(7);
       doc.setTextColor(txtLabel[0], txtLabel[1], txtLabel[2]);
-      const ll = doc.splitTextToSize(l, cardW - 52) as string[];
+      const ll = (doc.splitTextToSize(l, halfW) as string[]).slice(0, 2);
       doc.text(ll, x + 12, sy);
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(8);
       doc.setTextColor(txtMain[0], txtMain[1], txtMain[2]);
-      const vv = doc.splitTextToSize(v, cardW - 24) as string[];
+      const vv = (doc.splitTextToSize(v, halfW) as string[]).slice(0, 2);
       doc.text(vv, x + cardW - 12, sy, { align: "right" });
-      sy += Math.max(22, Math.max(ll.length, vv.length) * 10 + 10);
+      sy += Math.max(20, Math.max(ll.length, vv.length) * 9 + 9);
       doc.setDrawColor(lineCol[0], lineCol[1], lineCol[2]);
       doc.setLineWidth(0.3);
-      doc.line(x + 12, sy - 7, x + cardW - 12, sy - 7);
+      doc.line(x + 12, sy - 6, x + cardW - 12, sy - 6);
     }
     // Pied CTA
     const ftY = ct + cardH - 32;
