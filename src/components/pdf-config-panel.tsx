@@ -16,8 +16,11 @@ type Props = {
 export function PdfConfigPanel({ config, update, reset, projectType }: Props) {
   const [open, setOpen] = useState(false);
 
-  const enabledCount = Object.values(config).filter(Boolean).length;
-  const totalCount = Object.keys(config).length;
+  // On ne compte que les réglages booléens (toggles) : certaines clés sont des
+  // modes (ex. b2b2eChargerMode = "comparator" | "catalogue" | "both").
+  const boolKeys = (Object.keys(config) as Array<keyof PdfDisplayConfig>).filter((k) => typeof config[k] === "boolean");
+  const enabledCount = boolKeys.filter((k) => config[k] === true).length;
+  const totalCount = boolKeys.length;
 
   return (
     <div className="rounded-lg border bg-card">
@@ -88,7 +91,7 @@ export function PdfConfigPanel({ config, update, reset, projectType }: Props) {
               size="sm"
               onClick={() => {
                 const all: Record<string, boolean> = {};
-                for (const k of Object.keys(config)) all[k] = true;
+                for (const k of boolKeys) all[k as string] = true;
                 update(all as Partial<PdfDisplayConfig>);
               }}
               className="gap-1 h-7 text-xs"
@@ -101,7 +104,7 @@ export function PdfConfigPanel({ config, update, reset, projectType }: Props) {
               size="sm"
               onClick={() => {
                 const all: Record<string, boolean> = {};
-                for (const k of Object.keys(config)) all[k] = false;
+                for (const k of boolKeys) all[k as string] = false;
                 update(all as Partial<PdfDisplayConfig>);
               }}
               className="gap-1 h-7 text-xs"

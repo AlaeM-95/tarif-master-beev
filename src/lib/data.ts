@@ -133,6 +133,12 @@ function dbToCharger(row: ChargerRow): Charger {
     defaultLineItems: Array.isArray(row.default_line_items)
       ? (row.default_line_items as LineItem[])
       : undefined,
+    // Champs comparateur B2B2E (migration 044) — lus avec garde-fou.
+    casawattEligible: (row as any).casawatt_eligible ?? undefined,
+    otherSupervision: (row as any).other_supervision ?? undefined,
+    installPrice5mHt: (row as any).install_price_5m_ht ?? undefined,
+    installPrice10mHt: (row as any).install_price_10m_ht ?? undefined,
+    comparatorBadge: ((row as any).comparator_badge ?? undefined) as Charger["comparatorBadge"],
   };
 }
 
@@ -172,6 +178,12 @@ function chargerToDb(c: Charger): ChargerInsert {
   if (c.warranty !== undefined && c.warranty !== null && c.warranty !== "") {
     (row as any).warranty = c.warranty;
   }
+  // Champs comparateur B2B2E (migration 044) — envoyés seulement si définis.
+  if (c.casawattEligible !== undefined) (row as any).casawatt_eligible = c.casawattEligible;
+  if (c.otherSupervision !== undefined) (row as any).other_supervision = c.otherSupervision;
+  if (c.installPrice5mHt !== undefined && c.installPrice5mHt !== null) (row as any).install_price_5m_ht = c.installPrice5mHt;
+  if (c.installPrice10mHt !== undefined && c.installPrice10mHt !== null) (row as any).install_price_10m_ht = c.installPrice10mHt;
+  if (c.comparatorBadge && c.comparatorBadge !== "none") (row as any).comparator_badge = c.comparatorBadge;
   return row;
 }
 
@@ -308,12 +320,30 @@ export function useChargersData() {
   // Si la migration 032 (chargers.warranty) n'est pas encore appliquée côté
   // Supabase, on retry en strippant le champ warranty pour ne pas perdre
   // les autres modifications du charger.
+  // Colonnes optionnelles ajoutées par des migrations tardives. Si l'une
+  // manque encore, Supabase renvoie une erreur nommant la colonne : on la
+  // retire et on retente, pour ne pas perdre les autres modifications.
+  const OPTIONAL_CHARGER_COLS = [
+    "warranty", "casawatt_eligible", "other_supervision",
+    "install_price_5m_ht", "install_price_10m_ht", "comparator_badge",
+  ];
+  const stripMissingCols = (row: any, msg: string) => {
+    const rest = { ...row };
+    let stripped = false;
+    for (const k of OPTIONAL_CHARGER_COLS) {
+      if (k in rest && new RegExp(k, "i").test(msg)) { delete rest[k]; stripped = true; }
+    }
+    return stripped ? rest : null;
+  };
   const updateChargerRow = async (id: string, row: any) => {
     let { error } = await supabase.from("chargers").update(row).eq("id", id);
-    if (error && /warranty/i.test(error.message ?? "")) {
-      const { warranty: _drop, ...rest } = row;
-      ({ error } = await supabase.from("chargers").update(rest).eq("id", id));
-      if (!error) console.warn("Migration 032 (chargers.warranty) non appliquée — champ ignoré");
+    // Jusqu'à 2 reprises (ex. warranty ET un champ comparateur manquants).
+    for (let i = 0; error && i < OPTIONAL_CHARGER_COLS.length; i++) {
+      const rest = stripMissingCols(row, error.message ?? "");
+      if (!rest) break;
+      row = rest;
+      ({ error } = await supabase.from("chargers").update(row).eq("id", id));
+      if (!error) console.warn("Colonnes chargers optionnelles absentes — champs ignorés (appliquez la migration 044)");
     }
     return error;
   };
@@ -329,12 +359,14 @@ export function useChargersData() {
 
   const add = async (c: Charger) => {
     const nextPosition = chargers.length + 1;
-    const row = { ...chargerToDb(c), position: nextPosition } as any;
+    let row = { ...chargerToDb(c), position: nextPosition } as any;
     let { error } = await supabase.from("chargers").insert(row);
-    if (error && /warranty/i.test(error.message ?? "")) {
-      const { warranty: _drop, ...rest } = row;
-      ({ error } = await supabase.from("chargers").insert(rest));
-      if (!error) console.warn("Migration 032 (chargers.warranty) non appliquée — champ ignoré");
+    for (let i = 0; error && i < OPTIONAL_CHARGER_COLS.length; i++) {
+      const rest = stripMissingCols(row, error.message ?? "");
+      if (!rest) break;
+      row = rest;
+      ({ error } = await supabase.from("chargers").insert(row));
+      if (!error) console.warn("Colonnes chargers optionnelles absentes — champs ignorés (appliquez la migration 044)");
     }
     if (error) console.error("Erreur add charger:", error);
     invalidate();

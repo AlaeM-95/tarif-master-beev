@@ -829,14 +829,28 @@ export async function generateProposalPdf(opts: {
     drawCarbonImpact(doc, v, energy, client);
   }
 
-  // Boucle bornes : on regroupe par deployment (domicile puis site) pour
-  // une présentation cohérente
+  // Boucle bornes : on regroupe par deployment (domicile puis site).
   const chargersHome = c.filter((sc) => sc.charger.deployment === "domicile");
   const chargersSite = c.filter((sc) => sc.charger.deployment === "site");
-  for (let i = 0; i < chargersHome.length; i++) {
-    doc.addPage();
-    drawHeader(doc, client, "home");
-    await drawChargerPage(doc, chargersHome[i], "home", i + 1, chargersHome.length, client);
+  // Bornes DOMICILE (B2B2E) : présentation au choix du commercial —
+  // comparateur (grille modèles), catalogue (forfait de base) ou les deux.
+  // Remplace les fiches bornes détaillées sur ce parcours.
+  if (chargersHome.length > 0) {
+    const mode = cfg.b2b2eChargerMode ?? "both";
+    if (mode === "comparator" || mode === "both") {
+      for (let i = 0; i < chargersHome.length; i += 4) {
+        doc.addPage();
+        drawHeader(doc, client, "home");
+        await drawChargerComparatorB2B2E(doc, chargersHome.slice(i, i + 4), client);
+      }
+    }
+    if (mode === "catalogue" || mode === "both") {
+      for (let i = 0; i < chargersHome.length; i += 6) {
+        doc.addPage();
+        drawHeader(doc, client, "home");
+        await drawChargerCatalogueB2B2E(doc, chargersHome.slice(i, i + 6), client);
+      }
+    }
   }
 
   // Page TCO B2B2E (Bornes domicile) — incluse si projet "home", calculateur
@@ -4095,6 +4109,196 @@ function drawB2B2ETco(doc: jsPDF, input: B2B2ECalculatorInput) {
     doc.setFontSize(7.5);
     doc.setTextColor(...INK);
     lines.forEach((l, i) => doc.text(l, M + 14, y + 30 + i * 10, { maxWidth: PAGE_W - M * 2 - 28 }));
+  }
+}
+
+// ============ COMPARATEUR BORNES B2B2E (grille modèles côte à côte) ============
+// Grille comparative des bornes domicile sélectionnées (jusqu'à 4 par page) :
+// badge (Premium bleu / Rapport qualité-prix rose), photo, specs, prix pose
+// 5 m / 10 m, et un pied « Installation 5 m … € HT ». La carte « premium » est
+// inversée (fond noir, texte clair) comme sur la maquette.
+function chargerInstall5m(ch: Charger): number {
+  return ch.installPrice5mHt && ch.installPrice5mHt > 0 ? ch.installPrice5mHt : (ch.priceHt + ch.installPriceHt);
+}
+function chargerInstall10m(ch: Charger): number {
+  return ch.installPrice10mHt && ch.installPrice10mHt > 0 ? ch.installPrice10mHt : (chargerInstall5m(ch) + 75);
+}
+async function drawChargerComparatorB2B2E(doc: jsPDF, chargers: SelectedCharger[], _client: ClientInfo) {
+  const PINK: [number, number, number] = [244, 184, 170];
+  const BLEU: [number, number, number] = [165, 210, 255];
+  const CARD_BORDER: [number, number, number] = [225, 222, 216];
+
+  let y = 116;
+  doc.setFillColor(...PINK);
+  doc.rect(M, y - 8, 22, 2, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text("COMPARATEUR · BORNES DOMICILE", M + 30, y - 4);
+  y += 14;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(28);
+  doc.setTextColor(...INK);
+  doc.text("Comparatif des bornes", M, y + 18);
+  y += 52;
+
+  const list = chargers.slice(0, 4);
+  const cols = Math.max(1, list.length);
+  const gap = 12;
+  const cardW = (PAGE_W - M * 2 - gap * (cols - 1)) / cols;
+  const ct = y;
+  const cardH = 326;
+
+  for (let i = 0; i < list.length; i++) {
+    const ch = list[i].charger;
+    const x = M + i * (cardW + gap);
+    const premium = ch.comparatorBadge === "premium";
+    const txtMain: [number, number, number] = premium ? [252, 249, 242] : INK;
+    const txtLabel: [number, number, number] = premium ? [200, 200, 200] : SUB;
+    const lineCol: [number, number, number] = premium ? [70, 67, 62] : CARD_BORDER;
+
+    // Corps de carte
+    if (premium) {
+      doc.setFillColor(...INK);
+      doc.roundedRect(x, ct, cardW, cardH, 10, 10, "F");
+    } else {
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(x, ct, cardW, cardH, 10, 10, "F");
+      doc.setDrawColor(...CARD_BORDER);
+      doc.setLineWidth(0.6);
+      doc.roundedRect(x, ct, cardW, cardH, 10, 10, "S");
+    }
+    // Badge
+    doc.setFillColor(...(premium ? BLEU : PINK));
+    doc.roundedRect(x + 10, ct + 10, cardW - 20, 18, 5, 5, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...INK);
+    doc.text(premium ? "Premium" : "Rapport qualité/prix", x + cardW / 2, ct + 22, { align: "center" });
+    // Nom
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(txtMain[0], txtMain[1], txtMain[2]);
+    const nameLines = (doc.splitTextToSize(`${ch.brand} ${ch.model}`, cardW - 16) as string[]).slice(0, 2);
+    doc.text(nameLines, x + cardW / 2, ct + 46, { align: "center" });
+    // Image
+    const imgUrl = (ch.marketingImageUrl && ch.marketingImageUrl.trim()) || ch.image;
+    if (imgUrl && imgUrl.trim()) {
+      try { await drawImageContain(doc, imgUrl, x + cardW / 2 - 32, ct + 72, 64, 56, premium ? INK : [255, 255, 255]); } catch { /* non bloquant */ }
+    }
+    // Specs
+    const specs: Array<[string, string]> = [
+      ["Casawatt", ch.casawattEligible ? "Oui" : "Non"],
+      ["Autre supervision", ch.otherSupervision ? "Oui" : "Non"],
+      ["Garantie", (ch.warranty && ch.warranty.trim()) || "36 + 24 mois option"],
+      ["Prix 5 m", `${eur(chargerInstall5m(ch))} HT`],
+      ["Prix 10 m", `${eur(chargerInstall10m(ch))} HT`],
+    ];
+    let sy = ct + 150;
+    for (const [l, v] of specs) {
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(7.5);
+      doc.setTextColor(txtLabel[0], txtLabel[1], txtLabel[2]);
+      const ll = doc.splitTextToSize(l, cardW - 52) as string[];
+      doc.text(ll, x + 12, sy);
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(txtMain[0], txtMain[1], txtMain[2]);
+      const vv = doc.splitTextToSize(v, cardW - 24) as string[];
+      doc.text(vv, x + cardW - 12, sy, { align: "right" });
+      sy += Math.max(22, Math.max(ll.length, vv.length) * 10 + 10);
+      doc.setDrawColor(lineCol[0], lineCol[1], lineCol[2]);
+      doc.setLineWidth(0.3);
+      doc.line(x + 12, sy - 7, x + cardW - 12, sy - 7);
+    }
+    // Pied CTA
+    const ftY = ct + cardH - 32;
+    doc.setFillColor(...(premium ? [252, 249, 242] as [number, number, number] : INK));
+    doc.roundedRect(x + 10, ftY, cardW - 20, 24, 6, 6, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8);
+    const ctaTxt: [number, number, number] = premium ? INK : [252, 249, 242];
+    doc.setTextColor(ctaTxt[0], ctaTxt[1], ctaTxt[2]);
+    doc.text(`Installation 5 m  ${eur(chargerInstall5m(ch))} HT`, x + cardW / 2, ftY + 15, { align: "center" });
+  }
+}
+
+// ============ CATALOGUE BORNES B2B2E (1 modèle par carte + forfait de base) ============
+async function drawChargerCatalogueB2B2E(doc: jsPDF, chargers: SelectedCharger[], _client: ClientInfo) {
+  const PINK: [number, number, number] = [244, 184, 170];
+  const CARD_BORDER: [number, number, number] = [225, 222, 216];
+
+  let y = 116;
+  doc.setFillColor(...PINK);
+  doc.rect(M, y - 8, 22, 2, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text("CATALOGUE · BORNES DOMICILE", M + 30, y - 4);
+  y += 14;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(28);
+  doc.setTextColor(...INK);
+  doc.text("Nos bornes recommandées", M, y + 18);
+  y += 50;
+
+  const list = chargers.slice(0, 6);
+  const gap = 16;
+  const cardW = (PAGE_W - M * 2 - gap) / 2;
+  const cardH = 152;
+  for (let i = 0; i < list.length; i++) {
+    const ch = list[i].charger;
+    const col = i % 2;
+    const row = Math.floor(i / 2);
+    const x = M + col * (cardW + gap);
+    const cy = y + row * (cardH + 14);
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(x, cy, cardW, cardH, 10, 10, "F");
+    doc.setDrawColor(...CARD_BORDER);
+    doc.setLineWidth(0.6);
+    doc.roundedRect(x, cy, cardW, cardH, 10, 10, "S");
+    // Image à gauche
+    const imgW = 96;
+    const imgUrl = (ch.marketingImageUrl && ch.marketingImageUrl.trim()) || ch.image;
+    if (imgUrl && imgUrl.trim()) {
+      try { await drawImageContain(doc, imgUrl, x + 12, cy + 18, imgW, cardH - 36, [255, 255, 255]); } catch { /* non bloquant */ }
+    }
+    const tx = x + imgW + 24;
+    const tw = x + cardW - 14 - tx;
+    // Nom + type
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(...INK);
+    const nameLines = (doc.splitTextToSize(`${ch.brand} ${ch.model}`, tw) as string[]).slice(0, 2);
+    doc.text(nameLines, tx, cy + 24);
+    let ty = cy + 24 + nameLines.length * 14 + 4;
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...SUB);
+    doc.text(`${ch.type} · ${ch.powerKw} kW`, tx, ty, { maxWidth: tw });
+    ty += 16;
+    // Features (max 3)
+    (ch.features ?? []).slice(0, 3).forEach((f) => {
+      doc.setFillColor(...PINK);
+      doc.circle(tx + 2, ty - 2.5, 1.6, "F");
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(...INK);
+      const fl = (doc.splitTextToSize(f, tw - 12) as string[]).slice(0, 1);
+      doc.text(fl, tx + 10, ty);
+      ty += 13;
+    });
+    // Forfait de base (borne + pose) en bas
+    const base = ch.priceHt + ch.installPriceHt;
+    const fbY = cy + cardH - 16;
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...SUB);
+    doc.text("Forfait de base (borne + pose)", tx, fbY - 10);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(...INK);
+    doc.text(`${eur(base)} HT`, tx, fbY + 4);
   }
 }
 

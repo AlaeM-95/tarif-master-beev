@@ -262,6 +262,20 @@ export type Charger = {
   warranty?: string;
   defaultLineItems?: LineItem[];
   custom?: boolean;
+  // === Comparateur / catalogue B2B2E (bornes domicile) ===
+  // Champs réutilisables remplis dans /admin/chargers, affichés dans la grille
+  // comparative et le catalogue des bornes domicile. Tous optionnels : valeurs
+  // par défaut/dérivées si non renseignés (dégradation propre avant migration).
+  /** Éligible à la prime Casawatt. */
+  casawattEligible?: boolean;
+  /** Compatible avec une autre supervision que Beev Home Charging. */
+  otherSupervision?: boolean;
+  /** Forfait pose 5 m HT (sinon dérivé de installPriceHt). */
+  installPrice5mHt?: number;
+  /** Forfait pose 10 m HT (sinon dérivé). */
+  installPrice10mHt?: number;
+  /** Badge mis en avant dans le comparateur. */
+  comparatorBadge?: "premium" | "value" | "none";
 };
 
 // ===== Helpers création items custom =====

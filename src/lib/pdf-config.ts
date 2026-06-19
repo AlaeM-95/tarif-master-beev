@@ -65,6 +65,9 @@ export type PdfDisplayConfig = {
   showSupervisionHome: boolean; // slide Supervision Beev Home Charging (B2B2E)
   showSupervisionConnect: boolean; // slide Supervision Beev Connect (site entreprise)
   showCarbonImpact: boolean; // page Bilan carbone (argument RSE)
+  /** Présentation des bornes domicile (B2B2E) : comparateur, catalogue ou les
+   *  deux. Remplace les fiches bornes détaillées sur ce parcours. */
+  b2b2eChargerMode: "comparator" | "catalogue" | "both";
 };
 
 export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
@@ -118,6 +121,7 @@ export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
   showSupervisionHome: false, // activé manuellement via le panneau Configuration PDF du devis
   showSupervisionConnect: false,
   showCarbonImpact: true, // page Bilan carbone affichée par défaut (argument RSE fort)
+  b2b2eChargerMode: "both", // bornes domicile : comparateur + catalogue par défaut
 };
 
 const STORAGE_KEY = "beev_pdf_config_v1";

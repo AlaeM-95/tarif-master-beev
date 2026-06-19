@@ -1485,6 +1485,31 @@ function App() {
             </CatalogSection>
           )}
 
+          {/* Présentation des bornes domicile dans le PDF : comparateur,
+              catalogue ou les deux (remplace les fiches bornes détaillées). */}
+          {projectType === "home" && Object.values(selectedC).some((sc) => sc.charger.deployment === "domicile") && (
+            <div className="rounded-lg border bg-card p-3 space-y-2">
+              <div>
+                <p className="text-sm font-semibold">Présentation des bornes dans le PDF</p>
+                <p className="text-xs text-muted-foreground">Comment présenter au client les modèles cochés.</p>
+              </div>
+              <div className="grid grid-cols-3 gap-1">
+                {(["comparator", "catalogue", "both"] as const).map((val) => (
+                  <Button
+                    key={val}
+                    type="button"
+                    size="sm"
+                    variant={(pdfConfig.b2b2eChargerMode ?? "both") === val ? "default" : "outline"}
+                    className="h-8 text-xs"
+                    onClick={() => updatePdfConfig({ b2b2eChargerMode: val })}
+                  >
+                    {val === "comparator" ? "Comparateur" : val === "catalogue" ? "Catalogue" : "Les deux"}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Calculateur TCO B2B2E — apparaît en mode Bornes domicile,
               juste après le catalogue des bornes. Affiché en permanence
               en mode home pour offrir l'estimation économique même avant
@@ -2970,6 +2995,37 @@ function ChargerCard({ charger, selected, onToggle, onUpdate, onDelete, onDuplic
                 </select>
               </div>
             </div>
+            {/* Champs comparateur / catalogue B2B2E (bornes domicile). */}
+            {charger.deployment === "domicile" && (
+              <div className="rounded-md border bg-muted/30 p-2 space-y-2">
+                <p className="text-[10px] font-semibold uppercase text-muted-foreground">Comparateur / catalogue B2B2E</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <NumField label="Pose 5 m HT" value={charger.installPrice5mHt ?? 0} onChange={(n) => onUpdate({ installPrice5mHt: n })} />
+                  <NumField label="Pose 10 m HT" value={charger.installPrice10mHt ?? 0} onChange={(n) => onUpdate({ installPrice10mHt: n })} />
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground uppercase">Casawatt</Label>
+                    <select value={charger.casawattEligible ? "yes" : "no"} onChange={(e) => onUpdate({ casawattEligible: e.target.value === "yes" })} className="h-8 w-full rounded-md border border-border bg-card px-2 text-xs text-foreground">
+                      <option value="no">Non</option>
+                      <option value="yes">Oui</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground uppercase">Autre supervision</Label>
+                    <select value={charger.otherSupervision ? "yes" : "no"} onChange={(e) => onUpdate({ otherSupervision: e.target.value === "yes" })} className="h-8 w-full rounded-md border border-border bg-card px-2 text-xs text-foreground">
+                      <option value="no">Non</option>
+                      <option value="yes">Oui</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <Label className="text-[10px] text-muted-foreground uppercase">Badge comparateur</Label>
+                    <select value={charger.comparatorBadge ?? "value"} onChange={(e) => onUpdate({ comparatorBadge: e.target.value as Charger["comparatorBadge"] })} className="h-8 w-full rounded-md border border-border bg-card px-2 text-xs text-foreground">
+                      <option value="value">Rapport qualité/prix (rose)</option>
+                      <option value="premium">Premium (bleu, carte sombre)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
             {/* Description longue (paragraphe affiché dans le PDF) */}
             <LongTxtField
               label="Description longue (PDF)"
