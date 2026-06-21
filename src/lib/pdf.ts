@@ -740,6 +740,18 @@ export async function generateProposalPdf(opts: {
     drawWhyBeev(doc, effectiveType);
   }
 
+  // Page « Synthèse flotte » — vue d'ensemble agrégée pour les grosses flottes.
+  // Auto : dès ~10 véhicules au devis (somme des quantités) et toggle actif.
+  // Placée en tête de la section véhicules (résumé exécutif), avant le détail.
+  const fleetQty = v.reduce((s, sv) => s + Math.max(1, sv.quantity || 1), 0);
+  if (cfg.showFleetSynthesis !== false && fleetQty >= 10 && v.length >= 2) {
+    try {
+      doc.addPage();
+      drawHeader(doc, client, "vehicles");
+      drawFleetSynthesis(doc, v, energy);
+    } catch (e) { console.error("[pdf] synthèse flotte :", e); }
+  }
+
   // Page comparateur véhicules (specs côte à côte) — placée AVANT les fiches
   // véhicule individuelles : le client voit d'abord la vue d'ensemble
   // comparative, puis le détail de chaque modèle. Toggleable, indépendante du
@@ -3442,6 +3454,92 @@ function vehicleLabel(v: { brand: string; model: string; version?: string }, max
   const full = ver ? `${main} · ${ver}` : main;
   if (maxLen && full.length > maxLen) return full.slice(0, maxLen - 1) + "…";
   return full;
+}
+
+// ============ SYNTHÈSE FLOTTE (vue agrégée pour grosses flottes) ============
+// Pour 50/80/100+ véhicules : un tableau par segment/modèle (modèle actuel →
+// EV proposé, quantité, économie) + total flotte, au lieu de 80 fiches.
+// Regroupe selectedV par comparisonGroup ; chaque groupe = un véhicule actuel
+// (flotte à remplacer) + son EV de remplacement principal.
+function drawFleetSynthesis(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams) {
+  const PINK: [number, number, number] = [244, 184, 170];
+  const tcoAn = (sv: SelectedVehicle): number => {
+    const duree = sv.durationMonths / 12;
+    const opt = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
+    const r = calculateTcoFull(sv.vehicle, {
+      dureeAnnees: duree, kmContrat: sv.kmPerYear * duree,
+      prixEssenceLitre: e.fuelPriceL, prixKwhDomicile: e.kWhHome, prixKwhPublic: e.kWhPublic,
+      optionsTotalTtc: opt, remisePctOverride: sv.discountPct,
+    }, sv.negotiatedMonthly);
+    return r.tcoAnnuel;
+  };
+
+  const groups = new Map<string, { current?: SelectedVehicle; props: SelectedVehicle[] }>();
+  for (const sv of vehicles) {
+    const g = (sv.comparisonGroup ?? "").trim() || `${sv.vehicle.brand} ${sv.vehicle.model}`.trim();
+    if (!groups.has(g)) groups.set(g, { props: [] });
+    const b = groups.get(g)!;
+    if (sv.vehicle.isCurrentFleet) b.current = sv; else b.props.push(sv);
+  }
+
+  let totalVeh = 0, totalEcoAn = 0;
+  const body: any[] = [];
+  for (const [, b] of groups) {
+    const ev = b.props[0];
+    const qty = Math.max(1, ev?.quantity ?? b.current?.quantity ?? 1);
+    totalVeh += qty;
+    const ecoVeh = (b.current && ev) ? Math.max(0, tcoAn(b.current) - tcoAn(ev)) : 0;
+    totalEcoAn += ecoVeh * qty;
+    body.push([
+      { content: b.current ? vehicleLabel(b.current.vehicle, 32) : "—", styles: { halign: "left" } },
+      { content: String(qty), styles: { halign: "center" } },
+      { content: ev ? vehicleLabel(ev.vehicle, 32) : "—", styles: { halign: "left", fontStyle: "bold" } },
+      { content: ev ? `${eur(ev.negotiatedMonthly)}/mois` : "—", styles: { halign: "center" } },
+      { content: ecoVeh > 0 ? `− ${eur(ecoVeh)}` : "—", styles: { halign: "center" } },
+      { content: ecoVeh > 0 ? `− ${eur(ecoVeh * qty)}` : "—", styles: { halign: "center", fontStyle: "bold", textColor: ACCENT_TEXT } },
+    ]);
+  }
+
+  let y = 116;
+  eyebrow(doc, "SYNTHÈSE FLOTTE", y);
+  y += 26;
+  title(doc, "Votre flotte électrifiée en un coup d'œil", y);
+  y += 40;
+
+  // Bandeau économie totale (rose, texte noir)
+  doc.setFillColor(...PINK);
+  doc.roundedRect(M, y, PAGE_W - M * 2, 76, 10, 10, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...INK);
+  doc.text("ÉCONOMIE TOTALE DE LA FLOTTE / AN", M + 18, y + 22);
+  doc.setFontSize(30);
+  doc.text(totalEcoAn > 0 ? `− ${eur(totalEcoAn)}` : "—", M + 18, y + 56);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(9);
+  doc.text(`${totalVeh} véhicules · ${groups.size} segments · vs flotte thermique actuelle`, PAGE_W - M - 18, y + 56, { align: "right" });
+  y += 96;
+
+  autoTable(doc, {
+    startY: y,
+    theme: "plain",
+    head: [["Modèle actuel", "Qté", "Remplacement électrique", "Loyer", "Éco / véh. / an", "Éco flotte / an"]],
+    body,
+    headStyles: { fillColor: INK, textColor: 255, fontSize: 8, fontStyle: "bold", font: BRAND_FONT, cellPadding: 6 },
+    bodyStyles: { fontSize: 8.5, cellPadding: 6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
+    alternateRowStyles: { fillColor: BG },
+    columnStyles: { 1: { cellWidth: 36 }, 3: { cellWidth: 64 }, 4: { cellWidth: 78 }, 5: { cellWidth: 86 } },
+    margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
+  });
+  let ny = (doc as any).lastAutoTable.finalY + 16;
+  ny = ensureBottomSpace(doc, ny, 30);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...SUB);
+  doc.text(
+    "Économie = écart de TCO annuel (loyer + énergie + fiscalité) entre le véhicule thermique actuel et l'électrique proposé, × quantité. Détail par véhicule dans l'analyse TCO. Le comparateur présente les alternatives par segment.",
+    M, ny, { maxWidth: PAGE_W - M * 2 },
+  );
 }
 
 // ============ TCO DASHBOARD (page de synthèse visuelle pour le mode TCO) ============
