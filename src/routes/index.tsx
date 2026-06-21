@@ -799,24 +799,75 @@ function App() {
   };
 
   // Aperçu d'UNE seule section : génère un PDF (couverture + cette section)
-  // avec les données du devis en cours, ouvert dans un onglet. Permet de voir
-  // la vraie page sans cocher/décocher tout le reste.
+  // ouvert dans un onglet. Si le devis n'a pas assez de données pour remplir la
+  // page (devis vide, < 2 véhicules…), on injecte des EXEMPLES depuis le
+  // catalogue pour que la page se prévisualise vraiment.
+  const SITE_PREVIEW_KEYS = new Set<string>([
+    "showSiteOverview", "showSiteGuarantees", "showSiteProjectSynthesis", "showSiteInfrastructure",
+    "showSiteEquipments", "showSiteProductSheet", "showSiteSupervision", "showSiteCompliance",
+    "showSiteFinancialRecap", "showSitePaymentOptions", "showSupervisionConnect",
+  ]);
+  const HOME_PREVIEW_KEYS = new Set<string>(["showB2B2ETco", "showSupervisionHome", "showHomeConnectKit"]);
+  const demoVehicles = (): SelectedVehicle[] => {
+    const therm = vehicles.find((v) => v.energy !== "Électrique");
+    const evs = vehicles.filter((v) => v.energy === "Électrique").slice(0, therm ? 3 : 4);
+    const base = [therm, ...evs].filter(Boolean) as Vehicle[];
+    return base.map((v, i) => ({
+      instanceId: `demo_v_${i}`,
+      vehicle: i === 0 && therm ? { ...v, isCurrentFleet: true } : v,
+      quantity: 5,
+      discountPct: v.remise ?? 0,
+      negotiatedMonthly: v.monthlyLld || 500,
+      durationMonths: 48,
+      kmPerYear: energy.kmPerYear || 20000,
+      includeTco: true,
+      services: [],
+      options: [],
+      comparisonGroup: "Exemple",
+    }));
+  };
+  const demoChargers = (dep: "domicile" | "site"): SelectedCharger[] => {
+    const list = chargers.filter((c) => c.deployment === dep);
+    const picked = (list.length ? list : chargers).slice(0, 2);
+    return picked.map((c, i) => ({
+      instanceId: `demo_c_${i}`,
+      charger: c,
+      quantity: dep === "site" ? 2 : 5,
+      discountPct: 0,
+      installIncluded: true,
+      siteName: "",
+      siteAddress: "",
+      siteContact: "",
+      lineItems: (c.defaultLineItems && c.defaultLineItems.length > 0)
+        ? c.defaultLineItems.map((li) => ({ ...li }))
+        : [{ label: `${c.brand} ${c.model}`, qty: 1, unitHt: c.priceHt }, { label: "Pose & raccordement IRVE", qty: 1, unitHt: c.installPriceHt }],
+    }));
+  };
   const previewSection = async (key: keyof PdfDisplayConfig) => {
     if (isGenerating) return;
     const iso = { ...pdfConfig } as Record<string, unknown>;
     for (const k of Object.keys(iso)) if (typeof iso[k] === "boolean") iso[k] = false;
     iso[key as string] = true;
+    const k = key as string;
+    const ptype: ProjectType = SITE_PREVIEW_KEYS.has(k) ? "site" : HOME_PREVIEW_KEYS.has(k) ? "home" : "vehicles";
+    const realV = Object.values(selectedV);
+    const realC = Object.values(selectedC);
+    const previewV = realV.length >= 2 ? realV.map((sv) => ({ ...sv, includeTco: true })) : demoVehicles();
+    const dep: "domicile" | "site" = ptype === "site" ? "site" : "domicile";
+    const previewC = realC.some((sc) => sc.charger.deployment === dep) ? realC : demoChargers(dep);
     try {
       await generateProposalPdf({
-        projectType, client, energy,
-        vehicles: Object.values(selectedV).map((sv) => ({ ...sv, includeTco: true })),
-        chargers: Object.values(selectedC),
+        projectType: ptype,
+        client: { ...client, company: client.company || "Exemple client" },
+        energy,
+        vehicles: previewV,
+        chargers: ptype === "vehicles" ? [] : previewC,
         pdfConfig: iso as unknown as PdfDisplayConfig,
-        b2b2eInput: b2b2eIncludeInPdf && Object.values(selectedC).some((sc) => sc.charger.deployment === "domicile") ? b2b2eInput : undefined,
+        b2b2eInput,
         preview: true,
       });
     } catch {
-      toast.error("Aperçu de section impossible — vérifiez que le devis contient les données requises (ex. 2+ véhicules pour le TCO).");
+      toast.error("Aperçu de section impossible pour le moment.");
     }
   };
 

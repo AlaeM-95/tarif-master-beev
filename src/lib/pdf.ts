@@ -3693,8 +3693,44 @@ async function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: Ener
   const valueX = M + labelW + barAreaW + 8;
   const rowH = 36;
 
-  rows.forEach((r, idx) => {
-    const isBest = idx === 0;
+  // Choix commercial : classement GLOBAL (à plat, par TCO) ou PAR GROUPE de
+  // comparaison (un intertitre par segment, classement interne au groupe).
+  const useGroups = PDF_CFG.tcoGroupByComparison !== false && rows.some((r) => (r.sv.comparisonGroup ?? "").trim());
+  type DashItem = { header?: string; r?: (typeof rows)[number]; rank?: number; best?: boolean };
+  const items: DashItem[] = [];
+  if (useGroups) {
+    const gmap = new Map<string, typeof rows>();
+    const order: string[] = [];
+    for (const r of rows) {
+      const g = (r.sv.comparisonGroup ?? "").trim() || "Autres véhicules";
+      if (!gmap.has(g)) { gmap.set(g, []); order.push(g); }
+      gmap.get(g)!.push(r);
+    }
+    for (const g of order) {
+      const gr = [...gmap.get(g)!].sort((a, b) => a.total - b.total);
+      items.push({ header: g });
+      gr.forEach((r, i) => items.push({ r, rank: i + 1, best: i === 0 }));
+    }
+  } else {
+    rows.forEach((r, i) => items.push({ r, rank: i + 1, best: i === 0 }));
+  }
+
+  for (const it of items) {
+    if (y > FOOTER_LIMIT - 24) break; // garde-fou anti-débordement footer
+    if (it.header !== undefined) {
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(...SUB);
+      doc.text(it.header.toUpperCase(), M, y + 6);
+      doc.setDrawColor(...RULE);
+      doc.setLineWidth(0.4);
+      doc.line(M, y + 10, PAGE_W - M, y + 10);
+      y += 20;
+      continue;
+    }
+    const r = it.r!;
+    const idx = (it.rank ?? 1) - 1;
+    const isBest = !!it.best;
 
     // Rang + nom véhicule (gauche)
     if (isBest) {
@@ -3762,7 +3798,7 @@ async function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: Ener
     doc.text(eur(r.total), valueX, y + 14);
 
     y += rowH;
-  });
+  }
 
   // === Détail Charges fiscales annexes (AND/AEN) — récap par véhicule ===
   // Désactivé par défaut (toggle showTcoFiscalDetail). Sur une nouvelle page.
