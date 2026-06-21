@@ -3715,7 +3715,16 @@ async function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: Ener
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(9);
     doc.setTextColor(...INK);
-    doc.text(`${r.sv.vehicle.brand} ${r.sv.vehicle.model}`.slice(0, 24), M + 22, y + 7);
+    // Tronque le nom à la LARGEUR réelle dispo avant les barres (plus de coupe
+    // au milieu d'un mot type « MERCEDES CLA SHOOTING BR »).
+    const nameFull = `${r.sv.vehicle.brand} ${r.sv.vehicle.model}`.trim();
+    const nameMaxW = barX - (M + 22) - 10;
+    let nm = nameFull;
+    if (doc.getTextWidth(nm) > nameMaxW) {
+      while (nm.length > 4 && doc.getTextWidth(nm + "…") > nameMaxW) nm = nm.slice(0, -1);
+      nm = nm.replace(/\s+$/, "") + "…";
+    }
+    doc.text(nm, M + 22, y + 7);
     // Version sur sa propre ligne (sub) pour distinguer 2 finitions du même
     // modèle (ex. plusieurs HYUNDAI KONA) — indispensable au classement TCO.
     const verRank = (r.sv.vehicle.version ?? "").trim();
@@ -3859,11 +3868,15 @@ async function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: 
   // intertitre par groupe + tri du meilleur au pire DANS le groupe. Sinon,
   // tableau global trié par TCO croissant (comportement historique).
   const groupKey = (sv: SelectedVehicle) => (sv.comparisonGroup ?? "").trim();
-  const hasGroups = computed.some((c) => groupKey(c.sv));
+  // Le commercial choisit : décomposition groupée par groupe de comparaison
+  // (intertitre par segment) OU un seul tableau global trié par TCO.
+  const hasGroups = PDF_CFG.tcoGroupByComparison !== false && computed.some((c) => groupKey(c.sv));
   const groupOrder: string[] = [];
   const buckets = new Map<string, typeof computed>();
   for (const c of computed) {
-    const g = groupKey(c.sv) || "__none__";
+    // Si le mode groupé est désactivé, tout va dans un seul bucket global trié
+    // par TCO (pas d'intertitre de segment).
+    const g = (hasGroups ? groupKey(c.sv) : "") || "__none__";
     if (!buckets.has(g)) { buckets.set(g, []); groupOrder.push(g); }
     buckets.get(g)!.push(c);
   }

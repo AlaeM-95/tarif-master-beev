@@ -218,7 +218,8 @@ export function FleetBuilder({
                                 >
                                   {on ? <Check className="w-3 h-3" /> : (rIdx === 0 ? <Zap className="w-3 h-3 text-[#3809EA]" /> : null)}
                                   <span className="font-medium">{ev.brand} {ev.model}</span>
-                                  <span className={on ? "text-white/80" : "text-muted-foreground"}>{fmtEur(ev.monthlyLld)}/mois</span>
+                                  {ev.version && <span className={on ? "text-white/70" : "text-muted-foreground"}>{ev.version.length > 20 ? ev.version.slice(0, 20) + "…" : ev.version}</span>}
+                                  <span className={`font-semibold ${on ? "text-white/90" : "text-foreground/80"}`}>{fmtEur(ev.monthlyLld)}/mois</span>
                                 </button>
                               );
                             })}
@@ -231,7 +232,9 @@ export function FleetBuilder({
                             >
                               <option value="">+ autre modèle…</option>
                               {allEvs.map((ev) => (
-                                <option key={ev.id} value={ev.id}>{ev.brand} {ev.model} — {fmtEur(ev.monthlyLld)}/mois</option>
+                                <option key={ev.id} value={ev.id}>
+                                  {ev.brand} {ev.model}{ev.version ? ` ${ev.version}` : ""} — {fmtEur(ev.monthlyLld)}/mois
+                                </option>
                               ))}
                             </select>
                           </div>

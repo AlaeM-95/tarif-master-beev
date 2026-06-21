@@ -11,6 +11,7 @@ export type PdfDisplayConfig = {
   showFleetSynthesis: boolean; // page « Synthèse flotte » (grosses flottes : tableau par segment + TCO agrégé)
   showTcoComparison: boolean; // page « Analyse TCO · tableau de bord »
   showTcoDetailedTable: boolean; // page « Analyse TCO · détail des composantes »
+  tcoGroupByComparison: boolean; // détail TCO : groupé par groupe de comparaison (true) ou global trié par TCO (false)
   showTcoFiscalDetail: boolean; // page « Détail charges fiscales annexes » (off par défaut)
   showVehicleComparator: boolean; // page comparateur multi-véhicules (specs côte à côte)
   showCurrentFleetVehicle: boolean; // afficher la fiche détaillée des véhicules « flotte actuelle » (masqués par défaut)
@@ -80,6 +81,7 @@ export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
   showFleetSynthesis: true, // synthèse flotte : auto si ≥ 10 véhicules dans le devis
   showTcoComparison: true,
   showTcoDetailedTable: true, // page détail des composantes TCO affichée par défaut
+  tcoGroupByComparison: true, // par défaut, on groupe le détail TCO par groupe de comparaison
   showTcoFiscalDetail: false, // page détail charges fiscales annexes : désactivée par défaut
   showVehicleComparator: true,
   showCurrentFleetVehicle: false, // masquée par défaut ; le commercial l'active dans la config PDF
@@ -182,6 +184,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
       { key: "showFleetSynthesis", label: "Synthèse flotte", description: "Tableau par segment (modèle actuel → EV proposé, quantités, économie) + total flotte. S'affiche automatiquement dès ~10 véhicules au devis.", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showTcoComparison", label: "Analyse TCO · tableau de bord", description: "Page synthèse visuelle (KPI + barres empilées). Nécessite 2+ véhicules.", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showTcoDetailedTable", label: "Analyse TCO · détail des composantes", description: "Page tableau : 1 ligne par véhicule avec toutes les composantes (loyer, énergie, TVS, malus, AND, AEN, TCO total). Nécessite 2+ véhicules.", appliesTo: ["vehicles"] as unknown as string[] } as any,
+      { key: "tcoGroupByComparison", label: "Détail TCO groupé par segment", description: "Coché : le détail TCO est regroupé par groupe de comparaison (un intertitre par segment). Décoché : un seul tableau global trié du TCO le plus bas au plus haut.", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showTcoFiscalDetail", label: "Détail charges fiscales annexes", description: "Page « Détail charges fiscales annexes par véhicule » (Malus / TVS / AND / AEN). Désactivée par défaut.", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showVehicleComparator", label: "Comparateur véhicules", description: "Tableau comparatif specs côte à côte (prix, autonomie, conso, fiscalité) si 2+ véhicules", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showCurrentFleetVehicle", label: "Fiche détaillée flotte actuelle", description: "Afficher la fiche véhicule complète des véhicules marqués « flotte actuelle » (masqués par défaut, visibles uniquement dans le comparateur)", appliesTo: ["vehicles"] as unknown as string[] } as any,

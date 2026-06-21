@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Settings2, RotateCcw, ChevronDown, ChevronUp } from "lucide-react";
+import { Settings2, RotateCcw, ChevronDown, ChevronUp, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -58,18 +58,29 @@ export function PdfConfigPanel({ config, update, reset, projectType }: Props) {
                   {group.items.map((item) => {
                     const itemAppliesTo = (item as any).appliesTo as ProjectType[] | undefined;
                     if (itemAppliesTo && !itemAppliesTo.includes(projectType)) return null;
+                    const on = !!config[item.key];
                     return (
                       <label
                         key={item.key}
-                        className="flex items-start gap-2 cursor-pointer hover:bg-accent/30 rounded p-1 transition"
+                        className={`flex items-start gap-2 cursor-pointer rounded-md border p-2 transition ${
+                          on ? "border-beev-rose/50 bg-beev-rose-20" : "border-border/60 bg-transparent opacity-70 hover:opacity-100"
+                        }`}
                       >
                         <Checkbox
-                          checked={config[item.key]}
+                          checked={on}
                           onCheckedChange={(v) => update({ [item.key]: !!v })}
                           className="mt-0.5"
                         />
                         <div className="flex-1 min-w-0">
-                          <Label className="text-xs cursor-pointer leading-tight">{item.label}</Label>
+                          <div className="flex items-center justify-between gap-2">
+                            <Label className="text-xs cursor-pointer leading-tight font-medium">{item.label}</Label>
+                            <span className={`flex items-center gap-1 text-[9px] font-semibold uppercase rounded-full px-1.5 py-0.5 flex-shrink-0 ${
+                              on ? "bg-beev-rose text-beev-black" : "bg-muted text-muted-foreground"
+                            }`}>
+                              {on ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
+                              {on ? "Affiché" : "Masqué"}
+                            </span>
+                          </div>
                           {item.description && (
                             <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
                               {item.description}
