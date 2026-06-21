@@ -353,6 +353,14 @@ export async function importCarPolicy(file: File): Promise<ImportReport> {
       chargeTime2080Dc: String(get("chargeTime2080Dc") ?? "").trim() || undefined,
     };
 
+    // Km/an et durée du contrat, par véhicule, si les colonnes existent — pour
+    // que le Mode Flotte affiche les valeurs réelles de l'Excel (pas une valeur
+    // unique pour toute la flotte). Attachés en extra (hors type Vehicle).
+    const kmImp = parseFrNumber(get("kmPerYear"));
+    const durImp = parseFrNumber(get("durationMonths"));
+    if (kmImp > 0) (vehicle as Vehicle & { kmPerYear?: number }).kmPerYear = kmImp;
+    if (durImp > 0) (vehicle as Vehicle & { durationMonths?: number }).durationMonths = durImp;
+
     vehicles.push(vehicle);
   }
 

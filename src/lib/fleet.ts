@@ -105,21 +105,54 @@ export function groupFleet(
   return [...map.values()];
 }
 
+const norm = (s?: string) => (s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+
+/** Si le véhicule importé correspond à un modèle du catalogue (marque + modèle,
+ *  + version si renseignée des deux côtés), on reprend les caractéristiques du
+ *  catalogue (specs, image…) MAIS on conserve le loyer de l'Excel (et l'id
+ *  importé + le flag flotte actuelle). Sinon on garde l'import tel quel. */
+export function enrichFromCatalogue<T extends Vehicle & { kmPerYear?: number; durationMonths?: number }>(v: T, catalogue: Vehicle[]): T {
+  const match = catalogue.find((c) =>
+    norm(c.brand) === norm(v.brand) && norm(c.model) === norm(v.model) &&
+    (!v.version || !c.version || norm(c.version) === norm(v.version)),
+  );
+  if (!match) return v;
+  return {
+    ...match,
+    id: v.id,
+    isCurrentFleet: true,
+    custom: true,
+    monthlyLld: v.monthlyLld > 0 ? v.monthlyLld : match.monthlyLld, // loyer de l'Excel prioritaire
+    kmPerYear: v.kmPerYear,
+    durationMonths: v.durationMonths,
+  } as T;
+}
+
 /** Construit les lignes du constructeur de flotte : pour chaque modèle regroupé,
- *  la quantité et les EV recommandés (top du mois) de son segment. */
+ *  la quantité, les km/durée extraits de l'Excel (si présents), et les EV
+ *  recommandés de son segment. Le véhicule actuel est enrichi depuis le
+ *  catalogue quand il y correspond. */
 export type FleetLine = {
   current: Vehicle;
   quantity: number;
   recommendations: Vehicle[];
+  kmPerYear?: number;
+  durationMonths?: number;
 };
 export function buildFleetLines(
-  imported: Array<Vehicle & { quantity?: number }>,
+  imported: Array<Vehicle & { quantity?: number; kmPerYear?: number; durationMonths?: number }>,
   catalogue: Vehicle[],
   recoCount = 3,
 ): FleetLine[] {
-  return groupFleet(imported).map(({ vehicle, quantity }) => ({
-    current: vehicle,
-    quantity,
-    recommendations: recommendEvs(vehicle, catalogue, recoCount),
-  }));
+  return groupFleet(imported).map(({ vehicle, quantity }) => {
+    const imp = vehicle as Vehicle & { kmPerYear?: number; durationMonths?: number };
+    const current = enrichFromCatalogue(imp, catalogue);
+    return {
+      current,
+      quantity,
+      recommendations: recommendEvs(current, catalogue, recoCount),
+      kmPerYear: imp.kmPerYear,
+      durationMonths: imp.durationMonths,
+    };
+  });
 }

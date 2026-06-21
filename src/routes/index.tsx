@@ -27,7 +27,7 @@ import { PdfTextEditor, usePdfTextOverrides } from "@/components/pdf-text-editor
 import { BpuB2B2EEditor } from "@/components/bpu-b2b2e-editor";
 import { AuditConseilEditor } from "@/components/audit-conseil-editor";
 import { CarPolicyImporter } from "@/components/car-policy-importer";
-import { FleetBuilder, type FleetSelection, type FleetContract } from "@/components/fleet-builder";
+import { FleetBuilder, type FleetSelection } from "@/components/fleet-builder";
 import { LiveIndicator } from "@/components/live-indicator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MarginReviewDialog } from "@/components/margin-review-dialog";
@@ -583,12 +583,12 @@ function App() {
   // Ajout en masse depuis le Constructeur de flotte : pour chaque ligne, on crée
   // le véhicule actuel (flotte à remplacer) + les EV retenus, avec la quantité,
   // regroupés par modèle actuel (comparisonGroup) pour le comparateur avant/après.
-  const addFleetToDevis = (selection: FleetSelection[], contract: FleetContract) => {
-    const km = contract.kmPerYear || energy.kmPerYear;
-    const duration = contract.durationMonths || 48;
+  const addFleetToDevis = (selection: FleetSelection[]) => {
     setSelectedV((s) => {
       const next = { ...s };
       for (const line of selection) {
+        const km = line.kmPerYear || energy.kmPerYear;
+        const duration = line.durationMonths || 48;
         const group = `${line.current.brand} ${line.current.model}`.trim();
         const mk = (v: Vehicle, isCurrent: boolean) => {
           // Loyer EV : meilleure offre loueur pour ce couple durée/km, sinon
