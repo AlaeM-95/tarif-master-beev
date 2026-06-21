@@ -2773,6 +2773,7 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
               <NumField label="Prix batterie HT" value={vehicle.prixBatterie ?? 0} onChange={(n) => onUpdate({ prixBatterie: n })} />
               <NumField label="Poids vide (kg)" value={vehicle.poidsVide ?? 0} onChange={(n) => onUpdate({ poidsVide: n })} />
               <NumField label="Remise %" value={vehicle.remise ?? 0} onChange={(n) => onUpdate({ remise: n })} step={0.5} />
+              <NumField label="Top du mois (rang)" value={vehicle.topRank ?? 0} onChange={(n) => onUpdate({ topRank: n })} />
               <div className="space-y-1">
                 <Label className="text-[10px] text-muted-foreground uppercase">Éco-score (AEN -70%)</Label>
                 <select

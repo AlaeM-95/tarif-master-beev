@@ -36,6 +36,7 @@ function dbToVehicle(row: VehicleRow): Vehicle {
     consoMinElec: (row as any).conso_min_elec ?? 0,
     consoMaxElec: (row as any).conso_max_elec ?? 0,
     shortlist: (row as any).shortlist ?? false,
+    topRank: (row as any).top_rank ?? undefined,
     pcomPct: (row as any).pcom_pct ?? 0,
     commissionBeev: (row as any).commission_beev ?? 0,
     distributeurNord: (row as any).distributeur_nord ?? undefined,
@@ -92,6 +93,7 @@ function vehicleToDb(v: Vehicle): VehicleInsert {
   if (v.consoMaxElec !== undefined) (row as any).conso_max_elec = v.consoMaxElec;
   // Champs commerciaux (migration 018)
   if (v.shortlist !== undefined) (row as any).shortlist = v.shortlist;
+  if (v.topRank !== undefined && v.topRank !== null) (row as any).top_rank = v.topRank;
   if (v.pcomPct !== undefined) (row as any).pcom_pct = v.pcomPct;
   if (v.commissionBeev !== undefined) (row as any).commission_beev = v.commissionBeev;
   if (v.distributeurNord !== undefined) (row as any).distributeur_nord = v.distributeurNord;
@@ -220,7 +222,15 @@ export function useVehiclesData() {
     const current = vehicles.find((v) => v.id === id);
     if (!current) return;
     const merged = { ...current, ...patch };
-    const { error } = await supabase.from("vehicles").update(vehicleToDb(merged)).eq("id", id);
+    const fullRow = vehicleToDb(merged) as any;
+    let { error } = await supabase.from("vehicles").update(fullRow).eq("id", id);
+    // Si la colonne top_rank (migration 046) n'existe pas encore, on retente
+    // sans, pour ne pas bloquer l'édition des autres champs.
+    if (error && /top_rank/i.test(error.message ?? "")) {
+      const { top_rank: _drop, ...rest } = fullRow;
+      ({ error } = await supabase.from("vehicles").update(rest).eq("id", id));
+      if (!error) console.warn("Migration 046 (vehicles.top_rank) non appliquée — champ ignoré");
+    }
     if (error) {
       console.error("Erreur update vehicle:", error);
       // Throw : les callers admin (v2) attendent un toast d'erreur visible.

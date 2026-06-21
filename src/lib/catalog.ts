@@ -170,6 +170,10 @@ export type Vehicle = {
   consoMaxElec?: number;
   // Champs commerciaux (migration 018 — pricing loueur S1 2026)
   shortlist?: boolean; // top du catalogue
+  /** Rang « top du mois » dans sa catégorie (1 = n°1 recommandé, 2, 3…). Pilote
+   *  l'auto-association du Mode Flotte : on propose les EV les mieux classés du
+   *  segment du véhicule actuel. 0 / absent = non classé. (Migration 046) */
+  topRank?: number;
   pcomPct?: number; // pourcentage de commission distributeur
   commissionBeev?: number; // commission Beev en €
   distributeurNord?: string;
