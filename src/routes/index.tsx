@@ -27,7 +27,7 @@ import { PdfTextEditor, usePdfTextOverrides } from "@/components/pdf-text-editor
 import { BpuB2B2EEditor } from "@/components/bpu-b2b2e-editor";
 import { AuditConseilEditor } from "@/components/audit-conseil-editor";
 import { CarPolicyImporter } from "@/components/car-policy-importer";
-import { FleetBuilder, type FleetSelection } from "@/components/fleet-builder";
+import { FleetBuilder, type FleetSelection, type FleetContract } from "@/components/fleet-builder";
 import { LiveIndicator } from "@/components/live-indicator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MarginReviewDialog } from "@/components/margin-review-dialog";
@@ -583,16 +583,17 @@ function App() {
   // Ajout en masse depuis le Constructeur de flotte : pour chaque ligne, on crée
   // le véhicule actuel (flotte à remplacer) + les EV retenus, avec la quantité,
   // regroupés par modèle actuel (comparisonGroup) pour le comparateur avant/après.
-  const addFleetToDevis = (selection: FleetSelection[]) => {
+  const addFleetToDevis = (selection: FleetSelection[], contract: FleetContract) => {
+    const km = contract.kmPerYear || energy.kmPerYear;
+    const duration = contract.durationMonths || 48;
     setSelectedV((s) => {
       const next = { ...s };
-      const totalKm = energy.kmPerYear * (energy.durationYears || 4);
       for (const line of selection) {
         const group = `${line.current.brand} ${line.current.model}`.trim();
         const mk = (v: Vehicle, isCurrent: boolean) => {
-          const matching = isCurrent ? null : findBestOffer(leaserOffers, v.id, 48, energy.kmPerYear);
-          const duration = matching ? matching.durationMonths : 48;
-          const kmPerYear = duration > 0 ? totalKm / (duration / 12) : energy.kmPerYear;
+          // Loyer EV : meilleure offre loueur pour ce couple durée/km, sinon
+          // tarif catalogue. Le thermique actuel garde son loyer (souvent 0).
+          const matching = isCurrent ? null : findBestOffer(leaserOffers, v.id, duration, km);
           const instanceId = newInstanceId();
           next[instanceId] = {
             instanceId,
@@ -601,7 +602,7 @@ function App() {
             discountPct: v.remise ?? 0,
             negotiatedMonthly: matching ? matching.monthlyPriceTtc : v.monthlyLld,
             durationMonths: duration,
-            kmPerYear,
+            kmPerYear: km,
             includeTco: true,
             services: [],
             options: [],
@@ -1258,7 +1259,11 @@ function App() {
             </div>
           )}
           {!tcoView && projectType === "vehicles" && fleetMode && (
-            <FleetBuilder catalogueVehicles={vehicles} onBulkAdd={addFleetToDevis} />
+            <FleetBuilder
+              catalogueVehicles={vehicles}
+              energy={{ fuelPriceL: energy.fuelPriceL, kWhHome: energy.kWhHome, kWhPublic: energy.kWhPublic, kmPerYear: energy.kmPerYear, durationYears: energy.durationYears }}
+              onBulkAdd={addFleetToDevis}
+            />
           )}
 
           {/* Top 5 véhicules du mois : section dédiée si l'ops a marqué des shortlist */}

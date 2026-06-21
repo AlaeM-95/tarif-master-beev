@@ -17,13 +17,39 @@ export function normCategory(c?: string): string {
     .replace(/\s+/g, " ")
     .trim();
   if (!base) return "";
-  if (/(suv|crossover|4x4|tout terrain)/.test(base)) return "suv";
-  if (/(citadine|compacte|polyvalente|mini|urbaine)/.test(base)) return "citadine";
-  if (/(berline|sedan|tricorps)/.test(base)) return "berline";
+  if (/(suv|crossover|4x4|tout terrain|baroudeur|familiale haute)/.test(base)) return "suv";
+  if (/(citadine|compacte|polyvalente|mini|urbaine|segment a|segment b|petite)/.test(base)) return "citadine";
+  if (/(berline|sedan|tricorps|routiere|routière|segment d|familiale)/.test(base)) return "berline";
   if (/(break|sw|shooting|estate|touring|tourer)/.test(base)) return "break";
-  if (/(utilitaire|fourgon|vul|van|kangoo|cargo)/.test(base)) return "utilitaire";
-  if (/(monospace|ludospace|mpv)/.test(base)) return "monospace";
+  if (/(utilitaire|fourgon|fourgonnette|vul|van|kangoo|cargo|pick ?up|benne)/.test(base)) return "utilitaire";
+  if (/(monospace|ludospace|mpv|combispace)/.test(base)) return "monospace";
   return base;
+}
+
+/** Recommande des EV pour un véhicule actuel, avec une chaîne de repli robuste
+ *  (les libellés de catégorie des car policies clients sont hétérogènes) :
+ *  1) même segment (catégorie normalisée), du moins cher au plus cher ;
+ *  2) sinon, même tranche de prix (loyer proche du véhicule actuel, ±40 %) ;
+ *  3) sinon, les EV les moins chers du catalogue.
+ *  Les modèles épinglés (top_rank) restent prioritaires dans chaque cas. */
+export function recommendEvs(current: Vehicle, catalogue: Vehicle[], n = 3): Vehicle[] {
+  const fromCat = topEvsForCategory(current.category, catalogue, n);
+  // Si la catégorie a matché un vrai segment (pas le repli "tous EV"), on garde.
+  const cat = normCategory(current.category);
+  const catHasMatch = cat && catalogue.some((v) => v.energy === "Électrique" && v.monthlyLld > 0 && normCategory(v.category) === cat);
+  if (catHasMatch) return fromCat;
+
+  // Repli tranche de prix : on se cale sur le loyer (ou, à défaut, une estimation
+  // depuis le prix catalogue ~ 2 % du prix TTC / mois) du véhicule actuel.
+  const ref = current.monthlyLld > 0 ? current.monthlyLld : (current.priceTtc > 0 ? current.priceTtc * 0.02 : 0);
+  if (ref > 0) {
+    const rank = (v: Vehicle) => (v.topRank && v.topRank > 0 ? v.topRank : Infinity);
+    const inBand = catalogue
+      .filter((v) => v.energy === "Électrique" && v.monthlyLld > 0 && Math.abs(v.monthlyLld - ref) <= ref * 0.4)
+      .sort((a, b) => rank(a) - rank(b) || Math.abs(a.monthlyLld - ref) - Math.abs(b.monthlyLld - ref));
+    if (inBand.length > 0) return inBand.slice(0, n);
+  }
+  return fromCat; // repli ultime : tous EV les moins chers
 }
 
 /** EV du catalogue recommandés pour une catégorie donnée. Tri : d'abord les
@@ -79,6 +105,6 @@ export function buildFleetLines(
   return groupFleet(imported).map(({ vehicle, quantity }) => ({
     current: vehicle,
     quantity,
-    recommendations: topEvsForCategory(vehicle.category, catalogue, recoCount),
+    recommendations: recommendEvs(vehicle, catalogue, recoCount),
   }));
 }

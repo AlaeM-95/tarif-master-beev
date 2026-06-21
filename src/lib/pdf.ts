@@ -3463,14 +3463,14 @@ function vehicleLabel(v: { brand: string; model: string; version?: string }, max
 // (flotte à remplacer) + son EV de remplacement principal.
 function drawFleetSynthesis(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams) {
   const PINK: [number, number, number] = [244, 184, 170];
-  const tcoAn = (sv: SelectedVehicle): number => {
+  const tcoAn = (sv: SelectedVehicle, loyerOverride?: number): number => {
     const duree = sv.durationMonths / 12;
     const opt = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
     const r = calculateTcoFull(sv.vehicle, {
       dureeAnnees: duree, kmContrat: sv.kmPerYear * duree,
       prixEssenceLitre: e.fuelPriceL, prixKwhDomicile: e.kWhHome, prixKwhPublic: e.kWhPublic,
       optionsTotalTtc: opt, remisePctOverride: sv.discountPct,
-    }, sv.negotiatedMonthly);
+    }, loyerOverride !== undefined && loyerOverride > 0 ? loyerOverride : sv.negotiatedMonthly);
     return r.tcoAnnuel;
   };
 
@@ -3488,7 +3488,11 @@ function drawFleetSynthesis(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPa
     const ev = b.props[0];
     const qty = Math.max(1, ev?.quantity ?? b.current?.quantity ?? 1);
     totalVeh += qty;
-    const ecoVeh = (b.current && ev) ? Math.max(0, tcoAn(b.current) - tcoAn(ev)) : 0;
+    // Économie à loyer comparable : si le thermique actuel n'a pas de loyer
+    // (car policy sans tarif), on aligne sur celui de l'EV → l'économie reflète
+    // l'énergie + la fiscalité évitées.
+    const curLoyer = (b.current && b.current.negotiatedMonthly > 0) ? b.current.negotiatedMonthly : (ev?.negotiatedMonthly ?? 0);
+    const ecoVeh = (b.current && ev) ? Math.max(0, tcoAn(b.current, curLoyer) - tcoAn(ev)) : 0;
     totalEcoAn += ecoVeh * qty;
     body.push([
       { content: b.current ? vehicleLabel(b.current.vehicle, 32) : "—", styles: { halign: "left" } },
