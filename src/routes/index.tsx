@@ -871,6 +871,23 @@ function App() {
     }
   };
 
+  // Nouveau devis : vide la sélection, les bornes ET les infos client, purge le
+  // localStorage de session et retire le paramètre ?proposal= de l'URL — sinon
+  // au rechargement, le dernier devis (localStorage ou proposition liée) revient.
+  const newSession = () => {
+    if (!window.confirm("Démarrer un nouveau devis ? La sélection en cours et les informations client seront vidées.")) return;
+    setSelectedV({});
+    setSelectedC({});
+    setClient({ company: "", contact: "", email: "", salesRep: "", salesRepEmail: "", salesRepPhone: "", date: "", notes: "" });
+    try {
+      localStorage.removeItem(SK_V);
+      localStorage.removeItem(SK_C);
+      localStorage.removeItem(SK_CLIENT);
+    } catch { /* ignore */ }
+    if (loadedProposalId) navigate({ to: "/", search: {} });
+    toast.success("Nouveau devis — session vidée");
+  };
+
   const exportPdf = async (preview = false) => {
     if (!client.company) { alert("Renseignez au moins le nom de la société client."); return; }
     // Validation : chaque véhicule du devis doit avoir une énergie ET une
@@ -1207,6 +1224,15 @@ function App() {
             </DropdownMenu>
 
             {/* Actions principales — toujours visibles */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={newSession}
+              className="gap-1.5"
+              title="Vider la sélection et les infos client, démarrer un devis vierge"
+            >
+              <RotateCcw className="w-3.5 h-3.5" /> Nouveau devis
+            </Button>
             <Button
               variant="outline"
               size="sm"

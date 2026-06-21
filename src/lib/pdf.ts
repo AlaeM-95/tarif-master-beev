@@ -3551,7 +3551,12 @@ function drawFleetSynthesis(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPa
 // empilées par véhicule (loyer + énergie + TVS + malus) en bas. Permet au
 // décideur de visualiser instantanément la structure du coût total et de
 // repérer où sont les écarts entre véhicules.
-async function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams, client?: ClientInfo, type?: ProjectType) {
+async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: EnergyParams, client?: ClientInfo, type?: ProjectType) {
+  // Option commerciale : inclure ou non la flotte actuelle (thermiques) dans le
+  // classement TCO. Décoché → on ne compare que les électriques proposés.
+  const vehicles = PDF_CFG.includeCurrentFleetInTco === false
+    ? vehiclesIn.filter((sv) => !sv.vehicle.isCurrentFleet)
+    : vehiclesIn;
   // Couleurs cohérentes avec les graphiques recharts dans l'app
   const COLOR_LOYER: [number, number, number] = [56, 9, 234]; // #3809EA LAVENDER
   const COLOR_ENERGIE: [number, number, number] = [53, 218, 118]; // #35DA76 ACCENT
@@ -3859,7 +3864,10 @@ async function drawTcoDashboard(doc: jsPDF, vehicles: SelectedVehicle[], e: Ener
 // Malus poids / AND (×durée) / AEN employeur (×durée) / TCO total /
 // TCO employeur complet. Permet au commercial et au client de vérifier
 // chaque ligne du calcul.
-async function drawTcoDetailedTable(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams, client?: ClientInfo) {
+async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: EnergyParams, client?: ClientInfo) {
+  const vehicles = PDF_CFG.includeCurrentFleetInTco === false
+    ? vehiclesIn.filter((sv) => !sv.vehicle.isCurrentFleet)
+    : vehiclesIn;
   let y = 116;
   const PINK: [number, number, number] = [244, 184, 170];
   doc.setFillColor(...PINK);

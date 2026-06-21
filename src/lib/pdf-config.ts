@@ -8,6 +8,7 @@ export type PdfDisplayConfig = {
   // ===== Sections du PDF =====
   showWhyBeev: boolean;
   showSocialProof: boolean; // chiffres clés + témoignage sur Pourquoi Beev
+  includeCurrentFleetInTco: boolean; // inclure les véhicules « flotte actuelle » dans l'analyse TCO (tableau de bord + détail)
   showFleetSynthesis: boolean; // page « Synthèse flotte » (grosses flottes : tableau par segment + TCO agrégé)
   showTcoComparison: boolean; // page « Analyse TCO · tableau de bord »
   showTcoDetailedTable: boolean; // page « Analyse TCO · détail des composantes »
@@ -78,6 +79,7 @@ export type PdfDisplayConfig = {
 export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
   showWhyBeev: true,
   showSocialProof: true,
+  includeCurrentFleetInTco: true, // par défaut, la flotte actuelle est incluse dans l'analyse TCO
   showFleetSynthesis: true, // synthèse flotte : auto si ≥ 10 véhicules dans le devis
   showTcoComparison: true,
   showTcoDetailedTable: true, // page détail des composantes TCO affichée par défaut
@@ -181,6 +183,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
     items: [
       { key: "showWhyBeev", label: "Page Pourquoi Beev", description: "Intro, proposition de valeur" },
       { key: "showSocialProof", label: "Chiffres clés + témoignage", description: "Encart noir + citation client" },
+      { key: "includeCurrentFleetInTco", label: "Flotte actuelle dans le TCO", description: "Inclure les véhicules « flotte actuelle » (thermiques à remplacer) dans le classement TCO (tableau de bord + détail). Décoché : le TCO ne compare que les électriques proposés.", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showFleetSynthesis", label: "Synthèse flotte", description: "Tableau par segment (modèle actuel → EV proposé, quantités, économie) + total flotte. S'affiche automatiquement dès ~10 véhicules au devis.", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showTcoComparison", label: "Analyse TCO · tableau de bord", description: "Page synthèse visuelle (KPI + barres empilées). Nécessite 2+ véhicules.", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showTcoDetailedTable", label: "Analyse TCO · détail des composantes", description: "Page tableau : 1 ligne par véhicule avec toutes les composantes (loyer, énergie, TVS, malus, AND, AEN, TCO total). Nécessite 2+ véhicules.", appliesTo: ["vehicles"] as unknown as string[] } as any,
