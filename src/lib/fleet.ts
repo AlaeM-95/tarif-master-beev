@@ -44,9 +44,9 @@ export function recommendEvs(current: Vehicle, catalogue: Vehicle[], n = 3): Veh
   const ref = current.monthlyLld > 0 ? current.monthlyLld : (current.priceTtc > 0 ? current.priceTtc * 0.02 : 0);
   if (ref > 0) {
     const rank = (v: Vehicle) => (v.topRank && v.topRank > 0 ? v.topRank : Infinity);
-    const inBand = catalogue
+    const inBand = dedupeByModel(catalogue
       .filter((v) => v.energy === "Électrique" && v.monthlyLld > 0 && Math.abs(v.monthlyLld - ref) <= ref * 0.4)
-      .sort((a, b) => rank(a) - rank(b) || Math.abs(a.monthlyLld - ref) - Math.abs(b.monthlyLld - ref));
+      .sort((a, b) => rank(a) - rank(b) || Math.abs(a.monthlyLld - ref) - Math.abs(b.monthlyLld - ref)));
     if (inBand.length > 0) return inBand.slice(0, n);
   }
   return fromCat; // repli ultime : tous EV les moins chers
@@ -69,7 +69,22 @@ export function topEvsForCategory(category: string, catalogue: Vehicle[], n = 3)
   };
   const inCat = catalogue.filter((v) => isEv(v) && normCategory(v.category) === cat);
   const pool = inCat.length > 0 ? inCat : catalogue.filter(isEv);
-  return [...pool].sort(cheapestFirst).slice(0, Math.max(1, n));
+  return dedupeByModel([...pool].sort(cheapestFirst)).slice(0, Math.max(1, n));
+}
+
+/** Ne garde que la variante la moins chère de chaque modèle distinct
+ *  (marque + modèle) : évite de proposer 3 finitions du même véhicule. La
+ *  liste doit déjà être triée du moins cher au plus cher. */
+function dedupeByModel(sorted: Vehicle[]): Vehicle[] {
+  const seen = new Set<string>();
+  const out: Vehicle[] = [];
+  for (const v of sorted) {
+    const k = `${v.brand}|${v.model}`.toLowerCase().trim();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(v);
+  }
+  return out;
 }
 
 /** Regroupe une liste de véhicules (1 entrée = 1 véhicule) par modèle identique

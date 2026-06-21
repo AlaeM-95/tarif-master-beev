@@ -13,6 +13,61 @@ type Props = {
   projectType: ProjectType;
 };
 
+// Type de page par section → mini-maquette, pour savoir à quoi ressemble chaque
+// section sans générer l'aperçu.
+type SectionKind = "texte" | "tableau" | "graphique" | "cartes" | "fiche";
+const KIND_BY_KEY: Record<string, SectionKind> = {
+  showWhyBeev: "texte", showSocialProof: "cartes",
+  showFleetSynthesis: "tableau", showTcoComparison: "graphique",
+  showTcoDetailedTable: "tableau", showTcoFiscalDetail: "tableau",
+  showVehicleComparator: "tableau", showCurrentFleetVehicle: "fiche",
+  showProposalVehicle: "fiche", showCompetitorComparison: "cartes",
+  showCarbonImpact: "graphique", showFinancialSummary: "tableau",
+  showFinancialSynthesis: "cartes", showFiscalAdvantages: "texte",
+  showLegend: "texte", showGuarantees: "cartes", showJourney: "cartes",
+  showExecutiveSummary: "texte", showB2B2ETco: "graphique",
+  showSupervisionHome: "cartes", showSupervisionConnect: "cartes",
+  showSiteOverview: "texte", showSiteGuarantees: "cartes", showSiteProjectSynthesis: "texte",
+  showSiteInfrastructure: "texte", showSiteEquipments: "tableau", showSiteProductSheet: "fiche",
+  showSiteSupervision: "cartes", showSiteCompliance: "texte", showSiteFinancialRecap: "tableau",
+  showSitePaymentOptions: "cartes", showValidation: "texte",
+};
+const KIND_LABEL: Record<SectionKind, string> = {
+  texte: "Texte", tableau: "Tableau", graphique: "Graphique", cartes: "Cartes", fiche: "Fiche",
+};
+function KindThumb({ kind }: { kind: SectionKind }) {
+  return (
+    <svg width="28" height="34" viewBox="0 0 28 34" className="flex-shrink-0 mt-0.5" aria-hidden>
+      <rect x="0.5" y="0.5" width="27" height="33" rx="3.5" fill="#fff" stroke="#E4E2DC" />
+      {kind === "texte" && [7, 12, 17, 22].map((y, i) => (
+        <rect key={i} x="5" y={y} width={i === 3 ? 11 : 18} height="2" rx="1" fill="#C9C6BF" />
+      ))}
+      {kind === "tableau" && (
+        <g>
+          {[8, 14, 20, 26].map((y, i) => <rect key={i} x="5" y={y} width="18" height="1.6" rx="0.8" fill="#C9C6BF" />)}
+          <rect x="13.5" y="6" width="1" height="24" fill="#E4E2DC" />
+        </g>
+      )}
+      {kind === "graphique" && (
+        <g fill="#F4B8AA">
+          {[[6, 16], [11, 11], [16, 19], [21, 8]].map(([x, h], i) => <rect key={i} x={x} y={28 - h} width="3" height={h} rx="0.5" />)}
+        </g>
+      )}
+      {kind === "cartes" && (
+        <g fill="#EDF6FF" stroke="#A5D2FF">
+          {[[5, 6], [15, 6], [5, 19], [15, 19]].map(([x, y], i) => <rect key={i} x={x} y={y} width="8" height="9" rx="1.5" />)}
+        </g>
+      )}
+      {kind === "fiche" && (
+        <g>
+          <rect x="5" y="6" width="18" height="11" rx="1.5" fill="#F6F5F7" stroke="#D3CCD8" />
+          {[21, 25, 29].map((y, i) => <rect key={i} x="5" y={y} width={i === 2 ? 10 : 16} height="1.6" rx="0.8" fill="#C9C6BF" />)}
+        </g>
+      )}
+    </svg>
+  );
+}
+
 export function PdfConfigPanel({ config, update, reset, projectType }: Props) {
   const [open, setOpen] = useState(false);
 
@@ -59,6 +114,7 @@ export function PdfConfigPanel({ config, update, reset, projectType }: Props) {
                     const itemAppliesTo = (item as any).appliesTo as ProjectType[] | undefined;
                     if (itemAppliesTo && !itemAppliesTo.includes(projectType)) return null;
                     const on = !!config[item.key];
+                    const kind = KIND_BY_KEY[item.key as string];
                     return (
                       <label
                         key={item.key}
@@ -71,9 +127,13 @@ export function PdfConfigPanel({ config, update, reset, projectType }: Props) {
                           onCheckedChange={(v) => update({ [item.key]: !!v })}
                           className="mt-0.5"
                         />
+                        {kind && <KindThumb kind={kind} />}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
-                            <Label className="text-xs cursor-pointer leading-tight font-medium">{item.label}</Label>
+                            <Label className="text-xs cursor-pointer leading-tight font-medium">
+                              {item.label}
+                              {kind && <span className="ml-1.5 text-[9px] font-normal text-muted-foreground">· {KIND_LABEL[kind]}</span>}
+                            </Label>
                             <span className={`flex items-center gap-1 text-[9px] font-semibold uppercase rounded-full px-1.5 py-0.5 flex-shrink-0 ${
                               on ? "bg-beev-rose text-beev-black" : "bg-muted text-muted-foreground"
                             }`}>
