@@ -3976,6 +3976,10 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
     bodyStyles: { fontSize: 8, cellPadding: 4, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
     alternateRowStyles: { fillColor: BG },
     columnStyles: { 0: { cellWidth: 150, cellPadding: { left: 56, right: 4, top: 6, bottom: 6 }, minCellHeight: 48, valign: "middle" as any } },
+    // Empêche la coupure d'une ligne véhicule entre 2 pages (sinon la version
+    // arrive seule en haut de la page suivante, avec des cellules chiffres vides
+    // et la vignette désalignée).
+    rowPageBreak: "avoid",
     margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
     didDrawCell: (data: any) => {
       if (data.section !== "body" || data.column.index !== 0) return;
@@ -4208,6 +4212,10 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
       7: { cellWidth: 46 },
       8: { cellWidth: "auto" },
     },
+    // Une ligne véhicule (label multi-ligne + vignette) ne doit jamais être
+    // coupée entre 2 pages : sinon la version se retrouve seule en haut de page
+    // avec des cellules chiffres vides et la vignette décalée.
+    rowPageBreak: "avoid",
     margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
     didDrawCell: (data: any) => {
       if (data.section !== "body" || data.column.index !== 0) return;
