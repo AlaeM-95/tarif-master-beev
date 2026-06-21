@@ -27,6 +27,7 @@ import { PdfTextEditor, usePdfTextOverrides } from "@/components/pdf-text-editor
 import { BpuB2B2EEditor } from "@/components/bpu-b2b2e-editor";
 import { AuditConseilEditor } from "@/components/audit-conseil-editor";
 import { CarPolicyImporter } from "@/components/car-policy-importer";
+import { FleetBuilder, type FleetSelection } from "@/components/fleet-builder";
 import { LiveIndicator } from "@/components/live-indicator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MarginReviewDialog } from "@/components/margin-review-dialog";
@@ -120,6 +121,10 @@ function App() {
   // Mode TCO : 4e onglet du sélecteur. UI uniquement, projectType en DB
   // reste 'vehicles' (la 4e valeur 'tco' n'est jamais persistée côté Supabase).
   const [tcoView, setTcoView] = useState(false);
+  // Mode de travail du catalogue véhicules : "select" (sélection unitaire,
+  // petites flottes) ou "fleet" (Constructeur de flotte à partir d'une car
+  // policy, 50/80/100+ véhicules). Réversible, mémorisé par session.
+  const [fleetMode, setFleetMode] = useState(false);
   const activeTab: "vehicles" | "home" | "site" | "tco" = tcoView ? "tco" : projectType;
 
   // Auto-save : restaure les sélections depuis localStorage au montage.
@@ -573,6 +578,44 @@ function App() {
         },
       };
     });
+  };
+
+  // Ajout en masse depuis le Constructeur de flotte : pour chaque ligne, on crée
+  // le véhicule actuel (flotte à remplacer) + les EV retenus, avec la quantité,
+  // regroupés par modèle actuel (comparisonGroup) pour le comparateur avant/après.
+  const addFleetToDevis = (selection: FleetSelection[]) => {
+    setSelectedV((s) => {
+      const next = { ...s };
+      const totalKm = energy.kmPerYear * (energy.durationYears || 4);
+      for (const line of selection) {
+        const group = `${line.current.brand} ${line.current.model}`.trim();
+        const mk = (v: Vehicle, isCurrent: boolean) => {
+          const matching = isCurrent ? null : findBestOffer(leaserOffers, v.id, 48, energy.kmPerYear);
+          const duration = matching ? matching.durationMonths : 48;
+          const kmPerYear = duration > 0 ? totalKm / (duration / 12) : energy.kmPerYear;
+          const instanceId = newInstanceId();
+          next[instanceId] = {
+            instanceId,
+            vehicle: isCurrent ? { ...v, isCurrentFleet: true } : v,
+            quantity: Math.max(1, line.quantity),
+            discountPct: v.remise ?? 0,
+            negotiatedMonthly: matching ? matching.monthlyPriceTtc : v.monthlyLld,
+            durationMonths: duration,
+            kmPerYear,
+            includeTco: true,
+            services: [],
+            options: [],
+            comparisonGroup: group,
+          };
+        };
+        mk(line.current, true);
+        for (const ev of line.evs) mk(ev, false);
+      }
+      return next;
+    });
+    const totalLines = selection.reduce((s, l) => s + 1 + l.evs.length, 0);
+    toast.success(`Flotte ajoutée au devis (${totalLines} lignes)`);
+    setFleetMode(false); // on bascule vers la sélection pour ajuster/visualiser
   };
 
   const toggleC = (c: Charger) => {
@@ -1199,8 +1242,27 @@ function App() {
             />
           )}
 
-          {/* Top 5 véhicules du mois : section dédiée si l'ops a marqué des shortlist */}
+          {/* Bascule Sélection / Mode Flotte (catalogue véhicules). */}
           {!tcoView && projectType === "vehicles" && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2">
+              <span className="text-xs font-semibold text-muted-foreground px-1">Mode :</span>
+              <Button variant={!fleetMode ? "default" : "outline"} size="sm" className="h-8 text-xs" onClick={() => setFleetMode(false)}>
+                Sélection
+              </Button>
+              <Button variant={fleetMode ? "default" : "outline"} size="sm" className="h-8 text-xs" onClick={() => setFleetMode(true)}>
+                Mode Flotte (car policy)
+              </Button>
+              <span className="ml-auto text-[11px] text-muted-foreground">
+                {fleetMode ? "Importez une car policy pour chiffrer 50/80/100+ véhicules" : `${Object.keys(selectedV).length} véhicule(s) au devis`}
+              </span>
+            </div>
+          )}
+          {!tcoView && projectType === "vehicles" && fleetMode && (
+            <FleetBuilder catalogueVehicles={vehicles} onBulkAdd={addFleetToDevis} />
+          )}
+
+          {/* Top 5 véhicules du mois : section dédiée si l'ops a marqué des shortlist */}
+          {!tcoView && projectType === "vehicles" && !fleetMode && (
             <TopShortlistSection
               vehicles={vehicles.filter((v) => v.shortlist).slice(0, 5)}
               selectedV={selectedV}
@@ -1209,7 +1271,7 @@ function App() {
             />
           )}
 
-          {!tcoView && projectType === "vehicles" && (
+          {!tcoView && projectType === "vehicles" && !fleetMode && (
             <VehicleSpotlight
               vehicles={vehicles}
               onCompare={() => {
@@ -1227,7 +1289,7 @@ function App() {
             />
           )}
 
-          {!tcoView && projectType === "vehicles" && (
+          {!tcoView && projectType === "vehicles" && !fleetMode && (
             <CatalogSection
               title={`Véhicules (${filteredVehicles.length}${filteredVehicles.length !== vehicles.length ? ` / ${vehicles.length}` : ""})`}
               subtitle={catalogSubtitleFor("vehicles")}
@@ -1395,7 +1457,7 @@ function App() {
               Permet d'importer la car policy actuelle du prospect (Excel/CSV)
               sans toucher au catalogue Beev officiel ni à Supabase. State
               éphémère uniquement (perdu au refresh). */}
-          {!tcoView && projectType === "vehicles" && (
+          {!tcoView && projectType === "vehicles" && !fleetMode && (
             <CarPolicyImporter
               catalogueVehicles={vehicles}
               importedVehicles={importedVehicles}
@@ -1438,7 +1500,7 @@ function App() {
           )}
 
           {/* Comparateur inline — visible quand >= 2 véhicules dans compareIds */}
-          {!tcoView && projectType === "vehicles" && compareIds.size >= 2 && (
+          {!tcoView && projectType === "vehicles" && !fleetMode && compareIds.size >= 2 && (
             <div id="vehicle-comparator">
               <VehicleComparator
                 vehicles={vehicles.filter((v) => compareIds.has(v.id))}
