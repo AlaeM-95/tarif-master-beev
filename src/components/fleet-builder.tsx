@@ -6,18 +6,19 @@
 // chers du segment → économie en direct → ajout en masse. Lignes
 // supprimables / duplicables.
 
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState, type ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Upload, FileSpreadsheet, Zap, RotateCcw, Check, Copy, Trash2 } from "lucide-react";
+import { Upload, FileSpreadsheet, Zap, RotateCcw, Check, Copy, Trash2, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
+import { ImageUpload } from "@/components/image-upload";
 import { importCarPolicy } from "@/lib/car-policy-importer";
-import { buildFleetLines, normCategory } from "@/lib/fleet";
+import { buildFleetLines, normCategory, recommendEvs } from "@/lib/fleet";
 import { calculateTcoFull } from "@/lib/tco-calculator";
-import type { Vehicle } from "@/lib/catalog";
+import type { Vehicle, Energy } from "@/lib/catalog";
 
 export type FleetSelection = { current: Vehicle; quantity: number; evs: Vehicle[]; kmPerYear: number; durationMonths: number };
 type Line = {
@@ -29,6 +30,16 @@ type Line = {
   durationMonths: number;
 };
 type FleetEnergy = { fuelPriceL: number; kWhHome: number; kWhPublic: number; kmPerYear: number; durationYears: number };
+
+/** Petit champ étiqueté pour l'éditeur de véhicule importé. */
+function Fld({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</Label>
+      {children}
+    </div>
+  );
+}
 
 const fmtEur = (n: number) =>
   new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n || 0);
@@ -45,6 +56,7 @@ export function FleetBuilder({
   const fileRef = useRef<HTMLInputElement>(null);
   const [lines, setLines] = useState<Line[]>([]);
   const [importing, setImporting] = useState(false);
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
   // Valeurs « appliquer à toute la flotte » (raccourci, pas une contrainte).
   const defKm = Math.round(energy.kmPerYear) || 20000;
   const defDur = Math.round((energy.durationYears || 4) * 12) || 48;
@@ -118,9 +130,20 @@ export function FleetBuilder({
       return { ...l, recommendations: recos, selectedIds: l.selectedIds.includes(ev.id) ? l.selectedIds : [...l.selectedIds, ev.id] };
     }));
   };
-  const deleteLine = (idx: number) => setLines((ls) => ls.filter((_, i) => i !== idx));
-  const duplicateLine = (idx: number) => setLines((ls) => [...ls.slice(0, idx + 1), { ...ls[idx], selectedIds: [...ls[idx].selectedIds] }, ...ls.slice(idx + 1)]);
+  const deleteLine = (idx: number) => { setEditingIdx(null); setLines((ls) => ls.filter((_, i) => i !== idx)); };
+  const duplicateLine = (idx: number) => { setEditingIdx(null); setLines((ls) => [...ls.slice(0, idx + 1), { ...ls[idx], current: { ...ls[idx].current, id: `fleet-${idx}-${ls.length}` }, selectedIds: [...ls[idx].selectedIds] }, ...ls.slice(idx + 1)]); };
   const applyToAll = () => setLines((ls) => ls.map((l) => ({ ...l, km: bulkKm, durationMonths: bulkDur })));
+
+  // Édition d'un véhicule importé : on patche le `current` de la ligne.
+  const patchCurrent = (idx: number, p: Partial<Vehicle>) =>
+    setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, current: { ...l.current, ...p } as Vehicle } : l)));
+  // Recalcule les EV proposés depuis le segment/loyer du véhicule actuel modifié.
+  const reSuggest = (idx: number) =>
+    setLines((ls) => ls.map((l, i) => {
+      if (i !== idx) return l;
+      const recos = recommendEvs(l.current, catalogueVehicles, 3);
+      return { ...l, recommendations: recos, selectedIds: recos[0] ? [recos[0].id] : [] };
+    }));
 
   const totalVeh = lines.reduce((s, l) => s + l.quantity, 0);
   const segments = new Set(lines.map((l) => normCategory(l.current.category) || "—")).size;
@@ -200,10 +223,17 @@ export function FleetBuilder({
                 <tbody>
                   {lines.map((l, i) => {
                     const eco = lineEcoPerVeh(l);
+                    const editing = editingIdx === i;
                     return (
-                      <tr key={i} className="border-t align-top">
+                    <Fragment key={i}>
+                      <tr className={`border-t align-top ${editing ? "bg-[#3809EA]/[0.04]" : ""}`}>
                         <td className="px-3 py-2.5">
-                          <div className="font-medium">{l.current.brand} {l.current.model}</div>
+                          <div className="font-medium flex items-center gap-1.5">
+                            {l.current.image ? (
+                              <img src={l.current.image} alt="" className="h-6 w-9 rounded object-cover border" />
+                            ) : null}
+                            {l.current.brand} {l.current.model}
+                          </div>
                           <div className="text-[10px] text-muted-foreground">{l.current.energy}{l.current.version ? ` · ${l.current.version}` : ""}{l.current.monthlyLld > 0 ? ` · ${fmtEur(l.current.monthlyLld)}/mois` : ""}</div>
                         </td>
                         <td className="px-2 py-2.5"><Input type="number" value={l.quantity} min={1} onChange={(e) => patchLine(i, { quantity: Math.max(1, Number(e.target.value) || 1) })} className="h-8 w-12 text-xs" /></td>
@@ -233,11 +263,50 @@ export function FleetBuilder({
                         <td className="px-2 py-2.5 text-right font-semibold text-[#3809EA] whitespace-nowrap">{eco > 0 ? `− ${fmtEur(eco)}` : "—"}</td>
                         <td className="px-2 py-2.5">
                           <div className="flex items-center gap-0.5">
+                            <button type="button" title="Modifier ce véhicule" onClick={() => setEditingIdx(editing ? null : i)} className={`h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-muted ${editing ? "bg-[#3809EA] text-white" : "text-foreground/70"}`}><Pencil className="w-3.5 h-3.5" /></button>
                             <button type="button" title="Dupliquer cette ligne" onClick={() => duplicateLine(i)} className="h-7 w-7 inline-flex items-center justify-center rounded-md text-[#3809EA] hover:bg-muted"><Copy className="w-3.5 h-3.5" /></button>
                             <button type="button" title="Supprimer cette ligne" onClick={() => deleteLine(i)} className="h-7 w-7 inline-flex items-center justify-center rounded-md text-destructive hover:bg-muted"><Trash2 className="w-3.5 h-3.5" /></button>
                           </div>
                         </td>
                       </tr>
+                      {editing && (
+                        <tr className="border-t bg-[#3809EA]/[0.04]">
+                          <td colSpan={7} className="px-3 py-3">
+                            <div className="rounded-lg border border-[#3809EA]/20 bg-white p-3 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-semibold text-[#3809EA] uppercase tracking-wide">Modifier le véhicule importé</span>
+                                <button type="button" onClick={() => setEditingIdx(null)} className="h-7 w-7 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted"><X className="w-4 h-4" /></button>
+                              </div>
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                                <Fld label="Marque"><Input value={l.current.brand} onChange={(e) => patchCurrent(i, { brand: e.target.value })} className="h-8 text-xs" /></Fld>
+                                <Fld label="Modèle"><Input value={l.current.model} onChange={(e) => patchCurrent(i, { model: e.target.value })} className="h-8 text-xs" /></Fld>
+                                <Fld label="Version"><Input value={l.current.version} onChange={(e) => patchCurrent(i, { version: e.target.value })} className="h-8 text-xs" /></Fld>
+                                <Fld label="Énergie">
+                                  <select value={l.current.energy} onChange={(e) => patchCurrent(i, { energy: e.target.value as Energy })} className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs">
+                                    {(["Essence","Diesel","Hybride","Mild Hybrid","Hybride Rechargeable","Électrique"] as Energy[]).map((en) => <option key={en} value={en}>{en}</option>)}
+                                  </select>
+                                </Fld>
+                                <Fld label="Segment"><Input value={l.current.category} onChange={(e) => patchCurrent(i, { category: e.target.value })} className="h-8 text-xs" placeholder="SUV, berline…" /></Fld>
+                                <Fld label="Loyer €/mois (Excel)"><Input type="number" value={l.current.monthlyLld || 0} onChange={(e) => patchCurrent(i, { monthlyLld: Math.max(0, Number(e.target.value) || 0) })} className="h-8 text-xs" /></Fld>
+                                <Fld label="Prix TTC €"><Input type="number" value={l.current.priceTtc || 0} onChange={(e) => patchCurrent(i, { priceTtc: Math.max(0, Number(e.target.value) || 0) })} className="h-8 text-xs" /></Fld>
+                                <Fld label="CO₂ g/km"><Input type="number" value={l.current.co2 || 0} onChange={(e) => patchCurrent(i, { co2: Math.max(0, Number(e.target.value) || 0) })} className="h-8 text-xs" /></Fld>
+                                <Fld label="Conso (L ou kWh /100)"><Input type="number" value={l.current.consumption || 0} onChange={(e) => patchCurrent(i, { consumption: Math.max(0, Number(e.target.value) || 0) })} className="h-8 text-xs" /></Fld>
+                                <Fld label="Puissance ch"><Input type="number" value={l.current.powerHp || 0} onChange={(e) => patchCurrent(i, { powerHp: Math.max(0, Number(e.target.value) || 0) })} className="h-8 text-xs" /></Fld>
+                                <Fld label="CV fiscaux"><Input type="number" value={l.current.fiscalHp || 0} onChange={(e) => patchCurrent(i, { fiscalHp: Math.max(0, Number(e.target.value) || 0) })} className="h-8 text-xs" /></Fld>
+                                <Fld label="Poids vide kg"><Input type="number" value={l.current.poidsVide || 0} onChange={(e) => patchCurrent(i, { poidsVide: Math.max(0, Number(e.target.value) || 0) })} className="h-8 text-xs" /></Fld>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
+                                <ImageUpload currentUrl={l.current.image} onChange={(url) => patchCurrent(i, { image: url })} folder="vehicles" label="Photo du véhicule" />
+                                <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 mb-0.5" onClick={() => reSuggest(i)}>
+                                  <Zap className="w-3.5 h-3.5 text-[#3809EA]" /> Re-proposer les EV du segment
+                                </Button>
+                              </div>
+                              <p className="text-[10px] text-muted-foreground">Si vous changez la marque, le modèle ou le segment, cliquez sur « Re-proposer les EV » pour rafraîchir les suggestions.</p>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                     );
                   })}
                 </tbody>
