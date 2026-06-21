@@ -42,7 +42,7 @@ import { useAuth } from "@/lib/auth";
 import { useMyCoordinates } from "@/lib/users";
 import { usePermissions } from "@/lib/permissions";
 import { useProposals, useProposal } from "@/lib/proposals";
-import { usePdfConfig } from "@/lib/pdf-config";
+import { usePdfConfig, type PdfDisplayConfig } from "@/lib/pdf-config";
 import { usePdfSettings } from "@/lib/pdf-settings";
 import { useProposalTemplates } from "@/lib/proposal-templates";
 import { calculateTcoFull, calculateMalusCO2, calculateMalusPoids, type TcoContractParams } from "@/lib/tco-calculator";
@@ -795,6 +795,28 @@ function App() {
       toast.error(`Échec génération PDF : ${msg}`);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  // Aperçu d'UNE seule section : génère un PDF (couverture + cette section)
+  // avec les données du devis en cours, ouvert dans un onglet. Permet de voir
+  // la vraie page sans cocher/décocher tout le reste.
+  const previewSection = async (key: keyof PdfDisplayConfig) => {
+    if (isGenerating) return;
+    const iso = { ...pdfConfig } as Record<string, unknown>;
+    for (const k of Object.keys(iso)) if (typeof iso[k] === "boolean") iso[k] = false;
+    iso[key as string] = true;
+    try {
+      await generateProposalPdf({
+        projectType, client, energy,
+        vehicles: Object.values(selectedV).map((sv) => ({ ...sv, includeTco: true })),
+        chargers: Object.values(selectedC),
+        pdfConfig: iso as unknown as PdfDisplayConfig,
+        b2b2eInput: b2b2eIncludeInPdf && Object.values(selectedC).some((sc) => sc.charger.deployment === "domicile") ? b2b2eInput : undefined,
+        preview: true,
+      });
+    } catch {
+      toast.error("Aperçu de section impossible — vérifiez que le devis contient les données requises (ex. 2+ véhicules pour le TCO).");
     }
   };
 
@@ -1648,6 +1670,7 @@ function App() {
             update={updatePdfConfig}
             reset={resetPdfConfig}
             projectType={projectType}
+            onPreviewSection={(key) => previewSection(key)}
           />
 
           <Card>

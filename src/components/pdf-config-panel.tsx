@@ -11,6 +11,8 @@ type Props = {
   update: (patch: Partial<PdfDisplayConfig>) => void;
   reset: () => void;
   projectType: ProjectType;
+  /** Ouvre un aperçu (couverture + cette section uniquement) dans un onglet. */
+  onPreviewSection?: (key: keyof PdfDisplayConfig) => void;
 };
 
 // Type de page par section → mini-maquette, pour savoir à quoi ressemble chaque
@@ -68,7 +70,7 @@ function KindThumb({ kind }: { kind: SectionKind }) {
   );
 }
 
-export function PdfConfigPanel({ config, update, reset, projectType }: Props) {
+export function PdfConfigPanel({ config, update, reset, projectType, onPreviewSection }: Props) {
   const [open, setOpen] = useState(false);
 
   // On ne compte que les réglages booléens (toggles) : certaines clés sont des
@@ -134,12 +136,24 @@ export function PdfConfigPanel({ config, update, reset, projectType }: Props) {
                               {item.label}
                               {kind && <span className="ml-1.5 text-[9px] font-normal text-muted-foreground">· {KIND_LABEL[kind]}</span>}
                             </Label>
-                            <span className={`flex items-center gap-1 text-[9px] font-semibold uppercase rounded-full px-1.5 py-0.5 flex-shrink-0 ${
-                              on ? "bg-beev-rose text-beev-black" : "bg-muted text-muted-foreground"
-                            }`}>
-                              {on ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
-                              {on ? "Affiché" : "Masqué"}
-                            </span>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              {kind && onPreviewSection && (
+                                <button
+                                  type="button"
+                                  title="Aperçu de cette page dans un onglet"
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onPreviewSection(item.key); }}
+                                  className="flex items-center gap-1 text-[9px] font-semibold uppercase rounded-full border border-beev-bleu bg-beev-bleu-20 text-beev-black px-1.5 py-0.5 hover:bg-beev-bleu/40 transition"
+                                >
+                                  <Eye className="w-2.5 h-2.5" /> Voir
+                                </button>
+                              )}
+                              <span className={`flex items-center gap-1 text-[9px] font-semibold uppercase rounded-full px-1.5 py-0.5 ${
+                                on ? "bg-beev-rose text-beev-black" : "bg-muted text-muted-foreground"
+                              }`}>
+                                {on ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
+                                {on ? "Affiché" : "Masqué"}
+                              </span>
+                            </div>
                           </div>
                           {item.description && (
                             <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
