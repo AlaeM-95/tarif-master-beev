@@ -26,20 +26,24 @@ export function normCategory(c?: string): string {
   return base;
 }
 
-/** EV du catalogue recommandés pour une catégorie donnée, classés par
- *  top_rank croissant (1 = n°1), puis éco-score décroissant, puis loyer
- *  croissant. Repli sur l'ensemble des EV classés si la catégorie ne matche
- *  aucun modèle. */
+/** EV du catalogue recommandés pour une catégorie donnée. Tri : d'abord les
+ *  modèles ÉPINGLÉS (top_rank renseigné, par rang croissant), puis les autres
+ *  du MOINS CHER au plus cher (loyer mensuel). Autrement dit : par défaut on
+ *  suggère les EV les moins chers du segment, et top_rank sert d'override pour
+ *  forcer un modèle en tête. Repli sur l'ensemble des EV si la catégorie ne
+ *  matche aucun modèle. */
 export function topEvsForCategory(category: string, catalogue: Vehicle[], n = 3): Vehicle[] {
   const cat = normCategory(category);
-  const isEv = (v: Vehicle) => v.energy === "Électrique";
-  const rank = (v: Vehicle) => (v.topRank && v.topRank > 0 ? v.topRank : 999);
-  const byRank = (a: Vehicle, b: Vehicle) =>
-    rank(a) - rank(b) || (b.envScore ?? 0) - (a.envScore ?? 0) || a.monthlyLld - b.monthlyLld;
-
+  const isEv = (v: Vehicle) => v.energy === "Électrique" && v.monthlyLld > 0;
+  const rank = (v: Vehicle) => (v.topRank && v.topRank > 0 ? v.topRank : Infinity);
+  const cheapestFirst = (a: Vehicle, b: Vehicle) => {
+    const ra = rank(a), rb = rank(b);
+    if (ra !== rb) return ra - rb;               // épinglés d'abord, par rang
+    return a.monthlyLld - b.monthlyLld;          // sinon, le moins cher d'abord
+  };
   const inCat = catalogue.filter((v) => isEv(v) && normCategory(v.category) === cat);
   const pool = inCat.length > 0 ? inCat : catalogue.filter(isEv);
-  return [...pool].sort(byRank).slice(0, Math.max(1, n));
+  return [...pool].sort(cheapestFirst).slice(0, Math.max(1, n));
 }
 
 /** Regroupe une liste de véhicules (1 entrée = 1 véhicule) par modèle identique
