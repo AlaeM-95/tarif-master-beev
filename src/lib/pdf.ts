@@ -3551,6 +3551,55 @@ function drawFleetSynthesis(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPa
 // empilées par véhicule (loyer + énergie + TVS + malus) en bas. Permet au
 // décideur de visualiser instantanément la structure du coût total et de
 // repérer où sont les écarts entre véhicules.
+/** Bandeau « FLOTTE ACTUELLE » : carte foncée pleine largeur qui met en avant le
+ *  coût actuel du parc du client comme référence pour mesurer l'économie des EV.
+ *  `value` = chiffre fort (à droite), `valueLabel` = légende sous le chiffre,
+ *  `message` = phrase d'impact (à gauche). Renvoie le y sous le bandeau. */
+function drawCurrentFleetBanner(doc: jsPDF, y: number, value: string, valueLabel: string, message: string): number {
+  const w = PAGE_W - M * 2;
+  const h = 46;
+  doc.setFillColor(...INK);
+  doc.roundedRect(M, y, w, h, 7, 7, "F");
+  // Pastille accent rose à gauche
+  doc.setFillColor(...ACCENT);
+  doc.roundedRect(M + 12, y + 12, 5, h - 24, 2.5, 2.5, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...ACCENT);
+  doc.text("FLOTTE ACTUELLE", M + 26, y + 17);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(232, 232, 232);
+  const msgL = doc.splitTextToSize(message, w - 190);
+  doc.text(msgL.slice(0, 2), M + 26, y + 30);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(16);
+  doc.setTextColor(255, 255, 255);
+  doc.text(value, M + w - 16, y + 25, { align: "right" });
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(6.8);
+  doc.setTextColor(175, 175, 180);
+  doc.text(valueLabel, M + w - 16, y + 36, { align: "right" });
+  return y + h + 14;
+}
+
+/** Style autoTable d'un intertitre de section dans les tableaux TCO. `dark` =
+ *  bandeau noir (flotte actuelle), sinon couleur de groupe charte. */
+function sectionHeaderRow(label: string, colSpan: number, color: [number, number, number], dark = false) {
+  return [{
+    content: label.toUpperCase(),
+    colSpan,
+    styles: {
+      fillColor: dark ? INK : color,
+      textColor: dark ? ([255, 255, 255] as [number, number, number]) : INK,
+      fontStyle: "bold" as any,
+      fontSize: 9,
+      halign: "center" as any,
+      cellPadding: 6,
+    },
+  }];
+}
+
 async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: EnergyParams, client?: ClientInfo, type?: ProjectType) {
   // Option commerciale : inclure ou non la flotte actuelle (thermiques) dans le
   // classement TCO. Décoché → on ne compare que les électriques proposés.
@@ -3617,6 +3666,23 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
   const mostExpensive = rows[rows.length - 1];
   const ecartTotal = mostExpensive.total - cheapest.total;
   const ecartPct = mostExpensive.total > 0 ? (ecartTotal / mostExpensive.total) * 100 : 0;
+
+  // === Bandeau FLOTTE ACTUELLE : calcule le TCO du parc thermique actuel et
+  // donne l'impact (coût moyen actuel /100km vs meilleur EV proposé). ===
+  const dashCurrent = rows.filter((r) => r.sv.vehicle.isCurrentFleet);
+  const dashEv = rows.filter((r) => !r.sv.vehicle.isCurrentFleet);
+  if (dashCurrent.length > 0 && dashEv.length > 0) {
+    const avgCur = dashCurrent.reduce((s, r) => s + r.par100km, 0) / dashCurrent.length;
+    const bestEv = Math.min(...dashEv.map((r) => r.par100km));
+    const ecoPct = avgCur > 0 ? ((avgCur - bestEv) / avgCur) * 100 : 0;
+    y = drawCurrentFleetBanner(
+      doc,
+      y,
+      `${avgCur.toFixed(2)} €/100km`,
+      `coût moyen actuel · ${dashCurrent.length} véh.`,
+      `Le meilleur véhicule électrique proposé revient à ${bestEv.toFixed(2)} €/100km, soit ${ecoPct.toFixed(0)} % d'économie par véhicule sur votre usage.`,
+    );
+  }
 
   // === 4 KPI cards en haut — sémantique COMPARAISON entre véhicules,
   // pas une flotte à commander. Le client choisira UN véhicule. ===
@@ -3738,8 +3804,17 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
     const isBest = !!it.best;
 
     // Rang + nom véhicule (gauche)
+    const isCur = !!r.sv.vehicle.isCurrentFleet;
     if (isBest) {
       doc.setFillColor(...COLOR_ENERGIE);
+      doc.circle(M + 8, y + 10, 8, "F");
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(255, 255, 255);
+      doc.text(String(idx + 1), M + 8, y + 13, { align: "center" });
+    } else if (isCur) {
+      // Flotte actuelle : pastille noire pour la repérer dans le classement.
+      doc.setFillColor(...INK);
       doc.circle(M + 8, y + 10, 8, "F");
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(9);
@@ -3772,11 +3847,12 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(7);
     doc.setTextColor(...SUB);
+    const tagTxt = isCur ? "actuel · " : "";
     if (verRank) {
       doc.text(verRank.slice(0, 30), M + 22, y + 16);
-      doc.text(`${r.par100km.toFixed(2)} €/100km · × ${r.sv.quantity}`, M + 22, y + 25);
+      doc.text(`${tagTxt}${r.par100km.toFixed(2)} €/100km · × ${r.sv.quantity}`, M + 22, y + 25);
     } else {
-      doc.text(`${r.par100km.toFixed(2)} €/100km · × ${r.sv.quantity}`, M + 22, y + 18);
+      doc.text(`${tagTxt}${r.par100km.toFixed(2)} €/100km · × ${r.sv.quantity}`, M + 22, y + 18);
     }
 
     // Barre empilée (loyer + énergie + TVS + malus, largeur relative au max total)
@@ -3815,24 +3891,87 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
   doc.setFontSize(8.5);
   doc.setTextColor(...LAVENDER);
   doc.text("DÉTAIL CHARGES FISCALES ANNEXES PAR VÉHICULE", M, y);
-  y += 8;
+  y += 14;
 
-  // Vignettes véhicule (mêmes que le comparateur)
-  const fiscalThumbs = await preloadVehicleThumbs(rows.map((r) => r.sv));
+  // Sépare la flotte actuelle (thermiques) des EV proposés.
+  const fiscalCurrent = rows.filter((r) => r.sv.vehicle.isCurrentFleet);
+  const fiscalEv = rows.filter((r) => !r.sv.vehicle.isCurrentFleet);
+
+  // Bandeau impact : TVS + malus que le parc thermique actuel supporte (×qté),
+  // charges quasi nulles en électrique.
+  if (fiscalCurrent.length > 0) {
+    const curFisc = fiscalCurrent.reduce((s, r) => s + (r.tvs + r.malus) * r.sv.quantity, 0);
+    y = drawCurrentFleetBanner(
+      doc,
+      y,
+      eur(curFisc),
+      "TVS + malus actuels (×durée)",
+      "Charges fiscales annexes que vos véhicules thermiques supportent aujourd'hui. Elles sont fortement réduites, voire nulles, en passant à l'électrique.",
+    );
+  }
+
+  // Groupement par groupe de comparaison (si au moins un groupe nommé côté EV).
+  const fGroupKey = (sv: SelectedVehicle) => (sv.comparisonGroup ?? "").trim();
+  const fHasGroups = PDF_CFG.tcoGroupByComparison !== false && fiscalEv.some((r) => fGroupKey(r.sv));
+  const fGroupColors: [number, number, number][] = [
+    [237, 246, 255], [246, 245, 247], [232, 247, 233], [253, 241, 238], [255, 245, 230],
+  ];
+  const buildFiscalRow = (r: (typeof rows)[number]) => [
+    vehicleLabel(r.sv.vehicle),
+    { content: eur(r.malus), styles: { halign: "center" as any, textColor: r.malus > 0 ? ACCENT_TEXT : SUB, fontStyle: r.malus > 0 ? "bold" as any : "normal" as any } },
+    { content: eur(r.tvs), styles: { halign: "center" as any, textColor: r.tvs > 0 ? ACCENT_TEXT : SUB, fontStyle: r.tvs > 0 ? "bold" as any : "normal" as any } },
+    { content: eur(r.andTotal), styles: { halign: "center" as any } },
+    { content: eur(r.aenTotal), styles: { halign: "center" as any } },
+    { content: eur(r.coutEmployeur), styles: { halign: "center" as any, fontStyle: "bold" as any, textColor: ACCENT_TEXT } },
+  ];
+
+  const fiscalBody: any[] = [];
+  const fiscalRowSvs: (SelectedVehicle | null)[] = [];
+  // 1) Flotte actuelle en tête (bandeau noir)
+  if (fiscalCurrent.length > 0) {
+    fiscalBody.push(sectionHeaderRow("Flotte actuelle", 6, INK, true));
+    fiscalRowSvs.push(null);
+    for (const r of [...fiscalCurrent].sort((a, b) => b.coutEmployeur - a.coutEmployeur)) {
+      fiscalBody.push(buildFiscalRow(r)); fiscalRowSvs.push(r.sv);
+    }
+  }
+  // 2) EV proposés : groupés par groupe de comparaison, sinon liste simple
+  if (fHasGroups) {
+    const gOrder: string[] = [];
+    const gMap = new Map<string, typeof rows>();
+    for (const r of fiscalEv) {
+      const g = fGroupKey(r.sv) || "Autres véhicules";
+      if (!gMap.has(g)) { gMap.set(g, []); gOrder.push(g); }
+      gMap.get(g)!.push(r);
+    }
+    let gi = 0;
+    for (const g of gOrder) {
+      fiscalBody.push(sectionHeaderRow(g, 6, fGroupColors[gi % fGroupColors.length]));
+      fiscalRowSvs.push(null);
+      gi++;
+      for (const r of [...gMap.get(g)!].sort((a, b) => a.coutEmployeur - b.coutEmployeur)) {
+        fiscalBody.push(buildFiscalRow(r)); fiscalRowSvs.push(r.sv);
+      }
+    }
+  } else {
+    if (fiscalCurrent.length > 0 && fiscalEv.length > 0) {
+      fiscalBody.push(sectionHeaderRow("Véhicules électriques proposés", 6, fGroupColors[2]));
+      fiscalRowSvs.push(null);
+    }
+    for (const r of fiscalEv) { fiscalBody.push(buildFiscalRow(r)); fiscalRowSvs.push(r.sv); }
+  }
+
+  // Vignettes véhicule mappées par véhicule (les lignes d'intertitre = null).
+  const fiscalOrderedSvs = fiscalRowSvs.filter((s): s is SelectedVehicle => !!s);
+  const fiscalThumbsArr = await preloadVehicleThumbs(fiscalOrderedSvs);
+  const fiscalThumbMap = new Map<SelectedVehicle, LoadedImage | null>();
+  fiscalOrderedSvs.forEach((sv, i) => fiscalThumbMap.set(sv, fiscalThumbsArr[i]));
 
   autoTable(doc, {
     startY: y,
     theme: "plain",
     head: [["Véhicule", "Malus (achat)", "TVS (×durée)", "AND (×durée)", "AEN empl. (×durée)", "Coût empl. complet"]],
-    body: rows.map((r) => [
-      // Marque + modèle + version pour distinguer 2 finitions du même modèle
-      vehicleLabel(r.sv.vehicle),
-      { content: eur(r.malus), styles: { halign: "center" as any, textColor: r.malus > 0 ? LAVENDER : SUB, fontStyle: r.malus > 0 ? "bold" as any : "normal" as any } },
-      { content: eur(r.tvs), styles: { halign: "center" as any, textColor: r.tvs > 0 ? LAVENDER : SUB, fontStyle: r.tvs > 0 ? "bold" as any : "normal" as any } },
-      { content: eur(r.andTotal), styles: { halign: "center" as any } },
-      { content: eur(r.aenTotal), styles: { halign: "center" as any } },
-      { content: eur(r.coutEmployeur), styles: { halign: "center" as any, fontStyle: "bold" as any, textColor: LAVENDER } },
-    ]),
+    body: fiscalBody,
     headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 7, fontStyle: "bold", font: BRAND_FONT, cellPadding: 4, halign: "center" as any },
     bodyStyles: { fontSize: 8, cellPadding: 4, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
     alternateRowStyles: { fillColor: BG },
@@ -3840,7 +3979,9 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
     margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
     didDrawCell: (data: any) => {
       if (data.section !== "body" || data.column.index !== 0) return;
-      drawThumbCell(doc, data.cell, fiscalThumbs[data.row.index]);
+      const sv = fiscalRowSvs[data.row.index];
+      if (!sv) return; // ligne d'intertitre de section
+      drawThumbCell(doc, data.cell, fiscalThumbMap.get(sv) ?? null);
     },
   });
   y = (doc as any).lastAutoTable.finalY + 10;
@@ -3907,17 +4048,30 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
     return { sv, r, duree };
   });
 
-  // Segmentation par GROUPE DE COMPARAISON (catégorie saisie par le commercial).
-  // Si au moins un groupe est nommé, on analyse le TCO PAR catégorie : un
-  // intertitre par groupe + tri du meilleur au pire DANS le groupe. Sinon,
-  // tableau global trié par TCO croissant (comportement historique).
+  // Flotte actuelle (thermiques) séparée des EV proposés : elle s'affiche
+  // TOUJOURS en tête de liste, avec un bandeau d'impact.
+  const detCurrent = computed.filter((c) => c.sv.vehicle.isCurrentFleet);
+  const detEv = computed.filter((c) => !c.sv.vehicle.isCurrentFleet);
+  if (detCurrent.length > 0) {
+    const curTotal = detCurrent.reduce((s, c) => s + c.r.tcoEmployeurComplet * c.sv.quantity, 0);
+    y = drawCurrentFleetBanner(
+      doc,
+      y,
+      eur(curTotal),
+      "coût employeur complet actuel (×durée)",
+      "Coût complet de votre flotte thermique actuelle sur la durée. Les véhicules électriques proposés ci-dessous réduisent ce total.",
+    );
+  }
+
+  // Segmentation par GROUPE DE COMPARAISON (catégorie saisie par le commercial),
+  // appliquée aux EV proposés. Si au moins un groupe est nommé, on analyse le
+  // TCO PAR catégorie : un intertitre par groupe + tri du meilleur au pire DANS
+  // le groupe. Sinon, liste globale triée par TCO croissant.
   const groupKey = (sv: SelectedVehicle) => (sv.comparisonGroup ?? "").trim();
-  // Le commercial choisit : décomposition groupée par groupe de comparaison
-  // (intertitre par segment) OU un seul tableau global trié par TCO.
-  const hasGroups = PDF_CFG.tcoGroupByComparison !== false && computed.some((c) => groupKey(c.sv));
+  const hasGroups = PDF_CFG.tcoGroupByComparison !== false && detEv.some((c) => groupKey(c.sv));
   const groupOrder: string[] = [];
   const buckets = new Map<string, typeof computed>();
-  for (const c of computed) {
+  for (const c of detEv) {
     // Si le mode groupé est désactivé, tout va dans un seul bucket global trié
     // par TCO (pas d'intertitre de segment).
     const g = (hasGroups ? groupKey(c.sv) : "") || "__none__";
@@ -3992,6 +4146,19 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   // tcoBody + mapping ligne→véhicule (null pour les lignes d'intertitre).
   const tcoBody: any[] = [];
   const rowVehicles: (SelectedVehicle | null)[] = [];
+  // 1) FLOTTE ACTUELLE en tête (bandeau noir), triée du plus cher au moins cher.
+  if (detCurrent.length > 0) {
+    tcoBody.push(sectionHeaderRow("Flotte actuelle", 9, INK, true));
+    rowVehicles.push(null);
+    for (const c of [...detCurrent].sort((a, b) => b.r.tcoEmployeurComplet - a.r.tcoEmployeurComplet)) {
+      tcoBody.push(buildRow(c)); rowVehicles.push(c.sv);
+    }
+  }
+  // 2) Véhicules électriques proposés (groupés ou non).
+  if (detCurrent.length > 0 && !hasGroups && detEv.length > 0) {
+    tcoBody.push(sectionHeaderRow("Véhicules électriques proposés", 9, GROUP_COLORS[2]));
+    rowVehicles.push(null);
+  }
   let groupIdx = 0;
   for (const g of groupOrder) {
     if (hasGroups) {
