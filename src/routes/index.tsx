@@ -1791,6 +1791,7 @@ function App() {
                           tripartiteUrl={sv.vehicle.tripartitePdfUrl || vehicles.find((vv) => vv.brand === sv.vehicle.brand && vv.tripartitePdfUrl)?.tripartitePdfUrl}
                           onMove={(dir) => setSelectedV((s) => moveInRecord(s, key, dir))}
                           onChange={(p) => setSelectedV((s) => ({ ...s, [key]: { ...(s[key] ?? sv), ...p } }))}
+                          onApplyAll={(mutate) => setSelectedV((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, mutate(v)])))}
                           onDuplicate={() => duplicateVehicleInstance(sv)}
                           onRemove={() => setSelectedV((s) => { const next = { ...s }; delete next[key]; return next; })} />
                         );
@@ -3366,10 +3367,17 @@ function FiscalWarningBadge({ vehicle, durationMonths }: { vehicle: Vehicle; dur
   );
 }
 
-function SelectedVehicleRow({ sv, energy, onChange, onRemove, onDuplicate, index, total, onMove, tripartiteUrl }: { sv: SelectedVehicle; energy: EnergyParams; onChange: (p: Partial<SelectedVehicle>) => void; onRemove: () => void; onDuplicate?: () => void; index?: number; total?: number; onMove?: (dir: -1 | 1) => void; tripartiteUrl?: string }) {
+function SelectedVehicleRow({ sv, energy, onChange, onApplyAll, onRemove, onDuplicate, index, total, onMove, tripartiteUrl }: { sv: SelectedVehicle; energy: EnergyParams; onChange: (p: Partial<SelectedVehicle>) => void; onApplyAll?: (mutate: (v: SelectedVehicle) => SelectedVehicle) => void; onRemove: () => void; onDuplicate?: () => void; index?: number; total?: number; onMove?: (dir: -1 | 1) => void; tripartiteUrl?: string }) {
   const [tab, setTab] = useState<"none" | "svc" | "opt">("none");
   const [newSvc, setNewSvc] = useState("");
   const [specsOpen, setSpecsOpen] = useState(false);
+  // « Appliquer à tous » : quand actif, ce véhicule sert de modèle et la
+  // modification (caractéristiques / prestations / options) est répliquée sur
+  // tous les véhicules du devis. Visible seulement s'il y a plusieurs véhicules.
+  const multi = (total ?? 1) > 1 && !!onApplyAll;
+  const [applyAllSpecs, setApplyAllSpecs] = useState(false);
+  const [applyAllSvc, setApplyAllSvc] = useState(false);
+  const [applyAllOpt, setApplyAllOpt] = useState(false);
   const tco = computeTco(sv, energy);
   // Caractéristiques techniques affichables sur la fiche (mêmes clés que le PDF).
   // Le commercial choisit lesquelles afficher / masquer via sv.hiddenSpecs.
@@ -3388,21 +3396,51 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove, onDuplicate, index
   })();
   const hiddenSpecs = new Set(sv.hiddenSpecs ?? []);
   const hiddenCount = specToggles.filter((s) => hiddenSpecs.has(s.key)).length;
+
+  // Commit d'une catégorie : si « Appliquer à tous » est actif, la nouvelle
+  // valeur est répliquée sur tous les véhicules ; sinon seulement sur celui-ci.
+  const commitSpecs = (arr: string[]) => {
+    if (applyAllSpecs && onApplyAll) onApplyAll((v) => ({ ...v, hiddenSpecs: [...arr] }));
+    else onChange({ hiddenSpecs: arr });
+  };
+  const commitServices = (list: string[]) => {
+    if (applyAllSvc && onApplyAll) onApplyAll((v) => ({ ...v, services: [...list] }));
+    else onChange({ services: list });
+  };
+  const commitOptions = (list: LineItem[]) => {
+    if (applyAllOpt && onApplyAll) onApplyAll((v) => ({ ...v, options: list.map((o) => ({ ...o })) }));
+    else onChange({ options: list });
+  };
+  // Bascule un toggle « Appliquer à tous » et synchronise immédiatement les
+  // autres véhicules sur l'état courant de ce véhicule.
+  const enableSpecsAll = (on: boolean) => { setApplyAllSpecs(on); if (on && onApplyAll) onApplyAll((v) => ({ ...v, hiddenSpecs: [...(sv.hiddenSpecs ?? [])] })); };
+  const enableSvcAll = (on: boolean) => { setApplyAllSvc(on); if (on && onApplyAll) onApplyAll((v) => ({ ...v, services: [...sv.services] })); };
+  const enableOptAll = (on: boolean) => { setApplyAllOpt(on); if (on && onApplyAll) onApplyAll((v) => ({ ...v, options: sv.options.map((o) => ({ ...o })) })); };
+
   const toggleSpec = (key: string, show: boolean) => {
     const next = new Set(sv.hiddenSpecs ?? []);
     if (show) next.delete(key); else next.add(key);
-    onChange({ hiddenSpecs: Array.from(next) });
+    commitSpecs(Array.from(next));
   };
   const addSvc = () => {
     const t = newSvc.trim();
     if (!t) return;
-    onChange({ services: [...sv.services, t] });
+    commitServices([...sv.services, t]);
     setNewSvc("");
   };
-  const delSvc = (i: number) => onChange({ services: sv.services.filter((_, idx) => idx !== i) });
-  const setOpt = (i: number, p: Partial<LineItem>) => onChange({ options: sv.options.map((x, idx) => idx === i ? { ...x, ...p } : x) });
-  const addOpt = () => onChange({ options: [...sv.options, { label: "Nouvelle option", qty: 1, unitHt: 0 }] });
-  const delOpt = (i: number) => onChange({ options: sv.options.filter((_, idx) => idx !== i) });
+  const editSvc = (i: number, val: string) => commitServices(sv.services.map((x, idx) => idx === i ? val : x));
+  const delSvc = (i: number) => commitServices(sv.services.filter((_, idx) => idx !== i));
+  const setOpt = (i: number, p: Partial<LineItem>) => commitOptions(sv.options.map((x, idx) => idx === i ? { ...x, ...p } : x));
+  const addOpt = () => commitOptions([...sv.options, { label: "Nouvelle option", qty: 1, unitHt: 0 }]);
+  const delOpt = (i: number) => commitOptions(sv.options.filter((_, idx) => idx !== i));
+
+  // Petit interrupteur réutilisable « Appliquer à tous les véhicules ».
+  const applyAllToggle = (on: boolean, set: (b: boolean) => void) => (
+    <label className="flex items-center gap-1.5 text-[10px] font-medium cursor-pointer select-none text-[#3809EA]">
+      <input type="checkbox" checked={on} onChange={(e) => set(e.target.checked)} className="h-3.5 w-3.5 accent-[#3809EA]" />
+      Appliquer à tous
+    </label>
+  );
 
   return (
     <div className="rounded-lg border bg-secondary/40 p-3 space-y-2">
@@ -3475,10 +3513,16 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove, onDuplicate, index
               <div className="flex items-center justify-between pb-1">
                 <span className="text-[10px] text-muted-foreground">Décochez pour masquer du PDF</span>
                 <div className="flex gap-2">
-                  <button type="button" className="text-[10px] text-[#3809EA] hover:underline" onClick={() => onChange({ hiddenSpecs: [] })}>Tout afficher</button>
-                  <button type="button" className="text-[10px] text-[#3809EA] hover:underline" onClick={() => onChange({ hiddenSpecs: specToggles.map((s) => s.key) })}>Tout masquer</button>
+                  <button type="button" className="text-[10px] text-[#3809EA] hover:underline" onClick={() => commitSpecs([])}>Tout afficher</button>
+                  <button type="button" className="text-[10px] text-[#3809EA] hover:underline" onClick={() => commitSpecs(specToggles.map((s) => s.key))}>Tout masquer</button>
                 </div>
               </div>
+              {multi && (
+                <div className="flex items-center justify-between pb-1 px-1 py-1 rounded bg-[#3809EA]/[0.05]">
+                  <span className="text-[10px] text-muted-foreground">Répliquer ces caractéristiques sur tout le devis</span>
+                  {applyAllToggle(applyAllSpecs, enableSpecsAll)}
+                </div>
+              )}
               {specToggles.map((s) => (
                 <label key={s.key} className="flex items-center gap-2 text-xs cursor-pointer p-1 rounded hover:bg-accent/30">
                   <input
@@ -3684,6 +3728,12 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove, onDuplicate, index
       </div>
       {tab === "svc" && (
         <div className="rounded-md border bg-card p-2 space-y-2">
+          {multi && (
+            <div className="flex items-center justify-between px-1 py-1 rounded bg-[#3809EA]/[0.05]">
+              <span className="text-[10px] text-muted-foreground">Répliquer ces prestations sur tout le devis</span>
+              {applyAllToggle(applyAllSvc, enableSvcAll)}
+            </div>
+          )}
           <div className="space-y-1">
             <p className="text-[10px] uppercase text-muted-foreground">Toujours incluses (non décochables)</p>
             {MANDATORY_SERVICES.map((s) => (
@@ -3698,7 +3748,7 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove, onDuplicate, index
             <p className="text-[10px] uppercase text-muted-foreground">Prestations additionnelles libres</p>
             {sv.services.map((s, i) => (
               <div key={i} className="flex items-center gap-2">
-                <Input value={s} onChange={(e) => onChange({ services: sv.services.map((x, idx) => idx === i ? e.target.value : x) })} className="h-7 text-xs" />
+                <Input value={s} onChange={(e) => editSvc(i, e.target.value)} className="h-7 text-xs" />
                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => delSvc(i)}><Trash2 className="w-3 h-3" /></Button>
               </div>
             ))}
@@ -3711,6 +3761,12 @@ function SelectedVehicleRow({ sv, energy, onChange, onRemove, onDuplicate, index
       )}
       {tab === "opt" && (
         <div className="rounded-md border bg-card p-2 space-y-2">
+          {multi && (
+            <div className="flex items-center justify-between px-1 py-1 rounded bg-[#3809EA]/[0.05]">
+              <span className="text-[10px] text-muted-foreground">Répliquer ces options sur tout le devis</span>
+              {applyAllToggle(applyAllOpt, enableOptAll)}
+            </div>
+          )}
           <div className="grid grid-cols-[1fr_50px_70px_24px] gap-1 items-center text-[9px] uppercase text-muted-foreground">
             <span>Désignation</span>
             <span className="text-center">Qté</span>
