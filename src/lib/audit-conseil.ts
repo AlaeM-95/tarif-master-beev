@@ -111,10 +111,10 @@ export function newLivrable(): AuditLivrable { return { title: "Nouveau livrable
 export function newTarifRow(): AuditTarifRow { return { prestation: "Nouvelle prestation", sub: "", modalite: "Modalité", modaliteStyle: "neutre", tarif: "0 €" }; }
 export function newEtape(): AuditEtape { return { title: "Nouvelle étape", text: "" }; }
 
-const nbsp = (s: string) => s.replace(/ /g, " ").replace(/ /g, " ");
+export const nbsp = (s: string) => s.replace(/ /g, " ").replace(/ /g, " ");
 const eurInt = (n: number) =>
   nbsp(new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n || 0));
-const esc = (s: string): string =>
+export const esc = (s: string): string =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
 // Logos Beev officiels embarqués (base64). logoLight = blanc (sur fond sombre),
@@ -123,7 +123,7 @@ export type AuditAssets = { logoDark?: string; logoLight?: string };
 
 // Bloc @font-face Roobert (embarque les data-URLs si fournies, sinon /fonts).
 export type RoobertFonts = { regular?: string; medium?: string; semibold?: string };
-function fontFaceCss(fonts?: RoobertFonts): string {
+export function fontFaceCss(fonts?: RoobertFonts): string {
   const src = (dataUrl: string | undefined, path: string) =>
     dataUrl ? `url('${dataUrl}') format('truetype')` : `url('${path}') format('truetype')`;
   return `
@@ -134,7 +134,7 @@ function fontFaceCss(fonts?: RoobertFonts): string {
 }
 
 // Logo Beev (image officielle) ou repli wordmark texte.
-function beevLogo(assets: AuditAssets | undefined, light: boolean, cls: string): string {
+export function beevLogo(assets: AuditAssets | undefined, light: boolean, cls: string): string {
   const url = light ? assets?.logoLight : assets?.logoDark;
   if (url) return `<img class="${cls}" src="${url}" alt="Beev" />`;
   return `<span class="${cls} wordmark${light ? " light" : ""}">beev</span>`;
@@ -492,7 +492,7 @@ ${fontFaceCss(fonts)}
 </body></html>`;
 }
 
-async function fontToDataUrl(path: string): Promise<string | undefined> {
+export async function fontToDataUrl(path: string): Promise<string | undefined> {
   try {
     const res = await fetch(path);
     if (!res.ok) return undefined;
