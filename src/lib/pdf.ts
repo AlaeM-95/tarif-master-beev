@@ -97,7 +97,10 @@ export function getVehicleSpecRows(v: Vehicle, cfg: PdfDisplayConfig): VehicleSp
   const isElec = v.energy === "Électrique";
   const isPhev = v.energy === "Hybride Rechargeable";
   rows.push({ key: "energy", label: "Énergie", value: v.energy });
-  rows.push({ key: "range", label: "Autonomie / distance WLTP", value: isElec || isPhev ? `${v.rangeWltp} km` : "—" });
+  // Autonomie : pour un EV / hybride rechargeable, c'est l'autonomie WLTP ;
+  // pour un véhicule hors électrique, on affiche l'autonomie saisie dans le
+  // panneau de configuration (champ « Autonomie km ») dès qu'elle est renseignée.
+  rows.push({ key: "range", label: "Autonomie / distance WLTP", value: v.rangeWltp > 0 ? `${v.rangeWltp} km` : "—" });
   rows.push({ key: "battery", label: "Capacité batterie", value: v.batteryKwh > 0 ? `${v.batteryKwh} kWh` : "—" });
   rows.push({ key: "power", label: "Puissance", value: `${v.powerHp} ch` });
   if (cfg.showVehicleConsumption) {
