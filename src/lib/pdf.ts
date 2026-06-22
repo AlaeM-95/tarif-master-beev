@@ -5162,9 +5162,19 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
   const beforeVehicles = vehicles.filter((sv) => sv.vehicle.isCurrentFleet);
   const afterVehicles = vehicles.filter((sv) => !sv.vehicle.isCurrentFleet);
   const isBeforeAfter = beforeVehicles.length > 0 && afterVehicles.length > 0;
-  // Affichage VERTICAL (véhicules en lignes) : plus de limite à 4. Les
-  // véhicules « flotte actuelle » d'abord, puis les propositions Beev.
-  const items = isBeforeAfter ? [...beforeVehicles, ...afterVehicles] : vehicles;
+  // Affichage VERTICAL (véhicules en lignes) : plus de limite à 4. Toujours
+  // trié par LOYER CROISSANT (du moins cher au plus cher) ; les loyers non
+  // renseignés (0) passent en fin de liste. En mode avant/après, le tri par
+  // loyer s'applique à l'intérieur de chaque bloc (flotte actuelle puis
+  // propositions Beev) pour conserver la lecture comparative.
+  const byLoyerAsc = (a: SelectedVehicle, b: SelectedVehicle) => {
+    const la = (a.negotiatedMonthly ?? 0) > 0 ? a.negotiatedMonthly : Infinity;
+    const lb = (b.negotiatedMonthly ?? 0) > 0 ? b.negotiatedMonthly : Infinity;
+    return la - lb;
+  };
+  const items = isBeforeAfter
+    ? [...[...beforeVehicles].sort(byLoyerAsc), ...[...afterVehicles].sort(byLoyerAsc)]
+    : [...vehicles].sort(byLoyerAsc);
   let y = 130;
   eyebrow(
     doc,
