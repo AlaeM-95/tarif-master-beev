@@ -2280,20 +2280,20 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
   const opts = [
     {
       title: t("site_pay_opt1_title", "Comptant"),
-      badge: t("site_pay_opt1_badge", "Remise 2 %"),
+      badge: t("site_pay_opt1_badge", "Standard"),
       desc: t("site_pay_opt1_desc", "Paiement intégral à la commande. Économie immédiate sur le total projet."),
-      tone: "highlight" as const,
+      tone: "default" as const,
     },
     {
       title: t("site_pay_opt2_title", "Classique"),
       badge: t("site_pay_opt2_badge", "Standard"),
       desc: t("site_pay_opt2_desc", "50 % acompte à la commande, 50 % à réception. Échéancier détaillé possible."),
-      tone: "default" as const,
+      tone: "highlight" as const,
     },
     {
       title: t("site_pay_opt3_title", "Leasing"),
       badge: t("site_pay_opt3_badge", "Sur demande"),
-      desc: t("site_pay_opt3_desc", "Financement LLD sur 36 / 48 / 60 mois selon profil. Simulation personnalisée par notre partenaire."),
+      desc: t("site_pay_opt3_desc", "Financement en LOA sur 24 / 36 / 48 mois selon profil. Simulation personnalisée par notre partenaire."),
       tone: "default" as const,
     },
   ];
