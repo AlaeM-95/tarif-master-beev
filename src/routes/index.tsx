@@ -3439,15 +3439,18 @@ function VehicleSummaryCard({ sv, energy, onQty, onConfigure, onDuplicate, onRem
   const tco = computeTco(sv, energy);
   const isCur = !!sv.vehicle.isCurrentFleet;
   return (
-    <div className={`rounded-xl border bg-card p-2.5 ${isCur ? "border-l-[3px] border-l-beev-rose" : ""}`}>
-      <div className="flex items-center gap-2.5">
-        <div className="w-14 h-10 rounded-md bg-beev-violet-20 overflow-hidden flex items-center justify-center flex-shrink-0">
-          {sv.vehicle.image ? <img src={sv.vehicle.image} alt="" className="w-full h-full object-cover" /> : <Car className="w-5 h-5 text-muted-foreground/50" />}
+    <div className={`rounded-xl border overflow-hidden ${isCur ? "border-l-[3px] border-l-beev-rose bg-beev-rose-20/40" : "border-l-[3px] border-l-beev-bleu bg-card"}`}>
+      <div className="flex items-center gap-3 p-2.5">
+        {/* Photo du véhicule (object-cover) — repli icône uniquement si aucune image */}
+        <div className="w-20 h-14 rounded-lg bg-beev-beige border border-beev-black/5 overflow-hidden flex items-center justify-center flex-shrink-0">
+          {sv.vehicle.image
+            ? <img src={sv.vehicle.image} alt={`${sv.vehicle.brand} ${sv.vehicle.model}`} className="w-full h-full object-cover" />
+            : <Car className="w-6 h-6 text-beev-black/25" />}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold truncate">{sv.vehicle.brand} {sv.vehicle.model}</p>
+          <p className="text-sm font-semibold text-beev-black truncate">{sv.vehicle.brand} {sv.vehicle.model}</p>
           <p className="text-[10px] text-muted-foreground truncate">{sv.vehicle.version}</p>
-          <span className={`inline-block mt-1 text-[9px] font-bold rounded-full px-2 py-0.5 ${isCur ? "bg-beev-rose-20 text-beev-rose" : "bg-beev-bleu-20 text-[#1E5A99]"}`}>
+          <span className={`inline-block mt-1 text-[9px] font-bold rounded-full px-2 py-0.5 text-beev-black ${isCur ? "bg-beev-rose" : "bg-beev-bleu"}`}>
             {isCur ? "Flotte actuelle" : "Proposition Beev"}
           </span>
         </div>
@@ -3456,27 +3459,29 @@ function VehicleSummaryCard({ sv, energy, onQty, onConfigure, onDuplicate, onRem
           <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title="Retirer" onClick={onRemove}><Trash2 className="w-3.5 h-3.5" /></Button>
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-2 mt-2.5">
-        <div className="rounded-lg border p-1.5">
+      <div className="grid grid-cols-3 gap-2 px-2.5">
+        <div className="rounded-lg bg-beev-beige border border-beev-black/5 p-1.5">
           <div className="text-[9px] uppercase text-muted-foreground tracking-wide">Quantité</div>
           <div className="flex items-center gap-2 mt-1">
-            <button type="button" onClick={() => onQty(Math.max(1, sv.quantity - 1))} className="w-5 h-5 rounded border text-sm font-bold leading-none hover:bg-muted">−</button>
-            <span className="text-sm font-bold w-4 text-center">{sv.quantity}</span>
-            <button type="button" onClick={() => onQty(sv.quantity + 1)} className="w-5 h-5 rounded border text-sm font-bold leading-none hover:bg-muted">+</button>
+            <button type="button" onClick={() => onQty(Math.max(1, sv.quantity - 1))} className="w-5 h-5 rounded border border-beev-black/15 text-sm font-bold leading-none hover:bg-beev-rose-20">−</button>
+            <span className="text-sm font-bold text-beev-black w-4 text-center">{sv.quantity}</span>
+            <button type="button" onClick={() => onQty(sv.quantity + 1)} className="w-5 h-5 rounded border border-beev-black/15 text-sm font-bold leading-none hover:bg-beev-rose-20">+</button>
           </div>
         </div>
-        <div className="rounded-lg border p-1.5">
-          <div className="text-[9px] uppercase text-muted-foreground tracking-wide">Loyer/mois</div>
-          <div className="text-sm font-bold mt-1">{fmtEur(sv.negotiatedMonthly)}</div>
+        <div className="rounded-lg bg-beev-bleu-20 border border-beev-bleu/40 p-1.5">
+          <div className="text-[9px] uppercase text-[#1E5A99] tracking-wide">Loyer/mois</div>
+          <div className="text-sm font-bold text-beev-black mt-1">{fmtEur(sv.negotiatedMonthly)}</div>
         </div>
-        <div className="rounded-lg border p-1.5">
+        <div className="rounded-lg bg-beev-beige border border-beev-black/5 p-1.5">
           <div className="text-[9px] uppercase text-muted-foreground tracking-wide">TCO/100km</div>
-          <div className={`text-sm font-bold mt-1 ${isCur ? "" : "text-beev-good"}`}>{tco.tco100.toFixed(2)} €</div>
+          <div className="text-sm font-bold text-beev-black mt-1">{tco.tco100.toFixed(2)} €</div>
         </div>
       </div>
-      <Button variant="outline" size="sm" className="w-full mt-2 h-8 gap-1.5 text-xs" onClick={onConfigure}>
-        <Settings2 className="w-3.5 h-3.5" /> Configurer
-      </Button>
+      <div className="p-2.5 pt-2">
+        <Button variant="outline" size="sm" className="w-full h-8 gap-1.5 text-xs border-beev-rose/40 text-beev-black hover:bg-beev-rose-20" onClick={onConfigure}>
+          <Settings2 className="w-3.5 h-3.5 text-beev-rose" /> Configurer
+        </Button>
+      </div>
     </div>
   );
 }
