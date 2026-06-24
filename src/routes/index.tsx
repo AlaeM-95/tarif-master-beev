@@ -3938,6 +3938,15 @@ function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total,
         })()}
       </div>
 
+      {/* Lien de signature (admin) : alimente le CTA « Signer le devis » de la
+          page Options de paiement, en achat comme en location. */}
+      {isAdmin && !isHome && (
+        <div className="rounded-md border border-[#3809EA]/30 bg-[#3809EA]/[0.05] p-2 space-y-1">
+          <TxtField label="Lien de signature en ligne (page Options de paiement)" value={sc.signatureUrl ?? ""} onChange={(s) => onChange({ signatureUrl: s })} placeholder="https://… (Yousign, PandaDoc…)" />
+          <p className="text-[10px] text-muted-foreground">Réservé admin. Le bouton « Signer le devis en ligne » du PDF pointera vers ce lien. Vide : repli sur contact@beev.co.</p>
+        </div>
+      )}
+
       {/* Encart Site entreprise : upload devis technicien (privé, jamais dans le PDF client) */}
       {!isHome && (
         <div className="rounded-md border border-dashed border-[#3809EA]/30 bg-[#3809EA]/5 p-2 space-y-2">

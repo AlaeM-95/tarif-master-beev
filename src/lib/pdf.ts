@@ -216,6 +216,9 @@ export type SelectedCharger = {
    *  Chaque formule reçoit le même calcul (option d'achat 10 %, échéancier
    *  trimestriel, résiliation anticipée). */
   leaseConfigs?: Array<{ id: string; monthly: number; durationMonths: number }>;
+  /** Lien de signature en ligne du devis (admin). Utilisé par le CTA « Signer le
+   *  devis » de la page Options de paiement. Vide : repli sur contact@beev.co. */
+  signatureUrl?: string;
 };
 
 // Calculs de l'offre en location d'une borne (par instance).
@@ -2342,18 +2345,21 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
   const adminLease = ADMIN_MODE && leaseSiteChargers.length > 0;
   let highlightIdx = opts.findIndex((o) => o.tone === "highlight");
   if (highlightIdx < 0) highlightIdx = 1;
-  if (adminLease) {
-    const durations = Array.from(new Set(
-      leaseSiteChargers.flatMap((sc) => [
+  // Récap location (pour la carte Leasing + le bandeau bas).
+  const leaseDurations = adminLease
+    ? Array.from(new Set(leaseSiteChargers.flatMap((sc) => [
         sc.leaseDurationMonths ?? 0,
         ...(sc.leaseConfigs ?? []).map((cfg) => cfg.durationMonths ?? 0),
-      ]).filter((d) => d > 0),
-    )).sort((a, b) => a - b);
-    const durLabel = durations.join(" / ");
+      ]).filter((d) => d > 0))).sort((a, b) => a - b)
+    : [];
+  const leaseDurLabel = leaseDurations.join(" / ");
+  const leaseTotalRents = adminLease ? leaseSiteChargers.reduce((s, sc) => s + computeChargerLease(sc).totalRents, 0) : 0;
+  const leaseBuyout = leaseTotalRents * 0.10;
+  if (adminLease) {
     highlightIdx = 2;
-    opts[2].badge = durLabel ? `${durLabel} mois` : opts[2].badge;
-    if (durLabel) {
-      opts[2].desc = `Location sur ${durLabel} mois. Option d'achat 10 %, échéancier trimestriel et conditions de résiliation anticipée détaillés dans l'offre.`;
+    opts[2].badge = leaseDurLabel ? `${leaseDurLabel} mois` : opts[2].badge;
+    if (leaseDurLabel) {
+      opts[2].desc = `Location sur ${leaseDurLabel} mois. Option d'achat 10 %, échéancier trimestriel et conditions de résiliation anticipée détaillés dans l'offre.`;
     }
   }
 
@@ -2399,11 +2405,23 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
       doc.text(lines, cx + 14, y + 86);
     }
   });
-  y += payCardH + 24;
+  y += payCardH + 16;
 
-  // Bandeau bas : montant total + CTA
+  // Mention location : dossier soumis à étude / validation du partenaire financier.
+  if (adminLease) {
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...SUB);
+    const leaseNote = t("site_pay_lease_note", "Le financement en location est soumis à étude et validation du dossier par notre partenaire financier.");
+    const leaseNoteLines = doc.splitTextToSize(leaseNote, PAGE_W - M * 2);
+    doc.text(leaseNoteLines, M, y + 4);
+    y += leaseNoteLines.length * 12 + 10;
+  }
+
+  // Bandeau bas : montant total + info (acompte en achat / location) + CTA signature
+  const bandH = 100;
   doc.setFillColor(...BLACK);
-  doc.roundedRect(M, y, PAGE_W - M * 2, 100, 8, 8, "F");
+  doc.roundedRect(M, y, PAGE_W - M * 2, bandH, 8, 8, "F");
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
   doc.setTextColor(...PINK);
@@ -2416,12 +2434,37 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(200, 200, 200);
-  doc.text(`${t("site_pay_acompte_label", "Acompte 50 % à la commande")} : ${eur(acompte50 / 1.2)} HT`, M + 16, y + 70);
-  const cta = t("site_pay_cta", "Signez le devis en ligne · contact@beev.co");
-  doc.text(cta, M + 16, y + 86);
-  // Lien cliquable sur la zone du CTA → ouvre le mailer du client
-  const ctaW = doc.getTextWidth(cta);
-  doc.link(M + 16, y + 76, ctaW, 14, { url: "mailto:contact@beev.co?subject=Signature%20devis%20Beev" });
+  // Achat : acompte 50 %. Location : total des loyers + option d'achat (l'acompte
+  // ne s'applique pas en location).
+  if (adminLease) {
+    const durTxt = leaseDurLabel ? ` · ${leaseDurLabel} mois` : "";
+    doc.text(`Total des loyers : ${eur(leaseTotalRents)} HT · Option d'achat 10 % : ${eur(leaseBuyout)} HT${durTxt}`, M + 16, y + 70);
+  } else {
+    doc.text(`${t("site_pay_acompte_label", "Acompte 50 % à la commande")} : ${eur(acompte50 / 1.2)} HT`, M + 16, y + 70);
+  }
+
+  // CTA signature : bouton rose à droite, lien cliquable (lien de signature
+  // admin si fourni, sinon repli e-mail). Visible en achat comme en location.
+  const signatureUrl = chargers.map((sc) => sc.signatureUrl).find((u) => u && u.trim()) ?? "";
+  const signUrl = /^https?:\/\//i.test(signatureUrl) ? signatureUrl : "mailto:contact@beev.co?subject=Signature%20devis%20Beev";
+  const ctaLabel = t("site_pay_sign_cta", "Signer le devis en ligne");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(10.5);
+  const ctaTxt = `${ctaLabel}   →`;
+  const btnW = Math.min(PAGE_W - M * 2 - 220, doc.getTextWidth(ctaTxt) + 34);
+  const btnH = 34;
+  const bx = PAGE_W - M - 16 - btnW;
+  const by = y + (bandH - btnH) / 2;
+  doc.setFillColor(...PINK);
+  doc.roundedRect(bx, by, btnW, btnH, btnH / 2, btnH / 2, "F");
+  doc.setTextColor(...BLACK);
+  doc.text(ctaTxt, bx + btnW / 2, by + btnH / 2 + 3.5, { align: "center" });
+  doc.link(bx, by, btnW, btnH, { url: signUrl });
+  // Rappel contact discret sous le bouton.
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(150, 150, 150);
+  doc.text(t("site_pay_sign_sub", "ou contact@beev.co"), bx + btnW / 2, by + btnH + 11, { align: "center" });
 }
 
 function drawWhyBeev(doc: jsPDF, type: ProjectType) {
