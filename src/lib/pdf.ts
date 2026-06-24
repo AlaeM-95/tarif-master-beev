@@ -211,13 +211,24 @@ export type SelectedCharger = {
    *  « 7 · Options de paiement » (utile quand tout est en location, donc total
    *  achat = 0). Plusieurs bornes : les montants sont additionnés. */
   leaseProjectTotalHt?: number;
+  /** Formules de location SUPPLÉMENTAIRES (admin) : durées / loyers alternatifs
+   *  présentés en plus de la formule principale (leaseMonthly / leaseDurationMonths).
+   *  Chaque formule reçoit le même calcul (option d'achat 10 %, échéancier
+   *  trimestriel, résiliation anticipée). */
+  leaseConfigs?: Array<{ id: string; monthly: number; durationMonths: number }>;
 };
 
 // Calculs de l'offre en location d'une borne (par instance).
 export function computeChargerLease(sc: SelectedCharger) {
-  const monthly = Math.max(0, sc.leaseMonthly ?? 0);
-  const duration = Math.max(0, Math.round(sc.leaseDurationMonths ?? 0));
-  const qty = Math.max(1, sc.quantity || 1);
+  return computeLeaseScenario(sc.leaseMonthly ?? 0, sc.leaseDurationMonths ?? 0, sc.quantity || 1);
+}
+
+// Calcul d'UNE formule de location (loyer mensuel + durée + nb de bornes).
+// Identique pour la formule principale et chaque formule supplémentaire.
+export function computeLeaseScenario(monthly0: number, duration0: number, qty0: number) {
+  const monthly = Math.max(0, monthly0);
+  const duration = Math.max(0, Math.round(duration0));
+  const qty = Math.max(1, qty0 || 1);
   const monthlyTotal = monthly * qty;             // loyer mensuel pour l'ensemble des bornes
   const totalRents = monthlyTotal * duration;     // total des loyers sur le contrat
   const buyout = totalRents * 0.10;               // option d'achat = 10% du total des loyers
@@ -703,7 +714,10 @@ export async function generateProposalPdf(opts: {
       drawHeader(doc, client, effectiveType);
       drawSiteProjectSynthesis(doc, client, c);
     }
-    if (cfg.showSiteInfrastructure) {
+    // « Travaux à réaliser » : pour un admin, on n'affiche PAS la page si aucune
+    // ligne de travaux n'a été saisie (worksList vide), même si la case est cochée.
+    const hasWorks = (aggregateSiteSpecs(c).worksList?.length ?? 0) > 0;
+    if (cfg.showSiteInfrastructure && (!ADMIN_MODE || hasWorks)) {
       doc.addPage();
       drawHeader(doc, client, effectiveType);
       await drawSiteInfrastructure(doc, c);
@@ -737,7 +751,12 @@ export async function generateProposalPdf(opts: {
         drawSiteSupervision(doc, supPlan);
       }
     }
-    if (cfg.showSiteCompliance) {
+    // « Contrôles obligatoires et maintenance » : pour un admin, on n'affiche
+    // PAS la page si rien n'est coché (ni bureau de contrôle, ni Consuel, ni
+    // maintenance), même si la case est cochée dans le configurateur.
+    const compl = aggregateSiteSpecs(c);
+    const hasCompliance = compl.includeBureauControle === true || compl.includeConsuel === true || compl.includeMaintenance === true;
+    if (cfg.showSiteCompliance && (!ADMIN_MODE || hasCompliance)) {
       doc.addPage();
       drawHeader(doc, client, effectiveType);
       drawSiteCompliance(doc, c);
@@ -2316,10 +2335,32 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
     },
   ];
 
+  // Admin : si au moins une borne du site est présentée en LOCATION, on bascule
+  // la mise en avant (carte noire) sur la formule Leasing et on affiche la / les
+  // durée(s) de location souhaitée(s).
+  const leaseSiteChargers = chargers.filter((sc) => sc.leaseEnabled);
+  const adminLease = ADMIN_MODE && leaseSiteChargers.length > 0;
+  let highlightIdx = opts.findIndex((o) => o.tone === "highlight");
+  if (highlightIdx < 0) highlightIdx = 1;
+  if (adminLease) {
+    const durations = Array.from(new Set(
+      leaseSiteChargers.flatMap((sc) => [
+        sc.leaseDurationMonths ?? 0,
+        ...(sc.leaseConfigs ?? []).map((cfg) => cfg.durationMonths ?? 0),
+      ]).filter((d) => d > 0),
+    )).sort((a, b) => a - b);
+    const durLabel = durations.join(" / ");
+    highlightIdx = 2;
+    opts[2].badge = durLabel ? `${durLabel} mois` : opts[2].badge;
+    if (durLabel) {
+      opts[2].desc = `Location sur ${durLabel} mois. Option d'achat 10 %, échéancier trimestriel et conditions de résiliation anticipée détaillés dans l'offre.`;
+    }
+  }
+
   const payCardH = 200;
   opts.forEach((opt, i) => {
     const cx = M + i * (colW + 12);
-    if (opt.tone === "highlight") {
+    if (i === highlightIdx) {
       doc.setFillColor(...BLACK);
       doc.roundedRect(cx, y, colW, payCardH, 8, 8, "F");
       // Badge largeur dynamique selon le texte (min 80, max colW - 28)
@@ -3070,23 +3111,44 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
 // option d'achat) + tableau de résiliation anticipée + clause. Présentation pro
 // dans la charte Beev. Remplace le chiffrage à l'achat pour cette borne.
 function drawChargerLeaseBlock(doc: jsPDF, sc: SelectedCharger, y: number, client: ClientInfo, type: ProjectType): number {
-  const L = computeChargerLease(sc);
   // Montants exacts : pas d'arrondi, on n'affiche les centimes que s'ils existent.
   const money = (n: number) => (Number.isInteger(n) ? eur(n) : eur2(n));
   const fullW = PAGE_W - M * 2;
+  const qty = Math.max(1, sc.quantity || 1);
+  // Formules : formule principale (leaseMonthly / leaseDurationMonths) + formules
+  // supplémentaires (leaseConfigs). On ne garde que celles dûment renseignées.
+  const extras = (sc.leaseConfigs ?? []).filter((cfg) => (cfg.monthly ?? 0) > 0 && (cfg.durationMonths ?? 0) > 0);
+  const scenarios = [computeChargerLease(sc), ...extras.map((cfg) => computeLeaseScenario(cfg.monthly, cfg.durationMonths, qty))]
+    .filter((s) => s.monthly > 0 && s.duration > 0);
+  if (scenarios.length === 0) scenarios.push(computeChargerLease(sc));
+  const multiLease = scenarios.length > 1;
+
   y = ensureSpace(doc, y, 200, client, type);
 
   // En-tête
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...LAVENDER);
-  doc.text("OFFRE EN LOCATION", M, y);
+  doc.text(multiLease ? `OFFRE EN LOCATION · ${scenarios.length} FORMULES AU CHOIX` : "OFFRE EN LOCATION", M, y);
   y += 14;
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
   doc.setTextColor(...SUB);
   doc.text(sc.leaseEquipmentOnly ? "Location du matériel seul · installation non comprise" : "Location du matériel, installation comprise", M, y);
   y += 16;
+
+  for (const L of scenarios) {
+    // Sous-titre par formule (uniquement quand plusieurs formules).
+    if (multiLease) {
+      y = ensureSpace(doc, y, 130, client, type);
+      doc.setFillColor(...ACCENT);
+      doc.rect(M, y - 9, 18, 14, "F");
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(10.5);
+      doc.setTextColor(...INK);
+      doc.text(`Formule ${L.duration} mois · ${money(L.monthly)} HT/mois${L.qty > 1 ? ` × ${L.qty} bornes` : ""}`, M + 26, y + 2);
+      y += 18;
+    }
 
   // Panneau « financement » : nombre de bornes + calcul EXACT du total des loyers.
   const qtyTerm = L.qty > 1 ? ` × ${L.qty} bornes` : "";
@@ -3202,6 +3264,7 @@ function drawChargerLeaseBlock(doc: jsPDF, sc: SelectedCharger, y: number, clien
     });
     y = (doc as any).lastAutoTable.finalY + 12;
   }
+  } // fin boucle formules de location
 
   // Clause
   const clause = "Condition de résiliation anticipée : en cas de rupture du contrat avant son terme, une pénalité égale aux loyers restant dus, majorés de 10%, est exigible (« Total HT à régler »). À l'échéance du contrat, l'option d'achat de l'équipement s'élève à 10% du total des loyers versés.";

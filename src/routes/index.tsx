@@ -689,6 +689,7 @@ function App() {
           // copie profonde des lignes pour éditer indépendamment
           lineItems: sc.lineItems.map((li) => ({ ...li })),
           siteSpecs: sc.siteSpecs ? { ...sc.siteSpecs } : undefined,
+          leaseConfigs: sc.leaseConfigs ? sc.leaseConfigs.map((cfg) => ({ ...cfg })) : undefined,
         },
       };
     });
@@ -3857,6 +3858,30 @@ function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total,
                 <div className="rounded-md border border-[#3809EA]/30 bg-[#3809EA]/[0.05] p-2 space-y-1">
                   <NumField label="Montant total projet HT (page 7 · Options de paiement)" value={sc.leaseProjectTotalHt ?? 0} onChange={(n) => onChange({ leaseProjectTotalHt: n })} />
                   <p className="text-[10px] text-muted-foreground">Réservé admin. S'il est renseigné, ce montant remplace le total affiché dans la page « Options de paiement » (utile quand tout est en location, donc total à l'achat = 0).</p>
+                </div>
+              )}
+              {isAdmin && (
+                <div className="rounded-md border border-[#3809EA]/30 p-2 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-semibold uppercase text-[#3809EA] tracking-wide">Formules supplémentaires ({(sc.leaseConfigs ?? []).length})</span>
+                    <Button variant="ghost" size="sm" className="h-6 text-[10px] gap-1 text-[#3809EA]"
+                      onClick={() => onChange({ leaseConfigs: [...(sc.leaseConfigs ?? []), { id: `lc-${Math.random().toString(36).slice(2, 8)}`, monthly: sc.leaseMonthly ?? 0, durationMonths: 48 }] })}>
+                      <Plus className="w-3 h-3" /> Ajouter une durée
+                    </Button>
+                  </div>
+                  {(sc.leaseConfigs ?? []).map((cfg, ci) => (
+                    <div key={cfg.id} className="grid grid-cols-[1fr_1fr_28px] gap-1 items-end">
+                      <NumField label={ci === 0 ? "Durée (mois)" : ""} value={cfg.durationMonths}
+                        onChange={(n) => onChange({ leaseConfigs: (sc.leaseConfigs ?? []).map((x) => x.id === cfg.id ? { ...x, durationMonths: n } : x) })} />
+                      <NumField label={ci === 0 ? "Loyer HT/mois" : ""} value={cfg.monthly}
+                        onChange={(n) => onChange({ leaseConfigs: (sc.leaseConfigs ?? []).map((x) => x.id === cfg.id ? { ...x, monthly: n } : x) })} />
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive"
+                        onClick={() => onChange({ leaseConfigs: (sc.leaseConfigs ?? []).filter((x) => x.id !== cfg.id) })}>
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-muted-foreground">La formule principale ci-dessus est la formule 1. Chaque formule supplémentaire apparaît dans le PDF avec son propre calcul (option d'achat 10 %, échéancier, résiliation).</p>
                 </div>
               )}
               <label className="flex items-center gap-2 text-xs cursor-pointer">
