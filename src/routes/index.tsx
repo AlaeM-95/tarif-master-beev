@@ -32,6 +32,7 @@ import { LiveIndicator } from "@/components/live-indicator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MarginReviewDialog } from "@/components/margin-review-dialog";
 import { PdfConfigPanel } from "@/components/pdf-config-panel";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { CategoryField } from "@/components/category-field";
 import { MarginSelect } from "@/components/margin-select";
 import { RefreshButton } from "@/components/refresh-button";
@@ -702,6 +703,8 @@ function App() {
   const [marginDialog, setMarginDialog] = useState(false);
   const [bpuB2B2EOpen, setBpuB2B2EOpen] = useState(false);
   const [auditConseilOpen, setAuditConseilOpen] = useState(false);
+  // v2 Sélection (admin) : clé du véhicule dont le panneau de réglages est ouvert.
+  const [configVKey, setConfigVKey] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const { config: pdfConfig, update: updatePdfConfig, reset: resetPdfConfig } = usePdfConfig();
   // Sous-titres de catalogue éditables par type de projet (depuis /admin/pdf).
@@ -1139,6 +1142,37 @@ function App() {
       />
       <BpuB2B2EEditor open={bpuB2B2EOpen} onOpenChange={setBpuB2B2EOpen} clientName={client.company} />
       <AuditConseilEditor open={auditConseilOpen} onOpenChange={setAuditConseilOpen} clientName={client.company} />
+
+      {/* v2 admin : panneau latéral de réglages détaillés d'un véhicule.
+          Réutilise l'éditeur complet SelectedVehicleRow comme corps du drawer. */}
+      <Sheet open={!!configVKey} onOpenChange={(o) => { if (!o) setConfigVKey(null); }}>
+        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+          {(() => {
+            if (!configVKey) return null;
+            const sv = selectedV[configVKey];
+            if (!sv) return null;
+            const keys = Object.keys(selectedV);
+            const idx = keys.indexOf(configVKey);
+            const tripartiteUrl = sv.vehicle.tripartitePdfUrl || vehicles.find((vv) => vv.brand === sv.vehicle.brand && vv.tripartitePdfUrl)?.tripartitePdfUrl;
+            return (
+              <>
+                <SheetHeader className="mb-3">
+                  <SheetTitle>Réglages · {sv.vehicle.brand} {sv.vehicle.model}</SheetTitle>
+                  <SheetDescription>Tous les détails de chiffrage et d'affichage de ce véhicule.</SheetDescription>
+                </SheetHeader>
+                <SelectedVehicleRow sv={sv} energy={energy}
+                  index={idx} total={keys.length}
+                  tripartiteUrl={tripartiteUrl}
+                  onMove={(dir) => setSelectedV((s) => moveInRecord(s, configVKey, dir))}
+                  onChange={(p) => setSelectedV((s) => ({ ...s, [configVKey]: { ...(s[configVKey] ?? sv), ...p } }))}
+                  onApplyAll={(mutate) => setSelectedV((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, mutate(v)])))}
+                  onDuplicate={() => duplicateVehicleInstance(sv)}
+                  onRemove={() => { setSelectedV((s) => { const next = { ...s }; delete next[configVKey]; return next; }); setConfigVKey(null); }} />
+              </>
+            );
+          })()}
+        </SheetContent>
+      </Sheet>
       <header className="fixed top-0 left-0 right-0 z-50 h-16 bg-background/95 backdrop-blur-md border-b border-border">
         <div className="w-full px-4 h-full flex items-center justify-between gap-3 flex-nowrap">
           {/* ─── Identité Beev (gauche) ─── */}
@@ -1789,10 +1823,22 @@ function App() {
                       </p>
                       {Object.values(selectedV).map((sv, idx, arr) => {
                         const key = sv.instanceId ?? sv.vehicle.id;
+                        const tripartiteUrl = sv.vehicle.tripartitePdfUrl || vehicles.find((vv) => vv.brand === sv.vehicle.brand && vv.tripartitePdfUrl)?.tripartitePdfUrl;
+                        // v2 admin : carte épurée + réglages dans un panneau latéral.
+                        // Non-admin : éditeur dense en ligne (comportement actuel).
+                        if (isAdmin) {
+                          return (
+                            <VehicleSummaryCard key={key} sv={sv} energy={energy}
+                              onQty={(n) => setSelectedV((s) => ({ ...s, [key]: { ...(s[key] ?? sv), quantity: n } }))}
+                              onConfigure={() => setConfigVKey(key)}
+                              onDuplicate={() => duplicateVehicleInstance(sv)}
+                              onRemove={() => setSelectedV((s) => { const next = { ...s }; delete next[key]; return next; })} />
+                          );
+                        }
                         return (
                         <SelectedVehicleRow key={key} sv={sv} energy={energy}
                           index={idx} total={arr.length}
-                          tripartiteUrl={sv.vehicle.tripartitePdfUrl || vehicles.find((vv) => vv.brand === sv.vehicle.brand && vv.tripartitePdfUrl)?.tripartitePdfUrl}
+                          tripartiteUrl={tripartiteUrl}
                           onMove={(dir) => setSelectedV((s) => moveInRecord(s, key, dir))}
                           onChange={(p) => setSelectedV((s) => ({ ...s, [key]: { ...(s[key] ?? sv), ...p } }))}
                           onApplyAll={(mutate) => setSelectedV((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, mutate(v)])))}
@@ -1800,6 +1846,18 @@ function App() {
                           onRemove={() => setSelectedV((s) => { const next = { ...s }; delete next[key]; return next; })} />
                         );
                       })}
+                      {isAdmin && (() => {
+                        const props = Object.values(selectedV).filter((sv) => !sv.vehicle.isCurrentFleet);
+                        const qty = props.reduce((s, sv) => s + sv.quantity, 0);
+                        const month = props.reduce((s, sv) => s + sv.quantity * sv.negotiatedMonthly, 0);
+                        if (qty === 0) return null;
+                        return (
+                          <div className="flex items-center justify-between rounded-lg bg-beev-bleu-20/50 border border-beev-bleu/40 px-3 py-2 text-xs">
+                            <span className="text-muted-foreground">Proposition Beev</span>
+                            <span className="font-bold">{qty} véh · {fmtEur(month)}/mois</span>
+                          </div>
+                        );
+                      })()}
                     </>
                   )}
                   {/* Section bornes — toujours affichée si au moins 1 sélectionnée */}
@@ -3367,6 +3425,58 @@ function FiscalWarningBadge({ vehicle, durationMonths }: { vehicle: Vehicle; dur
           <span className="font-semibold">{tvsAnnuelle.toLocaleString("fr-FR")} €</span>
         </div>
       )}
+    </div>
+  );
+}
+
+// Carte compacte (v2 admin) : l'essentiel visible (photo, modèle, statut,
+// quantité, loyer, TCO). Le réglage fin s'ouvre dans un panneau latéral via
+// « Configurer ». Conçue pour être lisible par n'importe quel utilisateur.
+function VehicleSummaryCard({ sv, energy, onQty, onConfigure, onDuplicate, onRemove }: {
+  sv: SelectedVehicle; energy: EnergyParams;
+  onQty: (n: number) => void; onConfigure: () => void; onDuplicate?: () => void; onRemove: () => void;
+}) {
+  const tco = computeTco(sv, energy);
+  const isCur = !!sv.vehicle.isCurrentFleet;
+  return (
+    <div className={`rounded-xl border bg-card p-2.5 ${isCur ? "border-l-[3px] border-l-beev-rose" : ""}`}>
+      <div className="flex items-center gap-2.5">
+        <div className="w-14 h-10 rounded-md bg-beev-violet-20 overflow-hidden flex items-center justify-center flex-shrink-0">
+          {sv.vehicle.image ? <img src={sv.vehicle.image} alt="" className="w-full h-full object-cover" /> : <Car className="w-5 h-5 text-muted-foreground/50" />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold truncate">{sv.vehicle.brand} {sv.vehicle.model}</p>
+          <p className="text-[10px] text-muted-foreground truncate">{sv.vehicle.version}</p>
+          <span className={`inline-block mt-1 text-[9px] font-bold rounded-full px-2 py-0.5 ${isCur ? "bg-beev-rose-20 text-beev-rose" : "bg-beev-bleu-20 text-[#1E5A99]"}`}>
+            {isCur ? "Flotte actuelle" : "Proposition Beev"}
+          </span>
+        </div>
+        <div className="flex gap-0.5 flex-shrink-0">
+          {onDuplicate && <Button variant="ghost" size="icon" className="h-7 w-7" title="Dupliquer" onClick={onDuplicate}><Copy className="w-3.5 h-3.5" /></Button>}
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title="Retirer" onClick={onRemove}><Trash2 className="w-3.5 h-3.5" /></Button>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2 mt-2.5">
+        <div className="rounded-lg border p-1.5">
+          <div className="text-[9px] uppercase text-muted-foreground tracking-wide">Quantité</div>
+          <div className="flex items-center gap-2 mt-1">
+            <button type="button" onClick={() => onQty(Math.max(1, sv.quantity - 1))} className="w-5 h-5 rounded border text-sm font-bold leading-none hover:bg-muted">−</button>
+            <span className="text-sm font-bold w-4 text-center">{sv.quantity}</span>
+            <button type="button" onClick={() => onQty(sv.quantity + 1)} className="w-5 h-5 rounded border text-sm font-bold leading-none hover:bg-muted">+</button>
+          </div>
+        </div>
+        <div className="rounded-lg border p-1.5">
+          <div className="text-[9px] uppercase text-muted-foreground tracking-wide">Loyer/mois</div>
+          <div className="text-sm font-bold mt-1">{fmtEur(sv.negotiatedMonthly)}</div>
+        </div>
+        <div className="rounded-lg border p-1.5">
+          <div className="text-[9px] uppercase text-muted-foreground tracking-wide">TCO/100km</div>
+          <div className={`text-sm font-bold mt-1 ${isCur ? "" : "text-beev-good"}`}>{tco.tco100.toFixed(2)} €</div>
+        </div>
+      </div>
+      <Button variant="outline" size="sm" className="w-full mt-2 h-8 gap-1.5 text-xs" onClick={onConfigure}>
+        <Settings2 className="w-3.5 h-3.5" /> Configurer
+      </Button>
     </div>
   );
 }
