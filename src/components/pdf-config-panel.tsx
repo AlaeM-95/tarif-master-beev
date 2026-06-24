@@ -13,6 +13,35 @@ type Props = {
   projectType: ProjectType;
   /** Ouvre un aperçu (couverture + cette section uniquement) dans un onglet. */
   onPreviewSection?: (key: keyof PdfDisplayConfig) => void;
+  /** Compte admin : active la vue « ordre du document » (sections rangées dans
+   *  l'ordre réel du PDF, avec un numéro de page indicatif à droite). */
+  isAdmin?: boolean;
+};
+
+// Ordre de lecture réel du document (ordre dans lequel les pages sortent du
+// générateur). Sert à ranger les sections et à calculer un numéro de page
+// indicatif. Les clés absentes de cette liste sont affichées à la fin.
+const DOC_ORDER: string[] = [
+  // Ouverture
+  "showWhyBeev", "showSocialProof",
+  // Offre véhicules
+  "showVehicleComparator", "showCurrentFleetVehicle", "showProposalVehicle", "showCompetitorComparison",
+  // Analyse TCO véhicules
+  "showTcoComparison", "showTcoDetailedTable", "showTcoFiscalDetail", "showFleetSynthesis",
+  "showCarbonImpact", "showFiscalAdvantages",
+  // Rapport site entreprise
+  "showSiteOverview", "showSiteGuarantees", "showSiteProjectSynthesis", "showSiteInfrastructure",
+  "showSiteEquipments", "showSiteProductSheet", "showSiteSupervision", "showSiteCompliance",
+  "showSiteFinancialRecap", "showSitePaymentOptions",
+  // Supervision (modules)
+  "showSupervisionHome", "showSupervisionConnect",
+  // Synthèse & clôture
+  "showFinancialSummary", "showFinancialSynthesis", "showGuarantees", "showJourney",
+  "showExecutiveSummary", "showLegend",
+];
+const docRank = (key: string) => {
+  const i = DOC_ORDER.indexOf(key);
+  return i === -1 ? DOC_ORDER.length + 1 : i;
 };
 
 // Type de page par section → mini-maquette, pour savoir à quoi ressemble chaque
@@ -70,7 +99,7 @@ function KindThumb({ kind }: { kind: SectionKind }) {
   );
 }
 
-export function PdfConfigPanel({ config, update, reset, projectType, onPreviewSection }: Props) {
+export function PdfConfigPanel({ config, update, reset, projectType, onPreviewSection, isAdmin }: Props) {
   const [open, setOpen] = useState(false);
 
   // On ne compte que les réglages booléens (toggles) : certaines clés sont des
@@ -78,6 +107,76 @@ export function PdfConfigPanel({ config, update, reset, projectType, onPreviewSe
   const boolKeys = (Object.keys(config) as Array<keyof PdfDisplayConfig>).filter((k) => typeof config[k] === "boolean");
   const enabledCount = boolKeys.filter((k) => config[k] === true).length;
   const totalCount = boolKeys.length;
+
+  // Visibilité d'une section selon le type de projet (filtre groupe + item).
+  const itemVisible = (group: (typeof CONFIG_GROUPS)[number], item: (typeof CONFIG_GROUPS)[number]["items"][number]) => {
+    if (group.appliesTo && !group.appliesTo.includes(projectType)) return false;
+    const itemAppliesTo = (item as any).appliesTo as ProjectType[] | undefined;
+    if (itemAppliesTo && !itemAppliesTo.includes(projectType)) return false;
+    return true;
+  };
+
+  // Vue admin « ordre du document » : sections rangées dans l'ordre réel du PDF
+  // + numéro de page indicatif (couverture = p.1, chaque section affichée ajoute
+  // une page ; l'ordre réel dépend des sections cochées).
+  const orderedItems = CONFIG_GROUPS
+    .flatMap((g) => g.items.filter((it) => itemVisible(g, it)))
+    .sort((a, b) => docRank(a.key as string) - docRank(b.key as string));
+  const pageOf = new Map<string, number>();
+  let pageCounter = 1;
+  for (const it of orderedItems) {
+    if (config[it.key]) { pageCounter += 1; pageOf.set(it.key as string, pageCounter); }
+  }
+
+  const renderItem = (item: (typeof CONFIG_GROUPS)[number]["items"][number], pageNum?: number) => {
+    const on = !!config[item.key];
+    const kind = KIND_BY_KEY[item.key as string];
+    return (
+      <label
+        key={item.key}
+        className={`flex items-start gap-2 cursor-pointer rounded-md border p-2 transition ${
+          on ? "border-beev-rose/50 bg-beev-rose-20" : "border-border/60 bg-transparent opacity-70 hover:opacity-100"
+        }`}
+      >
+        <Checkbox checked={on} onCheckedChange={(v) => update({ [item.key]: !!v })} className="mt-0.5" />
+        {kind && <KindThumb kind={kind} />}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-xs cursor-pointer leading-tight font-medium">
+              {item.label}
+              {kind && <span className="ml-1.5 text-[9px] font-normal text-muted-foreground">· {KIND_LABEL[kind]}</span>}
+            </Label>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              {pageNum != null && (
+                <span className="text-[9px] font-semibold uppercase rounded-full px-1.5 py-0.5 bg-beev-violet/30 text-beev-black" title="Page indicative dans le PDF">
+                  p. {pageNum}
+                </span>
+              )}
+              {kind && onPreviewSection && (
+                <button
+                  type="button"
+                  title="Aperçu de cette page dans un onglet"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onPreviewSection(item.key); }}
+                  className="flex items-center gap-1 text-[9px] font-semibold uppercase rounded-full border border-beev-bleu bg-beev-bleu-20 text-beev-black px-1.5 py-0.5 hover:bg-beev-bleu/40 transition"
+                >
+                  <Eye className="w-2.5 h-2.5" /> Voir
+                </button>
+              )}
+              <span className={`flex items-center gap-1 text-[9px] font-semibold uppercase rounded-full px-1.5 py-0.5 ${
+                on ? "bg-beev-rose text-beev-black" : "bg-muted text-muted-foreground"
+              }`}>
+                {on ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
+                {on ? "Affiché" : "Masqué"}
+              </span>
+            </div>
+          </div>
+          {item.description && (
+            <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{item.description}</p>
+          )}
+        </div>
+      </label>
+    );
+  };
 
   return (
     <div className="rounded-lg border bg-card">
@@ -105,69 +204,33 @@ export function PdfConfigPanel({ config, update, reset, projectType, onPreviewSe
             sauvegardée localement et s'applique à toutes vos prochaines générations.
           </p>
 
-          {CONFIG_GROUPS.map((group) => {
-            // Filtre par type de projet si défini
-            if (group.appliesTo && !group.appliesTo.includes(projectType)) return null;
-            return (
-              <div key={group.title} className="space-y-2">
-                <p className="text-[10px] font-semibold uppercase text-[#5F5F64]">{group.title}</p>
-                <div className="space-y-1.5">
-                  {group.items.map((item) => {
-                    const itemAppliesTo = (item as any).appliesTo as ProjectType[] | undefined;
-                    if (itemAppliesTo && !itemAppliesTo.includes(projectType)) return null;
-                    const on = !!config[item.key];
-                    const kind = KIND_BY_KEY[item.key as string];
-                    return (
-                      <label
-                        key={item.key}
-                        className={`flex items-start gap-2 cursor-pointer rounded-md border p-2 transition ${
-                          on ? "border-beev-rose/50 bg-beev-rose-20" : "border-border/60 bg-transparent opacity-70 hover:opacity-100"
-                        }`}
-                      >
-                        <Checkbox
-                          checked={on}
-                          onCheckedChange={(v) => update({ [item.key]: !!v })}
-                          className="mt-0.5"
-                        />
-                        {kind && <KindThumb kind={kind} />}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <Label className="text-xs cursor-pointer leading-tight font-medium">
-                              {item.label}
-                              {kind && <span className="ml-1.5 text-[9px] font-normal text-muted-foreground">· {KIND_LABEL[kind]}</span>}
-                            </Label>
-                            <div className="flex items-center gap-1.5 flex-shrink-0">
-                              {kind && onPreviewSection && (
-                                <button
-                                  type="button"
-                                  title="Aperçu de cette page dans un onglet"
-                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onPreviewSection(item.key); }}
-                                  className="flex items-center gap-1 text-[9px] font-semibold uppercase rounded-full border border-beev-bleu bg-beev-bleu-20 text-beev-black px-1.5 py-0.5 hover:bg-beev-bleu/40 transition"
-                                >
-                                  <Eye className="w-2.5 h-2.5" /> Voir
-                                </button>
-                              )}
-                              <span className={`flex items-center gap-1 text-[9px] font-semibold uppercase rounded-full px-1.5 py-0.5 ${
-                                on ? "bg-beev-rose text-beev-black" : "bg-muted text-muted-foreground"
-                              }`}>
-                                {on ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
-                                {on ? "Affiché" : "Masqué"}
-                              </span>
-                            </div>
-                          </div>
-                          {item.description && (
-                            <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
-                              {item.description}
-                            </p>
-                          )}
-                        </div>
-                      </label>
-                    );
-                  })}
-                </div>
+          {isAdmin ? (
+            // Vue admin : sections dans l'ordre réel du document + page indicative.
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-semibold uppercase text-[#5F5F64]">Ordre du document</p>
+                <span className="text-[9px] text-muted-foreground">Pages indicatives (l'ordre réel dépend des sections cochées)</span>
               </div>
-            );
-          })}
+              <div className="space-y-1.5">
+                {orderedItems.map((item) => renderItem(item, pageOf.get(item.key as string)))}
+              </div>
+            </div>
+          ) : (
+            CONFIG_GROUPS.map((group) => {
+              // Filtre par type de projet si défini
+              if (group.appliesTo && !group.appliesTo.includes(projectType)) return null;
+              const items = group.items.filter((item) => itemVisible(group, item));
+              if (items.length === 0) return null;
+              return (
+                <div key={group.title} className="space-y-2">
+                  <p className="text-[10px] font-semibold uppercase text-[#5F5F64]">{group.title}</p>
+                  <div className="space-y-1.5">
+                    {items.map((item) => renderItem(item))}
+                  </div>
+                </div>
+              );
+            })
+          )}
 
           <div className="grid grid-cols-3 gap-1">
             <Button

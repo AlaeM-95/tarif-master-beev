@@ -785,6 +785,7 @@ function App() {
           // les valeurs DB / fallback comme avant.
           textOverrides: Object.keys(pdfTextOverrides).length > 0 ? pdfTextOverrides : undefined,
           preview,
+          adminMode: isAdmin,
         }),
         timeout,
       ]);
@@ -865,6 +866,7 @@ function App() {
         pdfConfig: iso as unknown as PdfDisplayConfig,
         b2b2eInput,
         preview: true,
+        adminMode: isAdmin,
       });
     } catch {
       toast.error("Aperçu de section impossible pour le moment.");
@@ -1748,6 +1750,7 @@ function App() {
             reset={resetPdfConfig}
             projectType={projectType}
             onPreviewSection={(key) => previewSection(key)}
+            isAdmin={isAdmin}
           />
 
           <Card>
@@ -1806,7 +1809,7 @@ function App() {
                         Bornes de recharge ({counts.c})
                       </p>
                       {Object.values(selectedC).map((sc, idx, arr) => (
-                        <SelectedChargerRow key={sc.instanceId} sc={sc}
+                        <SelectedChargerRow key={sc.instanceId} sc={sc} isAdmin={isAdmin}
                           index={idx} total={arr.length}
                           onMove={(dir) => setSelectedC((s) => moveInRecord(s, sc.instanceId, dir))}
                           onChange={(p) => setSelectedC((s) => {
@@ -3788,7 +3791,7 @@ function SelectedVehicleRow({ sv, energy, onChange, onApplyAll, onRemove, onDupl
   );
 }
 
-function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total, onMove }: { sc: SelectedCharger; onChange: (p: Partial<SelectedCharger>) => void; onRemove: () => void; onDuplicate?: () => void; index?: number; total?: number; onMove?: (dir: -1 | 1) => void }) {
+function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total, onMove, isAdmin }: { sc: SelectedCharger; onChange: (p: Partial<SelectedCharger>) => void; onRemove: () => void; onDuplicate?: () => void; index?: number; total?: number; onMove?: (dir: -1 | 1) => void; isAdmin?: boolean }) {
   const [openLi, setOpenLi] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const setLi = (i: number, p: Partial<LineItem>) => onChange({ lineItems: sc.lineItems.map((x, idx) => idx === i ? { ...x, ...p } : x) });
@@ -3850,6 +3853,12 @@ function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total,
                 <NumField label="Loyer mensuel HT (par borne)" value={sc.leaseMonthly ?? 0} onChange={(n) => onChange({ leaseMonthly: n })} />
                 <NumField label="Durée du contrat (mois)" value={sc.leaseDurationMonths ?? 36} onChange={(n) => onChange({ leaseDurationMonths: n })} />
               </div>
+              {isAdmin && (
+                <div className="rounded-md border border-[#3809EA]/30 bg-[#3809EA]/[0.05] p-2 space-y-1">
+                  <NumField label="Montant total projet HT (page 7 · Options de paiement)" value={sc.leaseProjectTotalHt ?? 0} onChange={(n) => onChange({ leaseProjectTotalHt: n })} />
+                  <p className="text-[10px] text-muted-foreground">Réservé admin. S'il est renseigné, ce montant remplace le total affiché dans la page « Options de paiement » (utile quand tout est en location, donc total à l'achat = 0).</p>
+                </div>
+              )}
               <label className="flex items-center gap-2 text-xs cursor-pointer">
                 <input
                   type="checkbox"

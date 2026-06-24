@@ -206,6 +206,11 @@ export type SelectedCharger = {
   /** Location du matériel SEUL (sans installation). Le PDF mentionne « matériel
    *  seul » et n'affiche pas les inclusions d'installation. */
   leaseEquipmentOnly?: boolean;
+  /** Montant total projet HT saisi manuellement en mode location (admin). Quand
+   *  il est renseigné (> 0), il REMPLACE le total calculé dans la page
+   *  « 7 · Options de paiement » (utile quand tout est en location, donc total
+   *  achat = 0). Plusieurs bornes : les montants sont additionnés. */
+  leaseProjectTotalHt?: number;
 };
 
 // Calculs de l'offre en location d'une borne (par instance).
@@ -296,6 +301,11 @@ let BRAND_FONT = "helvetica"; // fallback si Roobert non disponible
 
 // Configuration d'affichage du PDF (toggleable depuis l'app par le commercial)
 let PDF_CFG: PdfDisplayConfig = DEFAULT_PDF_CONFIG;
+
+// Mode admin : déverrouille des comportements réservés aux comptes admin
+// (chiffrage des postes affiché même en location, BPA / conditions propres à
+// chaque type de projet). Positionné par generateProposalPdf (adminMode).
+let ADMIN_MODE = false;
 
 // Résultats TCO chargés depuis Supabase (synchronisés avec beev-tco-2026)
 // Map vehicleId → TcoResult le plus récent. Vide si l'app TCO n'a rien écrit.
@@ -597,10 +607,14 @@ export async function generateProposalPdf(opts: {
   /** Si true, ouvre le PDF dans un nouvel onglet (aperçu) au lieu de le
    *  télécharger directement. */
   preview?: boolean;
+  /** Compte admin : déverrouille les améliorations réservées (chiffrage en
+   *  location, BPA propre à chaque type). */
+  adminMode?: boolean;
 }) {
   const { projectType, client, vehicles, chargers, energy, pdfConfig, b2b2eInput, textOverrides, preview } = opts;
   const cfg: PdfDisplayConfig = pdfConfig ?? DEFAULT_PDF_CONFIG;
   PDF_CFG = cfg; // expose la config pour les fonctions draw*
+  ADMIN_MODE = !!opts.adminMode;
   // Active les overrides texte pour ce devis (priorité max dans lookupText
   // / lookupList). Reset en fin de fonction.
   setPdfTextOverrides(textOverrides ?? null);
@@ -2259,7 +2273,11 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
 
   // Total recalculé pour cohérence avec la page récap financier (hors bornes en location).
   const total = chargers.reduce((sum, sc) => sc.leaseEnabled ? sum : sum + sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0) * sc.quantity, 0) + bureauControle;
-  const ttc = total * 1.2;
+  // Montant total projet saisi manuellement (mode location) : s'il est renseigné,
+  // il REMPLACE le total calculé (qui exclut les bornes en location).
+  const manualTotal = chargers.reduce((sum, sc) => sum + (sc.leaseProjectTotalHt ?? 0), 0);
+  const displayTotal = manualTotal > 0 ? manualTotal : total;
+  const ttc = displayTotal * 1.2;
   const acompte50 = ttc * 0.5;
 
   let y = 116;
@@ -2353,7 +2371,7 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
   doc.setFontSize(24);
   doc.setTextColor(252, 249, 242);
   // Total HT seulement (sur demande utilisateur — pas de TTC ici)
-  doc.text(`${eur(total)} HT`, M + 16, y + 50);
+  doc.text(`${eur(displayTotal)} HT`, M + 16, y + 50);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(200, 200, 200);
@@ -3308,8 +3326,10 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   }
   // Le tableau de chiffrage et l'encart 'Pour N collaborateurs' sont gated
   // par showChargerLineItems. Si l'admin a décoché la case, on saute tout.
-  // En mode location, le chiffrage à l'achat n'est pas affiché.
-  if (PDF_CFG.showChargerLineItems && !sc.leaseEnabled) {
+  // En mode location, le chiffrage à l'achat est masqué par défaut, MAIS reste
+  // affiché pour les comptes admin (ADMIN_MODE) : ils veulent voir les postes
+  // de dépense même quand le devis est présenté en location.
+  if (PDF_CFG.showChargerLineItems && (!sc.leaseEnabled || ADMIN_MODE)) {
   y = ensureSpace(doc, y, 110, client, type);
   // Pour le scope SITE, on supprime le footer "Total HT par site" : ce total
   // est partiel (n'inclut pas le bureau de contrôle 700 €), donc il
@@ -6970,7 +6990,11 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
     home: "Offre valable 30 jours. Tarifs HT, pose 0–10 m incluse. Au-delà : devis complémentaire après visite technique. Le mandat d'installation est signé individuellement par chaque collaborateur bénéficiaire.",
     site: "Offre valable 30 jours. Tarifs HT, sous réserve de visite technique sur site. Le devis ferme par site est émis après audit IRVE. Garantie constructeur 3 ans, extensible 6 ans en option.",
   };
-  const conditionsText = c.notes || PDF_CONTENT.validationConditions || fallback[type];
+  // Pour un compte admin sur un projet site (B2B) ou domicile (B2B2E), on ignore
+  // le texte BPA/conditions enregistré dans l'admin (rédigé pour les véhicules /
+  // LLD) et on garde le texte propre au type, cohérent avec le projet.
+  const adminPerType = ADMIN_MODE && type !== "vehicles";
+  const conditionsText = c.notes || (adminPerType ? "" : PDF_CONTENT.validationConditions) || fallback[type];
   const lines = doc.splitTextToSize(conditionsText, PAGE_W - M * 2);
   doc.text(lines, M, y);
   y += lines.length * 13 + 22;
@@ -6984,7 +7008,7 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
-  doc.text(PDF_CONTENT.validationBpaTitle || bpaTitle[type], M, y);
+  doc.text((adminPerType ? "" : PDF_CONTENT.validationBpaTitle) || bpaTitle[type], M, y);
   y += 14;
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9.5);
@@ -6994,7 +7018,7 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
     home: "L'employeur valide le cadre du déploiement B2B2E. Chaque installation au domicile d'un collaborateur fera l'objet d'un mandat individuel signé par le collaborateur concerné.",
     site: "Le client autorise Beev à lancer l'étude technique sur site. Le devis ferme par site sera émis après audit IRVE et signé séparément avant pose.",
   };
-  const bl = doc.splitTextToSize(PDF_CONTENT.validationBpaText || bpaText[type], PAGE_W - M * 2);
+  const bl = doc.splitTextToSize((adminPerType ? "" : PDF_CONTENT.validationBpaText) || bpaText[type], PAGE_W - M * 2);
   doc.text(bl, M, y);
   y += bl.length * 13 + 18;
 
