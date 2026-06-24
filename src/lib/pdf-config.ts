@@ -251,9 +251,10 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
   },
   {
     title: "Supervision Beev (modules optionnels)",
+    appliesTo: ["home", "site"],
     items: [
-      { key: "showSupervisionHome", label: "Beev Home Charging (B2B2E)", description: "Slide dédiée à la supervision recharge domicile collaborateurs : refacturation kWh, app mobile, conformité URSSAF" },
-      { key: "showSupervisionConnect", label: "Beev Connect (site entreprise)", description: "Slide dédiée à la supervision parc site : pilotage à distance, RFID, alerting, reporting" },
+      { key: "showSupervisionHome", label: "Beev Home Charging (B2B2E)", description: "Slide dédiée à la supervision recharge domicile collaborateurs : refacturation kWh, app mobile, conformité URSSAF", appliesTo: ["home"] as unknown as string[] } as any,
+      { key: "showSupervisionConnect", label: "Beev Connect (site entreprise)", description: "Slide dédiée à la supervision parc site : pilotage à distance, RFID, alerting, reporting", appliesTo: ["site"] as unknown as string[] } as any,
     ],
   },
   {

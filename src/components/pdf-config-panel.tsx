@@ -44,6 +44,20 @@ const docRank = (key: string) => {
   return i === -1 ? DOC_ORDER.length + 1 : i;
 };
 
+// Regroupement des sections par PHASE de lecture du document (v2 admin).
+type PhaseAccent = "rose" | "bleu" | "violet" | "ink";
+const ACCENT_BG: Record<PhaseAccent, string> = {
+  rose: "bg-beev-rose", bleu: "bg-beev-bleu", violet: "bg-beev-violet", ink: "bg-beev-black",
+};
+const PHASES: { name: string; accent: PhaseAccent; keys: string[] }[] = [
+  { name: "Ouverture", accent: "rose", keys: ["showWhyBeev", "showSocialProof"] },
+  { name: "Offre véhicules", accent: "bleu", keys: ["showVehicleComparator", "showCurrentFleetVehicle", "showProposalVehicle", "showCompetitorComparison", "showFleetSynthesis"] },
+  { name: "Analyse TCO", accent: "violet", keys: ["includeCurrentFleetInTco", "showTcoComparison", "showTcoDetailedTable", "tcoGroupByComparison", "showTcoFiscalDetail", "showCarbonImpact", "showFiscalAdvantages"] },
+  { name: "Rapport site & bornes", accent: "ink", keys: ["showSiteOverview", "showSiteGuarantees", "showSiteProjectSynthesis", "showSiteInfrastructure", "showSiteEquipments", "showSiteProductSheet", "showSiteSupervision", "showSiteCompliance", "showSiteFinancialRecap", "showSitePaymentOptions", "showChargerFeatures", "showChargerLineItems", "showChargerInclusionNote", "showSupervisionHome", "showSupervisionConnect"] },
+  { name: "Synthèse & clôture", accent: "rose", keys: ["showFinancialSummary", "showFinancialSynthesis", "showGuarantees", "showJourney", "showExecutiveSummary", "showLegend", "showValidation"] },
+  { name: "Détails fiche véhicule", accent: "bleu", keys: ["showVehicleConsumption", "showVehicleCo2", "showVehicleFiscalHp", "showVehicleEnvScore", "showVehicleServices", "showVehicleOptions", "showVehicleDiscount", "showVehicleTcoBlock", "showVehicleLeadTime", "showVehicleTrunk", "showVehicleChargeAc", "showVehicleChargeDc", "showVehicleChargeTime2080Ac", "showVehicleChargeTime2080Dc", "showVehicleDimensions"] },
+];
+
 // Type de page par section → mini-maquette, pour savoir à quoi ressemble chaque
 // section sans générer l'aperçu.
 type SectionKind = "texte" | "tableau" | "graphique" | "cartes" | "fiche";
@@ -101,6 +115,7 @@ function KindThumb({ kind }: { kind: SectionKind }) {
 
 export function PdfConfigPanel({ config, update, reset, projectType, onPreviewSection, isAdmin }: Props) {
   const [open, setOpen] = useState(false);
+  const [openPhases, setOpenPhases] = useState<Record<string, boolean>>({});
 
   // On ne compte que les réglages booléens (toggles) : certaines clés sont des
   // modes (ex. b2b2eChargerMode = "comparator" | "catalogue" | "both").
@@ -122,10 +137,13 @@ export function PdfConfigPanel({ config, update, reset, projectType, onPreviewSe
   const orderedItems = CONFIG_GROUPS
     .flatMap((g) => g.items.filter((it) => itemVisible(g, it)))
     .sort((a, b) => docRank(a.key as string) - docRank(b.key as string));
+  // Numéro de page indicatif : uniquement pour les sections qui sont de vraies
+  // pages (celles ayant une vignette/type). Les bascules de mode et les détails
+  // de fiche n'occupent pas de page propre.
   const pageOf = new Map<string, number>();
   let pageCounter = 1;
   for (const it of orderedItems) {
-    if (config[it.key]) { pageCounter += 1; pageOf.set(it.key as string, pageCounter); }
+    if (config[it.key] && KIND_BY_KEY[it.key as string]) { pageCounter += 1; pageOf.set(it.key as string, pageCounter); }
   }
 
   const renderItem = (item: (typeof CONFIG_GROUPS)[number]["items"][number], pageNum?: number) => {
@@ -205,15 +223,49 @@ export function PdfConfigPanel({ config, update, reset, projectType, onPreviewSe
           </p>
 
           {isAdmin ? (
-            // Vue admin : sections dans l'ordre réel du document + page indicative.
-            <div className="space-y-2">
+            // Vue admin v2 : sections groupées par PHASE du document, dans l'ordre
+            // réel, avec barre de progression + numéro de page indicatif.
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-semibold uppercase text-[#5F5F64]">Ordre du document</p>
-                <span className="text-[9px] text-muted-foreground">Pages indicatives (l'ordre réel dépend des sections cochées)</span>
+                <span className="text-[9px] text-muted-foreground">Pages indicatives</span>
               </div>
-              <div className="space-y-1.5">
-                {orderedItems.map((item) => renderItem(item, pageOf.get(item.key as string)))}
+              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                <div className="h-full bg-beev-rose rounded-full transition-all" style={{ width: `${totalCount ? Math.round((enabledCount / totalCount) * 100) : 0}%` }} />
               </div>
+              {(() => {
+                const used = new Set<string>();
+                const blocks = PHASES.map((ph) => {
+                  const items = orderedItems.filter((it) => ph.keys.includes(it.key as string));
+                  items.forEach((it) => used.add(it.key as string));
+                  return { name: ph.name, accent: ph.accent, items };
+                });
+                const rest = orderedItems.filter((it) => !used.has(it.key as string));
+                if (rest.length) blocks.push({ name: "Autres réglages", accent: "ink" as PhaseAccent, items: rest });
+                return blocks.filter((b) => b.items.length > 0).map((b) => {
+                  const onCount = b.items.filter((it) => !!config[it.key]).length;
+                  const phaseOpen = openPhases[b.name] !== false;
+                  return (
+                    <div key={b.name} className="space-y-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setOpenPhases((s) => ({ ...s, [b.name]: !phaseOpen }))}
+                        className="w-full flex items-center gap-2 py-1"
+                      >
+                        <span className={`w-1 h-4 rounded-full ${ACCENT_BG[b.accent]}`} />
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-[#5F5F64] flex-1 text-left">{b.name}</span>
+                        <span className="text-[9px] font-bold text-muted-foreground bg-muted rounded-full px-2 py-0.5">{onCount}/{b.items.length}</span>
+                        {phaseOpen ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
+                      </button>
+                      {phaseOpen && (
+                        <div className="space-y-1.5">
+                          {b.items.map((item) => renderItem(item, pageOf.get(item.key as string)))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                });
+              })()}
             </div>
           ) : (
             CONFIG_GROUPS.map((group) => {

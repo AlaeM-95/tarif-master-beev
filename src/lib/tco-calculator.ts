@@ -137,20 +137,22 @@ export function calculateMalusPoids(poids: number, energy: Vehicle["energy"]): n
   if (energy === "Hybride Rechargeable") abattement = 200;
   else if (energy === "Hybride" || energy === "Mild Hybrid") abattement = 100;
   const masseTaxable = Math.max(poids - abattement, 0);
-  if (masseTaxable <= 1499) return 0;
-  let malus = 0;
-  const brackets = [
-    { min: 1500, max: 1699, rate: 10 },
-    { min: 1700, max: 1799, rate: 15 },
-    { min: 1800, max: 1899, rate: 20 },
-    { min: 1900, max: 1999, rate: 25 },
-    { min: 2000, max: 99999, rate: 30 },
+  if (masseTaxable < 1500) return 0;
+  // Barème officiel 2025/2026 (taxe sur la masse en ordre de marche), tarifs
+  // marginaux par fraction de kg au-dessus de 1500 kg :
+  //   1500–1599 : 10 €/kg · 1600–1799 : 15 · 1800–1899 : 20 · 1900–1999 : 25 · ≥2000 : 30.
+  // Calcul par tranches (comme l'IR) : on taxe chaque fraction à son tarif.
+  const tranches: [number, number, number][] = [
+    [1500, 1600, 10],
+    [1600, 1800, 15],
+    [1800, 1900, 20],
+    [1900, 2000, 25],
+    [2000, Infinity, 30],
   ];
-  for (const b of brackets) {
-    if (masseTaxable >= b.min) {
-      const upper = Math.min(masseTaxable, b.max);
-      malus += (upper - b.min + 1) * b.rate;
-    }
+  let malus = 0;
+  for (const [from, to, rate] of tranches) {
+    const kg = Math.max(0, Math.min(masseTaxable, to) - from);
+    malus += kg * rate;
   }
   return malus;
 }
