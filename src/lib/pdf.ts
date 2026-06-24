@@ -995,7 +995,7 @@ export async function generateProposalPdf(opts: {
   if (effectiveType === "site" && c.length > 0 && cfg.showSitePaymentOptions) {
     doc.addPage();
     drawHeader(doc, client, effectiveType);
-    drawSitePaymentOptions(doc, c);
+    drawSitePaymentOptions(doc, c, client);
   }
 
   // Parcours client (toggleable) — dernière page avant le BPA
@@ -2282,7 +2282,7 @@ function drawSiteFinancialRecap(doc: jsPDF, chargers: SelectedCharger[]) {
 
 // ============ RAPPORT SITE — OPTIONS DE PAIEMENT ============
 // 3 colonnes : Comptant -2% / 50% acompte + 50% / Leasing.
-function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
+function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[], client?: ClientInfo) {
   const PINK: [number, number, number] = [244, 184, 170];
   const PINK_LIGHT: [number, number, number] = [253, 241, 238];
   const BLACK: [number, number, number] = [29, 29, 29];
@@ -2418,54 +2418,65 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
     y += leaseNoteLines.length * 12 + 10;
   }
 
-  // Bandeau bas : montant total + info (acompte en achat / location) + CTA signature
-  const bandH = 128;
+  // Bandeau bas : mise en page en pile (label, montant, info), puis une ligne
+  // CTA (bouton à gauche, e-mail du conseiller à droite). Robuste quelle que
+  // soit la longueur de la ligne d'info (achat vs location).
+  const px = 18;
+  const innerW = PAGE_W - M * 2;
+  const bandH = 142;
   doc.setFillColor(...BLACK);
-  doc.roundedRect(M, y, PAGE_W - M * 2, bandH, 8, 8, "F");
+  doc.roundedRect(M, y, innerW, bandH, 10, 10, "F");
+
+  // Label + montant total HT
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
   doc.setTextColor(...PINK);
-  doc.text(t("site_pay_total_label", "MONTANT TOTAL PROJET"), M + 16, y + 22);
+  doc.text(t("site_pay_total_label", "MONTANT TOTAL PROJET"), M + px, y + 28);
   doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(24);
+  doc.setFontSize(26);
   doc.setTextColor(252, 249, 242);
-  // Total HT seulement (sur demande utilisateur — pas de TTC ici)
-  doc.text(`${eur(displayTotal)} HT`, M + 16, y + 50);
+  doc.text(`${eur(displayTotal)} HT`, M + px, y + 60);
+
+  // Ligne d'info pleine largeur : acompte 50 % en achat, détail loyers en location.
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
-  doc.setTextColor(200, 200, 200);
-  // Achat : acompte 50 %. Location : total des loyers + option d'achat (l'acompte
-  // ne s'applique pas en location).
-  if (adminLease) {
-    const durTxt = leaseDurLabel ? ` · ${leaseDurLabel} mois` : "";
-    doc.text(`Total des loyers : ${eur(leaseTotalRents)} HT · Option d'achat 10 % : ${eur(leaseBuyout)} HT${durTxt}`, M + 16, y + 70);
-  } else {
-    doc.text(`${t("site_pay_acompte_label", "Acompte 50 % à la commande")} : ${eur(acompte50 / 1.2)} HT`, M + 16, y + 70);
-  }
+  doc.setTextColor(190, 190, 190);
+  const infoLine = adminLease
+    ? `Total des loyers : ${eur(leaseTotalRents)} HT · Option d'achat 10 % : ${eur(leaseBuyout)} HT${leaseDurLabel ? ` · ${leaseDurLabel} mois` : ""}`
+    : `${t("site_pay_acompte_label", "Acompte 50 % à la commande")} : ${eur(acompte50 / 1.2)} HT`;
+  doc.text(infoLine, M + px, y + 82, { maxWidth: innerW - px * 2 });
 
-  // CTA signature : bouton rose à droite, lien cliquable (lien de signature
-  // admin si fourni, sinon repli e-mail). Visible en achat comme en location.
+  // Ligne CTA : bouton signature (gauche) + e-mail du conseiller (droite).
+  const email = (client?.salesRepEmail ?? "").trim();
   const signatureUrl = chargers.map((sc) => sc.signatureUrl).find((u) => u && u.trim()) ?? "";
-  const signUrl = /^https?:\/\//i.test(signatureUrl) ? signatureUrl : "mailto:contact@beev.co?subject=Signature%20devis%20Beev";
-  const ctaLabel = t("site_pay_sign_cta", "Signer le devis en ligne");
+  const signUrl = /^https?:\/\//i.test(signatureUrl)
+    ? signatureUrl
+    : `mailto:${email || "contact@beev.co"}?subject=Signature%20devis%20Beev`;
+  const ctaTxt = `${t("site_pay_sign_cta", "Signer le devis en ligne")}   →`;
   doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(10.5);
-  const ctaTxt = `${ctaLabel}   →`;
-  const btnW = Math.min(PAGE_W - M * 2 - 220, doc.getTextWidth(ctaTxt) + 34);
+  doc.setFontSize(11);
+  const btnW = doc.getTextWidth(ctaTxt) + 36;
   const btnH = 34;
-  const bx = PAGE_W - M - 16 - btnW;
-  // CTA placé sous la ligne « Total des loyers / Acompte » (ancré en bas du bandeau).
-  const by = y + bandH - 14 - btnH;
+  const bx = M + px;
+  const by = y + bandH - 16 - btnH;
   doc.setFillColor(...PINK);
   doc.roundedRect(bx, by, btnW, btnH, btnH / 2, btnH / 2, "F");
   doc.setTextColor(...BLACK);
-  doc.text(ctaTxt, bx + btnW / 2, by + btnH / 2 + 3.5, { align: "center" });
+  doc.text(ctaTxt, bx + btnW / 2, by + btnH / 2 + 4, { align: "center" });
   doc.link(bx, by, btnW, btnH, { url: signUrl });
-  // Rappel contact discret sous le bouton.
-  doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(7.5);
-  doc.setTextColor(150, 150, 150);
-  doc.text(t("site_pay_sign_sub", "ou contact@beev.co"), bx + btnW / 2, by + btnH + 11, { align: "center" });
+
+  // E-mail du commercial à droite (aligné sur le bouton). Jamais contact@beev.co.
+  if (email) {
+    const rx = M + innerW - px;
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7);
+    doc.setTextColor(...PINK);
+    doc.text(t("site_pay_advisor_label", "VOTRE CONSEILLER"), rx, by + 13, { align: "right" });
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(220, 220, 220);
+    doc.text(email, rx, by + 28, { align: "right" });
+  }
 }
 
 function drawWhyBeev(doc: jsPDF, type: ProjectType) {
