@@ -2419,7 +2419,7 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
   }
 
   // Bandeau bas : montant total + info (acompte en achat / location) + CTA signature
-  const bandH = 100;
+  const bandH = 128;
   doc.setFillColor(...BLACK);
   doc.roundedRect(M, y, PAGE_W - M * 2, bandH, 8, 8, "F");
   doc.setFont(BRAND_FONT, "bold");
@@ -2454,7 +2454,8 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[]) {
   const btnW = Math.min(PAGE_W - M * 2 - 220, doc.getTextWidth(ctaTxt) + 34);
   const btnH = 34;
   const bx = PAGE_W - M - 16 - btnW;
-  const by = y + (bandH - btnH) / 2;
+  // CTA placé sous la ligne « Total des loyers / Acompte » (ancré en bas du bandeau).
+  const by = y + bandH - 14 - btnH;
   doc.setFillColor(...PINK);
   doc.roundedRect(bx, by, btnW, btnH, btnH / 2, btnH / 2, "F");
   doc.setTextColor(...BLACK);
