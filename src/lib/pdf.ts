@@ -3158,15 +3158,46 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     doc.setDrawColor(...RULE);
     doc.setLineWidth(0.4);
     doc.line(rightX, ry, M + contentW, ry);
-    ry += 15;
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(122, 122, 122);
-    doc.text("Options & accessoires", rightX, ry);
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(10);
-    doc.setTextColor(...accDeep);
-    doc.text("INCLUS", M + contentW, ry, { align: "right" });
+    ry += 14;
+    const fOpts = (PDF_CFG.showVehicleOptions ? sv.options : []) ?? [];
+    if (fOpts.length > 0) {
+      // Détail des options & accessoires (label + montant) DANS la rubrique,
+      // pour éviter un tableau redondant en bas de page.
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(...GREY_TXT);
+      doc.text("OPTIONS & ACCESSOIRES", rightX, ry + 4);
+      ry += 17;
+      for (const o of fOpts.slice(0, 4)) {
+        const amount = eur(o.qty * o.unitHt);
+        doc.setFont(BRAND_FONT, "bold");
+        doc.setFontSize(10);
+        const aw = doc.getTextWidth(amount);
+        doc.setFont(BRAND_FONT, "normal");
+        doc.setTextColor(...INK);
+        const maxLabelW = (M + contentW) - rightX - aw - 12;
+        let lbl = o.qty > 1 ? `${o.label} ×${o.qty}` : o.label;
+        if (doc.getTextWidth(lbl) > maxLabelW) {
+          while (lbl.length > 3 && doc.getTextWidth(lbl + "…") > maxLabelW) lbl = lbl.slice(0, -1);
+          lbl = lbl.replace(/\s+$/, "") + "…";
+        }
+        doc.text(lbl, rightX, ry);
+        doc.setFont(BRAND_FONT, "bold");
+        doc.setTextColor(...accDeep);
+        doc.text(amount, M + contentW, ry, { align: "right" });
+        ry += 16;
+      }
+    } else {
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(122, 122, 122);
+      doc.text("Options & accessoires", rightX, ry + 2);
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(...accDeep);
+      doc.text("INCLUS", M + contentW, ry + 2, { align: "right" });
+      ry += 12;
+    }
 
     y = Math.max(ly, ry) + 14;
   } else if (specRows.length > 0) {
@@ -3354,12 +3385,13 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     y += totalCardH + 12;
   }
 
+  // Admin (v2) : prestations & services ET le détail des options sont désormais
+  // présentés dans la rubrique « Compris dans le loyer » de la fiche → pas de
+  // tableau noir redondant en bas de page.
+  if (ADMIN_MODE) return;
+
   const body: any[] = [];
-  // Admin (v2) : les prestations & services sont déjà listés dans la rubrique
-  // « Compris dans le loyer » de la fiche → on ne les répète pas. On CONSERVE en
-  // revanche le détail des options & accessoires configurés (la rubrique n'en
-  // affiche que la mention « inclus », sans le détail).
-  if (PDF_CFG.showVehicleServices && !ADMIN_MODE) {
+  if (PDF_CFG.showVehicleServices) {
     const allServices = [...MANDATORY_SERVICES, ...sv.services.filter((s) => !MANDATORY_SERVICES.includes(s as any))];
     const servicesText = allServices.map((s) => `· ${s}`).join("\n");
     body.push([{ content: "Prestations & services compris dans le loyer", colSpan: 4, styles: { fillColor: BG, fontStyle: "bold", textColor: INK } }]);
