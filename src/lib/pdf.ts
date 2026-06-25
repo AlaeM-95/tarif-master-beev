@@ -2741,6 +2741,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   // Déclinaisons claires de l'accent produit pour la table « scénarios » (admin).
   const accSoft: [number, number, number] = PRODUCT_ACCENT.map((c) => Math.round(c + (255 - c) * 0.80)) as [number, number, number];
   const accMid: [number, number, number] = PRODUCT_ACCENT.map((c) => Math.round(c + (255 - c) * 0.62)) as [number, number, number];
+  const accDeep: [number, number, number] = PRODUCT_ACCENT.map((c) => Math.round(c * 0.55)) as [number, number, number];
   const GREY_TXT: [number, number, number] = [74, 74, 74];
   const BLACK: [number, number, number] = [29, 29, 29];
   const BEIGE: [number, number, number] = [252, 249, 242];
@@ -3098,7 +3099,77 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   // pour CE véhicule (sv.hiddenSpecs). Si tout est masqué, on saute le tableau.
   const hiddenSpecKeys = new Set(sv.hiddenSpecs ?? []);
   const specRows = getVehicleSpecRows(v, PDF_CFG).filter((r) => !hiddenSpecKeys.has(r.key));
-  if (specRows.length > 0) {
+  if (ADMIN_MODE && specRows.length > 0) {
+    // v2 : bloc deux colonnes — caractéristiques (gauche) + compris dans le
+    // loyer (droite, icônes accent). Reproduit la maquette de référence.
+    y = ensureSpace(doc, y, 210, client, type);
+    const contentW = PAGE_W - M * 2;
+    const colGap = 30;
+    const leftW = Math.round(contentW * 0.56);
+    const rightX = M + leftW + colGap;
+    const top = y;
+
+    // Colonne gauche : caractéristiques techniques
+    doc.setFillColor(...PRODUCT_ACCENT);
+    doc.rect(M, top, 22, 2.5, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...GREY_TXT);
+    doc.text("CARACTÉRISTIQUES TECHNIQUES", M + 30, top + 4);
+    let ly = top + 26;
+    for (const r of specRows.slice(0, 7)) {
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(...GREY_TXT);
+      doc.text(r.label, M, ly);
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(10.5);
+      doc.setTextColor(...INK);
+      doc.text(r.value, M + leftW, ly, { align: "right" });
+      doc.setDrawColor(...RULE);
+      doc.setLineWidth(0.4);
+      doc.line(M, ly + 7, M + leftW, ly + 7);
+      ly += 22;
+    }
+
+    // Colonne droite : compris dans le loyer (icônes accent-soft + check)
+    doc.setFillColor(...PRODUCT_ACCENT);
+    doc.rect(rightX, top, 22, 2.5, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...GREY_TXT);
+    doc.text("COMPRIS DANS LE LOYER", rightX + 30, top + 4);
+    let ry = top + 22;
+    const svcs = [...MANDATORY_SERVICES, ...sv.services].slice(0, 5);
+    for (const svc of svcs) {
+      doc.setFillColor(...accSoft);
+      doc.roundedRect(rightX, ry, 22, 22, 7, 7, "F");
+      doc.setDrawColor(...accDeep);
+      doc.setLineWidth(1.4);
+      doc.line(rightX + 6, ry + 11.5, rightX + 9.5, ry + 15);
+      doc.line(rightX + 9.5, ry + 15, rightX + 16, ry + 7.5);
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(10.5);
+      doc.setTextColor(...INK);
+      doc.text(svc, rightX + 30, ry + 15);
+      ry += 30;
+    }
+    // Options & accessoires · INCLUS
+    doc.setDrawColor(...RULE);
+    doc.setLineWidth(0.4);
+    doc.line(rightX, ry, M + contentW, ry);
+    ry += 15;
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(122, 122, 122);
+    doc.text("Options & accessoires", rightX, ry);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...accDeep);
+    doc.text("INCLUS", M + contentW, ry, { align: "right" });
+
+    y = Math.max(ly, ry) + 14;
+  } else if (specRows.length > 0) {
     autoTable(doc, {
       startY: y,
       theme: "grid",
