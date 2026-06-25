@@ -321,6 +321,13 @@ let PDF_CFG: PdfDisplayConfig = DEFAULT_PDF_CONFIG;
 // chaque type de projet). Positionné par generateProposalPdf (adminMode).
 let ADMIN_MODE = false;
 
+// Rebrand v2 (admin) : couleur d'accent du produit courant — rose (véhicules),
+// bleu (domicile B2B2E), violet (site). Pilote eyebrows / en-tête / accents.
+const PRODUCT_ROSE: [number, number, number] = [244, 184, 170];
+const PRODUCT_BLEU: [number, number, number] = [165, 210, 255];
+const PRODUCT_VIOLET: [number, number, number] = [211, 204, 216];
+let PRODUCT_ACCENT: [number, number, number] = PRODUCT_ROSE;
+
 // Résultats TCO chargés depuis Supabase (synchronisés avec beev-tco-2026)
 // Map vehicleId → TcoResult le plus récent. Vide si l'app TCO n'a rien écrit.
 let TCO_RESULTS: Map<string, TcoResult> = new Map();
@@ -629,6 +636,7 @@ export async function generateProposalPdf(opts: {
   const cfg: PdfDisplayConfig = pdfConfig ?? DEFAULT_PDF_CONFIG;
   PDF_CFG = cfg; // expose la config pour les fonctions draw*
   ADMIN_MODE = !!opts.adminMode;
+  PRODUCT_ACCENT = projectType === "home" ? PRODUCT_BLEU : projectType === "site" ? PRODUCT_VIOLET : PRODUCT_ROSE;
   // Active les overrides texte pour ce devis (priorité max dans lookupText
   // / lookupList). Reset en fin de fonction.
   setPdfTextOverrides(textOverrides ?? null);
@@ -7314,6 +7322,30 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
 
 // ============ HEADER / FOOTER / HELPERS ============
 function drawHeader(doc: jsPDF, c: ClientInfo, type: ProjectType) {
+  const tag = type === "vehicles" ? "Offre véhicules LLD" : type === "home" ? "Déploiement domicile (B2B2E)" : "Déploiement site entreprise";
+  if (ADMIN_MODE) {
+    // v2 : en-tête épuré — wordmark + point d'accent produit (gauche),
+    // client + objet (droite), filet fin.
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(...INK);
+    doc.text("Beev", M, 60);
+    const ww = doc.getTextWidth("Beev");
+    doc.setFillColor(...PRODUCT_ACCENT);
+    doc.circle(M + ww + 8, 55, 2.6, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(...INK);
+    doc.text(c.company || "—", PAGE_W - M, 54, { align: "right" });
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...SUB);
+    doc.text(`${tag}${c.date ? "  ·  " + c.date : ""}`, PAGE_W - M, 67, { align: "right" });
+    doc.setDrawColor(...RULE);
+    doc.setLineWidth(0.6);
+    doc.line(M, 84, PAGE_W - M, 84);
+    return;
+  }
   // Bandeau noir arrondi en haut à gauche contenant le logo Beev blanc
   // (préchargé dans HEADER_LOGO). Si l'image n'a pas pu être chargée, on
   // retombe sur le texte "Beev" centré dans le même bandeau.
@@ -7363,7 +7395,6 @@ function drawHeader(doc: jsPDF, c: ClientInfo, type: ProjectType) {
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  const tag = type === "vehicles" ? "Offre véhicules LLD" : type === "home" ? "Déploiement domicile (B2B2E)" : "Déploiement site entreprise";
   doc.text(tag, M, badgeY + badgeH + 12);
 
   // Bloc droite : société client + date
@@ -7439,6 +7470,16 @@ function drawFooter(doc: jsPDF, c: ClientInfo, page: number, total: number) {
 }
 
 function eyebrow(doc: jsPDF, label: string, y: number) {
+  if (ADMIN_MODE) {
+    // v2 : barre d'accent produit à gauche + label en capitales.
+    doc.setFillColor(...PRODUCT_ACCENT);
+    doc.rect(M, y - 7, 18, 3, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...SUB);
+    doc.text(label.toUpperCase(), M + 26, y);
+    return;
+  }
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(9);
   doc.setTextColor(...SUB);
@@ -7449,7 +7490,7 @@ function eyebrow(doc: jsPDF, label: string, y: number) {
 
 function title(doc: jsPDF, label: string, y: number) {
   doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(22);
+  doc.setFontSize(ADMIN_MODE ? 24 : 22);
   doc.setTextColor(...INK);
   const lines = doc.splitTextToSize(label, PAGE_W - M * 2);
   doc.text(lines, M, y);
