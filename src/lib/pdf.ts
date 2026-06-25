@@ -5602,7 +5602,7 @@ function drawCompetitorComparison(doc: jsPDF, vehicles: SelectedVehicle[]) {
   const BLUE_LIGHT: [number, number, number] = [237, 246, 255];
   const GREEN_LIGHT: [number, number, number] = [219, 238, 220]; // beev-good 20%
   const GREEN: [number, number, number] = [108, 190, 94]; // beev-good
-  const LAVENDER_COLOR: [number, number, number] = [56, 9, 234];
+  const LAVENDER_COLOR: [number, number, number] = ADMIN_MODE ? [29, 29, 29] : [56, 9, 234];
 
   let y = 130;
   eyebrow(doc, lookupText(TEXTS, "vehicles", "competitor_eyebrow", "MISE EN CONCURRENCE"), y);
@@ -6774,7 +6774,7 @@ function drawFiscalAdvantages(doc: jsPDF, vehicles: SelectedVehicle[], energy: E
       label: "TVA SUR LA RECHARGE",
       value: "Récupérable 100 %",
       sub: "La TVA sur l'électricité consommée pour la recharge de la flotte est intégralement récupérable.",
-      bg: BLUE_LIGHT, accent: [56, 9, 234],
+      bg: BLUE_LIGHT, accent: ADMIN_MODE ? [30, 90, 153] : [56, 9, 234],
     },
     {
       label: "TVA SUR LE VÉHICULE",
