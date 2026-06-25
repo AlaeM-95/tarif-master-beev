@@ -1058,7 +1058,119 @@ export async function generateProposalPdf(opts: {
 //   sous-titre, chip pill "Devis ... · Validité 30 jours"
 // - Bottom : 3 colonnes "Préparée pour / par / Périmètre" séparées par bordure top
 // - Footer : "Document confidentiel" / "Réf devis · contact"
+// Couverture v2 (rebrand charte Beev, réservée admin) : fond beige, carte héro
+// noire avec couleur d'accent par produit (voiture rose · domicile bleu · site
+// violet), eyebrow, chip client, grand titre éditorial, filet d'accent, chips,
+// puis bloc méta (préparée pour/par) + mentions légales.
+async function drawCoverV2(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nbC: number) {
+  const ROSE: [number, number, number] = [244, 184, 170];
+  const BLEU: [number, number, number] = [165, 210, 255];
+  const VIOLET: [number, number, number] = [211, 204, 216];
+  const isCombined = nbV > 0 && nbC > 0;
+  const acc = isCombined ? ROSE : type === "vehicles" ? ROSE : type === "home" ? BLEU : VIOLET;
+  const W = PAGE_W - M * 2;
+
+  doc.setFillColor(...BG);
+  doc.rect(0, 0, PAGE_W, PAGE_H, "F");
+
+  // Logo Beev foncé (sur fond beige) — repli wordmark.
+  let logoLoaded = false;
+  for (const url of [PDF_CONTENT.logoUrl ?? undefined, "/images/logo-beev-noir.png", "/images/logo-beev.png"].filter(Boolean) as string[]) {
+    try { await drawImageContain(doc, url, M, 44, 92, 28, BG); logoLoaded = true; break; } catch { /* suivant */ }
+  }
+  if (!logoLoaded) {
+    doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(18); doc.setTextColor(...INK);
+    doc.text("Beev", M, 66);
+  }
+  doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(8); doc.setTextColor(...SUB);
+  doc.text("PROPOSITION COMMERCIALE", PAGE_W - M, 60, { align: "right" });
+
+  const eyebrow = isCombined ? "PROPOSITION · MULTI-PRODUITS"
+    : type === "vehicles" ? "PROPOSITION · FLOTTE VÉHICULES"
+    : type === "home" ? "RECHARGE DOMICILE · B2B2E"
+    : "INFRASTRUCTURE DE RECHARGE · SITE";
+  const headline = isCombined ? ["Votre transition", "électrique, clé en main."]
+    : type === "vehicles" ? ["Électrifier votre flotte,", "sans la complexité."]
+    : type === "home" ? ["La recharge chez", "vos collaborateurs."]
+    : ["Électrifier", "vos sites."];
+  const total = isCombined ? nbV + nbC : type === "vehicles" ? nbV : nbC;
+  const subtitle = isCombined ? "Véhicules électriques, bornes de recharge et pilotage. Un interlocuteur unique, de la sélection à la mise en route."
+    : type === "vehicles" ? "Véhicules électriques multimarques, financement LLD négocié et accompagnement de A à Z par un interlocuteur unique."
+    : type === "home" ? "Kit clé en main installé au domicile, supervision Beev Home Charging et remboursement automatisé de l'énergie professionnelle."
+    : "Étude de site, matériel premium, pose IRVE certifiée, génie civil, mise en service OCPP et supervision Beev Connect.";
+  const chips = isCombined ? [`${nbV} véhicule${nbV > 1 ? "s" : ""}`, `${nbC} borne${nbC > 1 ? "s" : ""}`, "Offre combinée"]
+    : type === "vehicles" ? [`${total} véhicule${total > 1 ? "s" : ""}`, "Location longue durée", "Multimarque"]
+    : type === "home" ? [`${total} collaborateur${total > 1 ? "s" : ""}`, "Installation IRVE", "Supervision"]
+    : [`${total} point${total > 1 ? "s" : ""} de charge`, "Pose IRVE", "Mise en service OCPP"];
+
+  // Carte héro noire
+  const hy = 150, hh = 420, ix = M + 28;
+  doc.setFillColor(...INK);
+  doc.roundedRect(M, hy, W, hh, 18, 18, "F");
+  doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(9); doc.setTextColor(...acc);
+  doc.text(eyebrow, ix, hy + 36);
+  // Chip client
+  const company = c.company || "Votre entreprise";
+  doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(12);
+  const cw = doc.getTextWidth(company) + 34;
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(ix, hy + 50, cw, 24, 8, 8, "F");
+  doc.setFillColor(...acc);
+  doc.circle(ix + 14, hy + 62, 4, "F");
+  doc.setTextColor(...INK);
+  doc.text(company, ix + 24, hy + 66);
+  // Titre
+  doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(34); doc.setTextColor(...BG);
+  const ty = hy + 126;
+  headline.forEach((l, i) => doc.text(l, ix, ty + i * 38));
+  const tEnd = ty + (headline.length - 1) * 38;
+  // Filet d'accent
+  doc.setFillColor(...acc);
+  doc.rect(ix, tEnd + 22, 48, 4, "F");
+  // Sous-titre
+  doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(12); doc.setTextColor(206, 206, 206);
+  const subL = doc.splitTextToSize(subtitle, W * 0.82) as string[];
+  doc.text(subL, ix, tEnd + 48);
+  // Chips
+  let cy = tEnd + 48 + subL.length * 15 + 16;
+  let cx = ix;
+  doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(10);
+  for (const chip of chips) {
+    const pw = doc.getTextWidth(chip) + 22;
+    doc.setDrawColor(120, 118, 112); doc.setLineWidth(0.8);
+    doc.roundedRect(cx, cy, pw, 22, 11, 11, "S");
+    doc.setTextColor(...BG);
+    doc.text(chip, cx + 11, cy + 15);
+    cx += pw + 8;
+  }
+
+  // Bloc méta (sur beige)
+  const now = new Date();
+  const ref = `BEEV-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
+  let by = hy + hh + 34;
+  doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(8.5); doc.setTextColor(...SUB);
+  doc.text(`Devis ${ref}  ·  ${lookupText(TEXTS, "common", "cover_validity", "Validité 30 jours à compter de l'émission")}`, M, by);
+  by += 14;
+  doc.setDrawColor(...RULE); doc.setLineWidth(0.6);
+  doc.line(M, by, PAGE_W - M, by);
+  by += 22;
+  const colW = W / 2;
+  doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(8); doc.setTextColor(...ACCENT_TEXT);
+  doc.text(lookupText(TEXTS, "common", "cover_prepared_for_label", "PRÉPARÉE POUR"), M, by);
+  doc.text(lookupText(TEXTS, "common", "cover_prepared_by_label", "PRÉPARÉE PAR"), M + colW, by);
+  doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(13); doc.setTextColor(...INK);
+  doc.text((company).slice(0, 40), M, by + 18);
+  doc.text((c.salesRep || "Beev").slice(0, 40), M + colW, by + 18);
+  doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(9.5); doc.setTextColor(...SUB);
+  doc.text(lookupText(TEXTS, "common", "cover_tagline", "Le copilote de l'électrification des flottes · beev.co"), M, by + 44);
+
+  doc.setFontSize(8); doc.setTextColor(...SUB);
+  doc.text("Beev · 5 rue Pleyel, 93200 Saint-Denis · SAS au capital de 63 245,02 € · RCS Bobigny 851 682 807", PAGE_W / 2, PAGE_H - 34, { align: "center" });
+}
+
 async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nbC: number) {
+  // Rebrand v2 réservé aux comptes admin (le reste de la gamme suit page à page).
+  if (ADMIN_MODE) { await drawCoverV2(doc, type, c, nbV, nbC); return; }
   // Charte officielle Beev — couleurs synchronisées avec pdf_settings (admin)
   // INK     = colorInk    (texte principal, #111111 par défaut)
   // BG      = colorBg     (fond cream, #FCF9F2 par défaut)
