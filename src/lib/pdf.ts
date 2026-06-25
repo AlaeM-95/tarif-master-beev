@@ -4173,7 +4173,18 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
   }
 
   for (const it of items) {
-    if (y > FOOTER_LIMIT - 24) break; // garde-fou anti-débordement footer
+    // Pagination : si l'élément ne tient pas avant le footer, on passe à une
+    // NOUVELLE PAGE au lieu de tronquer la liste (le tableau de bord peut donc
+    // comparer tous les véhicules). Un intertitre de groupe emporte au moins sa
+    // première ligne (anti-orphelin) : ~10 véhicules par page selon la place.
+    const needed = it.header !== undefined ? 20 + rowH : rowH;
+    if (y + needed > FOOTER_LIMIT) {
+      doc.addPage();
+      drawHeader(doc, (client ?? { company: "", date: "" }) as ClientInfo, type ?? "vehicles");
+      y = 130;
+      eyebrow(doc, "ANALYSE TCO · TABLEAU DE BORD (SUITE)", y);
+      y += 30;
+    }
     if (it.header !== undefined) {
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(8);
