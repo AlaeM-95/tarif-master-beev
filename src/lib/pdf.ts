@@ -3154,52 +3154,39 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       doc.text(svc, rightX + 30, ry + 15);
       ry += 30;
     }
-    // Options & accessoires · INCLUS
-    doc.setDrawColor(...RULE);
-    doc.setLineWidth(0.4);
-    doc.line(rightX, ry, M + contentW, ry);
-    ry += 14;
+    // Fin des deux colonnes : on repart sous la plus profonde.
+    y = Math.max(ly, ry) + 18;
+
+    // Options & accessoires — PLEINE LARGEUR sous les deux colonnes, même
+    // disposition que « Caractéristiques techniques » (barre d'accent + label,
+    // lignes label / montant avec filets). Affiché seulement s'il y en a.
     const fOpts = (PDF_CFG.showVehicleOptions ? sv.options : []) ?? [];
     if (fOpts.length > 0) {
-      // Détail des options & accessoires (label + montant) DANS la rubrique,
-      // pour éviter un tableau redondant en bas de page.
+      y = ensureSpace(doc, y, 44 + fOpts.length * 22, client, type);
+      doc.setFillColor(...PRODUCT_ACCENT);
+      doc.rect(M, y, 22, 2.5, "F");
       doc.setFont(BRAND_FONT, "bold");
-      doc.setFontSize(8);
+      doc.setFontSize(8.5);
       doc.setTextColor(...GREY_TXT);
-      doc.text("OPTIONS & ACCESSOIRES", rightX, ry + 4);
-      ry += 17;
-      for (const o of fOpts.slice(0, 4)) {
-        const amount = eur(o.qty * o.unitHt);
-        doc.setFont(BRAND_FONT, "bold");
-        doc.setFontSize(10);
-        const aw = doc.getTextWidth(amount);
+      doc.text("OPTIONS & ACCESSOIRES", M + 30, y + 4);
+      y += 24;
+      for (const o of fOpts.slice(0, 8)) {
+        const lbl = o.qty > 1 ? `${o.label} ×${o.qty}` : o.label;
         doc.setFont(BRAND_FONT, "normal");
-        doc.setTextColor(...INK);
-        const maxLabelW = (M + contentW) - rightX - aw - 12;
-        let lbl = o.qty > 1 ? `${o.label} ×${o.qty}` : o.label;
-        if (doc.getTextWidth(lbl) > maxLabelW) {
-          while (lbl.length > 3 && doc.getTextWidth(lbl + "…") > maxLabelW) lbl = lbl.slice(0, -1);
-          lbl = lbl.replace(/\s+$/, "") + "…";
-        }
-        doc.text(lbl, rightX, ry);
+        doc.setFontSize(10.5);
+        doc.setTextColor(...GREY_TXT);
+        doc.text(lbl, M, y, { maxWidth: contentW - 90 });
         doc.setFont(BRAND_FONT, "bold");
+        doc.setFontSize(11);
         doc.setTextColor(...accDeep);
-        doc.text(amount, M + contentW, ry, { align: "right" });
-        ry += 16;
+        doc.text(eur(o.qty * o.unitHt), M + contentW, y, { align: "right" });
+        doc.setDrawColor(...RULE);
+        doc.setLineWidth(0.4);
+        doc.line(M, y + 7, M + contentW, y + 7);
+        y += 22;
       }
-    } else {
-      doc.setFont(BRAND_FONT, "normal");
-      doc.setFontSize(10);
-      doc.setTextColor(122, 122, 122);
-      doc.text("Options & accessoires", rightX, ry + 2);
-      doc.setFont(BRAND_FONT, "bold");
-      doc.setFontSize(10);
-      doc.setTextColor(...accDeep);
-      doc.text("INCLUS", M + contentW, ry + 2, { align: "right" });
-      ry += 12;
+      y += 6;
     }
-
-    y = Math.max(ly, ry) + 14;
   } else if (specRows.length > 0) {
     autoTable(doc, {
       startY: y,
