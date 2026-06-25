@@ -2734,7 +2734,10 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   // - Price card NOIRE à droite avec rows séparées + bloc loyer mis en valeur
   //   (label bleu, gros chiffre 36pt, note multi-véhicules / km)
   const BLEU_LIGHT: [number, number, number] = [237, 246, 255]; // #EDF6FF fond photo
-  const BLEU_ACCENT: [number, number, number] = [165, 210, 255]; // #A5D2FF pill + label loyer
+  // Admin : l'accent de la fiche suit la couleur du produit (rose véhicules,
+  // bleu domicile, violet site) pour rester cohérent avec la couverture et les
+  // en-têtes. Sinon bleu Beev historique.
+  const BLEU_ACCENT: [number, number, number] = ADMIN_MODE ? PRODUCT_ACCENT : [165, 210, 255];
   const BLACK: [number, number, number] = [29, 29, 29];
   const BEIGE: [number, number, number] = [252, 249, 242];
   const GREY_ON_DARK: [number, number, number] = [201, 198, 190]; // #C9C6BE
@@ -4236,7 +4239,7 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
     theme: "plain",
     head: [["Véhicule", "Malus (achat)", "TVS (×durée)", "AND (×durée)", "AEN empl. (×durée)", "Coût empl. complet"]],
     body: fiscalBody,
-    headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 7, fontStyle: "bold", font: BRAND_FONT, cellPadding: 4, halign: "center" as any },
+    headStyles: { fillColor: ADMIN_MODE ? INK : LAVENDER, textColor: 255, fontSize: 7, fontStyle: "bold", font: BRAND_FONT, cellPadding: 4, halign: "center" as any },
     bodyStyles: { fontSize: 8, cellPadding: 4, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
     alternateRowStyles: { fillColor: BG },
     columnStyles: { 0: { cellWidth: 150, cellPadding: { left: 56, right: 4, top: 6, bottom: 6 }, minCellHeight: 48, valign: "middle" as any } },
@@ -4396,7 +4399,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
         // 50 % du loyer mensuel SANS CARBURANT (abattement 70 % si EV éco-score).
         // Affiché à titre INFORMATIF — n'entre PAS dans le coût employeur complet.
         { content: eur(r.aenMensuel), styles: { halign: "center" as any, textColor: SUB, fontStyle: "italic" as any } },
-        { content: eur(r.tcoEmployeurComplet), styles: { halign: "center" as any, fontStyle: "bold" as any, textColor: LAVENDER, fontSize: 10 } },
+        { content: eur(r.tcoEmployeurComplet), styles: { halign: "center" as any, fontStyle: "bold" as any, textColor: ADMIN_MODE ? ACCENT_TEXT : LAVENDER, fontSize: 10 } },
       ];
   };
 
@@ -4460,7 +4463,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
       "COÛT EMPL.\nCOMPLET",
     ]],
     body: tcoBody,
-    headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 7.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 5, halign: "center" as any, valign: "middle" as any },
+    headStyles: { fillColor: ADMIN_MODE ? INK : LAVENDER, textColor: 255, fontSize: 7.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 5, halign: "center" as any, valign: "middle" as any },
     // Police réduite + padding serré sur les colonnes chiffrées pour que les
     // gros montants (« 53 305 € », « 99 777 € ») tiennent sur UNE ligne.
     bodyStyles: { fontSize: 7.5, cellPadding: 4, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any, overflow: "visible" as any },
