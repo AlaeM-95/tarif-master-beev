@@ -3354,13 +3354,12 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     y += totalCardH + 12;
   }
 
-  // Admin (v2) : la rubrique « Compris dans le loyer » de la fiche couvre déjà
-  // les prestations & services ET « Options & accessoires inclus ». On ne
-  // réaffiche donc PAS le tableau noir redondant en bas de page.
-  if (ADMIN_MODE) return;
-
   const body: any[] = [];
-  if (PDF_CFG.showVehicleServices) {
+  // Admin (v2) : les prestations & services sont déjà listés dans la rubrique
+  // « Compris dans le loyer » de la fiche → on ne les répète pas. On CONSERVE en
+  // revanche le détail des options & accessoires configurés (la rubrique n'en
+  // affiche que la mention « inclus », sans le détail).
+  if (PDF_CFG.showVehicleServices && !ADMIN_MODE) {
     const allServices = [...MANDATORY_SERVICES, ...sv.services.filter((s) => !MANDATORY_SERVICES.includes(s as any))];
     const servicesText = allServices.map((s) => `· ${s}`).join("\n");
     body.push([{ content: "Prestations & services compris dans le loyer", colSpan: 4, styles: { fillColor: BG, fontStyle: "bold", textColor: INK } }]);
