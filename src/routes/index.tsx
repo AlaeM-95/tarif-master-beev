@@ -3609,6 +3609,11 @@ function SelectedVehicleRow({ sv, energy, onChange, onApplyAll, onRemove, onDupl
           <Label htmlFor={`disc-${sv.instanceId ?? sv.vehicle.id}`} className="text-[11px] leading-tight">Masquer la remise dans le PDF</Label>
         </div>
       </div>
+      {/* Photo du véhicule — modifiable en direct (s'affiche dans le PDF / la carte) */}
+      <div className="space-y-1">
+        <Label className="text-[10px] uppercase text-muted-foreground tracking-wide">Photo du véhicule</Label>
+        <ImageUpload currentUrl={sv.vehicle.image} onChange={(url) => onChange({ vehicle: { ...sv.vehicle, image: url } })} folder="vehicles" label="Photo du véhicule" />
+      </div>
       <TxtField label="N° de devis loueur" value={sv.leaserQuoteRef ?? ""} onChange={(s) => onChange({ leaserQuoteRef: s })} />
       {tripartiteUrl && (
         <TripartiteViewerButton url={tripartiteUrl} vehicleLabel={`${sv.vehicle.brand} ${sv.vehicle.model}`} />
