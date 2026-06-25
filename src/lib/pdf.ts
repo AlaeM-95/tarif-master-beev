@@ -3868,10 +3868,13 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
     ? vehiclesIn.filter((sv) => !sv.vehicle.isCurrentFleet)
     : vehiclesIn;
   // Couleurs cohérentes avec les graphiques recharts dans l'app
-  const COLOR_LOYER: [number, number, number] = [56, 9, 234]; // #3809EA LAVENDER
-  const COLOR_ENERGIE: [number, number, number] = [53, 218, 118]; // #35DA76 ACCENT
-  const COLOR_TVS: [number, number, number] = [245, 166, 35]; // #F5A623 orange
-  const COLOR_MALUS: [number, number, number] = [229, 75, 75]; // #E54B4B rouge
+  // Couleurs des composantes. Admin = palette charte Beev (noir/bleu/violet/rose),
+  // sinon palette historique. COLOR_BEST sert au rang « meilleur TCO » (lisible).
+  const COLOR_LOYER: [number, number, number] = ADMIN_MODE ? [29, 29, 29] : [56, 9, 234];
+  const COLOR_ENERGIE: [number, number, number] = ADMIN_MODE ? [165, 210, 255] : [53, 218, 118];
+  const COLOR_TVS: [number, number, number] = ADMIN_MODE ? [211, 204, 216] : [245, 166, 35];
+  const COLOR_MALUS: [number, number, number] = ADMIN_MODE ? [244, 184, 170] : [229, 75, 75];
+  const COLOR_BEST: [number, number, number] = ADMIN_MODE ? [29, 29, 29] : [53, 218, 118];
 
   let y = 116;
   eyebrow(doc, "ANALYSE TCO · TABLEAU DE BORD", y);
@@ -4067,7 +4070,7 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
     // Rang + nom véhicule (gauche)
     const isCur = !!r.sv.vehicle.isCurrentFleet;
     if (isBest) {
-      doc.setFillColor(...COLOR_ENERGIE);
+      doc.setFillColor(...COLOR_BEST);
       doc.circle(M + 8, y + 10, 8, "F");
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(9);
@@ -4136,7 +4139,7 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
     // Valeur totale TCO contrat (droite)
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(9.5);
-    doc.setTextColor(isBest ? COLOR_ENERGIE[0] : INK[0], isBest ? COLOR_ENERGIE[1] : INK[1], isBest ? COLOR_ENERGIE[2] : INK[2]);
+    doc.setTextColor(isBest ? COLOR_BEST[0] : INK[0], isBest ? COLOR_BEST[1] : INK[1], isBest ? COLOR_BEST[2] : INK[2]);
     doc.text(eur(r.total), valueX, y + 14);
 
     y += rowH;
@@ -5478,7 +5481,8 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
   // via didDrawCell. Les colonnes numériques sont dimensionnées pour ne JAMAIS
   // tronquer la valeur (« 42 490 € » reste sur une ligne).
   const ROSE_TEXT: [number, number, number] = [181, 96, 79];
-  const BEEV_BLUE: [number, number, number] = [56, 9, 234];
+  // Admin : on remplace le bleu électrique hors-charte par le noir charte.
+  const BEEV_BLUE: [number, number, number] = ADMIN_MODE ? [29, 29, 29] : [56, 9, 234];
 
   const showLoyer = items.some((sv) => (sv.negotiatedMonthly ?? 0) > 0);
 
