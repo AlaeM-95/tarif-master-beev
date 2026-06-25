@@ -2738,6 +2738,10 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   // bleu domicile, violet site) pour rester cohérent avec la couverture et les
   // en-têtes. Sinon bleu Beev historique.
   const BLEU_ACCENT: [number, number, number] = ADMIN_MODE ? PRODUCT_ACCENT : [165, 210, 255];
+  // Déclinaisons claires de l'accent produit pour la table « scénarios » (admin).
+  const accSoft: [number, number, number] = PRODUCT_ACCENT.map((c) => Math.round(c + (255 - c) * 0.80)) as [number, number, number];
+  const accMid: [number, number, number] = PRODUCT_ACCENT.map((c) => Math.round(c + (255 - c) * 0.62)) as [number, number, number];
+  const GREY_TXT: [number, number, number] = [74, 74, 74];
   const BLACK: [number, number, number] = [29, 29, 29];
   const BEIGE: [number, number, number] = [252, 249, 242];
   const GREY_ON_DARK: [number, number, number] = [201, 198, 190]; // #C9C6BE
@@ -2977,7 +2981,8 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
   doc.setTextColor(...BLEU_ACCENT);
-  doc.text(`${lookupText(TEXTS, "vehicles", "vehicle_monthly_label", "LOYER MENSUEL TTC")} · ${sv.durationMonths} MOIS`, innerX, py);
+  const loyerLabel = lookupText(TEXTS, "vehicles", "vehicle_monthly_label", "LOYER MENSUEL TTC");
+  doc.text(ADMIN_MODE ? loyerLabel : `${loyerLabel} · ${sv.durationMonths} MOIS`, innerX, py);
   py += 32;
   // Gros chiffre 36pt + "/ mois" 12pt à côté
   doc.setFont(BRAND_FONT, "bold");
@@ -2995,7 +3000,10 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8);
   doc.setTextColor(...GREY_LABEL_DARK);
-  const noteText = `× ${sv.quantity} véhicule${sv.quantity > 1 ? "s" : ""} · ${fmt(Math.round(sv.kmPerYear * sv.durationMonths / 12))} km (contrat) · prestations incluses`;
+  const kmContratTxt = fmt(Math.round(sv.kmPerYear * sv.durationMonths / 12));
+  const noteText = ADMIN_MODE
+    ? `× ${sv.quantity} véhicule${sv.quantity > 1 ? "s" : ""} · ${sv.durationMonths} mois · ${kmContratTxt} km au contrat`
+    : `× ${sv.quantity} véhicule${sv.quantity > 1 ? "s" : ""} · ${kmContratTxt} km (contrat) · prestations incluses`;
   const noteLines = doc.splitTextToSize(noteText, cardW - rowPad * 2);
   doc.text(noteLines, innerX, py);
 
@@ -3018,17 +3026,34 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   if (altConfigs.length > 0) {
     y = ensureSpace(doc, y, 80 + altConfigs.length * 18, client, type);
     // Bandeau d'introduction
-    doc.setFillColor(...BLEU_LIGHT);
-    doc.roundedRect(M, y, PAGE_W - M * 2, 26, 6, 6, "F");
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(8.5);
-    doc.setTextColor(...LAVENDER);
-    doc.text(lookupText(TEXTS, "vehicles", "vehicle_alt_configs_label", "CONFIGURATIONS ALTERNATIVES"), M + 12, y + 11);
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(...INK);
-    doc.text(`${altConfigs.length + 1} scénarios disponibles selon vos besoins kilométrage et durée.`, M + 12, y + 22);
-    y += 32;
+    const altLabel = lookupText(TEXTS, "vehicles", "vehicle_alt_configs_label", "CONFIGURATIONS ALTERNATIVES");
+    const altSub = `${altConfigs.length + 1} scénarios disponibles selon vos besoins de kilométrage et de durée.`;
+    if (ADMIN_MODE) {
+      // v2 : barre d'accent + label + sous-titre, sans encart.
+      doc.setFillColor(...PRODUCT_ACCENT);
+      doc.rect(M, y + 2, 24, 2.5, "F");
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(...GREY_TXT);
+      doc.text(altLabel, M + 32, y + 6);
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(122, 122, 122);
+      doc.text(altSub, M + 32, y + 20);
+      y += 32;
+    } else {
+      doc.setFillColor(...BLEU_LIGHT);
+      doc.roundedRect(M, y, PAGE_W - M * 2, 26, 6, 6, "F");
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(...LAVENDER);
+      doc.text(altLabel, M + 12, y + 11);
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(...INK);
+      doc.text(altSub, M + 12, y + 22);
+      y += 32;
+    }
 
     // Table comparative : principale + alternatives
     autoTable(doc, {
@@ -3042,10 +3067,10 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       ]],
       body: [
         [
-          { content: "Principal", styles: { fontStyle: "bold", textColor: LAVENDER } },
-          `${sv.durationMonths} mois`,
-          fmt(Math.round(sv.kmPerYear * sv.durationMonths / 12)),
-          { content: eurLoyer(sv.negotiatedMonthly), styles: { fontStyle: "bold", textColor: LAVENDER, halign: "right" } },
+          { content: "Principal", styles: { fontStyle: "bold", textColor: ADMIN_MODE ? INK : LAVENDER, ...(ADMIN_MODE ? { fillColor: accMid } : {}) } },
+          { content: `${sv.durationMonths} mois`, styles: ADMIN_MODE ? { fillColor: accMid, textColor: GREY_TXT } : {} },
+          { content: fmt(Math.round(sv.kmPerYear * sv.durationMonths / 12)), styles: ADMIN_MODE ? { fillColor: accMid, textColor: GREY_TXT } : {} },
+          { content: eurLoyer(sv.negotiatedMonthly), styles: { fontStyle: "bold", textColor: ADMIN_MODE ? INK : LAVENDER, halign: "right", ...(ADMIN_MODE ? { fillColor: accMid } : {}) } },
         ],
         ...altConfigs.map((c, i) => [
           { content: `Alternative ${i + 1}`, styles: { textColor: SUB } },
@@ -3054,7 +3079,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
           { content: eurLoyer(c.negotiatedMonthly), styles: { fontStyle: "bold", halign: "right" } },
         ]),
       ],
-      headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 8.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 6 },
+      headStyles: { fillColor: ADMIN_MODE ? accSoft : LAVENDER, textColor: (ADMIN_MODE ? GREY_TXT : 255) as any, fontSize: 8.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 6 },
       bodyStyles: { fontSize: 9.5, cellPadding: 6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
       alternateRowStyles: { fillColor: [252, 251, 248] as [number, number, number] },
       columnStyles: {
