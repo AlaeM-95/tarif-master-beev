@@ -472,15 +472,18 @@ ${fontFaceCss(fonts)}
     ${heroBlock(cfg, assets)}
     ${enjeuxBlock(cfg)}
     ${livrablesBlock(cfg)}
-    ${pageFoot(cfg, assets, 1, 2)}
+    ${pageFoot(cfg, assets, 1, 3)}
   </section>
   <section class="page">
     ${comparisonBlock(cfg)}
     ${tarifTable("Tarification sans engagement", cfg.tarifsSansEngagement, "rose")}
     ${tarifTable("Tarification avec engagement", cfg.tarifsAvecEngagement, "bleu")}
+    ${pageFoot(cfg, assets, 2, 3)}
+  </section>
+  <section class="page">
     ${etapesBlock(cfg)}
     ${ctaBlock(cfg, assets)}
-    ${pageFoot(cfg, assets, 2, 2)}
+    ${pageFoot(cfg, assets, 3, 3)}
   </section>
   <script>
     (function () {
