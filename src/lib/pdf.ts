@@ -4639,6 +4639,32 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   const thumbMap = new Map<SelectedVehicle, LoadedImage | null>();
   orderedSvs.forEach((sv, i) => thumbMap.set(sv, orderedThumbs[i]));
 
+  // Décomposition visuelle (admin) : mini-barre empilée loyer / énergie /
+  // fiscalité par véhicule, dessinée dans la cellule véhicule. Échelle commune
+  // (longueur ∝ TCO usage) → repère visuel du plus/moins cher.
+  const compMap = new Map<SelectedVehicle, { loyer: number; energie: number; fisc: number; total: number }>();
+  let maxUsage = 1;
+  for (const c of computed) {
+    const fisc = c.r.tvsTotal + c.r.malusCO2 + c.r.malusPoids;
+    const total = c.r.loyerTotal + c.r.coutEnergie + fisc;
+    compMap.set(c.sv, { loyer: c.r.loyerTotal, energie: c.r.coutEnergie, fisc, total });
+    if (total > maxUsage) maxUsage = total;
+  }
+  const SEG_ENERGIE: [number, number, number] = [165, 210, 255];
+  const SEG_FISC: [number, number, number] = [211, 204, 216];
+  if (ADMIN_MODE) {
+    doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(7); doc.setTextColor(...SUB);
+    doc.text("DÉCOMPOSITION", M, y + 4);
+    let lx = M + doc.getTextWidth("DÉCOMPOSITION") + 12;
+    const lgs: [string, [number, number, number]][] = [["Loyer", INK], ["Énergie", SEG_ENERGIE], ["Fiscalité", SEG_FISC]];
+    doc.setFont(BRAND_FONT, "normal");
+    for (const [lab, col] of lgs) {
+      doc.setFillColor(col[0], col[1], col[2]); doc.rect(lx, y - 3, 9, 7, "F"); lx += 13;
+      doc.setTextColor(...SUB); doc.text(lab, lx, y + 4); lx += doc.getTextWidth(lab) + 14;
+    }
+    y += 16;
+  }
+
   autoTable(doc, {
     startY: y,
     theme: "plain",
@@ -4660,7 +4686,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
     bodyStyles: { fontSize: 7.5, cellPadding: 4, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any, overflow: "visible" as any },
     alternateRowStyles: { fillColor: BG },
     columnStyles: {
-      0: { cellWidth: 130, halign: "left" as any, cellPadding: { left: 54, right: 4, top: 6, bottom: 6 }, minCellHeight: 48, valign: "middle" as any, overflow: "linebreak" as any },
+      0: { cellWidth: 130, halign: "left" as any, cellPadding: { left: 54, right: 4, top: 6, bottom: ADMIN_MODE ? 16 : 6 }, minCellHeight: ADMIN_MODE ? 58 : 48, valign: "middle" as any, overflow: "linebreak" as any },
       1: { cellWidth: 46 },
       2: { cellWidth: 44 },
       3: { cellWidth: 40 },
@@ -4680,6 +4706,25 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
       const sv = rowVehicles[data.row.index];
       if (!sv) return; // ligne d'intertitre de groupe
       drawThumbCell(doc, data.cell, thumbMap.get(sv) ?? null);
+      // Mini-barre empilée (admin) en bas de la cellule véhicule.
+      if (ADMIN_MODE) {
+        const cmp = compMap.get(sv);
+        if (cmp && cmp.total > 0) {
+          const cell = data.cell;
+          const bx = cell.x + 54;
+          const bw = cell.x + cell.width - 4 - bx;
+          const by = cell.y + cell.height - 11;
+          doc.setFillColor(240, 238, 232);
+          doc.rect(bx, by, bw, 6, "F");
+          const scaled = (cmp.total / maxUsage) * bw;
+          let sx = bx;
+          const segs: [number, [number, number, number]][] = [[cmp.loyer, INK], [cmp.energie, SEG_ENERGIE], [cmp.fisc, SEG_FISC]];
+          for (const [val, col] of segs) {
+            const w = (val / cmp.total) * scaled;
+            if (w > 0.4) { doc.setFillColor(col[0], col[1], col[2]); doc.rect(sx, by, w, 6, "F"); sx += w; }
+          }
+        }
+      }
     },
   });
   let y2 = (doc as any).lastAutoTable.finalY + 20;
