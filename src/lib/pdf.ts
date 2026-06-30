@@ -872,15 +872,25 @@ export async function generateProposalPdf(opts: {
   // Pages d'analyse TCO multi-véhicules, chacune activable indépendamment.
   // Requièrent 2+ véhicules avec includeTco (sauf bilan carbone : 1 suffit).
   const tcoEligible = v.length >= 2 && v.some((sv) => sv.includeTco);
-  if (cfg.showTcoComparison && tcoEligible) {
-    doc.addPage();
-    drawHeader(doc, client, "vehicles");
-    await drawTcoDashboard(doc, v, energy, client, "vehicles");
-  }
-  if (cfg.showTcoDetailedTable && tcoEligible) {
-    doc.addPage();
-    drawHeader(doc, client, "vehicles");
-    await drawTcoDetailedTable(doc, v, energy, client);
+  if (ADMIN_MODE) {
+    // Page TCO FUSIONNÉE (admin) : bandeau d'impact + KPI + détail des
+    // composantes sur une seule page (remplace le tableau de bord à barres).
+    if ((cfg.showTcoComparison || cfg.showTcoDetailedTable) && tcoEligible) {
+      doc.addPage();
+      drawHeader(doc, client, "vehicles");
+      await drawTcoDetailedTable(doc, v, energy, client);
+    }
+  } else {
+    if (cfg.showTcoComparison && tcoEligible) {
+      doc.addPage();
+      drawHeader(doc, client, "vehicles");
+      await drawTcoDashboard(doc, v, energy, client, "vehicles");
+    }
+    if (cfg.showTcoDetailedTable && tcoEligible) {
+      doc.addPage();
+      drawHeader(doc, client, "vehicles");
+      await drawTcoDetailedTable(doc, v, energy, client);
+    }
   }
   if (cfg.showCarbonImpact && v.length >= 1) {
     doc.addPage();
@@ -4417,12 +4427,12 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text("ANALYSE TCO · DÉTAIL DES COMPOSANTES", M + 30, y - 4);
+  doc.text(ADMIN_MODE ? "ANALYSE TCO · SYNTHÈSE & DÉTAIL" : "ANALYSE TCO · DÉTAIL DES COMPOSANTES", M + 30, y - 4);
   y += 14;
   doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(26);
+  doc.setFontSize(ADMIN_MODE ? 30 : 26);
   doc.setTextColor(...INK);
-  doc.text("Tableau de décomposition du TCO", M, y + 18);
+  doc.text(ADMIN_MODE ? "Coût total de possession." : "Tableau de décomposition du TCO", M, y + 18);
   y += 50;
 
   doc.setFont(BRAND_FONT, "normal");
@@ -4448,6 +4458,57 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
     }, sv.negotiatedMonthly);
     return { sv, r, duree };
   });
+
+  // === Admin (page fusionnée) : bandeau d'impact + KPI en tête ===
+  if (ADMIN_MODE) {
+    const impactRows = computed.map((c) => ({ sv: c.sv, total: c.r.tcoTotal, per100: c.r.tcoParKm * 100 }));
+    const evImpact = impactRows.filter((r) => !r.sv.vehicle.isCurrentFleet);
+    const ranked = [...(evImpact.length ? evImpact : impactRows)].sort((a, b) => a.total - b.total);
+    if (ranked.length > 0) {
+      const best = ranked[0];
+      const worst = ranked[ranked.length - 1];
+      const ecart = Math.max(0, worst.total - best.total);
+      const ecartPct = worst.total > 0 ? (ecart / worst.total) * 100 : 0;
+      const W = PAGE_W - M * 2;
+      // Bandeau d'impact (carte noire)
+      const bh = 72;
+      doc.setFillColor(...INK);
+      doc.roundedRect(M, y, W, bh, 12, 12, "F");
+      doc.setFillColor(...PRODUCT_ACCENT);
+      doc.roundedRect(M + 14, y + 14, 5, bh - 28, 2.5, 2.5, "F");
+      doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(7.5); doc.setTextColor(...PRODUCT_ACCENT);
+      doc.text("RECOMMANDATION BEEV", M + 28, y + 19);
+      doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(15); doc.setTextColor(252, 249, 242);
+      doc.text(`${best.sv.vehicle.brand} ${best.sv.vehicle.model}`.slice(0, 36), M + 28, y + 40);
+      doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(8.5); doc.setTextColor(206, 206, 206);
+      doc.text("Le coût total à l'usage le plus bas de la sélection.", M + 28, y + 55);
+      doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(22); doc.setTextColor(255, 255, 255);
+      doc.text(`${best.per100.toFixed(2)} €/100km`, M + W - 16, y + 36, { align: "right" });
+      doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(8.5); doc.setTextColor(...PRODUCT_ACCENT);
+      doc.text(`${eur(ecart)} économisés sur le contrat (−${ecartPct.toFixed(0)} %)`, M + W - 16, y + 53, { align: "right" });
+      y += bh + 14;
+      // 4 KPI
+      const kc = (W - 30) / 4;
+      const kpiData: { lab: string; val: string; sub: string; c: number[] }[] = [
+        { lab: "MEILLEUR TCO USAGE", val: `${best.per100.toFixed(2)} €`, sub: `/100km · ${best.sv.vehicle.brand} ${best.sv.vehicle.model}`.slice(0, 32), c: [165, 210, 255] },
+        { lab: "TCO LE PLUS ÉLEVÉ", val: `${worst.per100.toFixed(2)} €`, sub: `/100km · ${worst.sv.vehicle.brand} ${worst.sv.vehicle.model}`.slice(0, 32), c: [244, 184, 170] },
+        { lab: "ÉCART SUR CONTRAT", val: eur(ecart), sub: "pire vs meilleur", c: INK },
+        { lab: "ÉCART %", val: `${ecartPct.toFixed(1)} %`, sub: "pire − meilleur ÷ pire", c: [211, 204, 216] },
+      ];
+      kpiData.forEach((k, i) => {
+        const kx = M + i * (kc + 10);
+        doc.setFillColor(...BG); doc.roundedRect(kx, y, kc, 56, 7, 7, "F");
+        doc.setFillColor(k.c[0], k.c[1], k.c[2]); doc.rect(kx, y, kc, 3, "F");
+        doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(6.5); doc.setTextColor(...SUB);
+        doc.text(k.lab, kx + 8, y + 16);
+        doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(15); doc.setTextColor(...INK);
+        doc.text(k.val, kx + 8, y + 35);
+        doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(6.5); doc.setTextColor(...SUB);
+        doc.text((doc.splitTextToSize(k.sub, kc - 14) as string[]).slice(0, 1), kx + 8, y + 47);
+      });
+      y += 56 + 16;
+    }
+  }
 
   // Flotte actuelle (thermiques) séparée des EV proposés : elle s'affiche
   // TOUJOURS en tête de liste, avec un bandeau d'impact.
