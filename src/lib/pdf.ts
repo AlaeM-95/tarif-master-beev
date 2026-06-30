@@ -4007,7 +4007,7 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
-  const intro = "Comparaison du coût total entre les véhicules de votre sélection. Chacun est décomposé en 4 composantes : loyer LLD, coût énergie, fiscalité (TVS), malus à l'achat. Le véhicule en haut a le TCO le plus bas — le plus économique pour votre usage.";
+  const intro = "Classement par TCO d'usage : loyer LLD, coût énergie, fiscalité (TVS) et malus à l'achat. Le véhicule en haut a le TCO d'usage le plus bas. Ce TCO d'usage n'inclut pas l'AND ni l'AEN employeur : le coût employeur complet (qui les ajoute) est détaillé dans la page « Détail des composantes ».";
   const introL = doc.splitTextToSize(intro, PAGE_W - M * 2);
   doc.text(introL, M, y);
   y += introL.length * 13 + 14;
@@ -4428,7 +4428,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
-  const intro = "Chaque composante du coût total de possession est détaillée par véhicule sur la durée du contrat. Les valeurs intègrent les options et la remise commerciale négociée.";
+  const intro = "Chaque composante du coût total de possession est détaillée par véhicule sur la durée du contrat (options et remise commerciale incluses). Le « coût employeur complet » ajoute au TCO d'usage (loyer + énergie + TVS + malus, repris du tableau de bord) l'amortissement non déductible (AND) et l'avantage en nature employeur (AEN) ; les véhicules restent classés par TCO d'usage croissant.";
   const introL = doc.splitTextToSize(intro, PAGE_W - M * 2);
   doc.text(introL, M, y);
   y += introL.length * 13 + 16;
