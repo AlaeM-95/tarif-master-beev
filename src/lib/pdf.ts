@@ -444,6 +444,9 @@ let TEXTS: PdfTextMap = new Map();
 // La variante blanche est placée sur un petit bandeau noir arrondi pour
 // rester visible sur les pages internes à fond clair.
 let HEADER_LOGO: { dataUrl: string; w: number; h: number; format: "JPEG" | "PNG" } | null = null;
+// Variante FONCÉE du logo (en-tête admin sur fond clair) — logo paramétré dans
+// l'admin en priorité, sinon logo noir local.
+let HEADER_LOGO_DARK: { dataUrl: string; w: number; h: number; format: "JPEG" | "PNG" } | null = null;
 
 // Wrap une promesse avec un timeout court qui rejette si la requête traîne.
 // Utilisé pour chaque fetch réseau afin de retomber rapidement sur les valeurs
@@ -699,6 +702,23 @@ export async function generateProposalPdf(opts: {
       HEADER_LOGO = { dataUrl: flatUrl, w: img.w, h: img.h, format: "JPEG" };
     } else {
       HEADER_LOGO = img;
+    }
+    break;
+  }
+
+  // Logo header FONCÉ (en-tête admin v2, sur fond clair) : priorité au logo
+  // paramétré dans l'admin (PDF_CONTENT.logoUrl), sinon logo noir local. Aplati
+  // sur blanc pour les PNG transparents.
+  HEADER_LOGO_DARK = null;
+  const headerDarkCandidates = [PDF_CONTENT.logoUrl ?? undefined, "/images/logo-beev-noir.png", "/images/logo-beev.png"].filter(Boolean) as string[];
+  for (const url of headerDarkCandidates) {
+    const img = await loadImage(url);
+    if (!img) continue;
+    if (img.format === "PNG") {
+      const flatUrl = await flattenPngToJpeg(img.dataUrl, img.w, img.h, [255, 255, 255]);
+      HEADER_LOGO_DARK = { dataUrl: flatUrl, w: img.w, h: img.h, format: "JPEG" };
+    } else {
+      HEADER_LOGO_DARK = img;
     }
     break;
   }
@@ -4651,7 +4671,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
     if (total > maxUsage) maxUsage = total;
   }
   const SEG_ENERGIE: [number, number, number] = [165, 210, 255];
-  const SEG_FISC: [number, number, number] = [211, 204, 216];
+  const SEG_FISC: [number, number, number] = [150, 122, 168]; // violet plus soutenu (lisible sur barre)
   if (ADMIN_MODE) {
     doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(7); doc.setTextColor(...SUB);
     doc.text("DÉCOMPOSITION", M, y + 4);
@@ -4728,6 +4748,10 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
     },
   });
   let y2 = (doc as any).lastAutoTable.finalY + 20;
+
+  // Admin : on masque le détail de calcul (notes méthodologiques) pour une page
+  // plus épurée côté client. Les non-admins conservent les notes.
+  if (ADMIN_MODE) return;
 
   // Légende — couleurs charte Beev (LAVENDER pour les signaux d'alerte)
   doc.setFont(BRAND_FONT, "normal");
@@ -7567,15 +7591,24 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
 function drawHeader(doc: jsPDF, c: ClientInfo, type: ProjectType) {
   const tag = type === "vehicles" ? "Offre véhicules LLD" : type === "home" ? "Déploiement domicile (B2B2E)" : "Déploiement site entreprise";
   if (ADMIN_MODE) {
-    // v2 : en-tête épuré — wordmark + point d'accent produit (gauche),
-    // client + objet (droite), filet fin.
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(14);
-    doc.setTextColor(...INK);
-    doc.text("Beev", M, 60);
-    const ww = doc.getTextWidth("Beev");
+    // v2 : en-tête épuré — logo paramétré (dashboard) + point d'accent produit
+    // (gauche), client + objet (droite), filet fin.
+    let logoW = 0;
+    if (HEADER_LOGO_DARK) {
+      const ratio = HEADER_LOGO_DARK.w / Math.max(HEADER_LOGO_DARK.h, 1);
+      logoW = Math.min(104, 20 * ratio);
+      try {
+        doc.addImage(HEADER_LOGO_DARK.dataUrl, HEADER_LOGO_DARK.format, M, 45, logoW, 20, undefined, "FAST");
+      } catch {
+        doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(14); doc.setTextColor(...INK);
+        doc.text("Beev", M, 60); logoW = doc.getTextWidth("Beev");
+      }
+    } else {
+      doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(14); doc.setTextColor(...INK);
+      doc.text("Beev", M, 60); logoW = doc.getTextWidth("Beev");
+    }
     doc.setFillColor(...PRODUCT_ACCENT);
-    doc.circle(M + ww + 8, 55, 2.6, "F");
+    doc.circle(M + logoW + 8, 55, 2.6, "F");
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(9);
     doc.setTextColor(...INK);
