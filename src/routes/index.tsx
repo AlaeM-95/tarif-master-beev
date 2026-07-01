@@ -42,6 +42,7 @@ import { useMaterials, materialToLineItem, MATERIAL_CATEGORIES, type Material } 
 import { useBpuForfaits, bpuForfaitToLineItem, BPU_CATEGORIES, BPU_ZONE_COEFFICIENTS, type BpuForfait, type BpuZone } from "@/lib/bpu";
 import { useAuth } from "@/lib/auth";
 import { useMyCoordinates } from "@/lib/users";
+import { useBrandLogos, brandInitials } from "@/lib/brand-logos";
 import { usePermissions } from "@/lib/permissions";
 import { useProposals, useProposal } from "@/lib/proposals";
 import { usePdfConfig, type PdfDisplayConfig } from "@/lib/pdf-config";
@@ -97,6 +98,9 @@ function ReorderButtons({ index, total, onMove }: { index?: number; total?: numb
 function App() {
   const { isAdmin, isOps, isSales, signOut } = useAuth();
   const { can } = usePermissions();
+  // Logos de marque (catalogue véhicules) : chargés une fois, transmis à
+  // VehicleCatalogByBrand → VehicleCard. Repli sur monogramme si absent.
+  const { logos: brandLogos } = useBrandLogos();
   // Permissions configurables par l'admin (matrice par rôle). canEditProduct
   // pilote l'édition des fiches produit véhicule depuis le catalogue. Les
   // liens du menu Administration suivent les permissions backoffice.
@@ -1678,6 +1682,7 @@ function App() {
                 selectedV={selectedV}
                 canEditPricing={canEditPricing}
                 isAdmin={isAdmin}
+                brandLogos={brandLogos}
                 onToggle={toggleV}
                 onUpdate={isSales ? updateVehicle : undefined}
                 onDelete={isOps ? async (v) => {
@@ -2427,7 +2432,7 @@ function ClientCard({ client, setClient, isAdmin }: { client: any; setClient: (c
 // Si l'utilisateur tape une recherche, les marques avec résultats sont
 // automatiquement dépliées pour rendre les véhicules trouvables.
 function VehicleCatalogByBrand({
-  vehicles, allVehicleCount, selectedV, onToggle, onUpdate, onDelete, onDuplicate, existingCategories, leaserOffers, hasActiveSearch, compareIds, onToggleCompare, canEditPricing, isAdmin,
+  vehicles, allVehicleCount, selectedV, onToggle, onUpdate, onDelete, onDuplicate, existingCategories, leaserOffers, hasActiveSearch, compareIds, onToggleCompare, canEditPricing, isAdmin, brandLogos,
 }: {
   vehicles: Vehicle[];
   allVehicleCount: number;
@@ -2443,6 +2448,7 @@ function VehicleCatalogByBrand({
   onToggleCompare?: (id: string) => void;
   canEditPricing?: boolean;
   isAdmin?: boolean;
+  brandLogos?: Record<string, string>;
 }) {
   // Groupement par marque (trie alphabétique sauf BMW/Audi/Mercedes/Tesla en tête)
   const byBrand = useMemo(() => {
@@ -2539,6 +2545,7 @@ function VehicleCatalogByBrand({
                         isInCompare={compareIds?.has(v.id)}
                         onToggleCompare={onToggleCompare ? () => onToggleCompare(v.id) : undefined}
                         isAdmin={isAdmin}
+                        brandLogoUrl={brandLogos?.[v.brand]}
                       />
                     ))}
                   </div>
@@ -3100,7 +3107,7 @@ function ConfirmDeleteButton({ label, onConfirm }: { label: string; onConfirm: (
   );
 }
 
-function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existingCategories = [], leaserOffers = [], isInCompare, onToggleCompare, onDuplicate, canEditPricing, brandTripartiteUrl, isAdmin }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Vehicle>) => void; onDelete?: () => void; existingCategories?: string[]; leaserOffers?: LeaserOffer[]; isInCompare?: boolean; onToggleCompare?: () => void; onDuplicate?: () => void; canEditPricing?: boolean; brandTripartiteUrl?: string; isAdmin?: boolean }) {
+function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existingCategories = [], leaserOffers = [], isInCompare, onToggleCompare, onDuplicate, canEditPricing, brandTripartiteUrl, isAdmin, brandLogoUrl }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Vehicle>) => void; onDelete?: () => void; existingCategories?: string[]; leaserOffers?: LeaserOffer[]; isInCompare?: boolean; onToggleCompare?: () => void; onDuplicate?: () => void; canEditPricing?: boolean; brandTripartiteUrl?: string; isAdmin?: boolean; brandLogoUrl?: string }) {
   // Contrat tripartite : propre à la fiche, sinon celui du constructeur (marque).
   const tripartiteUrl = (vehicle.tripartitePdfUrl && vehicle.tripartitePdfUrl.trim()) ? vehicle.tripartitePdfUrl : brandTripartiteUrl;
   const [editing, setEditing] = useState(false);
@@ -3201,9 +3208,23 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
         </div>
       </div>
       <CardContent className="p-4 space-y-3">
-        <div className="min-w-0">
-          <h3 className="font-bold leading-tight text-foreground text-base truncate">{vehicle.brand} {vehicle.model}</h3>
-          <p className="text-xs text-muted-foreground truncate mt-0.5">{vehicle.version}</p>
+        <div className="min-w-0 flex items-start gap-2.5">
+          {isAdmin && (
+            // Logo de la marque : image réelle si uploadée en admin
+            // (brand_logos), sinon monogramme de repli. Distinct du badge
+            // énergie sur la photo, pour ne pas superposer deux pictos.
+            <div className="w-7 h-7 rounded-md border border-border/60 bg-card grid place-content-center overflow-hidden flex-none mt-0.5" title={`Marque : ${vehicle.brand}`}>
+              {brandLogoUrl ? (
+                <img src={brandLogoUrl} alt={vehicle.brand} className="w-full h-full object-contain p-0.5" />
+              ) : (
+                <span className="text-[9px] font-bold text-foreground/60">{brandInitials(vehicle.brand)}</span>
+              )}
+            </div>
+          )}
+          <div className="min-w-0">
+            <h3 className="font-bold leading-tight text-foreground text-base truncate">{vehicle.brand} {vehicle.model}</h3>
+            <p className="text-xs text-muted-foreground truncate mt-0.5">{vehicle.version}</p>
+          </div>
         </div>
         <div className={isAdmin ? "flex items-center gap-3 text-[11px] text-foreground/70 py-1 border-y border-border/50" : "grid grid-cols-3 gap-2 text-[11px] text-foreground/70"}>
           <Spec icon={<Gauge className="w-3 h-3" />} v={vehicle.rangeWltp ? `${vehicle.rangeWltp} km` : `${vehicle.co2} g/km`} />

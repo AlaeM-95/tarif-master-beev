@@ -9,7 +9,7 @@ import { supabase } from "@/lib/supabase";
 type ImageUploadProps = {
   currentUrl?: string;
   onChange: (url: string) => void;
-  folder: "vehicles" | "chargers" | "pdf" | "client-logos";
+  folder: "vehicles" | "chargers" | "pdf" | "client-logos" | "brand-logos";
   label?: string;
 };
 

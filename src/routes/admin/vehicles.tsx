@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Search, Plus, Trash2, Star, Pencil, Filter, Package, Sparkles, X, Copy, Car, Tag, Receipt } from "lucide-react";
+import { ArrowLeft, Search, Plus, Trash2, Star, Pencil, Filter, Package, Sparkles, X, Copy, Car, Tag, Receipt, Image as ImageIcon, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,11 +8,13 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { FileUpload } from "@/components/file-upload";
+import { ImageUpload } from "@/components/image-upload";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth";
 import { usePermissions } from "@/lib/permissions";
 import { useVehicles } from "@/lib/store";
 import { useLeaserOffers, type LeaserOffer } from "@/lib/leaser-offers";
+import { useBrandLogos, brandInitials } from "@/lib/brand-logos";
 import { LEASER_NAMES, KNOWN_LEASERS, LEASER_KIND_LABELS, type LeaserKind } from "@/lib/leasers";
 import { fmtEur } from "@/lib/store";
 import type { Vehicle } from "@/lib/catalog";
@@ -35,10 +37,19 @@ function AdminVehiclesPage() {
 
   const { vehicles, update: updateVehicle, remove: removeVehicle, duplicate: duplicateVehicle } = useVehicles();
   const { offers } = useLeaserOffers();
+  const { logos: brandLogos, setLogo: setBrandLogo } = useBrandLogos();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKind>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [showBrandLogos, setShowBrandLogos] = useState(false);
+
+  // Marques distinctes du catalogue — un logo par marque, réutilisé sur
+  // toutes les fiches véhicule de cette marque (voir src/lib/brand-logos.ts).
+  const brands = useMemo(
+    () => Array.from(new Set(vehicles.map((v) => v.brand).filter(Boolean))).sort(),
+    [vehicles],
+  );
 
   // Raccourci depuis la fiche produit (/admin/vehicles?edit=<id>) : ouvre
   // directement la fiche pricing du véhicule concerné.
@@ -159,6 +170,56 @@ function AdminVehiclesPage() {
           <KpiCard label="Stock dispo" value={stats.stock} icon={<Package className="w-4 h-4" />} accent="#35DA76" />
           <KpiCard label="Shortlist du mois" value={stats.shortlist} icon={<Sparkles className="w-4 h-4" />} accent="#FFB800" />
         </div>
+
+        {/* Logos de marque : un logo par marque, affiché sur chaque fiche
+            véhicule du catalogue. Replié par défaut pour ne pas alourdir
+            la page — l'essentiel du travail quotidien reste le tableau. */}
+        <Card className="mb-4">
+          <button
+            type="button"
+            onClick={() => setShowBrandLogos((v) => !v)}
+            className="w-full flex items-center justify-between gap-3 p-3 text-left"
+          >
+            <div className="flex items-center gap-2">
+              <ImageIcon className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-semibold">Logos de marque</span>
+              <Badge variant="outline" className="text-[10px]">
+                {brands.filter((b) => brandLogos[b]).length} / {brands.length} renseignés
+              </Badge>
+            </div>
+            {showBrandLogos ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+          {showBrandLogos && (
+            <CardContent className="pt-0 border-t">
+              <p className="text-xs text-muted-foreground mb-3 mt-3">
+                Affiché en badge à côté du nom de chaque véhicule dans le catalogue. Sans logo, une marque affiche un monogramme (ex. « {brands[0] ? brandInitials(brands[0]) : "PE"} ») à la place.
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {brands.map((brand) => (
+                  <div key={brand} className="flex items-center gap-3 rounded-lg border p-2.5">
+                    <div className="w-10 h-10 rounded-md border bg-[#FCF9F2] grid place-content-center overflow-hidden flex-none">
+                      {brandLogos[brand] ? (
+                        <img src={brandLogos[brand]} alt={brand} className="w-full h-full object-contain p-1" />
+                      ) : (
+                        <span className="text-[10px] font-bold text-muted-foreground">{brandInitials(brand)}</span>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold truncate mb-1">{brand}</p>
+                      <ImageUpload
+                        currentUrl={brandLogos[brand]}
+                        onChange={(url) => setBrandLogo.mutate({ brand, logoUrl: url })}
+                        folder="brand-logos"
+                        label=""
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          )}
+        </Card>
+
         {/* Table dense */}
         <Card>
           <CardContent className="p-0">
