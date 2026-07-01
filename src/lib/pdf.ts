@@ -4458,7 +4458,9 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
-  const intro = "Chaque composante du coût total de possession est détaillée par véhicule sur la durée du contrat (options et remise commerciale incluses). Le « coût employeur complet » ajoute au TCO d'usage (loyer + énergie + TVS + malus, repris du tableau de bord) l'amortissement non déductible (AND) et l'avantage en nature employeur (AEN) ; les véhicules restent classés par TCO d'usage croissant.";
+  const intro = ADMIN_MODE
+    ? "Classement par COÛT EMPLOYEUR COMPLET croissant = loyer + énergie + TVS + malus + AND + AEN employeur (sur la durée du contrat, options et remise incluses). L'AEN salarié est indiqué à titre informatif, non compté dans le coût employeur."
+    : "Chaque composante du coût total de possession est détaillée par véhicule sur la durée du contrat (options et remise commerciale incluses). Le « coût employeur complet » ajoute au TCO d'usage (loyer + énergie + TVS + malus, repris du tableau de bord) l'amortissement non déductible (AND) et l'avantage en nature employeur (AEN) ; les véhicules restent classés par TCO d'usage croissant.";
   const introL = doc.splitTextToSize(intro, PAGE_W - M * 2);
   doc.text(introL, M, y);
   y += introL.length * 13 + 16;
@@ -4481,7 +4483,12 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
 
   // === Admin (page fusionnée) : bandeau d'impact + KPI en tête ===
   if (ADMIN_MODE) {
-    const impactRows = computed.map((c) => ({ sv: c.sv, total: c.r.tcoTotal, per100: c.r.tcoParKm * 100 }));
+    // Métrique de reco = COÛT EMPLOYEUR COMPLET (loyer + énergie + TVS + malus
+    // + AND + AEN employeur), et non le seul TCO d'usage.
+    const impactRows = computed.map((c) => {
+      const kmC = c.sv.kmPerYear * c.duree;
+      return { sv: c.sv, total: c.r.tcoEmployeurComplet, per100: kmC > 0 ? (c.r.tcoEmployeurComplet / kmC) * 100 : 0 };
+    });
     const evImpact = impactRows.filter((r) => !r.sv.vehicle.isCurrentFleet);
     const ranked = [...(evImpact.length ? evImpact : impactRows)].sort((a, b) => a.total - b.total);
     if (ranked.length > 0) {
@@ -4501,7 +4508,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
       doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(15); doc.setTextColor(252, 249, 242);
       doc.text(`${best.sv.vehicle.brand} ${best.sv.vehicle.model}`.slice(0, 36), M + 28, y + 40);
       doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(8.5); doc.setTextColor(206, 206, 206);
-      doc.text("Le coût total à l'usage le plus bas de la sélection.", M + 28, y + 55);
+      doc.text("Le coût employeur complet le plus bas de la sélection.", M + 28, y + 55);
       doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(22); doc.setTextColor(255, 255, 255);
       doc.text(`${best.per100.toFixed(2)} €/100km`, M + W - 16, y + 36, { align: "right" });
       doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(8.5); doc.setTextColor(...PRODUCT_ACCENT);
@@ -4510,8 +4517,8 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
       // 4 KPI
       const kc = (W - 30) / 4;
       const kpiData: { lab: string; val: string; sub: string; c: number[] }[] = [
-        { lab: "MEILLEUR TCO USAGE", val: `${best.per100.toFixed(2)} €`, sub: `/100km · ${best.sv.vehicle.brand} ${best.sv.vehicle.model}`.slice(0, 32), c: [165, 210, 255] },
-        { lab: "TCO LE PLUS ÉLEVÉ", val: `${worst.per100.toFixed(2)} €`, sub: `/100km · ${worst.sv.vehicle.brand} ${worst.sv.vehicle.model}`.slice(0, 32), c: [244, 184, 170] },
+        { lab: "MEILLEUR COÛT TOTAL", val: `${best.per100.toFixed(2)} €`, sub: `/100km · ${best.sv.vehicle.brand} ${best.sv.vehicle.model}`.slice(0, 32), c: [165, 210, 255] },
+        { lab: "COÛT TOTAL LE + ÉLEVÉ", val: `${worst.per100.toFixed(2)} €`, sub: `/100km · ${worst.sv.vehicle.brand} ${worst.sv.vehicle.model}`.slice(0, 32), c: [244, 184, 170] },
         { lab: "ÉCART SUR CONTRAT", val: eur(ecart), sub: "pire vs meilleur", c: INK },
         { lab: "ÉCART %", val: `${ecartPct.toFixed(1)} %`, sub: "pire − meilleur ÷ pire", c: [211, 204, 216] },
       ];
@@ -4561,7 +4568,8 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
     buckets.get(g)!.push(c);
   }
   groupOrder.sort((a, b) => (a === "__none__" ? 1 : 0) - (b === "__none__" ? 1 : 0));
-  for (const g of groupOrder) buckets.get(g)!.sort((a, b) => a.r.tcoTotal - b.r.tcoTotal);
+  // Admin : tri par coût employeur complet (métrique de reco) ; sinon TCO usage.
+  for (const g of groupOrder) buckets.get(g)!.sort((a, b) => (ADMIN_MODE ? a.r.tcoEmployeurComplet - b.r.tcoEmployeurComplet : a.r.tcoTotal - b.r.tcoTotal));
   // Liste à plat triée (pour la légende / fallback)
   const rows = groupOrder.flatMap((g) => buckets.get(g)!);
 
@@ -4662,21 +4670,23 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   // Décomposition visuelle (admin) : mini-barre empilée loyer / énergie /
   // fiscalité par véhicule, dessinée dans la cellule véhicule. Échelle commune
   // (longueur ∝ TCO usage) → repère visuel du plus/moins cher.
-  const compMap = new Map<SelectedVehicle, { loyer: number; energie: number; fisc: number; total: number }>();
+  const compMap = new Map<SelectedVehicle, { loyer: number; energie: number; fisc: number; empl: number; total: number }>();
   let maxUsage = 1;
   for (const c of computed) {
     const fisc = c.r.tvsTotal + c.r.malusCO2 + c.r.malusPoids;
-    const total = c.r.loyerTotal + c.r.coutEnergie + fisc;
-    compMap.set(c.sv, { loyer: c.r.loyerTotal, energie: c.r.coutEnergie, fisc, total });
+    const empl = c.r.andAnnuel * c.duree + c.r.partEmployeurAnnuelle * c.duree;
+    const total = c.r.loyerTotal + c.r.coutEnergie + fisc + empl; // = coût employeur complet
+    compMap.set(c.sv, { loyer: c.r.loyerTotal, energie: c.r.coutEnergie, fisc, empl, total });
     if (total > maxUsage) maxUsage = total;
   }
   const SEG_ENERGIE: [number, number, number] = [165, 210, 255];
   const SEG_FISC: [number, number, number] = [150, 122, 168]; // violet plus soutenu (lisible sur barre)
+  const SEG_EMPL: [number, number, number] = [244, 184, 170]; // rose (charges employeur AND + AEN)
   if (ADMIN_MODE) {
     doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(7); doc.setTextColor(...SUB);
     doc.text("DÉCOMPOSITION", M, y + 4);
     let lx = M + doc.getTextWidth("DÉCOMPOSITION") + 12;
-    const lgs: [string, [number, number, number]][] = [["Loyer", INK], ["Énergie", SEG_ENERGIE], ["Fiscalité", SEG_FISC]];
+    const lgs: [string, [number, number, number]][] = [["Loyer", INK], ["Énergie", SEG_ENERGIE], ["Fiscalité", SEG_FISC], ["Charges empl.", SEG_EMPL]];
     doc.setFont(BRAND_FONT, "normal");
     for (const [lab, col] of lgs) {
       doc.setFillColor(col[0], col[1], col[2]); doc.rect(lx, y - 3, 9, 7, "F"); lx += 13;
@@ -4738,7 +4748,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
           doc.rect(bx, by, bw, 6, "F");
           const scaled = (cmp.total / maxUsage) * bw;
           let sx = bx;
-          const segs: [number, [number, number, number]][] = [[cmp.loyer, INK], [cmp.energie, SEG_ENERGIE], [cmp.fisc, SEG_FISC]];
+          const segs: [number, [number, number, number]][] = [[cmp.loyer, INK], [cmp.energie, SEG_ENERGIE], [cmp.fisc, SEG_FISC], [cmp.empl, SEG_EMPL]];
           for (const [val, col] of segs) {
             const w = (val / cmp.total) * scaled;
             if (w > 0.4) { doc.setFillColor(col[0], col[1], col[2]); doc.rect(sx, by, w, 6, "F"); sx += w; }
