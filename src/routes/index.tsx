@@ -1369,8 +1369,8 @@ function App() {
 
       <main className="container mx-auto px-6 pt-20 pb-8 grid gap-8 lg:grid-cols-[1fr_380px]">
         <div className="space-y-8">
-          <ProjectTypeSelector value={activeTab} onChange={switchProject} />
-          <ClientCard client={client} setClient={setClient} />
+          <ProjectTypeSelector value={activeTab} onChange={switchProject} isAdmin={isAdmin} />
+          <ClientCard client={client} setClient={setClient} isAdmin={isAdmin} />
 
           {tcoView && (
             <TcoCalculator
@@ -1478,6 +1478,97 @@ function App() {
               {(() => {
                 const advActive = vehiclePriceMax !== null || vehicleMonthlyMax !== null || vehicleDurationFilter !== null || vehicleKmFilter !== null;
                 const anyActive = !!vehicleSearch || vehicleEnergyFilter !== "all" || advActive;
+
+                // Interface historique (non-admin) : tous les filtres sur une
+                // seule ligne, sans repli ni barre fixée au scroll.
+                if (!isAdmin) {
+                  return (
+                    <div className="flex flex-wrap items-center gap-2 mb-4 p-3 rounded-lg bg-card border">
+                      <div className="relative flex-1 min-w-[200px]">
+                        <Input
+                          type="search"
+                          value={vehicleSearch}
+                          onChange={(e) => setVehicleSearch(e.target.value)}
+                          placeholder="Rechercher marque, modèle, version..."
+                          className="h-9 pl-3"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {(["all", "Électrique", "Hybride Rechargeable", "Hybride", "Mild Hybrid", "Essence", "Diesel"] as const).map((e) => (
+                          <Button
+                            key={e}
+                            size="sm"
+                            variant={vehicleEnergyFilter === e ? "default" : "outline"}
+                            onClick={() => setVehicleEnergyFilter(e)}
+                            className="h-8 text-xs"
+                          >
+                            {e === "all" ? "Toutes énergies" : e}
+                          </Button>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span className="whitespace-nowrap">Prix max</span>
+                        <Input
+                          type="number"
+                          value={vehiclePriceMax ?? ""}
+                          onChange={(e) => setVehiclePriceMax(e.target.value ? Number(e.target.value) : null)}
+                          placeholder="—"
+                          className="h-8 w-24 text-xs"
+                        />
+                        <span>€</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span className="whitespace-nowrap">Loyer max</span>
+                        <Input
+                          type="number"
+                          value={vehicleMonthlyMax ?? ""}
+                          onChange={(e) => setVehicleMonthlyMax(e.target.value ? Number(e.target.value) : null)}
+                          placeholder="—"
+                          className="h-8 w-24 text-xs"
+                        />
+                        <span>€/mois</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {[36, 48, 60].map((d) => (
+                          <Button
+                            key={d}
+                            size="sm"
+                            variant={vehicleDurationFilter === d ? "default" : "outline"}
+                            onClick={() => setVehicleDurationFilter(vehicleDurationFilter === d ? null : d)}
+                            className="h-8 text-xs"
+                          >
+                            {d} mois
+                          </Button>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span className="whitespace-nowrap">Km min</span>
+                        <Input
+                          type="number"
+                          value={vehicleKmFilter ?? ""}
+                          onChange={(e) => setVehicleKmFilter(e.target.value ? Number(e.target.value) : null)}
+                          placeholder="—"
+                          className="h-8 w-24 text-xs"
+                          step={10000}
+                        />
+                      </div>
+                      {anyActive && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setVehicleSearch(""); setVehicleEnergyFilter("all"); setVehiclePriceMax(null);
+                            setVehicleMonthlyMax(null); setVehicleDurationFilter(null); setVehicleKmFilter(null);
+                          }}
+                          className="h-8 text-xs gap-1"
+                        >
+                          <X className="w-3 h-3" /> Effacer
+                        </Button>
+                      )}
+                    </div>
+                  );
+                }
+
                 return (
                   <div className="mb-4 rounded-lg border bg-card sticky top-20 z-10 shadow-sm">
                     <div className="flex flex-wrap items-center gap-2 p-3">
@@ -1586,6 +1677,7 @@ function App() {
                 allVehicleCount={vehicles.length}
                 selectedV={selectedV}
                 canEditPricing={canEditPricing}
+                isAdmin={isAdmin}
                 onToggle={toggleV}
                 onUpdate={isSales ? updateVehicle : undefined}
                 onDelete={isOps ? async (v) => {
@@ -1801,22 +1893,10 @@ function App() {
           )}
         </div>
 
-        <aside className="lg:sticky lg:top-24 self-start max-h-[calc(100vh-7rem)] overflow-auto">
-          <Tabs defaultValue="selection" className="gap-4">
-            <TabsList className="w-full">
-              <TabsTrigger value="selection" className="flex-1 gap-1.5">
-                Sélection
-                {visibleCount > 0 && (
-                  <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-beev-rose text-beev-black text-[10px] font-bold">
-                    {visibleCount}
-                  </span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="pdf" className="flex-1">Configuration PDF</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="pdf" className="mt-0">
-              {/* Panneau de configuration PDF — toggle des sections à inclure */}
+        <aside className={`lg:sticky lg:top-24 self-start max-h-[calc(100vh-7rem)] overflow-auto${isAdmin ? "" : " space-y-4"}`}>
+          {(() => {
+            const pdfPanel = (
+              /* Panneau de configuration PDF — toggle des sections à inclure */
               <PdfConfigPanel
                 config={pdfConfig}
                 update={updatePdfConfig}
@@ -1825,123 +1905,143 @@ function App() {
                 onPreviewSection={(key) => previewSection(key)}
                 isAdmin={isAdmin}
               />
-            </TabsContent>
-
-            <TabsContent value="selection" className="mt-0">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-base">Sélection en cours</CardTitle>
-              <div className="flex items-center gap-2">
-                {visibleCount > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 gap-1"
-                    onClick={() => {
-                      setSelectedV({});
-                      setSelectedC({});
-                      toast.success("Sélections vidées");
-                    }}
-                    title="Vider tous les véhicules et bornes sélectionnés"
-                  >
-                    <Trash2 className="w-3 h-3" /> Vider
-                  </Button>
-                )}
-                <SaveIndicator watch={[selectedV, selectedC, client]} />
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {visibleCount === 0 ? (
-                <p className="text-sm text-muted-foreground">Aucun produit sélectionné.</p>
-              ) : (
-                <>
-                  {/* Section véhicules — toujours affichée si au moins 1 sélectionné, quel que soit le projectType */}
-                  {counts.v > 0 && (
+            );
+            const selectionCard = (
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-base">Sélection en cours</CardTitle>
+                  <div className="flex items-center gap-2">
+                    {visibleCount > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 gap-1"
+                        onClick={() => {
+                          setSelectedV({});
+                          setSelectedC({});
+                          toast.success("Sélections vidées");
+                        }}
+                        title="Vider tous les véhicules et bornes sélectionnés"
+                      >
+                        <Trash2 className="w-3 h-3" /> Vider
+                      </Button>
+                    )}
+                    <SaveIndicator watch={[selectedV, selectedC, client]} />
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {visibleCount === 0 ? (
+                    <p className="text-sm text-muted-foreground">Aucun produit sélectionné.</p>
+                  ) : (
                     <>
-                      <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wide">
-                        Véhicules ({counts.v})
-                      </p>
-                      {Object.values(selectedV).map((sv, idx, arr) => {
-                        const key = sv.instanceId ?? sv.vehicle.id;
-                        const tripartiteUrl = sv.vehicle.tripartitePdfUrl || vehicles.find((vv) => vv.brand === sv.vehicle.brand && vv.tripartitePdfUrl)?.tripartitePdfUrl;
-                        // v2 admin : carte épurée + réglages dans un panneau latéral.
-                        // Non-admin : éditeur dense en ligne (comportement actuel).
-                        if (isAdmin) {
-                          return (
-                            <VehicleSummaryCard key={key} sv={sv} energy={energy}
-                              onQty={(n) => setSelectedV((s) => ({ ...s, [key]: { ...(s[key] ?? sv), quantity: n } }))}
-                              onConfigure={() => setConfigVKey(key)}
+                      {/* Section véhicules — toujours affichée si au moins 1 sélectionné, quel que soit le projectType */}
+                      {counts.v > 0 && (
+                        <>
+                          <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wide">
+                            Véhicules ({counts.v})
+                          </p>
+                          {Object.values(selectedV).map((sv, idx, arr) => {
+                            const key = sv.instanceId ?? sv.vehicle.id;
+                            const tripartiteUrl = sv.vehicle.tripartitePdfUrl || vehicles.find((vv) => vv.brand === sv.vehicle.brand && vv.tripartitePdfUrl)?.tripartitePdfUrl;
+                            // v2 admin : carte épurée + réglages dans un panneau latéral.
+                            // Non-admin : éditeur dense en ligne (comportement actuel).
+                            if (isAdmin) {
+                              return (
+                                <VehicleSummaryCard key={key} sv={sv} energy={energy}
+                                  onQty={(n) => setSelectedV((s) => ({ ...s, [key]: { ...(s[key] ?? sv), quantity: n } }))}
+                                  onConfigure={() => setConfigVKey(key)}
+                                  onDuplicate={() => duplicateVehicleInstance(sv)}
+                                  onRemove={() => setSelectedV((s) => { const next = { ...s }; delete next[key]; return next; })} />
+                              );
+                            }
+                            return (
+                            <SelectedVehicleRow key={key} sv={sv} energy={energy}
+                              index={idx} total={arr.length}
+                              tripartiteUrl={tripartiteUrl}
+                              onMove={(dir) => setSelectedV((s) => moveInRecord(s, key, dir))}
+                              onChange={(p) => setSelectedV((s) => ({ ...s, [key]: { ...(s[key] ?? sv), ...p } }))}
+                              onApplyAll={(mutate) => setSelectedV((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, mutate(v)])))}
                               onDuplicate={() => duplicateVehicleInstance(sv)}
                               onRemove={() => setSelectedV((s) => { const next = { ...s }; delete next[key]; return next; })} />
-                          );
-                        }
-                        return (
-                        <SelectedVehicleRow key={key} sv={sv} energy={energy}
-                          index={idx} total={arr.length}
-                          tripartiteUrl={tripartiteUrl}
-                          onMove={(dir) => setSelectedV((s) => moveInRecord(s, key, dir))}
-                          onChange={(p) => setSelectedV((s) => ({ ...s, [key]: { ...(s[key] ?? sv), ...p } }))}
-                          onApplyAll={(mutate) => setSelectedV((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, mutate(v)])))}
-                          onDuplicate={() => duplicateVehicleInstance(sv)}
-                          onRemove={() => setSelectedV((s) => { const next = { ...s }; delete next[key]; return next; })} />
-                        );
-                      })}
-                      {isAdmin && (() => {
-                        const props = Object.values(selectedV).filter((sv) => !sv.vehicle.isCurrentFleet);
-                        const qty = props.reduce((s, sv) => s + sv.quantity, 0);
-                        const month = props.reduce((s, sv) => s + sv.quantity * sv.negotiatedMonthly, 0);
-                        if (qty === 0) return null;
-                        return (
-                          <div className="flex items-center justify-between rounded-lg bg-beev-bleu-20/50 border border-beev-bleu/40 px-3 py-2 text-xs">
-                            <span className="text-muted-foreground">Proposition Beev</span>
-                            <span className="font-bold">{qty} véh · {fmtEur(month)}/mois</span>
-                          </div>
-                        );
-                      })()}
-                    </>
-                  )}
-                  {/* Section bornes — toujours affichée si au moins 1 sélectionnée */}
-                  {counts.c > 0 && (
-                    <>
-                      {counts.v > 0 && <Separator />}
-                      <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wide">
-                        Bornes de recharge ({counts.c})
-                      </p>
-                      {Object.values(selectedC).map((sc, idx, arr) => (
-                        <SelectedChargerRow key={sc.instanceId} sc={sc} isAdmin={isAdmin}
-                          index={idx} total={arr.length}
-                          onMove={(dir) => setSelectedC((s) => moveInRecord(s, sc.instanceId, dir))}
-                          onChange={(p) => setSelectedC((s) => {
-                            const cur = s[sc.instanceId] ?? sc;
-                            const merged = { ...cur, ...p };
-                            // Fusion PROFONDE de siteSpecs sur l'état courant : le
-                            // SiteSpecsEditor reconstruit siteSpecs depuis son snapshot,
-                            // donc on ré-applique par-dessus l'état à jour pour ne
-                            // perdre aucun champ (ex. includeConsuel) édité entre-temps.
-                            if (p.siteSpecs) merged.siteSpecs = { ...cur.siteSpecs, ...p.siteSpecs };
-                            return { ...s, [sc.instanceId]: merged };
+                            );
                           })}
-                          onRemove={() => setSelectedC((s) => { const next = { ...s }; delete next[sc.instanceId]; return next; })}
-                          onDuplicate={() => duplicateChargerInstance(sc)} />
-                      ))}
+                          {isAdmin && (() => {
+                            const props = Object.values(selectedV).filter((sv) => !sv.vehicle.isCurrentFleet);
+                            const qty = props.reduce((s, sv) => s + sv.quantity, 0);
+                            const month = props.reduce((s, sv) => s + sv.quantity * sv.negotiatedMonthly, 0);
+                            if (qty === 0) return null;
+                            return (
+                              <div className="flex items-center justify-between rounded-lg bg-beev-bleu-20/50 border border-beev-bleu/40 px-3 py-2 text-xs">
+                                <span className="text-muted-foreground">Proposition Beev</span>
+                                <span className="font-bold">{qty} véh · {fmtEur(month)}/mois</span>
+                              </div>
+                            );
+                          })()}
+                        </>
+                      )}
+                      {/* Section bornes — toujours affichée si au moins 1 sélectionnée */}
+                      {counts.c > 0 && (
+                        <>
+                          {counts.v > 0 && <Separator />}
+                          <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wide">
+                            Bornes de recharge ({counts.c})
+                          </p>
+                          {Object.values(selectedC).map((sc, idx, arr) => (
+                            <SelectedChargerRow key={sc.instanceId} sc={sc} isAdmin={isAdmin}
+                              index={idx} total={arr.length}
+                              onMove={(dir) => setSelectedC((s) => moveInRecord(s, sc.instanceId, dir))}
+                              onChange={(p) => setSelectedC((s) => {
+                                const cur = s[sc.instanceId] ?? sc;
+                                const merged = { ...cur, ...p };
+                                // Fusion PROFONDE de siteSpecs sur l'état courant : le
+                                // SiteSpecsEditor reconstruit siteSpecs depuis son snapshot,
+                                // donc on ré-applique par-dessus l'état à jour pour ne
+                                // perdre aucun champ (ex. includeConsuel) édité entre-temps.
+                                if (p.siteSpecs) merged.siteSpecs = { ...cur.siteSpecs, ...p.siteSpecs };
+                                return { ...s, [sc.instanceId]: merged };
+                              })}
+                              onRemove={() => setSelectedC((s) => { const next = { ...s }; delete next[sc.instanceId]; return next; })}
+                              onDuplicate={() => duplicateChargerInstance(sc)} />
+                          ))}
+                        </>
+                      )}
+
+                      <Separator />
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button variant="outline" onClick={() => setPresenting(true)} className="gap-2">
+                          <Presentation className="w-4 h-4" /> Présenter
+                        </Button>
+                        <Button onClick={() => exportPdf(false)} className="gap-2">
+                          <FileDown className="w-4 h-4" /> PDF
+                        </Button>
+                      </div>
                     </>
                   )}
+                </CardContent>
+              </Card>
+            );
 
-                  <Separator />
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button variant="outline" onClick={() => setPresenting(true)} className="gap-2">
-                      <Presentation className="w-4 h-4" /> Présenter
-                    </Button>
-                    <Button onClick={() => exportPdf(false)} className="gap-2">
-                      <FileDown className="w-4 h-4" /> PDF
-                    </Button>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-            </TabsContent>
-          </Tabs>
+            if (!isAdmin) {
+              return (<>{pdfPanel}{selectionCard}</>);
+            }
+            return (
+              <Tabs defaultValue="selection" className="gap-4">
+                <TabsList className="w-full">
+                  <TabsTrigger value="selection" className="flex-1 gap-1.5">
+                    Sélection
+                    {visibleCount > 0 && (
+                      <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-beev-rose text-beev-black text-[10px] font-bold">
+                        {visibleCount}
+                      </span>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="pdf" className="flex-1">Configuration PDF</TabsTrigger>
+                </TabsList>
+                <TabsContent value="pdf" className="mt-0">{pdfPanel}</TabsContent>
+                <TabsContent value="selection" className="mt-0">{selectionCard}</TabsContent>
+              </Tabs>
+            );
+          })()}
         </aside>
       </main>
     </div>
@@ -1950,13 +2050,38 @@ function App() {
 
 type ProjectTab = ProjectType | "tco";
 
-function ProjectTypeSelector({ value, onChange }: { value: ProjectTab; onChange: (t: ProjectTab) => void }) {
+function ProjectTypeSelector({ value, onChange, isAdmin }: { value: ProjectTab; onChange: (t: ProjectTab) => void; isAdmin?: boolean }) {
   const opts: { id: ProjectTab; icon: React.ReactNode; title: string; desc: string }[] = [
-    { id: "vehicles", icon: <Car className="w-4 h-4" />, title: "Projet Véhicules", desc: "Flotte LLD, prestations véhicule." },
-    { id: "home", icon: <Home className="w-4 h-4" />, title: "Bornes domicile", desc: "Kit B2B2E par collaborateur." },
-    { id: "site", icon: <Building2 className="w-4 h-4" />, title: "Bornes site entreprise", desc: "Déploiement IRVE site par site." },
-    { id: "tco", icon: <Gauge className="w-4 h-4" />, title: "Analyse TCO", desc: "Comparatif coût total de possession." },
+    { id: "vehicles", icon: <Car className={isAdmin ? "w-4 h-4" : "w-6 h-6"} />, title: "Projet Véhicules", desc: "Flotte LLD, prestations véhicule." },
+    { id: "home", icon: <Home className={isAdmin ? "w-4 h-4" : "w-6 h-6"} />, title: "Bornes domicile", desc: "Kit B2B2E par collaborateur." },
+    { id: "site", icon: <Building2 className={isAdmin ? "w-4 h-4" : "w-6 h-6"} />, title: "Bornes site entreprise", desc: "Déploiement IRVE site par site." },
+    { id: "tco", icon: <Gauge className={isAdmin ? "w-4 h-4" : "w-6 h-6"} />, title: "Analyse TCO", desc: "Comparatif coût total de possession." },
   ];
+
+  // Interface historique (non-admin) : grandes cartes avec description.
+  if (!isAdmin) {
+    return (
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {opts.map((o) => {
+          const active = value === o.id;
+          return (
+            <button
+              key={o.id}
+              type="button"
+              onClick={() => onChange(o.id)}
+              className={`text-left rounded-xl border p-5 transition-all duration-300 ${active ? "border-primary bg-muted ring-1 ring-primary/20" : "border-border/50 bg-card hover:border-border hover:bg-card"}`}
+            >
+              <div className={`w-10 h-10 rounded-lg grid place-content-center mb-4 ${active ? "bg-white text-black" : "bg-muted text-foreground/70"}`}>{o.icon}</div>
+              <p className="font-semibold text-sm leading-tight text-foreground">{o.title}</p>
+              <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{o.desc}</p>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // Nouvelle interface (admin) : repères compacts, sans sous-titre.
   return (
     <div className="flex gap-2 overflow-x-auto pb-1">
       {opts.map((o) => {
@@ -2115,7 +2240,7 @@ function ImportTcoDialog({ onImport }: { onImport: (list: Vehicle[]) => void }) 
   );
 }
 
-function ClientCard({ client, setClient }: { client: any; setClient: (c: any) => void }) {
+function ClientCard({ client, setClient, isAdmin }: { client: any; setClient: (c: any) => void; isAdmin?: boolean }) {
   const hasAnyField = Object.values(client).some((v) => typeof v === "string" && v.trim() !== "");
   const hasCompany = typeof client.company === "string" && client.company.trim() !== "";
   const reset = () => setClient({ company: "", contact: "", email: "", salesRep: "", salesRepEmail: "", salesRepPhone: "", date: "", notes: "" });
@@ -2142,6 +2267,66 @@ function ClientCard({ client, setClient }: { client: any; setClient: (c: any) =>
     setClient({ ...client, salesRep: myCoordinates.name, salesRepEmail: myCoordinates.email, salesRepPhone: myCoordinates.phone });
     toast.success("Vos coordonnées ont été insérées");
   };
+  // Interface historique (non-admin) : formulaire toujours ouvert, sans
+  // regroupement de champs ni réduction automatique.
+  if (!isAdmin) {
+    return (
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+          <CardTitle className="text-base text-foreground">Informations client & commercial</CardTitle>
+          {hasAnyField && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs text-[#e82127] hover:text-[#e82127] hover:bg-[#e82127]/10 gap-1"
+              onClick={() => { reset(); toast.success("Informations client réinitialisées"); }}
+              title="Vider tous les champs client et commercial"
+            >
+              <Trash2 className="w-3 h-3" /> Réinitialiser
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <Field label="Société *"><Input value={client.company} onChange={(e) => setClient({ ...client, company: e.target.value })} placeholder="Ex. BIG France" /></Field>
+          <Field label="Contact client"><Input value={client.contact} onChange={(e) => setClient({ ...client, contact: e.target.value })} placeholder="Nom Prénom" /></Field>
+          <Field label="Email client"><Input type="email" value={client.email} onChange={(e) => setClient({ ...client, email: e.target.value })} /></Field>
+          <Field label="Date"><Input value={client.date} onChange={(e) => setClient({ ...client, date: e.target.value })} /></Field>
+          <Field label="Commercial Beev"><Input value={client.salesRep} onChange={(e) => setClient({ ...client, salesRep: e.target.value })} placeholder="Alaé Mahmoudi" /></Field>
+          <Field label="Email commercial"><Input value={client.salesRepEmail} onChange={(e) => setClient({ ...client, salesRepEmail: e.target.value })} placeholder="alae@beev.co" /></Field>
+          <Field label="Téléphone commercial"><Input value={client.salesRepPhone} onChange={(e) => setClient({ ...client, salesRepPhone: e.target.value })} placeholder="+33 6 ..." /></Field>
+          <div className="sm:col-span-2 flex flex-wrap items-center gap-2 -mt-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs gap-1"
+              onClick={handleSaveCoordinates}
+              disabled={saveCoordinates.isPending}
+              title="Enregistre votre nom et téléphone sur votre compte pour pré-remplir vos prochains devis"
+            >
+              {saveCoordinates.isPending ? "Enregistrement…" : "Enregistrer mes coordonnées"}
+            </Button>
+            {myCoordinates && (myCoordinates.name || myCoordinates.phone) && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-muted-foreground"
+                onClick={loadMyCoordinates}
+                title="Réinsère les coordonnées enregistrées sur votre compte"
+              >
+                Insérer mes coordonnées
+              </Button>
+            )}
+          </div>
+          <Field label="Notes & conditions" className="sm:col-span-2">
+            <Textarea rows={3} value={client.notes} onChange={(e) => setClient({ ...client, notes: e.target.value })} placeholder="Laisser vide pour appliquer les conditions standard du type de projet." />
+          </Field>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (collapsed && hasCompany) {
     return (
       <Card>
@@ -2242,7 +2427,7 @@ function ClientCard({ client, setClient }: { client: any; setClient: (c: any) =>
 // Si l'utilisateur tape une recherche, les marques avec résultats sont
 // automatiquement dépliées pour rendre les véhicules trouvables.
 function VehicleCatalogByBrand({
-  vehicles, allVehicleCount, selectedV, onToggle, onUpdate, onDelete, onDuplicate, existingCategories, leaserOffers, hasActiveSearch, compareIds, onToggleCompare, canEditPricing,
+  vehicles, allVehicleCount, selectedV, onToggle, onUpdate, onDelete, onDuplicate, existingCategories, leaserOffers, hasActiveSearch, compareIds, onToggleCompare, canEditPricing, isAdmin,
 }: {
   vehicles: Vehicle[];
   allVehicleCount: number;
@@ -2257,6 +2442,7 @@ function VehicleCatalogByBrand({
   compareIds?: Set<string>;
   onToggleCompare?: (id: string) => void;
   canEditPricing?: boolean;
+  isAdmin?: boolean;
 }) {
   // Groupement par marque (trie alphabétique sauf BMW/Audi/Mercedes/Tesla en tête)
   const byBrand = useMemo(() => {
@@ -2352,6 +2538,7 @@ function VehicleCatalogByBrand({
                         brandTripartiteUrl={brandTripartiteUrl}
                         isInCompare={compareIds?.has(v.id)}
                         onToggleCompare={onToggleCompare ? () => onToggleCompare(v.id) : undefined}
+                        isAdmin={isAdmin}
                       />
                     ))}
                   </div>
@@ -2913,7 +3100,7 @@ function ConfirmDeleteButton({ label, onConfirm }: { label: string; onConfirm: (
   );
 }
 
-function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existingCategories = [], leaserOffers = [], isInCompare, onToggleCompare, onDuplicate, canEditPricing, brandTripartiteUrl }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Vehicle>) => void; onDelete?: () => void; existingCategories?: string[]; leaserOffers?: LeaserOffer[]; isInCompare?: boolean; onToggleCompare?: () => void; onDuplicate?: () => void; canEditPricing?: boolean; brandTripartiteUrl?: string }) {
+function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existingCategories = [], leaserOffers = [], isInCompare, onToggleCompare, onDuplicate, canEditPricing, brandTripartiteUrl, isAdmin }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Vehicle>) => void; onDelete?: () => void; existingCategories?: string[]; leaserOffers?: LeaserOffer[]; isInCompare?: boolean; onToggleCompare?: () => void; onDuplicate?: () => void; canEditPricing?: boolean; brandTripartiteUrl?: string; isAdmin?: boolean }) {
   // Contrat tripartite : propre à la fiche, sinon celui du constructeur (marque).
   const tripartiteUrl = (vehicle.tripartitePdfUrl && vehicle.tripartitePdfUrl.trim()) ? vehicle.tripartitePdfUrl : brandTripartiteUrl;
   const [editing, setEditing] = useState(false);
@@ -2923,12 +3110,14 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
     ? Math.min(...leaserOffers.map((o) => o.monthlyPriceTtc))
     : vehicle.monthlyLld;
   // Badge énergie — couleurs charte Beev 2026 (Rose / Bleu / Violet / Beige)
+  // Interface historique (non-admin) : teintes à 30% ; admin : couleur pleine
+  // pour plus de contraste sur l'image.
   const energyBadgeCls = vehicle.energy === "Électrique"
-    ? "bg-beev-rose text-beev-black border-beev-rose"
+    ? (isAdmin ? "bg-beev-rose text-beev-black border-beev-rose" : "bg-beev-rose-30 text-beev-black border-beev-rose")
     : vehicle.energy === "Hybride Rechargeable"
-    ? "bg-beev-bleu text-beev-black border-beev-bleu"
+    ? (isAdmin ? "bg-beev-bleu text-beev-black border-beev-bleu" : "bg-beev-bleu-30 text-beev-black border-beev-bleu")
     : vehicle.energy === "Hybride" || vehicle.energy === "Mild Hybrid"
-    ? "bg-beev-violet text-beev-black border-beev-violet"
+    ? (isAdmin ? "bg-beev-violet text-beev-black border-beev-violet" : "bg-beev-violet-30 text-beev-black border-beev-violet")
     : "bg-muted text-foreground border-border";
   // Indique si une image valide est fournie (sinon on cache l'<img> pour ne
   // pas afficher l'icône cassée ou le texte alt par-dessus le gradient).
@@ -3016,7 +3205,7 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
           <h3 className="font-bold leading-tight text-foreground text-base truncate">{vehicle.brand} {vehicle.model}</h3>
           <p className="text-xs text-muted-foreground truncate mt-0.5">{vehicle.version}</p>
         </div>
-        <div className="flex items-center gap-3 text-[11px] text-foreground/70 py-1 border-y border-border/50">
+        <div className={isAdmin ? "flex items-center gap-3 text-[11px] text-foreground/70 py-1 border-y border-border/50" : "grid grid-cols-3 gap-2 text-[11px] text-foreground/70"}>
           <Spec icon={<Gauge className="w-3 h-3" />} v={vehicle.rangeWltp ? `${vehicle.rangeWltp} km` : `${vehicle.co2} g/km`} />
           <Spec icon={<Battery className="w-3 h-3" />} v={vehicle.batteryKwh ? `${vehicle.batteryKwh} kWh` : "—"} />
           <Spec icon={<Zap className="w-3 h-3" />} v={`${vehicle.powerHp} ch`} />
@@ -3042,11 +3231,18 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
           <button
             type="button"
             onClick={onToggleCompare}
-            className={`w-full flex items-center justify-center gap-1.5 text-[11px] font-semibold py-1.5 rounded-md border transition-colors ${
-              isInCompare
-                ? "bg-beev-bleu text-beev-black border-beev-bleu"
-                : "text-muted-foreground border-border/60 hover:text-foreground hover:bg-muted"
-            }`}
+            className={isAdmin
+              ? `w-full flex items-center justify-center gap-1.5 text-[11px] font-semibold py-1.5 rounded-md border transition-colors ${
+                  isInCompare
+                    ? "bg-beev-bleu text-beev-black border-beev-bleu"
+                    : "text-muted-foreground border-border/60 hover:text-foreground hover:bg-muted"
+                }`
+              : `w-full flex items-center justify-center gap-1.5 text-[11px] py-1.5 rounded-md transition-colors ${
+                  isInCompare
+                    ? "bg-beev-bleu-30 text-beev-black font-semibold"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`
+            }
           >
             <BarChart3 className="w-3 h-3" />
             {isInCompare ? "Dans le comparateur" : "Ajouter au comparateur"}
