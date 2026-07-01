@@ -988,7 +988,7 @@ function App() {
   }
 
   return (
-    <div className="dark min-h-screen bg-background">
+    <div className="min-h-screen bg-background">
       {/* Dialogue de confirmation : une proposition existe déjà pour ce client */}
       <AlertDialog open={duplicateDialog.open} onOpenChange={(o) => setDuplicateDialog({ ...duplicateDialog, open: o })}>
         <AlertDialogContent>
@@ -1179,7 +1179,7 @@ function App() {
           {/* ─── Identité Beev (gauche) ─── */}
           <div className="flex items-center gap-3 flex-shrink-0">
             <img
-              src="/images/logo-beev-white.png"
+              src="/images/logo-beev-noir.png"
               alt="Beev"
               className="h-8 w-auto object-contain"
               onError={(ev) => {
