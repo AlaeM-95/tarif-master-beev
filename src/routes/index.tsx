@@ -477,6 +477,9 @@ function App() {
   const [vehicleMonthlyMax, setVehicleMonthlyMax] = useState<number | null>(null);
   const [vehicleDurationFilter, setVehicleDurationFilter] = useState<number | null>(null);
   const [vehicleKmFilter, setVehicleKmFilter] = useState<number | null>(null);
+  // Filtres avancés (prix/loyer/durée/km) repliés par défaut : la barre
+  // principale ne montre que recherche + énergie pour rester lisible.
+  const [showAdvFilters, setShowAdvFilters] = useState(false);
 
   // Catégories existantes (extraites du catalogue) pour le dropdown admin
   const existingCategories = useMemo(
@@ -1470,93 +1473,113 @@ function App() {
                   );
                 })}
               </div>
-              {/* Barre recherche + filtres */}
-              <div className="flex flex-wrap items-center gap-2 mb-4 p-3 rounded-lg bg-card border">
-                <div className="relative flex-1 min-w-[200px]">
-                  <Input
-                    type="search"
-                    value={vehicleSearch}
-                    onChange={(e) => setVehicleSearch(e.target.value)}
-                    placeholder="Rechercher marque, modèle, version..."
-                    className="h-9 pl-3"
-                  />
-                </div>
-                <div className="flex items-center gap-1 flex-wrap">
-                  {(["all", "Électrique", "Hybride Rechargeable", "Hybride", "Mild Hybrid", "Essence", "Diesel"] as const).map((e) => (
-                    <Button
-                      key={e}
-                      size="sm"
-                      variant={vehicleEnergyFilter === e ? "default" : "outline"}
-                      onClick={() => setVehicleEnergyFilter(e)}
-                      className="h-8 text-xs"
-                    >
-                      {e === "all" ? "Toutes énergies" : e}
-                    </Button>
-                  ))}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="whitespace-nowrap">Prix max</span>
-                  <Input
-                    type="number"
-                    value={vehiclePriceMax ?? ""}
-                    onChange={(e) => setVehiclePriceMax(e.target.value ? Number(e.target.value) : null)}
-                    placeholder="—"
-                    className="h-8 w-24 text-xs"
-                  />
-                  <span>€</span>
-                </div>
-                {/* Nouveau : Loyer mensuel max */}
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="whitespace-nowrap">Loyer max</span>
-                  <Input
-                    type="number"
-                    value={vehicleMonthlyMax ?? ""}
-                    onChange={(e) => setVehicleMonthlyMax(e.target.value ? Number(e.target.value) : null)}
-                    placeholder="—"
-                    className="h-8 w-24 text-xs"
-                  />
-                  <span>€/mois</span>
-                </div>
-                {/* Nouveau : Durée préférée */}
-                <div className="flex items-center gap-1">
-                  {[36, 48, 60].map((d) => (
-                    <Button
-                      key={d}
-                      size="sm"
-                      variant={vehicleDurationFilter === d ? "default" : "outline"}
-                      onClick={() => setVehicleDurationFilter(vehicleDurationFilter === d ? null : d)}
-                      className="h-8 text-xs"
-                    >
-                      {d} mois
-                    </Button>
-                  ))}
-                </div>
-                {/* Nouveau : Km/an minimum (basé sur kmTotal des offres loueurs) */}
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="whitespace-nowrap">Km min</span>
-                  <Input
-                    type="number"
-                    value={vehicleKmFilter ?? ""}
-                    onChange={(e) => setVehicleKmFilter(e.target.value ? Number(e.target.value) : null)}
-                    placeholder="—"
-                    className="h-8 w-24 text-xs"
-                    step={10000}
-                  />
-                </div>
-                {(vehicleSearch || vehicleEnergyFilter !== "all" || vehiclePriceMax !== null || vehicleMonthlyMax !== null || vehicleDurationFilter !== null || vehicleKmFilter !== null) && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setVehicleSearch(""); setVehicleEnergyFilter("all"); setVehiclePriceMax(null);
-                      setVehicleMonthlyMax(null); setVehicleDurationFilter(null); setVehicleKmFilter(null);
-                    }}
-                    className="h-8 text-xs gap-1"
-                  >
-                    <X className="w-3 h-3" /> Effacer
-                  </Button>
-                )}
-              </div>
+              {/* Barre recherche + filtres — ligne principale toujours visible
+                  (recherche + énergie), filtres avancés repliés par défaut. */}
+              {(() => {
+                const advActive = vehiclePriceMax !== null || vehicleMonthlyMax !== null || vehicleDurationFilter !== null || vehicleKmFilter !== null;
+                const anyActive = !!vehicleSearch || vehicleEnergyFilter !== "all" || advActive;
+                return (
+                  <div className="mb-4 rounded-lg border bg-card sticky top-20 z-10 shadow-sm">
+                    <div className="flex flex-wrap items-center gap-2 p-3">
+                      <div className="relative flex-1 min-w-[200px]">
+                        <Input
+                          type="search"
+                          value={vehicleSearch}
+                          onChange={(e) => setVehicleSearch(e.target.value)}
+                          placeholder="Rechercher marque, modèle, version..."
+                          className="h-9 pl-3"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {(["all", "Électrique", "Hybride Rechargeable", "Hybride", "Mild Hybrid", "Essence", "Diesel"] as const).map((e) => (
+                          <button
+                            key={e}
+                            type="button"
+                            onClick={() => setVehicleEnergyFilter(e)}
+                            className={`h-8 px-3 rounded-full text-xs font-semibold transition-colors ${
+                              vehicleEnergyFilter === e ? "bg-beev-black text-white" : "bg-muted text-muted-foreground hover:bg-muted/70"
+                            }`}
+                          >
+                            {e === "all" ? "Toutes énergies" : e}
+                          </button>
+                        ))}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setShowAdvFilters((v) => !v)}
+                        className={`h-8 text-xs gap-1 ${advActive ? "text-primary font-semibold" : "text-muted-foreground"}`}
+                      >
+                        Filtres avancés{advActive ? " ·" : ""}
+                        {showAdvFilters ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                      </Button>
+                      {anyActive && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setVehicleSearch(""); setVehicleEnergyFilter("all"); setVehiclePriceMax(null);
+                            setVehicleMonthlyMax(null); setVehicleDurationFilter(null); setVehicleKmFilter(null);
+                          }}
+                          className="h-8 text-xs gap-1 text-destructive hover:text-destructive"
+                        >
+                          <X className="w-3 h-3" /> Effacer
+                        </Button>
+                      )}
+                    </div>
+                    {showAdvFilters && (
+                      <div className="flex flex-wrap items-center gap-4 px-3 pb-3 border-t pt-3">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span className="whitespace-nowrap">Prix max</span>
+                          <Input
+                            type="number"
+                            value={vehiclePriceMax ?? ""}
+                            onChange={(e) => setVehiclePriceMax(e.target.value ? Number(e.target.value) : null)}
+                            placeholder="—"
+                            className="h-8 w-24 text-xs"
+                          />
+                          <span>€</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span className="whitespace-nowrap">Loyer max</span>
+                          <Input
+                            type="number"
+                            value={vehicleMonthlyMax ?? ""}
+                            onChange={(e) => setVehicleMonthlyMax(e.target.value ? Number(e.target.value) : null)}
+                            placeholder="—"
+                            className="h-8 w-24 text-xs"
+                          />
+                          <span>€/mois</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {[36, 48, 60].map((d) => (
+                            <Button
+                              key={d}
+                              size="sm"
+                              variant={vehicleDurationFilter === d ? "default" : "outline"}
+                              onClick={() => setVehicleDurationFilter(vehicleDurationFilter === d ? null : d)}
+                              className="h-8 text-xs"
+                            >
+                              {d} mois
+                            </Button>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span className="whitespace-nowrap">Km min</span>
+                          <Input
+                            type="number"
+                            value={vehicleKmFilter ?? ""}
+                            onChange={(e) => setVehicleKmFilter(e.target.value ? Number(e.target.value) : null)}
+                            placeholder="—"
+                            className="h-8 w-24 text-xs"
+                            step={10000}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               <VehicleCatalogByBrand
                 vehicles={filteredVehicles}
@@ -1934,7 +1957,6 @@ function ProjectTypeSelector({ value, onChange }: { value: ProjectTab; onChange:
     { id: "site", icon: <Building2 className="w-4 h-4" />, title: "Bornes site entreprise", desc: "Déploiement IRVE site par site." },
     { id: "tco", icon: <Gauge className="w-4 h-4" />, title: "Analyse TCO", desc: "Comparatif coût total de possession." },
   ];
-  const activeOpt = opts.find((o) => o.id === value);
   return (
     <div className="flex gap-2 overflow-x-auto pb-1">
       {opts.map((o) => {
@@ -1944,7 +1966,6 @@ function ProjectTypeSelector({ value, onChange }: { value: ProjectTab; onChange:
             key={o.id}
             type="button"
             onClick={() => onChange(o.id)}
-            title={o.desc}
             className={`flex-none flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
               active
                 ? "border-primary bg-primary text-primary-foreground shadow-sm"
@@ -1956,9 +1977,6 @@ function ProjectTypeSelector({ value, onChange }: { value: ProjectTab; onChange:
           </button>
         );
       })}
-      {activeOpt && (
-        <span className="hidden lg:flex items-center text-xs text-muted-foreground ml-2 flex-none">{activeOpt.desc}</span>
-      )}
     </div>
   );
 }
@@ -2173,10 +2191,13 @@ function ClientCard({ client, setClient }: { client: any; setClient: (c: any) =>
         </div>
       </CardHeader>
       <CardContent className="grid gap-4 sm:grid-cols-2">
+        <p className="sm:col-span-2 text-[10px] uppercase font-semibold text-muted-foreground tracking-wide -mb-1">Client</p>
         <Field label="Société *"><Input value={client.company} onChange={(e) => setClient({ ...client, company: e.target.value })} placeholder="Ex. BIG France" /></Field>
         <Field label="Contact client"><Input value={client.contact} onChange={(e) => setClient({ ...client, contact: e.target.value })} placeholder="Nom Prénom" /></Field>
         <Field label="Email client"><Input type="email" value={client.email} onChange={(e) => setClient({ ...client, email: e.target.value })} /></Field>
         <Field label="Date"><Input value={client.date} onChange={(e) => setClient({ ...client, date: e.target.value })} /></Field>
+
+        <p className="sm:col-span-2 text-[10px] uppercase font-semibold text-muted-foreground tracking-wide pt-2 border-t -mb-1">Commercial Beev</p>
         <Field label="Commercial Beev"><Input value={client.salesRep} onChange={(e) => setClient({ ...client, salesRep: e.target.value })} placeholder="Alaé Mahmoudi" /></Field>
         <Field label="Email commercial"><Input value={client.salesRepEmail} onChange={(e) => setClient({ ...client, salesRepEmail: e.target.value })} placeholder="alae@beev.co" /></Field>
         <Field label="Téléphone commercial"><Input value={client.salesRepPhone} onChange={(e) => setClient({ ...client, salesRepPhone: e.target.value })} placeholder="+33 6 ..." /></Field>
@@ -2903,11 +2924,11 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
     : vehicle.monthlyLld;
   // Badge énergie — couleurs charte Beev 2026 (Rose / Bleu / Violet / Beige)
   const energyBadgeCls = vehicle.energy === "Électrique"
-    ? "bg-beev-rose-30 text-beev-black border-beev-rose"
+    ? "bg-beev-rose text-beev-black border-beev-rose"
     : vehicle.energy === "Hybride Rechargeable"
-    ? "bg-beev-bleu-30 text-beev-black border-beev-bleu"
+    ? "bg-beev-bleu text-beev-black border-beev-bleu"
     : vehicle.energy === "Hybride" || vehicle.energy === "Mild Hybrid"
-    ? "bg-beev-violet-30 text-beev-black border-beev-violet"
+    ? "bg-beev-violet text-beev-black border-beev-violet"
     : "bg-muted text-foreground border-border";
   // Indique si une image valide est fournie (sinon on cache l'<img> pour ne
   // pas afficher l'icône cassée ou le texte alt par-dessus le gradient).
@@ -3016,15 +3037,15 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
         >
           {selected ? (<><X className="w-4 h-4" /> Retirer de la sélection</>) : (<><Plus className="w-4 h-4" /> Ajouter à la sélection</>)}
         </Button>
-        {/* Toggle comparateur — design discret en lien texte avec icône */}
+        {/* Toggle comparateur — bouton dédié, plus visible qu'un simple lien */}
         {onToggleCompare && (
           <button
             type="button"
             onClick={onToggleCompare}
-            className={`w-full flex items-center justify-center gap-1.5 text-[11px] py-1.5 rounded-md transition-colors ${
+            className={`w-full flex items-center justify-center gap-1.5 text-[11px] font-semibold py-1.5 rounded-md border transition-colors ${
               isInCompare
-                ? "bg-beev-bleu-30 text-beev-black font-semibold"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                ? "bg-beev-bleu text-beev-black border-beev-bleu"
+                : "text-muted-foreground border-border/60 hover:text-foreground hover:bg-muted"
             }`}
           >
             <BarChart3 className="w-3 h-3" />
