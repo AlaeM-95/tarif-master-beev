@@ -33,6 +33,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { MarginReviewDialog } from "@/components/margin-review-dialog";
 import { PdfConfigPanel } from "@/components/pdf-config-panel";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CategoryField } from "@/components/category-field";
 import { MarginSelect } from "@/components/margin-select";
 import { RefreshButton } from "@/components/refresh-button";
@@ -987,7 +988,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="dark min-h-screen bg-background">
       {/* Dialogue de confirmation : une proposition existe déjà pour ce client */}
       <AlertDialog open={duplicateDialog.open} onOpenChange={(o) => setDuplicateDialog({ ...duplicateDialog, open: o })}>
         <AlertDialogContent>
@@ -1178,7 +1179,7 @@ function App() {
           {/* ─── Identité Beev (gauche) ─── */}
           <div className="flex items-center gap-3 flex-shrink-0">
             <img
-              src="/images/logo-beev-noir.png"
+              src="/images/logo-beev-white.png"
               alt="Beev"
               className="h-8 w-auto object-contain"
               onError={(ev) => {
@@ -1777,17 +1778,33 @@ function App() {
           )}
         </div>
 
-        <aside className="lg:sticky lg:top-24 self-start space-y-4 max-h-[calc(100vh-7rem)] overflow-auto">
-          {/* Panneau de configuration PDF — toggle des sections à inclure */}
-          <PdfConfigPanel
-            config={pdfConfig}
-            update={updatePdfConfig}
-            reset={resetPdfConfig}
-            projectType={projectType}
-            onPreviewSection={(key) => previewSection(key)}
-            isAdmin={isAdmin}
-          />
+        <aside className="lg:sticky lg:top-24 self-start max-h-[calc(100vh-7rem)] overflow-auto">
+          <Tabs defaultValue="selection" className="gap-4">
+            <TabsList className="w-full">
+              <TabsTrigger value="selection" className="flex-1 gap-1.5">
+                Sélection
+                {visibleCount > 0 && (
+                  <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-beev-rose text-beev-black text-[10px] font-bold">
+                    {visibleCount}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="pdf" className="flex-1">Configuration PDF</TabsTrigger>
+            </TabsList>
 
+            <TabsContent value="pdf" className="mt-0">
+              {/* Panneau de configuration PDF — toggle des sections à inclure */}
+              <PdfConfigPanel
+                config={pdfConfig}
+                update={updatePdfConfig}
+                reset={resetPdfConfig}
+                projectType={projectType}
+                onPreviewSection={(key) => previewSection(key)}
+                isAdmin={isAdmin}
+              />
+            </TabsContent>
+
+            <TabsContent value="selection" className="mt-0">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-base">Sélection en cours</CardTitle>
@@ -1900,6 +1917,8 @@ function App() {
               )}
             </CardContent>
           </Card>
+            </TabsContent>
+          </Tabs>
         </aside>
       </main>
     </div>
@@ -1910,13 +1929,14 @@ type ProjectTab = ProjectType | "tco";
 
 function ProjectTypeSelector({ value, onChange }: { value: ProjectTab; onChange: (t: ProjectTab) => void }) {
   const opts: { id: ProjectTab; icon: React.ReactNode; title: string; desc: string }[] = [
-    { id: "vehicles", icon: <Car className="w-6 h-6" />, title: "Projet Véhicules", desc: "Flotte LLD, prestations véhicule." },
-    { id: "home", icon: <Home className="w-6 h-6" />, title: "Bornes domicile", desc: "Kit B2B2E par collaborateur." },
-    { id: "site", icon: <Building2 className="w-6 h-6" />, title: "Bornes site entreprise", desc: "Déploiement IRVE site par site." },
-    { id: "tco", icon: <Gauge className="w-6 h-6" />, title: "Analyse TCO", desc: "Comparatif coût total de possession." },
+    { id: "vehicles", icon: <Car className="w-4 h-4" />, title: "Projet Véhicules", desc: "Flotte LLD, prestations véhicule." },
+    { id: "home", icon: <Home className="w-4 h-4" />, title: "Bornes domicile", desc: "Kit B2B2E par collaborateur." },
+    { id: "site", icon: <Building2 className="w-4 h-4" />, title: "Bornes site entreprise", desc: "Déploiement IRVE site par site." },
+    { id: "tco", icon: <Gauge className="w-4 h-4" />, title: "Analyse TCO", desc: "Comparatif coût total de possession." },
   ];
+  const activeOpt = opts.find((o) => o.id === value);
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="flex gap-2 overflow-x-auto pb-1">
       {opts.map((o) => {
         const active = value === o.id;
         return (
@@ -1924,14 +1944,21 @@ function ProjectTypeSelector({ value, onChange }: { value: ProjectTab; onChange:
             key={o.id}
             type="button"
             onClick={() => onChange(o.id)}
-            className={`text-left rounded-xl border p-5 transition-all duration-300 ${active ? "border-primary bg-muted ring-1 ring-primary/20" : "border-border/50 bg-card hover:border-border hover:bg-card"}`}
+            title={o.desc}
+            className={`flex-none flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
+              active
+                ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                : "border-border/60 bg-card text-foreground/70 hover:border-border hover:text-foreground"
+            }`}
           >
-            <div className={`w-10 h-10 rounded-lg grid place-content-center mb-4 ${active ? "bg-white text-black" : "bg-muted text-foreground/70"}`}>{o.icon}</div>
-            <p className="font-semibold text-sm leading-tight text-foreground">{o.title}</p>
-            <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{o.desc}</p>
+            <span className={`grid place-content-center w-6 h-6 rounded-full ${active ? "bg-beev-rose text-beev-black" : "bg-muted"}`}>{o.icon}</span>
+            {o.title}
           </button>
         );
       })}
+      {activeOpt && (
+        <span className="hidden lg:flex items-center text-xs text-muted-foreground ml-2 flex-none">{activeOpt.desc}</span>
+      )}
     </div>
   );
 }
@@ -2072,8 +2099,13 @@ function ImportTcoDialog({ onImport }: { onImport: (list: Vehicle[]) => void }) 
 
 function ClientCard({ client, setClient }: { client: any; setClient: (c: any) => void }) {
   const hasAnyField = Object.values(client).some((v) => typeof v === "string" && v.trim() !== "");
+  const hasCompany = typeof client.company === "string" && client.company.trim() !== "";
   const reset = () => setClient({ company: "", contact: "", email: "", salesRep: "", salesRepEmail: "", salesRepPhone: "", date: "", notes: "" });
   const { coordinates: myCoordinates, save: saveCoordinates } = useMyCoordinates();
+  // Repliée par défaut si la fiche était déjà remplie à l'ouverture (devis
+  // repris) ; sinon ouverte pour la première saisie. Le commercial garde la
+  // main via "Modifier" / "Réduire".
+  const [collapsed, setCollapsed] = useState(() => hasCompany);
 
   // Enregistre nom + téléphone du commercial sur son compte (l'email reste
   // l'identifiant de connexion). Les prochains devis seront pré-remplis.
@@ -2092,21 +2124,53 @@ function ClientCard({ client, setClient }: { client: any; setClient: (c: any) =>
     setClient({ ...client, salesRep: myCoordinates.name, salesRepEmail: myCoordinates.email, salesRepPhone: myCoordinates.phone });
     toast.success("Vos coordonnées ont été insérées");
   };
+  if (collapsed && hasCompany) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-between gap-4 py-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-full bg-beev-bleu-30 text-beev-black grid place-content-center text-xs font-bold flex-none">
+              {client.company.trim().slice(0, 2).toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground truncate">
+                {client.company}{client.contact ? ` · ${client.contact}` : ""}
+              </p>
+              <p className="text-xs text-muted-foreground truncate">
+                {[client.salesRep, client.salesRepEmail].filter(Boolean).join(" · ") || "Aucun commercial renseigné"}
+              </p>
+            </div>
+          </div>
+          <Button variant="ghost" size="sm" className="h-7 text-xs flex-none" onClick={() => setCollapsed(false)}>
+            Modifier
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
         <CardTitle className="text-base text-foreground">Informations client & commercial</CardTitle>
-        {hasAnyField && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 text-xs text-[#e82127] hover:text-[#e82127] hover:bg-[#e82127]/10 gap-1"
-            onClick={() => { reset(); toast.success("Informations client réinitialisées"); }}
-            title="Vider tous les champs client et commercial"
-          >
-            <Trash2 className="w-3 h-3" /> Réinitialiser
-          </Button>
-        )}
+        <div className="flex items-center gap-1">
+          {hasCompany && (
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setCollapsed(true)}>
+              Réduire
+            </Button>
+          )}
+          {hasAnyField && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs text-[#e82127] hover:text-[#e82127] hover:bg-[#e82127]/10 gap-1"
+              onClick={() => { reset(); toast.success("Informations client réinitialisées"); }}
+              title="Vider tous les champs client et commercial"
+            >
+              <Trash2 className="w-3 h-3" /> Réinitialiser
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="grid gap-4 sm:grid-cols-2">
         <Field label="Société *"><Input value={client.company} onChange={(e) => setClient({ ...client, company: e.target.value })} placeholder="Ex. BIG France" /></Field>
@@ -2931,7 +2995,7 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
           <h3 className="font-bold leading-tight text-foreground text-base truncate">{vehicle.brand} {vehicle.model}</h3>
           <p className="text-xs text-muted-foreground truncate mt-0.5">{vehicle.version}</p>
         </div>
-        <div className="grid grid-cols-3 gap-2 text-[11px] text-foreground/70">
+        <div className="flex items-center gap-3 text-[11px] text-foreground/70 py-1 border-y border-border/50">
           <Spec icon={<Gauge className="w-3 h-3" />} v={vehicle.rangeWltp ? `${vehicle.rangeWltp} km` : `${vehicle.co2} g/km`} />
           <Spec icon={<Battery className="w-3 h-3" />} v={vehicle.batteryKwh ? `${vehicle.batteryKwh} kWh` : "—"} />
           <Spec icon={<Zap className="w-3 h-3" />} v={`${vehicle.powerHp} ch`} />
