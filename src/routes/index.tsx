@@ -2482,6 +2482,15 @@ function VehicleCatalogByBrand({
         {byBrand.length} marque{byBrand.length > 1 ? "s" : ""} · {vehicles.length} modèle{vehicles.length > 1 ? "s" : ""}
         {vehicles.length !== allVehicleCount ? ` sur ${allVehicleCount}` : ""}. Cliquez sur une marque pour voir ses véhicules.
       </p>
+      {isAdmin && (
+        // Légende des tampons énergie affichés sur chaque fiche véhicule —
+        // clé de lecture pour une grille dense.
+        <div className="flex items-center gap-4 flex-wrap text-[11px] text-muted-foreground">
+          <span className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded-full bg-beev-rose border border-beev-rose" /> Électrique</span>
+          <span className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded-full bg-beev-bleu border border-beev-bleu" /> Hybride rechargeable</span>
+          <span className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded-full bg-beev-violet border border-beev-violet" /> Hybride &amp; thermique</span>
+        </div>
+      )}
       {/* Accordion vertical : 1 ligne par marque, expansion inline juste en dessous */}
       <div className="space-y-2">
         {byBrand.map(([brand, list]) => {
@@ -3141,7 +3150,23 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
         )}
         {/* Overlay badges en haut */}
         <div className="absolute top-2 left-2 flex flex-col gap-1.5">
-          <Badge className={`text-[10px] font-semibold border ${energyBadgeCls}`}>{vehicle.energy}</Badge>
+          {isAdmin ? (
+            // Tampon plein par énergie (voir légende en tête de grille) —
+            // remplace le badge texte pour rester lisible sur une image,
+            // même sur une grille dense.
+            <span
+              className={`w-7 h-7 rounded-full border grid place-content-center shadow-sm ${energyBadgeCls}`}
+              title={vehicle.energy}
+            >
+              {vehicle.energy === "Électrique" || vehicle.energy === "Hybride Rechargeable" ? (
+                <Zap className="w-3.5 h-3.5" />
+              ) : (
+                <Gauge className="w-3.5 h-3.5" />
+              )}
+            </span>
+          ) : (
+            <Badge className={`text-[10px] font-semibold border ${energyBadgeCls}`}>{vehicle.energy}</Badge>
+          )}
           {vehicle.shortlist && <Badge className="bg-beev-rose text-beev-black text-[10px] border-0 font-semibold">★ Recommandé</Badge>}
           {vehicle.custom && <Badge className="bg-beev-beige text-beev-black text-[10px] border-0">Custom</Badge>}
           {vehicle.availableStock !== undefined && vehicle.availableStock > 0 && (
@@ -3226,17 +3251,42 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
             <p className="text-xs text-muted-foreground truncate mt-0.5">{vehicle.version}</p>
           </div>
         </div>
-        <div className={isAdmin ? "flex items-center gap-3 text-[11px] text-foreground/70 py-1 border-y border-border/50" : "grid grid-cols-3 gap-2 text-[11px] text-foreground/70"}>
-          <Spec icon={<Gauge className="w-3 h-3" />} v={vehicle.rangeWltp ? `${vehicle.rangeWltp} km` : `${vehicle.co2} g/km`} />
-          <Spec icon={<Battery className="w-3 h-3" />} v={vehicle.batteryKwh ? `${vehicle.batteryKwh} kWh` : "—"} />
-          <Spec icon={<Zap className="w-3 h-3" />} v={`${vehicle.powerHp} ch`} />
-        </div>
-        {/* Prix catalogue : ligne pleine, label horizontal pour ne plus être
-            écrasé sur 3 lignes par les boutons d'actions. */}
-        <div className="flex items-baseline justify-between pt-3 border-t border-border/50">
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Prix catalogue TTC</span>
-          <span className="font-semibold text-foreground text-base">{fmtEur(vehicle.priceTtc)}</span>
-        </div>
+        {isAdmin ? (
+          // Fiche technique : libellé à gauche, valeur alignée à droite —
+          // plus dense et plus lisible qu'une rangée d'icônes.
+          <div className="text-[12px] -space-y-0">
+            <div className="flex items-center justify-between py-1">
+              <span className="text-muted-foreground">Autonomie</span>
+              <span className="font-semibold tabular-nums">{vehicle.rangeWltp ? `${vehicle.rangeWltp} km` : `${vehicle.co2} g/km`}</span>
+            </div>
+            <div className="flex items-center justify-between py-1 border-t border-border/40">
+              <span className="text-muted-foreground">Batterie</span>
+              <span className="font-semibold tabular-nums">{vehicle.batteryKwh ? `${vehicle.batteryKwh} kWh` : "—"}</span>
+            </div>
+            <div className="flex items-center justify-between py-1 border-t border-border/40">
+              <span className="text-muted-foreground">Puissance</span>
+              <span className="font-semibold tabular-nums">{vehicle.powerHp} ch</span>
+            </div>
+            <div className="flex items-center justify-between py-1 border-t border-border/40">
+              <span className="text-muted-foreground">Prix catalogue TTC</span>
+              <span className="font-semibold tabular-nums">{fmtEur(vehicle.priceTtc)}</span>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-3 gap-2 text-[11px] text-foreground/70">
+              <Spec icon={<Gauge className="w-3 h-3" />} v={vehicle.rangeWltp ? `${vehicle.rangeWltp} km` : `${vehicle.co2} g/km`} />
+              <Spec icon={<Battery className="w-3 h-3" />} v={vehicle.batteryKwh ? `${vehicle.batteryKwh} kWh` : "—"} />
+              <Spec icon={<Zap className="w-3 h-3" />} v={`${vehicle.powerHp} ch`} />
+            </div>
+            {/* Prix catalogue : ligne pleine, label horizontal pour ne plus être
+                écrasé sur 3 lignes par les boutons d'actions. */}
+            <div className="flex items-baseline justify-between pt-3 border-t border-border/50">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Prix catalogue TTC</span>
+              <span className="font-semibold text-foreground text-base">{fmtEur(vehicle.priceTtc)}</span>
+            </div>
+          </>
+        )}
         {/* CTA principal — pleine largeur, charte Beev */}
         <Button
           type="button"
