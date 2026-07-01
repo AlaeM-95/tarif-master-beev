@@ -16,13 +16,18 @@ import { Badge } from "@/components/ui/badge";
 import { Sparkles, Battery, Gauge, Zap } from "lucide-react";
 import type { Vehicle } from "@/lib/catalog";
 import { fmtEur } from "@/lib/store";
+import { brandInitials } from "@/lib/brand-logos";
 
 export function VehicleSpotlight({
   vehicles,
   onCompare,
+  isAdmin,
+  brandLogoUrl,
 }: {
   vehicles: Vehicle[];
   onCompare?: () => void;
+  isAdmin?: boolean;
+  brandLogoUrl?: string;
 }) {
   // 1er véhicule featured ; on inclut la photo principale dans la galerie
   const v = vehicles.find((x) => x.featured);
@@ -83,9 +88,35 @@ export function VehicleSpotlight({
             <div className="p-6 flex flex-col gap-4">
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <Badge className="bg-beev-rose-30 text-beev-black border-beev-rose mb-2 text-[10px]">
-                    {v.energy}
-                  </Badge>
+                  {isAdmin ? (
+                    <div className="flex items-center gap-2 mb-2">
+                      <span
+                        className={`w-6 h-6 rounded-full border grid place-content-center ${
+                          v.energy === "Électrique" || v.energy === "Hybride Rechargeable"
+                            ? v.energy === "Électrique" ? "bg-beev-rose border-beev-rose" : "bg-beev-bleu border-beev-bleu"
+                            : "bg-beev-violet border-beev-violet"
+                        }`}
+                        title={v.energy}
+                      >
+                        {v.energy === "Électrique" || v.energy === "Hybride Rechargeable" ? (
+                          <Zap className="w-3 h-3 text-beev-black" />
+                        ) : (
+                          <Gauge className="w-3 h-3 text-beev-black" />
+                        )}
+                      </span>
+                      <div className="w-6 h-6 rounded-md border bg-white grid place-content-center overflow-hidden" title={`Marque : ${v.brand}`}>
+                        {brandLogoUrl ? (
+                          <img src={brandLogoUrl} alt={v.brand} className="w-full h-full object-contain p-0.5" />
+                        ) : (
+                          <span className="text-[8px] font-bold text-beev-black/60">{brandInitials(v.brand)}</span>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <Badge className="bg-beev-rose-30 text-beev-black border-beev-rose mb-2 text-[10px]">
+                      {v.energy}
+                    </Badge>
+                  )}
                   <h3 className="text-2xl font-bold text-beev-black leading-tight">
                     {v.brand} {v.model}
                   </h3>

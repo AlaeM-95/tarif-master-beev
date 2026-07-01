@@ -1423,6 +1423,11 @@ function App() {
           {!tcoView && projectType === "vehicles" && !fleetMode && (
             <VehicleSpotlight
               vehicles={vehicles}
+              isAdmin={isAdmin}
+              brandLogoUrl={(() => {
+                const featured = vehicles.find((x) => x.featured);
+                return featured ? brandLogos?.[featured.brand] : undefined;
+              })()}
               onCompare={() => {
                 // Auto-sélectionne les 3 premiers véhicules pour démarrer
                 // la comparaison ; le commercial ajustera ensuite.
