@@ -4587,20 +4587,27 @@ async function drawTcoImpact(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: Energ
   if (y + 70 > FOOTER_LIMIT) { doc.addPage(); drawHeader(doc, client, type); y = 116; }
   doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(8.5); doc.setTextColor(...SUB);
   doc.text("DÉTAIL DES COMPOSANTES", M, y); y += 8;
+  // Corps groupé par groupe de comparaison (intertitre par groupe), actuel(s)
+  // en tête de groupe puis EV. Ordre des groupes identique aux cartes.
+  const detRow = (it: IItem) => [
+    `${it.sv.vehicle.brand} ${it.sv.vehicle.model}${it.sv.vehicle.isCurrentFleet ? " (actuel)" : ""}`,
+    eur(it.r.loyerTotal), eur(it.r.coutEnergie), eur(it.r.tvsTotal), eur(it.r.malusCO2 + it.r.malusPoids),
+    eur(it.r.andAnnuel * it.duree), eur(it.r.partEmployeurAnnuelle * it.duree), eur(it.total),
+  ];
+  const detBody: any[] = [];
+  for (const g of order) {
+    const list = gmap.get(g)!;
+    const label = g === "—" ? "Sans groupe de comparaison" : g;
+    detBody.push([{ content: label.toUpperCase(), colSpan: 8, styles: { fillColor: [246, 242, 236] as [number, number, number], textColor: INK, fontStyle: "bold" as any, halign: "left" as any, cellPadding: 6, fontSize: 9 } }]);
+    const gCur = list.filter((i) => i.sv.vehicle.isCurrentFleet).sort((a, b) => b.total - a.total);
+    const gEv = list.filter((i) => !i.sv.vehicle.isCurrentFleet).sort((a, b) => a.total - b.total);
+    for (const it of [...gCur, ...gEv]) detBody.push(detRow(it));
+  }
   autoTable(doc, {
     startY: y,
     theme: "plain",
     head: [["VÉHICULE", "LOYER", "ÉNERGIE", "TVS", "MALUS", "AND", "AEN EMPL.", "COÛT EMPL."]],
-    body: [...items].sort((a, b) => a.total - b.total).map((it) => [
-      `${it.sv.vehicle.brand} ${it.sv.vehicle.model}${it.sv.vehicle.isCurrentFleet ? " (actuel)" : ""}`,
-      eur(it.r.loyerTotal),
-      eur(it.r.coutEnergie),
-      eur(it.r.tvsTotal),
-      eur(it.r.malusCO2 + it.r.malusPoids),
-      eur(it.r.andAnnuel * it.duree),
-      eur(it.r.partEmployeurAnnuelle * it.duree),
-      eur(it.total),
-    ]),
+    body: detBody,
     headStyles: { fillColor: INK, textColor: 255, fontSize: 7.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 5, halign: "right" as any },
     bodyStyles: { fontSize: 8, cellPadding: 5, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, halign: "right" as any },
     alternateRowStyles: { fillColor: BG },
