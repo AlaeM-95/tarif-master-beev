@@ -1509,8 +1509,8 @@ function drawSiteOverview(doc: jsPDF, client: ClientInfo, chargers: SelectedChar
     { label: "Puissance bornes", value: powerBreakdown || "—" },
     { label: "Type d'installation", value: specs.installationType || (chargers.some((sc) => sc.charger.deployment === "site") ? "Parking, site entreprise" : "—") },
     { label: "Usage", value: specs.usage || "Collaborateurs et visiteurs" },
-    { label: "Supervision", value: specs.supervisionPlan === "beev_connect" ? "Beev Connect (site entreprise)" : specs.supervisionPlan === "beev_home_charging" ? "Beev Home Charging (B2B2E)" : "À définir avec votre commercial" },
-    { label: "Délai estimé", value: specs.estimatedDelay || "3 à 5 semaines après validation du devis" },
+    { label: "Supervision", value: specs.supervisionPlan === "beev_connect" ? "Beev Connect (site entreprise)" : specs.supervisionPlan === "beev_home_charging" ? "Beev Home Charging (B2B2E)" : "À définir" },
+    { label: "Délai estimé", value: specs.estimatedDelay || "3 à 5 semaines après signature du devis" },
   ];
 
   let ly = y;
@@ -1622,9 +1622,9 @@ function drawSiteProjectSynthesis(doc: jsPDF, client: ClientInfo, chargers: Sele
     // Roobert n'a pas le glyphe → (U+2192) — jsPDF tombe sur un fallback
     // qui casse l'espacement. Pour tout texte client : ASCII + ponctuation
     // de base seulement.
-    { label: "Distance TGBT > Bornes", value: specs.distanceTgbt || "À confirmer après visite technique" },
+    { label: "Distance tableau électrique > bornes", value: specs.distanceTgbt || "Précisée lors de la visite technique" },
     { label: "Emplacement", value: specs.locationDescription || chargers[0]?.siteAddress || "Parking site entreprise" },
-    { label: "Puissance abonnement EDF", value: specs.edfPower || "À confirmer (abonnement client)" },
+    { label: "Puissance électrique disponible", value: specs.edfPower || "Selon votre contrat d'électricité" },
   ];
   // Câble 22 kW : affiché seulement si au moins 1 borne triphasée
   if (hasHighPower) rows.push({ label: "Type câble 22 kW (triphasé)", value: cable22 });
@@ -1632,8 +1632,8 @@ function drawSiteProjectSynthesis(doc: jsPDF, client: ClientInfo, chargers: Sele
   // (si une seule est triphasée, le 7,4 n'a pas de sens d'apparaître)
   if (hasLowPower && !hasHighPower) rows.push({ label: "Type câble 7,4 kW (monophasé)", value: cable74 });
   rows.push(
-    { label: "Délai estimé", value: specs.estimatedDelay || "3 à 5 semaines après validation" },
-    { label: "Local TGBT et cheminement", value: specs.tgbtRoom || "Cheminement à valider lors de la visite technique" },
+    { label: "Délai estimé", value: specs.estimatedDelay || "3 à 5 semaines après signature du devis" },
+    { label: "Local technique et raccordement", value: specs.tgbtRoom || "Déterminés lors de la visite technique" },
   );
 
   doc.setDrawColor(...RULE);
@@ -3830,7 +3830,7 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
     : [
         "Étude de site et chiffrage par technicien IRVE certifié",
         "Pose, raccordement et mise en service",
-        "Paramétrage OCPP et configuration du superviseur",
+        "Mise en service et configuration du système de supervision",
         "Formation des utilisateurs sur site",
         "Gestion des déchets de chantier",
         // Ligne "Garantie constructeur 3 ans, extensible 6 ans" retirée :
@@ -6712,12 +6712,12 @@ function drawGuarantees(doc: jsPDF, type: ProjectType) {
       },
       {
         title: "POSE IRVE CERTIFIÉE",
-        metric: "OCPP-ready",
+        metric: "Supervision universelle",
         details: [
           "Technicien IRVE certifié AFNOR",
-          "Paramétrage OCPP 1.6/2.0",
+          "Compatible avec tous les systèmes de supervision",
           "Mise en service & formation utilisateurs",
-          "Signature PV de réception conjoint",
+          "Signature conjointe du rapport de réception",
         ],
       },
       {
@@ -6880,7 +6880,7 @@ function drawExecutiveSummary(
   ] : [
     { label: "Garantie matériel", value: type === "home" ? "2 à 4 ans" : "3 ans (ext. 6)", accent: true },
     { label: "Pose IRVE certifiée", value: type === "home" ? "Seris" : "Beev × partenaires" },
-    { label: "Supervision incluse", value: "OCPP / marque blanche" },
+    { label: "Supervision incluse", value: "Compatible tous fabricants" },
   ]);
 
   // KPI 4 : Engagements Beev
@@ -6904,9 +6904,9 @@ function drawExecutiveSummary(
   doc.setFontSize(11);
   doc.setTextColor(255, 255, 255);
   const nextStep = type === "vehicles"
-    ? "Signature du Bon Pour Accord, émission des BC LLD sous 10 jours ouvrés."
+    ? "Signature du Bon Pour Accord, commande des véhicules auprès des loueurs sous 10 jours ouvrés."
     : type === "home"
-    ? "Validation de la convention B2B2E, onboarding des collaborateurs en parallèle."
+    ? "Validation du cadre du programme, intégration des collaborateurs en parallèle."
     : "Validation de l'offre cadre, étude technique site sous 5 jours ouvrés.";
   doc.text(nextStep, M + 16, y + 36);
 }
@@ -7080,7 +7080,7 @@ function drawFinancialSummary(
     doc.setTextColor(...INK);
     const modalities = [
       "50 % à la commande, 50 % à la mise en service.",
-      "Acompte facturé sous 8 jours. Solde sous 30 jours après PV de réception.",
+      "Acompte facturé sous 8 jours. Solde sous 30 jours après réception des travaux.",
       "TVA 20 % facturée selon le régime applicable à votre entreprise.",
     ];
     modalities.forEach((m, i) => {
@@ -7353,7 +7353,7 @@ function drawFiscalAdvantages(doc: jsPDF, vehicles: SelectedVehicle[], energy: E
   doc.setFontSize(7);
   doc.setTextColor(...SUB);
   doc.text(
-    "Sources : Code général des impôts, barèmes 2026 (TVS, AND/AEN, malus CO2 et poids), service-public.fr / impots.gouv.fr. Synthèse indicative à valider avec votre expert-comptable selon votre situation.",
+    "Sources : Code général des impôts, barèmes 2026 (TVS, AND/AEN, malus CO2 et poids), service-public.fr / impots.gouv.fr. Synthèse indicative, à ajuster selon la situation fiscale propre à votre entreprise.",
     M, y, { maxWidth: PAGE_W - M * 2 },
   );
 }
@@ -7703,20 +7703,20 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
     vehicles: [
       ["1", "Validation de l'offre LLD", "Bon pour accord signé, sélection des véhicules définitive, choix du loueur (Ayvens, Arval, Athlon…)."],
       ["2", "Étude de financement", "Constitution du dossier crédit-bailleur, accord de la direction des risques."],
-      ["3", "Bons de commande constructeurs", "Émission des BC LLD, suivi de production usine et planning de livraison."],
+      ["3", "Commande auprès des constructeurs", "Émission des commandes véhicules, suivi de fabrication et planning de livraison."],
       ["4", "Livraison & mise en service", "Livraison des véhicules sur site, prise en main, activation des cartes carburant / badges recharge."],
     ],
     home: [
-      ["1", "Validation cadre employeur", "Signature du cadre B2B2E par l'employeur : périmètre, modèle de borne, modalités de remboursement."],
-      ["2", "Mandat & onboarding collaborateur", "Le collaborateur signe un mandat d'installation à son domicile et complète le formulaire technique (logement, place de parking, tableau électrique)."],
+      ["1", "Validation du cadre employeur", "Signature du cadre par l'employeur : périmètre, modèle de borne, modalités de remboursement."],
+      ["2", "Mandat & intégration collaborateur", "Le collaborateur signe un mandat d'installation à son domicile et fournit quelques informations (type de logement, stationnement, accès au tableau électrique)."],
       ["3", "Visite technique & devis ferme", "Visite ou audit à distance par notre partenaire IRVE Seris, devis ferme transmis pour validation."],
       ["4", "Pose & mise en service", "Installation par technicien IRVE certifié, mise en service de la supervision, premier remboursement énergie sous 30 jours."],
     ],
     site: [
       ["1", "Validation de l'offre site", "Bon pour accord signé, sélection des modèles et nombre de points de charge par site."],
-      ["2", "Étude technique site", "Visite physique de chaque site, étude des trajets de câble, dimensionnement TGBT, planning de pose."],
-      ["3", "Devis ferme & génie civil", "Devis ferme par site (matériel + IRVE + génie civil), validation des accès chantier et planification des interventions."],
-      ["4", "Pose, mise en service & PV de réception", "Pose par technicien IRVE certifié, paramétrage OCPP, formation utilisateurs, signature du PV de réception de chantier."],
+      ["2", "Étude technique site", "Visite technique de chaque site, étude de faisabilité électrique et planning des travaux."],
+      ["3", "Devis ferme & travaux", "Devis ferme par site (matériel, installation, travaux), validation des conditions d'accès et planning des travaux."],
+      ["4", "Pose, mise en service & réception", "Installation par technicien IRVE certifié, mise en service et formation des utilisateurs, signature du rapport de réception."],
     ],
   };
 
