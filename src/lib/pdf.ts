@@ -4461,7 +4461,7 @@ async function drawTcoImpact(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: Energ
     const r = calculateTcoFull(sv.vehicle, { dureeAnnees: duree, kmContrat: sv.kmPerYear * duree, prixEssenceLitre: e.fuelPriceL, prixKwhDomicile: e.kWhHome, prixKwhPublic: e.kWhPublic, optionsTotalTtc, remisePctOverride: sv.discountPct }, sv.negotiatedMonthly);
     const fisc = r.tvsTotal + r.malusCO2 + r.malusPoids;
     const empl = r.andAnnuel * duree + r.partEmployeurAnnuelle * duree;
-    return { sv, total: r.tcoEmployeurComplet, loyer: r.loyerTotal, energie: r.coutEnergie, fisc, empl };
+    return { sv, total: r.tcoEmployeurComplet, loyer: r.loyerTotal, energie: r.coutEnergie, fisc, empl, r, duree };
   };
   type IItem = ReturnType<typeof compute>;
   const items = vehiclesIn.map(compute);
@@ -4575,6 +4575,33 @@ async function drawTcoImpact(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: Energ
       doc.line(M, y + 10, rightX, y + 10); y += 20;
     }
   }
+
+  // Détail chiffré complet (loyer, énergie, TVS, malus, AND, AEN, coût empl.).
+  y += 8;
+  if (y + 70 > FOOTER_LIMIT) { doc.addPage(); drawHeader(doc, client, type); y = 116; }
+  doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(8.5); doc.setTextColor(...SUB);
+  doc.text("DÉTAIL DES COMPOSANTES", M, y); y += 8;
+  autoTable(doc, {
+    startY: y,
+    theme: "plain",
+    head: [["VÉHICULE", "LOYER", "ÉNERGIE", "TVS", "MALUS", "AND", "AEN EMPL.", "COÛT EMPL."]],
+    body: [...items].sort((a, b) => a.total - b.total).map((it) => [
+      `${it.sv.vehicle.brand} ${it.sv.vehicle.model}${it.sv.vehicle.isCurrentFleet ? " (actuel)" : ""}`,
+      eur(it.r.loyerTotal),
+      eur(it.r.coutEnergie),
+      eur(it.r.tvsTotal),
+      eur(it.r.malusCO2 + it.r.malusPoids),
+      eur(it.r.andAnnuel * it.duree),
+      eur(it.r.partEmployeurAnnuelle * it.duree),
+      eur(it.total),
+    ]),
+    headStyles: { fillColor: INK, textColor: 255, fontSize: 7.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 5, halign: "right" as any },
+    bodyStyles: { fontSize: 8, cellPadding: 5, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, halign: "right" as any },
+    alternateRowStyles: { fillColor: BG },
+    columnStyles: { 0: { halign: "left" as any, cellWidth: 168, fontStyle: "bold" as any }, 7: { fontStyle: "bold" as any, textColor: ACCENT_TEXT } },
+    rowPageBreak: "avoid",
+    margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
+  });
 }
 
 async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: EnergyParams, client?: ClientInfo) {
