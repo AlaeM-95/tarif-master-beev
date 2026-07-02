@@ -898,7 +898,14 @@ export async function generateProposalPdf(opts: {
     if ((cfg.showTcoComparison || cfg.showTcoDetailedTable) && tcoEligible) {
       doc.addPage();
       drawHeader(doc, client, "vehicles");
-      await drawTcoDetailedTable(doc, v, energy, client);
+      // Si des groupes de comparaison apparient un véhicule ACTUEL avec des EV
+      // proposés → vue « impact » (paires actuel → EV, économie mise en avant).
+      // Sinon → vue synthèse & détail (classement + tableau).
+      const gk = (sv: SelectedVehicle) => (sv.comparisonGroup ?? "").trim();
+      const curGroups = new Set(v.filter((sv) => sv.vehicle.isCurrentFleet).map(gk).filter(Boolean));
+      const hasPairs = v.some((sv) => !sv.vehicle.isCurrentFleet && curGroups.has(gk(sv)));
+      if (hasPairs) await drawTcoImpact(doc, v, energy, client, "vehicles");
+      else await drawTcoDetailedTable(doc, v, energy, client);
     }
   } else {
     if (cfg.showTcoComparison && tcoEligible) {
@@ -4436,6 +4443,140 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
 // Malus poids / AND (×durée) / AEN employeur (×durée) / TCO total /
 // TCO employeur complet. Permet au commercial et au client de vérifier
 // chaque ligne du calcul.
+// Vue « Impact du passage à l'électrique » (admin) : pour chaque groupe de
+// comparaison ayant un véhicule ACTUEL (flotte) et des EV proposés, on décompose
+// le thermique actuel juste au-dessus de chaque EV recommandé (même échelle) et
+// on met l'économie en avant. Économie totale en tête. Orienté DAF / dirigeant.
+async function drawTcoImpact(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: EnergyParams, client: ClientInfo, type: ProjectType) {
+  const GOOD: [number, number, number] = [29, 122, 84];
+  const GOOD_LT: [number, number, number] = [127, 211, 172];
+  const SEG_ENERGIE: [number, number, number] = [165, 210, 255];
+  const SEG_FISC: [number, number, number] = [150, 122, 168];
+  const SEG_EMPL: [number, number, number] = [244, 184, 170];
+  const GREY_NAME: [number, number, number] = [106, 106, 111];
+
+  const compute = (sv: SelectedVehicle) => {
+    const duree = sv.durationMonths / 12;
+    const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
+    const r = calculateTcoFull(sv.vehicle, { dureeAnnees: duree, kmContrat: sv.kmPerYear * duree, prixEssenceLitre: e.fuelPriceL, prixKwhDomicile: e.kWhHome, prixKwhPublic: e.kWhPublic, optionsTotalTtc, remisePctOverride: sv.discountPct }, sv.negotiatedMonthly);
+    const fisc = r.tvsTotal + r.malusCO2 + r.malusPoids;
+    const empl = r.andAnnuel * duree + r.partEmployeurAnnuelle * duree;
+    return { sv, total: r.tcoEmployeurComplet, loyer: r.loyerTotal, energie: r.coutEnergie, fisc, empl };
+  };
+  type IItem = ReturnType<typeof compute>;
+  const items = vehiclesIn.map(compute);
+  const gkey = (sv: SelectedVehicle) => (sv.comparisonGroup ?? "").trim();
+  const gmap = new Map<string, IItem[]>(); const order: string[] = [];
+  for (const it of items) { const g = gkey(it.sv) || "—"; if (!gmap.has(g)) { gmap.set(g, []); order.push(g); } gmap.get(g)!.push(it); }
+  const cards: { g: string; ref: IItem; evs: IItem[] }[] = [];
+  const pairedEvs = new Set<IItem>();
+  let totalEco = 0, totalRef = 0;
+  for (const g of order) {
+    const list = gmap.get(g)!;
+    const currents = list.filter((i) => i.sv.vehicle.isCurrentFleet).sort((a, b) => b.total - a.total);
+    const evs = list.filter((i) => !i.sv.vehicle.isCurrentFleet).sort((a, b) => a.total - b.total);
+    if (!currents.length || !evs.length) continue;
+    cards.push({ g: g === "—" ? "Remplacement" : g, ref: currents[0], evs });
+    evs.forEach((ev) => pairedEvs.add(ev));
+    totalEco += Math.max(0, currents[0].total - evs[0].total);
+    totalRef += currents[0].total;
+  }
+  const totalPct = totalRef > 0 ? (totalEco / totalRef) * 100 : 0;
+  const maxTotal = Math.max(1, ...items.map((i) => i.total));
+
+  let y = 116;
+  eyebrow(doc, "ANALYSE TCO · IMPACT DU PASSAGE À L'ÉLECTRIQUE", y); y += 32;
+  title(doc, "Ce que vous économisez.", y); y += 40;
+
+  const W = PAGE_W - M * 2;
+  // Hero économie totale
+  const hh = 76;
+  doc.setFillColor(...INK); doc.roundedRect(M, y, W, hh, 14, 14, "F");
+  doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(8); doc.setTextColor(...GOOD_LT);
+  doc.text("ÉCONOMIE TOTALE SUR LA FLOTTE", M + 22, y + 24);
+  doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(34); doc.setTextColor(255, 255, 255);
+  doc.text(`− ${eur(totalEco)}`, M + 22, y + 55);
+  doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(26); doc.setTextColor(...GOOD_LT);
+  doc.text(`− ${totalPct.toFixed(0)} %`, M + W - 22, y + 42, { align: "right" });
+  doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(8); doc.setTextColor(200, 200, 200);
+  doc.text("vs votre flotte actuelle · coût employeur complet", M + W - 22, y + 57, { align: "right" });
+  y += hh + 16;
+
+  // Légende
+  doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(7); doc.setTextColor(...SUB);
+  doc.text("DÉCOMPOSITION", M, y + 4);
+  let lx = M + doc.getTextWidth("DÉCOMPOSITION") + 12;
+  const lgs: [string, [number, number, number]][] = [["Loyer", INK], ["Énergie", SEG_ENERGIE], ["Fiscalité", SEG_FISC], ["Charges empl.", SEG_EMPL]];
+  doc.setFont(BRAND_FONT, "normal");
+  for (const [lab, col] of lgs) { doc.setFillColor(col[0], col[1], col[2]); doc.rect(lx, y - 3, 9, 7, "F"); lx += 13; doc.setTextColor(...SUB); doc.text(lab, lx, y + 4); lx += doc.getTextWidth(lab) + 14; }
+  y += 18;
+
+  const nx = M + 16;
+  const rightX = M + W - 16;
+  const barMaxW = W - 32 - 170;
+  const block = (it: IItem, isEv: boolean, eco: number | null, refTot: number, cy: number): number => {
+    const name = `${it.sv.vehicle.brand} ${it.sv.vehicle.model}`.slice(0, 30);
+    doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(12);
+    if (isEv) doc.setTextColor(...INK); else doc.setTextColor(...GREY_NAME);
+    doc.text(name, nx, cy);
+    const nameW = doc.getTextWidth(name);
+    // Badge rôle
+    const badgeTxt = isEv ? "Recommandé" : "Actuel";
+    doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(6.5);
+    const btw = doc.getTextWidth(badgeTxt);
+    doc.setFillColor(isEv ? 253 : 238, isEv ? 241 : 236, isEv ? 238 : 230);
+    doc.roundedRect(nx + nameW + 8, cy - 8, btw + 12, 12, 6, 6, "F");
+    doc.setTextColor(isEv ? 181 : 106, isEv ? 96 : 106, isEv ? 79 : 111);
+    doc.text(badgeTxt, nx + nameW + 14, cy);
+    // Total (droite)
+    doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(13);
+    if (isEv) doc.setTextColor(...INK); else doc.setTextColor(...SUB);
+    doc.text(eur(it.total), rightX, cy, { align: "right" });
+    // Barre décomposition (échelle commune)
+    const by = cy + 9;
+    doc.setFillColor(242, 240, 234); doc.rect(nx, by, barMaxW, 12, "F");
+    const scaled = (it.total / maxTotal) * barMaxW;
+    let sx = nx;
+    const segs: [number, [number, number, number]][] = [[it.loyer, INK], [it.energie, SEG_ENERGIE], [it.fisc, SEG_FISC], [it.empl, SEG_EMPL]];
+    for (const [v, col] of segs) { const w = (v / Math.max(1, it.total)) * scaled; if (w > 0.4) { doc.setFillColor(col[0], col[1], col[2]); doc.rect(sx, by, w, 12, "F"); sx += w; } }
+    // Économie (EV)
+    if (isEv && eco != null && eco > 0) {
+      const pct = refTot > 0 ? (eco / refTot) * 100 : 0;
+      doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(11); doc.setTextColor(...GOOD);
+      doc.text(`− ${eur(eco)} · −${pct.toFixed(0)} %`, rightX, by + 11, { align: "right" });
+    }
+    return cy + 36;
+  };
+
+  for (const card of cards) {
+    const nLines = 1 + card.evs.length;
+    const cardH = 26 + nLines * 36 + 8;
+    if (y + cardH > FOOTER_LIMIT) { doc.addPage(); drawHeader(doc, client, type); y = 116; }
+    doc.setDrawColor(...RULE); doc.setLineWidth(0.6); doc.roundedRect(M, y, W, cardH, 12, 12, "S");
+    let cy = y + 20;
+    doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(8); doc.setTextColor(...SUB);
+    doc.text(card.g.toUpperCase(), M + 16, cy); cy += 22;
+    cy = block(card.ref, false, null, 0, cy);
+    for (const ev of card.evs) cy = block(ev, true, card.ref.total - ev.total, card.ref.total, cy);
+    y += cardH + 12;
+  }
+
+  // EV proposés hors groupe apparié : liste compacte pour ne rien perdre.
+  const leftover = items.filter((i) => !i.sv.vehicle.isCurrentFleet && !pairedEvs.has(i));
+  if (leftover.length) {
+    if (y + 40 + leftover.length * 16 > FOOTER_LIMIT) { doc.addPage(); drawHeader(doc, client, type); y = 116; }
+    doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(8); doc.setTextColor(...SUB);
+    doc.text("AUTRES VÉHICULES PROPOSÉS", M, y + 6); y += 16;
+    doc.setDrawColor(...RULE); doc.setLineWidth(0.4);
+    for (const it of leftover.sort((a, b) => a.total - b.total)) {
+      doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(11); doc.setTextColor(...INK);
+      doc.text(`${it.sv.vehicle.brand} ${it.sv.vehicle.model}`.slice(0, 40), M, y + 4);
+      doc.setFont(BRAND_FONT, "bold"); doc.text(eur(it.total), rightX, y + 4, { align: "right" });
+      doc.line(M, y + 10, rightX, y + 10); y += 20;
+    }
+  }
+}
+
 async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: EnergyParams, client?: ClientInfo) {
   const vehicles = PDF_CFG.includeCurrentFleetInTco === false
     ? vehiclesIn.filter((sv) => !sv.vehicle.isCurrentFleet)
