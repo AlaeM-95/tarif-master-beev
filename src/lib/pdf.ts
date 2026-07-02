@@ -3239,8 +3239,14 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   }
 
   // Garde-fou espace : bloc TCO + encart fiscal = ~250px de haut.
-  // Si on est trop bas dans la page, on saute le bloc pour éviter
-  // un débordement sur le footer.
+  // Si on est trop bas dans la page, on saute le bloc pour éviter un
+  // débordement sur le footer — SAUF pour la flotte actuelle : le TCO est le
+  // point de comparaison attendu sur ce véhicule, on force un saut de page
+  // plutôt que de le faire disparaître silencieusement (comportement observé
+  // et signalé). Les véhicules proposés gardent le comportement d'origine.
+  if (PDF_CFG.showVehicleTcoBlock && sv.vehicle.isCurrentFleet) {
+    y = ensureSpace(doc, y, 250, client, type);
+  }
   if (PDF_CFG.showVehicleTcoBlock && (sv.includeTco || sv.vehicle.isCurrentFleet) && y < FOOTER_LIMIT - 250) {
     const t = computeTco(sv, e);
     // Vérifie si on a une TCO synchronisée depuis beev-tco-2026
@@ -3252,8 +3258,11 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     const tcoMonthly = synced?.tcoPerYear ? synced.tcoPerYear / 12 : t.tco100 * (sv.kmPerYear / 100) / 12;
     const tcoTotal = synced?.tcoTotalContract ?? t.tco100 * (sv.kmPerYear / 100) * (sv.durationMonths / 12);
 
-    // hasFiscalBlock vrai dès que synced OU includeTco (cf. fin du bloc)
-    const hasFiscalBlock = !!synced || sv.includeTco;
+    // hasFiscalBlock vrai dès que synced OU includeTco OU flotte actuelle
+    // (cf. fin du bloc) — un véhicule marqué flotte actuelle doit toujours
+    // avoir son encart fiscal, même quand includeTco est resté à false
+    // (ex. ajouté manuellement puis coché "flotte actuelle" après coup).
+    const hasFiscalBlock = !!synced || sv.includeTco || sv.vehicle.isCurrentFleet;
     const cardH = hasFiscalBlock ? 130 : 100;
     // Hauteur réelle de la carte (KPIs + encart fiscal optionnel)
     const totalCardH = cardH + (hasFiscalBlock ? 120 : 0);
@@ -3335,12 +3344,18 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       const andAnnuel = tcoFull.andAnnuel;
       const aenAnnuel = tcoFull.aenAnnuel;
       const partEmpAnnuelle = tcoFull.partEmployeurAnnuelle;
-      // Coût employeur complet : lu directement depuis calculateTcoFull
-      // (source unique). L'AND n'y entre PAS pour son montant brut — voir
-      // coutFiscalANDAnnuel dans tco-calculator.ts : l'entreprise ne décaisse
-      // pas andAnnuel, elle perd seulement la déduction fiscale dessus ;
-      // le vrai surcoût est l'IS supplémentaire (25%) sur ce montant.
-      const tcoEmployeur = tcoFull.tcoEmployeurComplet;
+      // Coût employeur complet : reconstruit à partir du `tcoTotal` OFFICIEL
+      // affiché juste au-dessus (synced beev-tco-2026 si disponible, sinon
+      // calcul local — ligne 3253), PAS de tcoFull.tcoTotal qui peut différer
+      // (ex. options/remise pris en compte différemment). Utiliser
+      // tcoFull.tcoEmployeurComplet ici cassait la cohérence avec "TCO TOTAL
+      // CONTRAT" affiché en dessous (coût employeur pouvait apparaître
+      // inférieur au TCO total, ce qui est fiscalement impossible).
+      // L'AND n'entre pas pour son montant brut — voir coutFiscalANDAnnuel
+      // dans tco-calculator.ts : l'entreprise ne décaisse pas andAnnuel, elle
+      // perd seulement la déduction fiscale dessus ; le vrai surcoût est
+      // l'IS supplémentaire (25%) sur ce montant.
+      const tcoEmployeur = tcoTotal + tcoFull.coutFiscalANDAnnuel * duree + partEmpAnnuelle * duree;
 
       // Ligne 1 : 3 colonnes (Malus CO2, Malus poids, TVS contrat).
       // Couleur orange si valeur > 0 pour signaler la charge à l'achat.

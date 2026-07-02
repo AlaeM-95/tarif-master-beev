@@ -3853,6 +3853,13 @@ function SelectedVehicleRow({ sv, energy, onChange, onApplyAll, onRemove, onDupl
   const [tab, setTab] = useState<"none" | "svc" | "opt">("none");
   const [newSvc, setNewSvc] = useState("");
   const [specsOpen, setSpecsOpen] = useState(false);
+  const [vehicleEditOpen, setVehicleEditOpen] = useState(false);
+  // Patch direct des champs du véhicule flotte actuelle (marque, modèle,
+  // prix, caractéristiques). Réutilise le mécanisme déjà en place pour la
+  // photo (onChange({ vehicle: {...} })) : ce véhicule est propre à ce devis
+  // (importé ou saisi manuellement), pas une fiche catalogue partagée — le
+  // modifier ici n'affecte que cette proposition.
+  const updateFleetVehicle = (patch: Partial<Vehicle>) => onChange({ vehicle: { ...sv.vehicle, ...patch } });
   // « Appliquer à tous » : quand actif, ce véhicule sert de modèle et la
   // modification (caractéristiques / prestations / options) est répliquée sur
   // tous les véhicules du devis. Visible seulement s'il y a plusieurs véhicules.
@@ -3977,6 +3984,49 @@ function SelectedVehicleRow({ sv, energy, onChange, onApplyAll, onRemove, onDupl
         <Label className="text-[10px] uppercase text-muted-foreground tracking-wide">Photo du véhicule</Label>
         <ImageUpload currentUrl={sv.vehicle.image} onChange={(url) => onChange({ vehicle: { ...sv.vehicle, image: url } })} folder="vehicles" label="Photo du véhicule" />
       </div>
+
+      {/* Édition des infos du véhicule flotte actuelle : marque, modèle,
+          caractéristiques, prix. Ce véhicule n'existe pas forcément au
+          catalogue (import Excel ou saisie manuelle) — c'est ici, et non
+          dans le catalogue, que le commercial corrige ses données. */}
+      {sv.vehicle.isCurrentFleet && (
+        <div className="rounded-md border bg-card">
+          <button
+            type="button"
+            onClick={() => setVehicleEditOpen((o) => !o)}
+            className="w-full flex items-center justify-between px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground hover:bg-accent/30 rounded-md"
+          >
+            <span>Infos du véhicule flotte actuelle</span>
+            {vehicleEditOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
+          {vehicleEditOpen && (
+            <div className="p-2 pt-0 grid grid-cols-2 gap-2">
+              <TxtField label="Marque" value={sv.vehicle.brand} onChange={(s) => updateFleetVehicle({ brand: s })} />
+              <TxtField label="Modèle" value={sv.vehicle.model} onChange={(s) => updateFleetVehicle({ model: s })} />
+              <TxtField label="Version" value={sv.vehicle.version ?? ""} onChange={(s) => updateFleetVehicle({ version: s })} />
+              <div className="space-y-1">
+                <Label className="text-[10px] uppercase text-muted-foreground tracking-wide">Énergie</Label>
+                <select
+                  value={sv.vehicle.energy}
+                  onChange={(e) => updateFleetVehicle({ energy: e.target.value as Vehicle["energy"] })}
+                  className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+                >
+                  {(["Électrique", "Hybride Rechargeable", "Hybride", "Mild Hybrid", "Essence", "Diesel"] as const).map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+              <NumField label="Prix TTC" value={sv.vehicle.priceTtc} onChange={(n) => updateFleetVehicle({ priceTtc: n })} />
+              <NumField label="Autonomie km" value={sv.vehicle.rangeWltp} onChange={(n) => updateFleetVehicle({ rangeWltp: n })} />
+              <NumField label="Batterie kWh" value={sv.vehicle.batteryKwh} onChange={(n) => updateFleetVehicle({ batteryKwh: n })} />
+              <NumField label="Puissance ch" value={sv.vehicle.powerHp} onChange={(n) => updateFleetVehicle({ powerHp: n })} />
+              <NumField label="Conso" value={sv.vehicle.consumption} onChange={(n) => updateFleetVehicle({ consumption: n })} step={0.1} />
+              <NumField label="CO₂ g/km" value={sv.vehicle.co2} onChange={(n) => updateFleetVehicle({ co2: n })} />
+            </div>
+          )}
+        </div>
+      )}
+
       <TxtField label="N° de devis loueur" value={sv.leaserQuoteRef ?? ""} onChange={(s) => onChange({ leaserQuoteRef: s })} />
       {tripartiteUrl && (
         <TripartiteViewerButton url={tripartiteUrl} vehicleLabel={`${sv.vehicle.brand} ${sv.vehicle.model}`} />
