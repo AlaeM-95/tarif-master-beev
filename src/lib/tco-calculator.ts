@@ -42,6 +42,13 @@ export type TcoFullResult = {
   malusCO2: number;
   malusPoids: number;
   andAnnuel: number;
+  /** Coût réel de l'AND pour l'entreprise : andAnnuel n'est PAS payé
+   *  directement (ce n'est pas un décaissement) — c'est un montant que
+   *  l'entreprise ne peut pas déduire de son résultat imposable. Le seul
+   *  surcoût réel est l'IS supplémentaire dû sur ce montant réintégré :
+   *  andAnnuel × TAUX_IS_ENTREPRISE (25%). C'est ce champ, et non
+   *  andAnnuel, qui doit entrer dans tcoEmployeurComplet. */
+  coutFiscalANDAnnuel: number;
   aenBrut: number;
   aenAbattement: number;
   aenAnnuel: number;
@@ -64,6 +71,11 @@ export type TcoFullResult = {
 const DEFAULT_COUT_ESSENCE_LITRE = 1.75;
 const DEFAULT_COUT_KWH_DOMICILE = 0.4;
 const DEFAULT_COUT_KWH_PUBLIC = 0.6;
+
+// Taux d'IS (impôt sur les sociétés) standard pour la majorité des PME/ETI
+// (taux normal 2026). Utilisé uniquement pour chiffrer l'impact réel de
+// l'AND sur le coût employeur — voir note plus bas.
+export const TAUX_IS_ENTREPRISE = 0.25;
 
 // Plafond AND (Avantage Non Déductible) — dépend du CO₂
 function getPlafondAND(co2: number): number {
@@ -216,6 +228,11 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
   const prixFinal = prixAvantRemise - remiseAmount;
   const baseAND = prixFinal - (v.prixBatterie ?? 0) - plafondAND;
   const andAnnuel = baseAND > 0 ? baseAND / 5 : 0;
+  // L'AND n'est pas un décaissement : l'entreprise ne paie pas andAnnuel
+  // en tant que tel, elle perd seulement la déduction fiscale sur ce
+  // montant. Le vrai surcoût est l'IS supplémentaire généré par cette
+  // réintégration : andAnnuel × 25%.
+  const coutFiscalANDAnnuel = andAnnuel * TAUX_IS_ENTREPRISE;
 
   // AEN — Avantage en Nature (méthode forfaitaire basée sur le loyer)
   // Taux forfaitaire 50% ; abattement 70% si EL avec éco-score, sinon 0%.
@@ -236,8 +253,11 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
   const tcoAnnuel = tcoTotal / contract.dureeAnnees;
   const tcoMensuel = tcoAnnuel / 12;
   const tcoParKm = contract.kmContrat > 0 ? tcoTotal / contract.kmContrat : 0;
-  // Coût employeur complet : ajoute AND et part employeur AEN sur la durée
-  const tcoEmployeurComplet = tcoTotal + andAnnuel * contract.dureeAnnees + partEmployeurAnnuelle * contract.dureeAnnees;
+  // Coût employeur complet : ajoute le coût FISCAL de l'AND (IS sur le
+  // montant réintégré, pas le montant lui-même — voir coutFiscalANDAnnuel
+  // ci-dessus) et la part employeur AEN (charges patronales, elle bien
+  // réellement décaissée), sur la durée du contrat.
+  const tcoEmployeurComplet = tcoTotal + coutFiscalANDAnnuel * contract.dureeAnnees + partEmployeurAnnuelle * contract.dureeAnnees;
 
   return {
     prixCatalogue,
@@ -252,6 +272,7 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
     malusCO2,
     malusPoids,
     andAnnuel,
+    coutFiscalANDAnnuel,
     aenBrut,
     aenAbattement,
     aenAnnuel,

@@ -2917,6 +2917,12 @@ function TcoCalculator({
               Données fiscales 2026. Pour activer les calculs : renseignez prix batterie, poids à
               vide, éco-score et remise sur chaque fiche véhicule dans l'admin.
             </p>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              L'AND (Avantage Non Déductible) affiché ci-dessus n'est pas un décaissement : c'est un
+              montant que l'entreprise ne peut pas déduire de son résultat imposable. Le « Coût
+              employeur complet » (PDF) n'intègre donc pas l'AND brut mais l'IS supplémentaire qu'il
+              génère (AND × 25%).
+            </p>
           </CardContent>
         </Card>
       )}

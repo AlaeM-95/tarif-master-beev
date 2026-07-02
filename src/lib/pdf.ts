@@ -3335,9 +3335,12 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       const andAnnuel = tcoFull.andAnnuel;
       const aenAnnuel = tcoFull.aenAnnuel;
       const partEmpAnnuelle = tcoFull.partEmployeurAnnuelle;
-      // Coût employeur complet = tcoTotal officiel (synced ou local) + AND + AEN
-      // sur la durée du contrat. Garantit la cohérence avec le tcoTotal affiché.
-      const tcoEmployeur = tcoTotal + andAnnuel * duree + partEmpAnnuelle * duree;
+      // Coût employeur complet : lu directement depuis calculateTcoFull
+      // (source unique). L'AND n'y entre PAS pour son montant brut — voir
+      // coutFiscalANDAnnuel dans tco-calculator.ts : l'entreprise ne décaisse
+      // pas andAnnuel, elle perd seulement la déduction fiscale dessus ;
+      // le vrai surcoût est l'IS supplémentaire (25%) sur ce montant.
+      const tcoEmployeur = tcoFull.tcoEmployeurComplet;
 
       // Ligne 1 : 3 colonnes (Malus CO2, Malus poids, TVS contrat).
       // Couleur orange si valeur > 0 pour signaler la charge à l'achat.
@@ -3366,7 +3369,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       // Ligne 2 : 3 colonnes (AND annuel, AEN annuel, Part employeur AEN)
       const row2Y = row1Y + 32;
       const row2 = [
-        { label: "AND / AN", value: eur(andAnnuel) },
+        { label: "AND / AN (NON DÉCAISSÉ)", value: eur(andAnnuel) },
         { label: "AEN ANNUEL", value: eur(aenAnnuel) },
         { label: "PART EMPLOYEUR AEN / AN", value: eur(partEmpAnnuelle) },
       ];
@@ -3398,7 +3401,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(7);
       doc.setTextColor(...LAVENDER);
-      doc.text("COÛT EMPLOYEUR COMPLET (TCO + AND + AEN)", PAGE_W - M - 16, recapY + 14, { align: "right" });
+      doc.text("COÛT EMPLOYEUR COMPLET (TCO + IS/AND + AEN)", PAGE_W - M - 16, recapY + 14, { align: "right" });
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(13);
       doc.setTextColor(...LAVENDER);
@@ -4460,7 +4463,9 @@ async function drawTcoImpact(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: Energ
     const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
     const r = calculateTcoFull(sv.vehicle, { dureeAnnees: duree, kmContrat: sv.kmPerYear * duree, prixEssenceLitre: e.fuelPriceL, prixKwhDomicile: e.kWhHome, prixKwhPublic: e.kWhPublic, optionsTotalTtc, remisePctOverride: sv.discountPct }, sv.negotiatedMonthly);
     const fisc = r.tvsTotal + r.malusCO2 + r.malusPoids;
-    const empl = r.andAnnuel * duree + r.partEmployeurAnnuelle * duree;
+    // Coût fiscal réel de l'AND (IS sur le montant réintégré), pas l'AND
+    // brut — sinon ce segment + les autres dépasserait `total`.
+    const empl = r.coutFiscalANDAnnuel * duree + r.partEmployeurAnnuelle * duree;
     return { sv, total: r.tcoEmployeurComplet, loyer: r.loyerTotal, energie: r.coutEnergie, fisc, empl, r, duree };
   };
   type IItem = ReturnType<typeof compute>;
@@ -4855,8 +4860,10 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   let maxUsage = 1;
   for (const c of computed) {
     const fisc = c.r.tvsTotal + c.r.malusCO2 + c.r.malusPoids;
-    const empl = c.r.andAnnuel * c.duree + c.r.partEmployeurAnnuelle * c.duree;
-    const total = c.r.loyerTotal + c.r.coutEnergie + fisc + empl; // = coût employeur complet
+    // Coût fiscal réel de l'AND (IS sur le montant réintégré), pas l'AND
+    // brut — sinon la somme des segments dépasserait `total`.
+    const empl = c.r.coutFiscalANDAnnuel * c.duree + c.r.partEmployeurAnnuelle * c.duree;
+    const total = c.r.tcoEmployeurComplet; // source unique, cohérent avec le reste du PDF
     compMap.set(c.sv, { loyer: c.r.loyerTotal, energie: c.r.coutEnergie, fisc, empl, total });
     if (total > maxUsage) maxUsage = total;
   }
@@ -4940,47 +4947,63 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   });
   let y2 = (doc as any).lastAutoTable.finalY + 20;
 
-  // Admin : on masque le détail de calcul (notes méthodologiques) pour une page
-  // plus épurée côté client. Les non-admins conservent les notes.
-  if (ADMIN_MODE) return;
-
-  // Légende — couleurs charte Beev (LAVENDER pour les signaux d'alerte)
-  doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(8.5);
-  doc.setTextColor(...SUB);
+  // Notes méthodologiques : réaffichées pour tous (admin inclus). Masquées
+  // depuis le 30/06 pour "épurer" la page admin, mais un calcul fiscal sans
+  // sa méthode n'est pas vérifiable — la transparence prime sur l'épure.
   const legendLines = [
-    "· Cellules en rose : charges fiscales à valider (Malus CO2 + poids, TVS non nulles)",
-    "· Coût employeur complet = Loyer + Énergie + TVS + Malus + (AND × durée) + (AEN employeur × durée)",
-    "· AND calculé sur le prix catalogue TTC (amortissement non déductible au-delà de 30 000 € pour un EV) ; « — » si le prix catalogue n'est pas renseigné",
-    "· AEN employeur = avantage en nature × 42 % ; abattement de 70 % uniquement si l'éco-score du véhicule est activé (sinon AEN plein)",
-    "· AEN salarié /mois = loyer mensuel TTC × 50 % (forfait sans carburant), moins abattement 70 % si véhicule électrique avec éco-score. Avantage en nature imposable du salarié, affiché à titre informatif : NON inclus dans le coût employeur complet ni dans le TCO.",
-    "· Loyer total = loyer mensuel négocié × nombre de mois (TTC, TVA récupérable LLD)",
-    "· Énergie = conso véhicule × km contrat × prix carburant ou kWh (mix 85 % domicile / 15 % public)",
+    "Cellules en rose : charges fiscales à valider (Malus CO2 + poids, TVS non nulles)",
+    "Coût employeur complet = Loyer + Énergie + TVS + Malus + (AND × 25 % d'IS × durée) + (AEN employeur × durée)",
+    "AND (Avantage Non Déductible) = MAX(0, prix d'achat final − prix batterie − plafond fiscal CO₂) ÷ 5, calculé sur le prix catalogue TTC ; « — » si le prix catalogue n'est pas renseigné",
+    "L'AND n'est PAS un décaissement : c'est un montant que l'entreprise ne peut pas déduire de son résultat imposable. Le surcoût réel pour l'entreprise est l'impôt sur les sociétés (IS) supplémentaire généré par cette réintégration, soit AND × 25 % — c'est ce montant, et non l'AND brut, qui entre dans le coût employeur complet",
+    "AEN employeur = avantage en nature × 42 % (charges patronales, réellement décaissées) ; abattement de 70 % uniquement si l'éco-score du véhicule est activé (sinon AEN plein)",
+    "AEN salarié /mois = loyer mensuel TTC × 50 % (forfait sans carburant), moins abattement 70 % si véhicule électrique avec éco-score. Avantage en nature imposable du salarié, affiché à titre informatif : NON inclus dans le coût employeur complet ni dans le TCO.",
+    "Loyer total = loyer mensuel négocié × nombre de mois (TTC, TVA récupérable LLD)",
+    "Énergie = conso véhicule × km contrat × prix carburant ou kWh (mix 85 % domicile / 15 % public)",
   ];
-  // On pré-wrappe avec la police déjà fixée (8.5pt) pour mesurer la hauteur
-  // réelle. Si la légende ne tient pas avant le footer (tableau long), on la
-  // bascule sur une nouvelle page : sinon les notes chevauchaient le pied de
-  // page (bug observé). Garde-fou par ligne au cas où.
-  const legendLineH = 12;
-  const wrappedAll = legendLines.map((line) => doc.splitTextToSize(line, PAGE_W - M * 2) as string[]);
-  const totalLegendH = wrappedAll.reduce((s, w) => s + w.length * legendLineH + 3, 0);
-  if (y2 + totalLegendH > FOOTER_LIMIT) {
+  // On pré-wrappe avec la police déjà fixée (8pt) pour mesurer la hauteur
+  // réelle. Pas d'encart à hauteur fixe (ça désynchronise si le contenu
+  // déborde sur une 2e page) : juste un titre + page-break par ligne, comme
+  // avant, avec de vraies puces rondes au lieu du caractère "· ".
+  const legendLineH = 11;
+  const bulletIndent = 11;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8);
+  const wrappedAll = legendLines.map((line) => doc.splitTextToSize(line, PAGE_W - M * 2 - bulletIndent) as string[]);
+  const titleLineH = 18;
+  const drawLegendTitle = (top: number) => {
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...INK);
+    doc.text("MÉTHODE DE CALCUL", M, top);
+    doc.setDrawColor(...RULE);
+    doc.line(M, top + 4, PAGE_W - M, top + 4);
+    return top + titleLineH;
+  };
+  const totalLegendH = titleLineH + wrappedAll.reduce((s, w) => s + w.length * legendLineH + 4, 0);
+  if (y2 + Math.min(totalLegendH, titleLineH + legendLineH * 3) > FOOTER_LIMIT) {
     doc.addPage();
     if (client) drawHeader(doc, client, "vehicles");
     y2 = 116;
   }
+  let ly = drawLegendTitle(y2);
   doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
   doc.setTextColor(...SUB);
   wrappedAll.forEach((wrapped) => {
-    if (y2 + wrapped.length * legendLineH > FOOTER_LIMIT) {
+    if (ly + wrapped.length * legendLineH > FOOTER_LIMIT) {
       doc.addPage();
       if (client) drawHeader(doc, client, "vehicles");
-      y2 = 116;
+      ly = drawLegendTitle(116);
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(...SUB);
     }
-    doc.text(wrapped, M, y2);
-    y2 += wrapped.length * legendLineH + 3;
+    doc.setFillColor(...RULE);
+    doc.circle(M + 2, ly - 3, 1.3, "F");
+    doc.text(wrapped, M + bulletIndent, ly);
+    ly += wrapped.length * legendLineH + 4;
   });
+  y2 = ly + 6;
 
   // Bloc TOTAUX FLOTTE retiré sur demande utilisateur (il s'agit d'une
   // comparaison entre véhicules pour aider le client à choisir, pas d'une
