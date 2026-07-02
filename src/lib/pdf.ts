@@ -3241,7 +3241,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   // Garde-fou espace : bloc TCO + encart fiscal = ~250px de haut.
   // Si on est trop bas dans la page, on saute le bloc pour éviter
   // un débordement sur le footer.
-  if (PDF_CFG.showVehicleTcoBlock && sv.includeTco && y < FOOTER_LIMIT - 250) {
+  if (PDF_CFG.showVehicleTcoBlock && (sv.includeTco || sv.vehicle.isCurrentFleet) && y < FOOTER_LIMIT - 250) {
     const t = computeTco(sv, e);
     // Vérifie si on a une TCO synchronisée depuis beev-tco-2026
     const synced = TCO_RESULTS.get(sv.vehicle.id);
@@ -4513,30 +4513,36 @@ async function drawTcoImpact(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: Energ
 
   const nx = M + 16;
   const rightX = M + W - 16;
-  const barMaxW = W - 32 - 170;
+  const iThumbs = await preloadVehicleThumbs(items.map((i) => i.sv));
+  const tmap = new Map<IItem, LoadedImage | null>();
+  items.forEach((it, i) => tmap.set(it, iThumbs[i]));
+  const textX = nx + 56;
+  const barMaxW = rightX - textX - 175;
   const block = (it: IItem, isEv: boolean, eco: number | null, refTot: number, cy: number): number => {
-    const name = `${it.sv.vehicle.brand} ${it.sv.vehicle.model}`.slice(0, 30);
+    // Photo du véhicule
+    drawThumbCell(doc, { x: nx, y: cy - 12, height: 36 }, tmap.get(it) ?? null, 48, 32);
+    const name = `${it.sv.vehicle.brand} ${it.sv.vehicle.model}`.slice(0, 28);
     doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(12);
     if (isEv) doc.setTextColor(...INK); else doc.setTextColor(...GREY_NAME);
-    doc.text(name, nx, cy);
+    doc.text(name, textX, cy);
     const nameW = doc.getTextWidth(name);
     // Badge rôle
     const badgeTxt = isEv ? "Recommandé" : "Actuel";
     doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(6.5);
     const btw = doc.getTextWidth(badgeTxt);
     doc.setFillColor(isEv ? 253 : 238, isEv ? 241 : 236, isEv ? 238 : 230);
-    doc.roundedRect(nx + nameW + 8, cy - 8, btw + 12, 12, 6, 6, "F");
+    doc.roundedRect(textX + nameW + 8, cy - 8, btw + 12, 12, 6, 6, "F");
     doc.setTextColor(isEv ? 181 : 106, isEv ? 96 : 106, isEv ? 79 : 111);
-    doc.text(badgeTxt, nx + nameW + 14, cy);
+    doc.text(badgeTxt, textX + nameW + 14, cy);
     // Total (droite)
     doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(13);
     if (isEv) doc.setTextColor(...INK); else doc.setTextColor(...SUB);
     doc.text(eur(it.total), rightX, cy, { align: "right" });
     // Barre décomposition (échelle commune)
     const by = cy + 9;
-    doc.setFillColor(242, 240, 234); doc.rect(nx, by, barMaxW, 12, "F");
+    doc.setFillColor(242, 240, 234); doc.rect(textX, by, barMaxW, 12, "F");
     const scaled = (it.total / maxTotal) * barMaxW;
-    let sx = nx;
+    let sx = textX;
     const segs: [number, [number, number, number]][] = [[it.loyer, INK], [it.energie, SEG_ENERGIE], [it.fisc, SEG_FISC], [it.empl, SEG_EMPL]];
     for (const [v, col] of segs) { const w = (v / Math.max(1, it.total)) * scaled; if (w > 0.4) { doc.setFillColor(col[0], col[1], col[2]); doc.rect(sx, by, w, 12, "F"); sx += w; } }
     // Économie (EV)
