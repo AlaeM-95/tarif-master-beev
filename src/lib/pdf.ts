@@ -4934,6 +4934,18 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
     // avec des cellules chiffres vides et la vignette décalée.
     rowPageBreak: "avoid",
     margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
+    // Colonne "Coût employeur complet" (dernière, index 8) mise en évidence :
+    // c'est la métrique de décision, elle doit se distinguer visuellement du
+    // reste du tableau plutôt que se fondre dans une rangée de chiffres.
+    didParseCell: (data: any) => {
+      if (data.column.index !== 8) return;
+      if (data.section === "head") {
+        data.cell.styles.fillColor = SEG_FISC;
+      } else if (data.section === "body" && rowVehicles[data.row.index]) {
+        data.cell.styles.fontStyle = "bold";
+        data.cell.styles.fontSize = 9;
+      }
+    },
     didDrawCell: (data: any) => {
       if (data.section !== "body" || data.column.index !== 0) return;
       const sv = rowVehicles[data.row.index];
@@ -4961,6 +4973,26 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
     },
   });
   let y2 = (doc as any).lastAutoTable.finalY + 20;
+
+  // Encart de lecture pour la colonne AND : la note méthodologique complète
+  // est plus bas, mais ce rappel visuel au plus près du tableau évite de mal
+  // lire la colonne AND comme un coût direct.
+  {
+    const noteText = "Lecture de la colonne AND : ce montant n'est jamais payé directement par l'entreprise — c'est la base sur laquelle elle perd le droit de déduire de l'impôt sur les sociétés. Le vrai surcoût (AND × 25 % d'IS) est déjà intégré dans la colonne « Coût employeur complet », pas dans la colonne AND elle-même.";
+    const noteLines = doc.splitTextToSize(noteText, PAGE_W - M * 2 - 24) as string[];
+    const noteH = noteLines.length * 11 + 16;
+    y2 = ensureSpace(doc, y2, noteH + 10, client, "vehicles");
+    const VIOLET_TINT: [number, number, number] = [239, 234, 243];
+    doc.setFillColor(...VIOLET_TINT);
+    doc.rect(M, y2, PAGE_W - M * 2, noteH, "F");
+    doc.setFillColor(...SEG_FISC);
+    doc.rect(M, y2, 3, noteH, "F");
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...INK);
+    doc.text(noteLines, M + 14, y2 + 13);
+    y2 += noteH + 14;
+  }
 
   // Notes méthodologiques : réaffichées pour tous (admin inclus). Masquées
   // depuis le 30/06 pour "épurer" la page admin, mais un calcul fiscal sans
