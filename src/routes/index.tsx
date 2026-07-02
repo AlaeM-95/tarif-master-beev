@@ -2496,79 +2496,177 @@ function VehicleCatalogByBrand({
           <span className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded-full bg-beev-violet border border-beev-violet" /> Hybride &amp; thermique</span>
         </div>
       )}
-      {/* Accordion vertical : 1 ligne par marque, expansion inline juste en dessous */}
-      <div className="space-y-2">
-        {byBrand.map(([brand, list]) => {
-          const isOpen = expanded.has(brand) || hasActiveSearch;
-          const stockCount = list.filter((v) => v.availableStock).length;
-          const selCount = selectedCountByBrand[brand] ?? 0;
-          const minPrice = Math.min(...list.map((v) => v.priceTtc).filter((p) => p > 0)) || 0;
-          // Contrat tripartite au niveau du constructeur : dès qu'une fiche de la
-          // marque en a un, on l'affiche sur toutes les fiches de la marque.
-          const brandTripartiteUrl = list.find((v) => v.tripartitePdfUrl && v.tripartitePdfUrl.trim())?.tripartitePdfUrl;
-          return (
-            <div key={brand} className={`rounded-lg border ${isOpen ? "border-primary/40 bg-primary/5" : "bg-card"} ${selCount > 0 ? "ring-1 ring-[#35DA76]/40" : ""} transition-all`}>
-              <button
-                type="button"
-                onClick={() => {
-                  setExpanded((s) => {
-                    const next = new Set(s);
-                    if (next.has(brand)) next.delete(brand); else next.add(brand);
-                    return next;
-                  });
-                }}
-                className="w-full flex items-center justify-between gap-3 p-4 text-left hover:bg-accent/30 rounded-lg"
-              >
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <span className={`text-base transition-transform ${isOpen ? "rotate-90" : ""}`}>▶</span>
-                  <p className="font-semibold text-base">{brand}</p>
-                  <span className="text-xs text-muted-foreground">
-                    {list.length} modèle{list.length > 1 ? "s" : ""}
-                  </span>
-                  {stockCount > 0 && (
-                    <span className="text-[10px] inline-flex items-center gap-1 rounded-full bg-[#35DA76]/10 text-[#35DA76] px-2 py-0.5 font-medium">
-                      {stockCount} en stock
-                    </span>
-                  )}
+      {isAdmin ? (
+        <>
+          {/* Grille de logos marque — clic pour afficher/masquer les véhicules
+              de cette marque. Remplace la liste de noms par un repère visuel,
+              une fois les logos renseignés dans /admin/vehicles. */}
+          <div className="flex flex-wrap gap-2">
+            {byBrand.map(([brand, list]) => {
+              const isOpen = expanded.has(brand) || hasActiveSearch;
+              const selCount = selectedCountByBrand[brand] ?? 0;
+              return (
+                <button
+                  key={brand}
+                  type="button"
+                  title={`${brand} · ${list.length} modèle${list.length > 1 ? "s" : ""}`}
+                  onClick={() => {
+                    setExpanded((s) => {
+                      const next = new Set(s);
+                      if (next.has(brand)) next.delete(brand); else next.add(brand);
+                      return next;
+                    });
+                  }}
+                  className={`relative flex flex-col items-center gap-1 rounded-lg border p-2 w-[74px] flex-none transition-all ${
+                    isOpen ? "border-primary bg-primary/5 ring-1 ring-primary/30" : "border-border/60 bg-card hover:border-border"
+                  }`}
+                >
+                  <div className="w-11 h-11 rounded-md border bg-white grid place-content-center overflow-hidden">
+                    {brandLogos?.[brand] ? (
+                      <img src={brandLogos[brand]} alt={brand} className="w-full h-full object-contain p-1" />
+                    ) : (
+                      <span className="text-[11px] font-bold text-foreground/60">{brandInitials(brand)}</span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">{list.length}</span>
                   {selCount > 0 && (
-                    <span className="text-[10px] font-semibold uppercase rounded-full bg-[#35DA76] text-white px-2 py-0.5">
-                      {selCount} sélectionné{selCount > 1 ? "s" : ""}
+                    <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-[#35DA76] text-white text-[9px] font-bold grid place-content-center">
+                      {selCount}
                     </span>
                   )}
-                </div>
-                <span className="text-xs text-muted-foreground flex-shrink-0">
-                  À partir de <strong className="text-foreground">{fmtEur(minPrice)}</strong>
-                </span>
-              </button>
-              {isOpen && (
-                <div className="px-4 pb-4 pt-1">
-                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                    {list.map((v) => (
-                      <VehicleCard
-                        key={v.id}
-                        vehicle={v}
-                        selected={Object.values(selectedV).some((sv) => sv.vehicle.id === v.id)}
-                        onToggle={() => onToggle(v)}
-                        onUpdate={onUpdate ? (p) => onUpdate(v.id, p) : undefined}
-                        onDelete={onDelete ? () => onDelete(v) : undefined}
-                        onDuplicate={onDuplicate ? () => onDuplicate(v) : undefined}
-                        existingCategories={existingCategories}
-                        leaserOffers={leaserOffers.filter((o) => o.vehicleId === v.id)}
-                        canEditPricing={canEditPricing}
-                        brandTripartiteUrl={brandTripartiteUrl}
-                        isInCompare={compareIds?.has(v.id)}
-                        onToggleCompare={onToggleCompare ? () => onToggleCompare(v.id) : undefined}
-                        isAdmin={isAdmin}
-                        brandLogoUrl={brandLogos?.[v.brand]}
-                      />
-                    ))}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Sections dépliées : une par marque sélectionnée dans la grille */}
+          <div className="space-y-2">
+            {byBrand.filter(([brand]) => expanded.has(brand) || hasActiveSearch).map(([brand, list]) => {
+              const stockCount = list.filter((v) => v.availableStock).length;
+              const minPrice = Math.min(...list.map((v) => v.priceTtc).filter((p) => p > 0)) || 0;
+              const brandTripartiteUrl = list.find((v) => v.tripartitePdfUrl && v.tripartitePdfUrl.trim())?.tripartitePdfUrl;
+              return (
+                <div key={brand} className="rounded-lg border border-primary/30 bg-primary/5">
+                  <div className="flex items-center gap-3 p-3 flex-wrap">
+                    <div className="w-8 h-8 rounded-md border bg-white grid place-content-center overflow-hidden flex-none" title={brand}>
+                      {brandLogos?.[brand] ? (
+                        <img src={brandLogos[brand]} alt={brand} className="w-full h-full object-contain p-1" />
+                      ) : (
+                        <span className="text-[9px] font-bold text-foreground/60">{brandInitials(brand)}</span>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted-foreground">{list.length} modèle{list.length > 1 ? "s" : ""}</span>
+                    {stockCount > 0 && (
+                      <span className="text-[10px] inline-flex items-center gap-1 rounded-full bg-[#35DA76]/10 text-[#35DA76] px-2 py-0.5 font-medium">
+                        {stockCount} en stock
+                      </span>
+                    )}
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      À partir de <strong className="text-foreground">{fmtEur(minPrice)}</strong>
+                    </span>
+                  </div>
+                  <div className="px-3 pb-3">
+                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                      {list.map((v) => (
+                        <VehicleCard
+                          key={v.id}
+                          vehicle={v}
+                          selected={Object.values(selectedV).some((sv) => sv.vehicle.id === v.id)}
+                          onToggle={() => onToggle(v)}
+                          onUpdate={onUpdate ? (p) => onUpdate(v.id, p) : undefined}
+                          onDelete={onDelete ? () => onDelete(v) : undefined}
+                          onDuplicate={onDuplicate ? () => onDuplicate(v) : undefined}
+                          existingCategories={existingCategories}
+                          leaserOffers={leaserOffers.filter((o) => o.vehicleId === v.id)}
+                          canEditPricing={canEditPricing}
+                          brandTripartiteUrl={brandTripartiteUrl}
+                          isInCompare={compareIds?.has(v.id)}
+                          onToggleCompare={onToggleCompare ? () => onToggleCompare(v.id) : undefined}
+                          isAdmin={isAdmin}
+                          brandLogoUrl={brandLogos?.[v.brand]}
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        /* Accordion vertical historique : 1 ligne par marque (nom en texte),
+           expansion inline juste en dessous. */
+        <div className="space-y-2">
+          {byBrand.map(([brand, list]) => {
+            const isOpen = expanded.has(brand) || hasActiveSearch;
+            const stockCount = list.filter((v) => v.availableStock).length;
+            const selCount = selectedCountByBrand[brand] ?? 0;
+            const minPrice = Math.min(...list.map((v) => v.priceTtc).filter((p) => p > 0)) || 0;
+            const brandTripartiteUrl = list.find((v) => v.tripartitePdfUrl && v.tripartitePdfUrl.trim())?.tripartitePdfUrl;
+            return (
+              <div key={brand} className={`rounded-lg border ${isOpen ? "border-primary/40 bg-primary/5" : "bg-card"} ${selCount > 0 ? "ring-1 ring-[#35DA76]/40" : ""} transition-all`}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExpanded((s) => {
+                      const next = new Set(s);
+                      if (next.has(brand)) next.delete(brand); else next.add(brand);
+                      return next;
+                    });
+                  }}
+                  className="w-full flex items-center justify-between gap-3 p-4 text-left hover:bg-accent/30 rounded-lg"
+                >
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <span className={`text-base transition-transform ${isOpen ? "rotate-90" : ""}`}>▶</span>
+                    <p className="font-semibold text-base">{brand}</p>
+                    <span className="text-xs text-muted-foreground">
+                      {list.length} modèle{list.length > 1 ? "s" : ""}
+                    </span>
+                    {stockCount > 0 && (
+                      <span className="text-[10px] inline-flex items-center gap-1 rounded-full bg-[#35DA76]/10 text-[#35DA76] px-2 py-0.5 font-medium">
+                        {stockCount} en stock
+                      </span>
+                    )}
+                    {selCount > 0 && (
+                      <span className="text-[10px] font-semibold uppercase rounded-full bg-[#35DA76] text-white px-2 py-0.5">
+                        {selCount} sélectionné{selCount > 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-xs text-muted-foreground flex-shrink-0">
+                    À partir de <strong className="text-foreground">{fmtEur(minPrice)}</strong>
+                  </span>
+                </button>
+                {isOpen && (
+                  <div className="px-4 pb-4 pt-1">
+                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                      {list.map((v) => (
+                        <VehicleCard
+                          key={v.id}
+                          vehicle={v}
+                          selected={Object.values(selectedV).some((sv) => sv.vehicle.id === v.id)}
+                          onToggle={() => onToggle(v)}
+                          onUpdate={onUpdate ? (p) => onUpdate(v.id, p) : undefined}
+                          onDelete={onDelete ? () => onDelete(v) : undefined}
+                          onDuplicate={onDuplicate ? () => onDuplicate(v) : undefined}
+                          existingCategories={existingCategories}
+                          leaserOffers={leaserOffers.filter((o) => o.vehicleId === v.id)}
+                          canEditPricing={canEditPricing}
+                          brandTripartiteUrl={brandTripartiteUrl}
+                          isInCompare={compareIds?.has(v.id)}
+                          onToggleCompare={onToggleCompare ? () => onToggleCompare(v.id) : undefined}
+                          isAdmin={isAdmin}
+                          brandLogoUrl={brandLogos?.[v.brand]}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -3258,7 +3356,9 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
             </div>
           )}
           <div className="min-w-0">
-            <h3 className="font-bold leading-tight text-foreground text-base truncate">{vehicle.brand} {vehicle.model}</h3>
+            {/* Nom de marque en texte retiré quand le logo est affiché (admin) :
+                le logo porte déjà cette information, pas besoin de le répéter. */}
+            <h3 className="font-bold leading-tight text-foreground text-base truncate">{isAdmin ? vehicle.model : `${vehicle.brand} ${vehicle.model}`}</h3>
             <p className="text-xs text-muted-foreground truncate mt-0.5">{vehicle.version}</p>
           </div>
         </div>

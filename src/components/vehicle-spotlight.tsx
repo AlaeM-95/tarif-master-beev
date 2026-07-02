@@ -118,7 +118,7 @@ export function VehicleSpotlight({
                     </Badge>
                   )}
                   <h3 className="text-2xl font-bold text-beev-black leading-tight">
-                    {v.brand} {v.model}
+                    {isAdmin ? v.model : `${v.brand} ${v.model}`}
                   </h3>
                   <p className="text-sm text-beev-black/70 mt-0.5">{v.version}</p>
                 </div>
