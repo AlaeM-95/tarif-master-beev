@@ -4978,7 +4978,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   // est plus bas, mais ce rappel visuel au plus près du tableau évite de mal
   // lire la colonne AND comme un coût direct.
   {
-    const noteText = "Lecture de la colonne AND : ce montant n'est jamais payé directement par l'entreprise — c'est la base sur laquelle elle perd le droit de déduire de l'impôt sur les sociétés. Le vrai surcoût (AND × 25 % d'IS) est déjà intégré dans la colonne « Coût employeur complet », pas dans la colonne AND elle-même.";
+    const noteText = "La colonne AND n'est pas un montant payé directement par l'entreprise : c'est la base sur laquelle elle perd le droit de déduire de l'impôt sur les sociétés. Le surcoût réel, égal à 25 % de ce montant, est déjà intégré dans la colonne « Coût employeur complet ».";
     const noteLines = doc.splitTextToSize(noteText, PAGE_W - M * 2 - 24) as string[];
     const noteH = noteLines.length * 11 + 16;
     y2 = ensureSpace(doc, y2, noteH + 10, client, "vehicles");
@@ -4998,14 +4998,14 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   // depuis le 30/06 pour "épurer" la page admin, mais un calcul fiscal sans
   // sa méthode n'est pas vérifiable — la transparence prime sur l'épure.
   const legendLines = [
-    "Cellules en rose : charges fiscales à valider (Malus CO2 + poids, TVS non nulles)",
-    "Coût employeur complet = Loyer + Énergie + TVS + Malus + (AND × 25 % d'IS × durée) + (AEN employeur × durée)",
-    "AND (Avantage Non Déductible) = MAX(0, prix d'achat final − prix batterie − plafond fiscal CO₂) ÷ 5, calculé sur le prix catalogue TTC ; « — » si le prix catalogue n'est pas renseigné",
-    "L'AND n'est PAS un décaissement : c'est un montant que l'entreprise ne peut pas déduire de son résultat imposable. Le surcoût réel pour l'entreprise est l'impôt sur les sociétés (IS) supplémentaire généré par cette réintégration, soit AND × 25 % — c'est ce montant, et non l'AND brut, qui entre dans le coût employeur complet",
-    "AEN employeur = avantage en nature × 42 % (charges patronales, réellement décaissées) ; abattement de 70 % uniquement si l'éco-score du véhicule est activé (sinon AEN plein)",
-    "AEN salarié /mois = loyer mensuel TTC × 50 % (forfait sans carburant), moins abattement 70 % si véhicule électrique avec éco-score. Avantage en nature imposable du salarié, affiché à titre informatif : NON inclus dans le coût employeur complet ni dans le TCO.",
-    "Loyer total = loyer mensuel négocié × nombre de mois (TTC, TVA récupérable LLD)",
-    "Énergie = conso véhicule × km contrat × prix carburant ou kWh (mix 85 % domicile / 15 % public)",
+    "Les cellules en rose signalent une charge fiscale supplémentaire à l'achat (malus CO2, malus au poids) ou une taxe annuelle sur les véhicules de société non nulle.",
+    "Le coût employeur complet additionne le loyer, l'énergie, la taxe sur les véhicules de société, les malus, l'impact fiscal de l'AND et la part employeur de l'avantage en nature, sur la durée du contrat.",
+    "L'AND (avantage non déductible) correspond à la part du prix d'achat qui dépasse le plafond fiscal fixé selon les émissions de CO2 du véhicule, après déduction du prix de la batterie, amortie sur 5 ans.",
+    "L'AND n'est pas un décaissement pour l'entreprise : c'est un montant qu'elle ne peut pas déduire de son résultat imposable. Le coût réel supporté est l'impôt sur les sociétés supplémentaire généré par ce montant, soit 25 % de l'AND. C'est ce montant, et non l'AND brut, qui entre dans le coût employeur complet.",
+    "La part employeur de l'avantage en nature correspond à 42 % de l'avantage en nature calculé, avec un abattement de 70 % pour les véhicules électriques bénéficiant du score environnemental.",
+    "L'avantage en nature du salarié, calculé sur 50 % du loyer mensuel avec le même abattement électrique, est imposable pour le collaborateur. Il est indiqué à titre d'information et n'entre pas dans le coût employeur complet ni dans le TCO.",
+    "Le loyer total correspond au loyer mensuel négocié multiplié par la durée du contrat, TVA récupérable incluse en location longue durée.",
+    "Le coût énergie correspond à la consommation du véhicule multipliée par le kilométrage du contrat et le prix du carburant ou de l'électricité, sur la base d'une recharge à 85 % à domicile et 15 % en public.",
   ];
   // On pré-wrappe avec la police déjà fixée (8pt) pour mesurer la hauteur
   // réelle. Pas d'encart à hauteur fixe (ça désynchronise si le contenu
