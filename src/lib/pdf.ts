@@ -3178,6 +3178,8 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     doc.text("COMPRIS DANS LE LOYER", rightX + 30, top + 4);
     let ry = top + 22;
     const svcs = [...MANDATORY_SERVICES, ...sv.services].slice(0, 5);
+    const svcTextX = rightX + 30;
+    const svcTextW = M + contentW - svcTextX; // largeur restante jusqu'à la marge droite
     for (const svc of svcs) {
       doc.setFillColor(...accSoft);
       doc.roundedRect(rightX, ry, 22, 22, 7, 7, "F");
@@ -3188,8 +3190,9 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       doc.setFont(BRAND_FONT, "normal");
       doc.setFontSize(10.5);
       doc.setTextColor(...INK);
-      doc.text(svc, rightX + 30, ry + 15);
-      ry += 30;
+      const svcLines: string[] = doc.splitTextToSize(svc, svcTextW);
+      doc.text(svcLines, svcTextX, ry + 15);
+      ry += Math.max(30, svcLines.length * 13 + 8);
     }
     // Fin des deux colonnes : on repart sous la plus profonde.
     y = Math.max(ly, ry) + 18;
