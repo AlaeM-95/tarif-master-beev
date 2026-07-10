@@ -13,6 +13,10 @@ export type PdfSettings = {
   colorLavender: string;
   colorBg: string;
   logoUrl: string | null;
+  /** Variante blanche/claire du logo, pour les pages à fond sombre (couverture
+   *  non-admin, bandeau des en-têtes internes non-admin). logoUrl reste la
+   *  variante sombre/couleur utilisée sur fond clair. */
+  logoInverseUrl: string | null;
   coverImageUrl: string | null;
   coverSubtitle: string | null;
   whyBeevIntro: string | null;
@@ -43,6 +47,7 @@ function dbToSettings(row: PdfSettingsRow): PdfSettings {
     colorLavender: row.color_lavender,
     colorBg: row.color_bg,
     logoUrl: row.logo_url,
+    logoInverseUrl: (row as any).logo_dark_bg_url ?? null,
     coverImageUrl: row.cover_image_url,
     coverSubtitle: row.cover_subtitle,
     whyBeevIntro: row.why_beev_intro,
@@ -114,6 +119,7 @@ export function usePdfSettings() {
     if (patch.colorLavender !== undefined) dbPatch.color_lavender = patch.colorLavender;
     if (patch.colorBg !== undefined) dbPatch.color_bg = patch.colorBg;
     if (patch.logoUrl !== undefined) dbPatch.logo_url = patch.logoUrl;
+    if (patch.logoInverseUrl !== undefined) (dbPatch as any).logo_dark_bg_url = patch.logoInverseUrl;
     if (patch.coverImageUrl !== undefined) dbPatch.cover_image_url = patch.coverImageUrl;
     if (patch.coverSubtitle !== undefined) dbPatch.cover_subtitle = patch.coverSubtitle;
     if (patch.whyBeevIntro !== undefined) dbPatch.why_beev_intro = patch.whyBeevIntro;

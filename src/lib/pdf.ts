@@ -294,6 +294,7 @@ const ACCENT_TEXT: [number, number, number] = [181, 96, 79]; // #B5604F
 // Contenus éditables depuis l'admin (chargés depuis pdf_settings + journey_steps).
 let PDF_CONTENT: {
   logoUrl: string | null;
+  logoInverseUrl: string | null;
   coverImageUrl: string | null;
   coverSubtitle: string | null;
   whyBeevIntro: string | null;
@@ -304,6 +305,7 @@ let PDF_CONTENT: {
   steps: Array<{ n: string; title: string; summary: string; duration: string; beev: string[]; client: string[] }>;
 } = {
   logoUrl: null,
+  logoInverseUrl: null,
   coverImageUrl: null,
   coverSubtitle: null,
   whyBeevIntro: null,
@@ -481,6 +483,7 @@ async function applyPdfSettings(projectType: ProjectType) {
       LAVENDER = hexToRgb(settings.colorLavender);
       PDF_CONTENT = {
         logoUrl: settings.logoUrl,
+        logoInverseUrl: settings.logoInverseUrl,
         coverImageUrl: settings.coverImageUrl,
         coverSubtitle: settings.coverSubtitle,
         whyBeevIntro: settings.whyBeevIntro,
@@ -686,14 +689,17 @@ export async function generateProposalPdf(opts: {
 
   // Préchargement du logo header (variante blanche officielle Beev) — utilisé
   // sur chaque page interne via drawHeader (placé dans un bandeau noir
-  // arrondi). On essaie plusieurs chemins candidats puis on bascule sur le
-  // logo noir si le blanc échoue, et sur le texte si rien ne charge.
+  // arrondi). Priorité à la variante fond sombre paramétrée dans l'admin
+  // (PDF_CONTENT.logoInverseUrl) : logoUrl seul (fond clair) n'a pas assez
+  // de contraste ici. Puis repli sur les fichiers locaux, puis sur le texte
+  // si rien ne charge.
   const headerLogoCandidates = [
+    PDF_CONTENT.logoInverseUrl ?? undefined,
     "/images/logo-beev-white.png", // copie URL-safe (sans espaces) recommandée
     "/images/logo-beev-blanc.png",
     "/images/logo%20beev%20white.png",
     "/images/logo beev white.png",
-  ];
+  ].filter(Boolean) as string[];
   HEADER_LOGO = null;
   for (const url of headerLogoCandidates) {
     const img = await loadImage(url);
@@ -1234,16 +1240,14 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
   doc.setFillColor(...INK);
   doc.rect(0, 0, PAGE_W, PAGE_H, "F");
 
-  // Logo Beev en haut gauche — priorité au logo uploadé par le commercial
-  // dans /admin/pdf (PDF_CONTENT.logoUrl, alimenté par pdf_settings.logo_url).
-  // Fallback sur les fichiers locaux dans public/images/ pour les variations
-  // de nommage (espace, accent, langue). Le premier qui charge gagne.
-  //
-  // ATTENTION : c'est bien `logoUrl` qu'il faut lire, pas coverLogoUrl
-  // (ce champ n'existe pas dans PDF_CONTENT, le cast string|undefined
-  // masquait l'erreur et le logo admin n'était jamais utilisé).
+  // Logo Beev en haut gauche — cette couverture a un fond NOIR plein page,
+  // donc priorité à la variante fond sombre (PDF_CONTENT.logoInverseUrl,
+  // alimentée par pdf_settings.logo_dark_bg_url). logoUrl seul (pensé pour
+  // fond clair) devenait illisible ici. Fallback sur les fichiers locaux
+  // dans public/images/ pour les variations de nommage (espace, accent,
+  // langue). Le premier qui charge gagne.
   const logoCandidates = [
-    PDF_CONTENT.logoUrl ?? undefined,
+    PDF_CONTENT.logoInverseUrl ?? undefined,
     "/images/logo-beev-blanc.png",
     "/images/logo-beev-white.png",
     "/images/logo%20beev%20white.png",
@@ -5436,14 +5440,18 @@ async function drawChargerProductSheet(doc: jsPDF, ch: Charger, _client: ClientI
   doc.setFillColor(...BG);
   doc.rect(0, 0, PAGE_W, PAGE_H, "F");
 
-  // En-tête : logo Beev (noir) + « FICHE TECHNIQUE / Borne de recharge AC »
-  // drawImageContain aplatit la transparence PNG sur le beige (pas de carré noir)
-  // et cale le logo en haut à gauche.
+  // En-tête : logo Beev (fond clair) + « FICHE TECHNIQUE / Borne de recharge AC »
+  // Priorité au logo paramétré dans l'admin (PDF_CONTENT.logoUrl), comme sur
+  // le reste du PDF, sinon repli sur le fichier noir local. drawImageContain
+  // aplatit la transparence PNG sur le beige (pas de carré noir) et cale le
+  // logo en haut à gauche.
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(20);
   doc.setTextColor(...INK);
   doc.text("Beev", M, 62); // repli si le logo ne charge pas
-  try { await drawImageContain(doc, "/images/logo-beev-noir.png", M, 44, 78, 22, BG); } catch { /* repli texte ci-dessus */ }
+  for (const logoUrl of [PDF_CONTENT.logoUrl ?? undefined, "/images/logo-beev-noir.png"].filter(Boolean) as string[]) {
+    try { await drawImageContain(doc, logoUrl, M, 44, 78, 22, BG); break; } catch { /* essai suivant */ }
+  }
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8);
   doc.setTextColor(...SUB);

@@ -230,7 +230,13 @@ function AppearanceSection({ settings, onSave }: { settings: PdfSettings; onSave
           currentUrl={draft.logoUrl ?? undefined}
           onChange={(url) => { setDraft({ ...draft, logoUrl: url }); save({ logoUrl: url || null }); }}
           folder="pdf"
-          label="Logo Beev (PNG/SVG)"
+          label="Logo Beev — fond clair (noir ou couleur)"
+        />
+        <ImageUpload
+          currentUrl={draft.logoInverseUrl ?? undefined}
+          onChange={(url) => { setDraft({ ...draft, logoInverseUrl: url }); save({ logoInverseUrl: url || null }); }}
+          folder="pdf"
+          label="Logo Beev — fond sombre (blanc)"
         />
         <ImageUpload
           currentUrl={draft.coverImageUrl ?? undefined}
@@ -314,7 +320,13 @@ function SettingsForm({ settings, onSave }: { settings: PdfSettings; onSave: (pa
             currentUrl={draft.logoUrl ?? undefined}
             onChange={(url) => { setDraft({ ...draft, logoUrl: url }); save({ logoUrl: url || null }); }}
             folder="pdf"
-            label="Logo Beev (PNG/SVG)"
+            label="Logo Beev — fond clair (noir ou couleur)"
+          />
+          <ImageUpload
+            currentUrl={draft.logoInverseUrl ?? undefined}
+            onChange={(url) => { setDraft({ ...draft, logoInverseUrl: url }); save({ logoInverseUrl: url || null }); }}
+            folder="pdf"
+            label="Logo Beev — fond sombre (blanc)"
           />
           <ImageUpload
             currentUrl={draft.coverImageUrl ?? undefined}
