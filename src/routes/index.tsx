@@ -818,7 +818,7 @@ function App() {
   const SITE_PREVIEW_KEYS = new Set<string>([
     "showSiteOverview", "showSiteGuarantees", "showSiteProjectSynthesis", "showSiteInfrastructure",
     "showSiteEquipments", "showSiteProductSheet", "showSiteSupervision", "showSiteCompliance",
-    "showSiteFinancialRecap", "showSitePaymentOptions", "showSupervisionConnect",
+    "showSitePaymentOptions", "showSupervisionConnect",
   ]);
   const HOME_PREVIEW_KEYS = new Set<string>(["showB2B2ETco", "showSupervisionHome", "showHomeConnectKit"]);
   const demoVehicles = (): SelectedVehicle[] => {

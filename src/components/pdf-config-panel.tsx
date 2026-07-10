@@ -32,7 +32,7 @@ const DOC_ORDER: string[] = [
   // Rapport site entreprise
   "showSiteOverview", "showSiteGuarantees", "showSiteProjectSynthesis", "showSiteInfrastructure",
   "showSiteEquipments", "showSiteProductSheet", "showSiteSupervision", "showSiteCompliance",
-  "showSiteFinancialRecap", "showSitePaymentOptions",
+  "showSitePaymentOptions",
   // Supervision (modules)
   "showSupervisionHome", "showSupervisionConnect",
   // Synthèse & clôture
@@ -53,7 +53,7 @@ const PHASES: { name: string; accent: PhaseAccent; keys: string[] }[] = [
   { name: "Ouverture", accent: "rose", keys: ["showWhyBeev", "showSocialProof"] },
   { name: "Offre véhicules", accent: "bleu", keys: ["showVehicleComparator", "showCurrentFleetVehicle", "showProposalVehicle", "showCompetitorComparison", "showFleetSynthesis"] },
   { name: "Analyse TCO", accent: "violet", keys: ["includeCurrentFleetInTco", "showTcoComparison", "showTcoDetailedTable", "tcoGroupByComparison", "showTcoFiscalDetail", "showCarbonImpact", "showFiscalAdvantages"] },
-  { name: "Rapport site & bornes", accent: "ink", keys: ["showSiteOverview", "showSiteGuarantees", "showSiteProjectSynthesis", "showSiteInfrastructure", "showSiteEquipments", "showSiteProductSheet", "showSiteSupervision", "showSiteCompliance", "showSiteFinancialRecap", "showSitePaymentOptions", "showChargerFeatures", "showChargerLineItems", "showChargerInclusionNote", "showSupervisionHome", "showSupervisionConnect"] },
+  { name: "Rapport site & bornes", accent: "ink", keys: ["showSiteOverview", "showSiteGuarantees", "showSiteProjectSynthesis", "showSiteInfrastructure", "showSiteEquipments", "showSiteProductSheet", "showSiteSupervision", "showSiteCompliance", "showSitePaymentOptions", "showChargerFeatures", "showChargerLineItems", "showChargerInclusionNote", "showSupervisionHome", "showSupervisionConnect"] },
   { name: "Synthèse & clôture", accent: "rose", keys: ["showFinancialSummary", "showFinancialSynthesis", "showGuarantees", "showJourney", "showExecutiveSummary", "showLegend", "showValidation"] },
   { name: "Détails fiche véhicule", accent: "bleu", keys: ["showVehicleConsumption", "showVehicleCo2", "showVehicleFiscalHp", "showVehicleEnvScore", "showVehicleServices", "showVehicleOptions", "showVehicleDiscount", "showVehicleTcoBlock", "showVehicleLeadTime", "showVehicleTrunk", "showVehicleChargeAc", "showVehicleChargeDc", "showVehicleChargeTime2080Ac", "showVehicleChargeTime2080Dc", "showVehicleDimensions"] },
 ];
@@ -74,7 +74,7 @@ const KIND_BY_KEY: Record<string, SectionKind> = {
   showSupervisionHome: "cartes", showSupervisionConnect: "cartes",
   showSiteOverview: "texte", showSiteGuarantees: "cartes", showSiteProjectSynthesis: "texte",
   showSiteInfrastructure: "texte", showSiteEquipments: "tableau", showSiteProductSheet: "fiche",
-  showSiteSupervision: "cartes", showSiteCompliance: "texte", showSiteFinancialRecap: "tableau",
+  showSiteSupervision: "cartes", showSiteCompliance: "texte",
   showSitePaymentOptions: "cartes", showValidation: "texte",
 };
 const KIND_LABEL: Record<SectionKind, string> = {

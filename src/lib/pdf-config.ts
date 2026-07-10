@@ -61,7 +61,6 @@ export type PdfDisplayConfig = {
   showSiteProductSheet: boolean; // pages Fiche produit (1 par modèle)
   showSiteSupervision: boolean; // page Supervision (Connect / Home Charging)
   showSiteCompliance: boolean; // page Conformité réglementaire
-  showSiteFinancialRecap: boolean; // page Récap financier site
   showSitePaymentOptions: boolean; // page Options de paiement
   showValidation: boolean; // page BPA (signature)
   showB2B2ETco: boolean; // page TCO B2B2E (Bornes domicile)
@@ -119,11 +118,10 @@ export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
   showSiteGuarantees: true,
   showSiteProjectSynthesis: true,
   showSiteInfrastructure: true,
-  showSiteEquipments: false, // désactivé par défaut : redondant avec fiche produit + récap financier (doublon Total HT)
+  showSiteEquipments: false, // désactivé par défaut : redondant avec fiche produit + options de paiement (doublon Total HT)
   showSiteProductSheet: true,
   showSiteSupervision: true,
   showSiteCompliance: true,
-  showSiteFinancialRecap: true,
   showSitePaymentOptions: true,
   showValidation: true,
   showB2B2ETco: true,
@@ -245,7 +243,6 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
       { key: "showSiteProductSheet", label: "Fiches produit", description: "1 page par modèle de borne" },
       { key: "showSiteSupervision", label: "Supervision", description: "Beev Connect ou Home Charging" },
       { key: "showSiteCompliance", label: "Conformité réglementaire", description: "Bureau Contrôle + Maintenance" },
-      { key: "showSiteFinancialRecap", label: "Récap financier", description: "Tableau Poste/Fournisseur/Montant HT" },
       { key: "showSitePaymentOptions", label: "Options de paiement", description: "Comptant / 50-50 / Leasing" },
     ],
   },

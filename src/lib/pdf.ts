@@ -796,11 +796,10 @@ export async function generateProposalPdf(opts: {
       drawHeader(doc, client, effectiveType);
       drawSiteCompliance(doc, c);
     }
-    if (cfg.showSiteFinancialRecap) {
-      doc.addPage();
-      drawHeader(doc, client, effectiveType);
-      drawSiteFinancialRecap(doc, c);
-    }
+    // Page "Récapitulatif financier" supprimée sur demande utilisateur : le
+    // total HT/TVA/TTC est déjà affiché sur la page "Options de paiement"
+    // (drawSitePaymentOptions, plus bas), qui reste la seule source de prix
+    // pour un déploiement site entreprise.
     // Paiement déplacé en fin de document, juste avant Journey
     // (cf. bloc plus bas dans cette fonction).
   }
@@ -1831,7 +1830,7 @@ function drawSiteEquipments(doc: jsPDF, chargers: SelectedCharger[]) {
   const totalQty = aggregated.reduce((s, r) => s + r.quantity, 0);
 
   // Pas de colonne "TOTAL HT" ni de footer prix : le Total HT par site est
-  // affiché UNIQUEMENT sur la slide récap financier (drawSiteFinancialRecap)
+  // affiché UNIQUEMENT sur la page "Options de paiement" (drawSitePaymentOptions)
   // pour éviter les doublons sur le PDF client.
   autoTable(doc, {
     startY: y,
@@ -1963,7 +1962,7 @@ async function drawSiteProductSheet(doc: jsPDF, sc: SelectedCharger) {
 
   // Table specs
   const specs = [
-    { label: "Puissance", value: `${v.powerKw} kW${v.powerKw >= 22 ? " triphasé" : " monophasé"}` },
+    { label: "Puissance", value: `${sc.chargePoints ?? 1} × ${v.powerKw} kW` },
     { label: "Connectivité", value: lookupText(TEXTS, "site", "site_product_connectivity", "Prise Type 2 intégrée · Lecteur RFID · Connectivité WiFi/4G") },
     { label: "Communication", value: lookupText(TEXTS, "site", "site_product_communication", "OCPP 1.6 et 2.0 · Supervision compatible") },
     { label: "Smart Charging", value: lookupText(TEXTS, "site", "site_product_smart_charging", "Délestage dynamique · Équilibrage actif") },
@@ -2351,97 +2350,6 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
   }
 }
 
-// ============ RAPPORT SITE — RÉCAP FINANCIER ENRICHI ============
-// Table Poste / Fournisseur / Montant HT + ligne TVA + ligne TTC + note maintenance.
-function drawSiteFinancialRecap(doc: jsPDF, chargers: SelectedCharger[]) {
-  const PINK: [number, number, number] = [244, 184, 170];
-  const t = (s: string, fb: string) => lookupText(TEXTS, "site", s, fb);
-  let y = 116;
-  doc.setFillColor(...PINK);
-  doc.rect(M, y - 8, 22, 2, "F");
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(8.5);
-  doc.setTextColor(...SUB);
-  doc.text(t("site_fin_eyebrow", "6 · RÉCAPITULATIF FINANCIER"), M + 30, y - 4);
-  y += 14;
-  doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(26);
-  doc.setTextColor(...INK);
-  // Titre retiré sur demande utilisateur — l'eyebrow "6 · RÉCAPITULATIF
-  // FINANCIER" suffit. Si vous voulez le restaurer : éditer site_fin_title
-  // depuis /admin/pdf > onglet Site > catégorie récap financier.
-  const finTitle = t("site_fin_title", "");
-  if (finTitle.trim()) doc.text(finTitle, M, y + 18);
-  y += 50;
-
-  // Agrégation par fournisseur
-  const installItems: number[] = [];
-  const chargerItems: number[] = [];
-  for (const sc of chargers) {
-    // Les bornes en location ne sont pas chiffrées à l'achat dans le récap.
-    if (sc.leaseEnabled) continue;
-    for (const li of sc.lineItems) {
-      const tot = lineItemClientTotal(li) * sc.quantity;
-      const isInstall = /pose|forfait|raccord|installation|tranch[ée]|génie/i.test(li.label);
-      if (isInstall) installItems.push(tot);
-      else chargerItems.push(tot);
-    }
-  }
-  const totalInstall = installItems.reduce((a, b) => a + b, 0);
-  const totalChargersOnly = chargerItems.reduce((a, b) => a + b, 0);
-  // Bureau de Contrôle : activable par le commercial uniquement (siteSpecs.
-  // includeBureauControle). Obligatoire seulement si abonnement > 36 kVA.
-  const specsTVA = aggregateSiteSpecs(chargers);
-  const bureauControleEnabled = specsTVA.includeBureauControle === true;
-  const bureauControle = bureauControleEnabled
-    ? Math.max(0, parseFloat(t("site_pay_bureau_ht", "700")) || 700)
-    : 0;
-  const totalHt = totalInstall + totalChargersOnly + bureauControle;
-  // Taux TVA configurable : 5,5 % (TVA réduite particulier) ou 20 % (standard B2B)
-  const tvaRate = specsTVA.tvaRate ?? 20;
-  const tva = totalHt * (tvaRate / 100);
-  const totalTtc = totalHt + tva;
-  const supSpecs = chargers.map((sc) => sc.siteSpecs?.supervisionPlan).filter(Boolean);
-  const hasSupervision = supSpecs.length > 0 && supSpecs[0] !== "none";
-
-  const headPoste = t("site_fin_head_poste", "POSTE");
-  const headFour = t("site_fin_head_fournisseur", "FOURNISSEUR");
-  const headMontant = t("site_fin_head_montant", "MONTANT HT");
-
-  autoTable(doc, {
-    startY: y,
-    theme: "plain",
-    head: [[headPoste, headFour, headMontant]],
-    body: [
-      ...(totalInstall > 0 ? [[t("site_fin_install_label", "Installation électrique"), t("site_fin_install_supplier", "Électricien partenaire"), { content: eur(totalInstall), styles: { halign: "right", fontStyle: "bold" } }]] : []),
-      ...(totalChargersOnly > 0 ? [[t("site_fin_bornes_label", "Bornes de recharge"), t("site_fin_bornes_supplier", "Beev"), { content: eur(totalChargersOnly), styles: { halign: "right", fontStyle: "bold" } }]] : []),
-      ...(bureauControleEnabled ? [[t("site_fin_bureau_label", "Bureau de Contrôle (>36 kVA)"), t("site_fin_bureau_supplier", "Tiers"), { content: eur(bureauControle), styles: { halign: "right", fontStyle: "bold" } }]] : []),
-      ...(hasSupervision ? [[t("site_fin_sup_label", "Supervision (12 premiers mois)"), t("site_fin_sup_supplier", "Beev"), { content: t("site_fin_sup_value", "OPTION"), styles: { halign: "right", textColor: SUB, fontStyle: "normal" } }]] : []),
-    ],
-    foot: [
-      [{ content: t("site_fin_total_ht_label", "Total projet HT"), colSpan: 2, styles: { halign: "right", fontStyle: "bold", textColor: INK, fillColor: BG } }, { content: eur(totalHt), styles: { halign: "right", fontStyle: "bold", textColor: INK, fillColor: BG } }],
-      [{ content: `TVA ${tvaRate.toString().replace(".", ",")} %`, colSpan: 2, styles: { halign: "right", textColor: SUB, fillColor: BG } }, { content: eur(tva), styles: { halign: "right", textColor: SUB, fillColor: BG } }],
-      [{ content: t("site_fin_total_ttc_label", "Total TTC"), colSpan: 2, styles: { halign: "right", fontStyle: "bold", textColor: ACCENT_TEXT, fillColor: BG, fontSize: 12 } }, { content: eur(totalTtc), styles: { halign: "right", fontStyle: "bold", textColor: ACCENT_TEXT, fillColor: BG, fontSize: 12, font: BRAND_FONT } }],
-    ],
-    headStyles: { fillColor: LAVENDER, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT, cellPadding: 7 },
-    bodyStyles: { fontSize: 10, cellPadding: 7, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
-    footStyles: { font: BRAND_FONT },
-    columnStyles: { 0: { cellWidth: "auto" }, 1: { cellWidth: 140 }, 2: { halign: "right", cellWidth: 100, fontStyle: "bold" } },
-    margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
-  });
-  let y2 = (doc as any).lastAutoTable.finalY + 16;
-
-  // Note maintenance
-  doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(8.5);
-  doc.setTextColor(...SUB);
-  doc.text(
-    t("site_fin_maint_note", "Maintenance annuelle non incluse dans le total ci-dessus. Voir page Conformité."),
-    M,
-    y2,
-    { maxWidth: PAGE_W - M * 2 },
-  );
-}
 
 // ============ RAPPORT SITE — OPTIONS DE PAIEMENT ============
 // 3 colonnes : Comptant -2% / 50% acompte + 50% / Leasing.
