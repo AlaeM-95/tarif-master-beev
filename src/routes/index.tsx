@@ -4468,6 +4468,17 @@ function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total,
         <NumField label="Remise %" value={sc.discountPct} onChange={(n) => onChange({ discountPct: n })} step={0.5} />
       </div>
 
+      {/* Points de charge par borne : 1 (simple) ou 2 (double, un poteau/mur
+          avec 2 prises indépendantes). Distinct de la quantité de bornes
+          ci-dessus. Pilote l'affichage "1 × / 2 × ... kW" dans le PDF. */}
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wide">Points de charge par borne</span>
+        <div className="flex rounded-md border overflow-hidden text-xs ml-auto">
+          <button type="button" onClick={() => onChange({ chargePoints: 1 })} className={`px-3 py-1 ${(sc.chargePoints ?? 1) === 1 ? "bg-foreground text-background font-semibold" : "hover:bg-muted"}`}>Simple (1)</button>
+          <button type="button" onClick={() => onChange({ chargePoints: 2 })} className={`px-3 py-1 ${sc.chargePoints === 2 ? "bg-foreground text-background font-semibold" : "hover:bg-muted"}`}>Double (2)</button>
+        </div>
+      </div>
+
       {/* Mode Achat / Location (leasing). En location : loyer + durée saisis par
           le commercial, option d'achat (10%) et résiliation calculées, présentés
           dans le PDF à la place du chiffrage à l'achat. */}

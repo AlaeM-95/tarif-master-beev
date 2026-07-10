@@ -219,6 +219,10 @@ export type SelectedCharger = {
   /** Lien de signature en ligne du devis (admin). Utilisé par le CTA « Signer le
    *  devis » de la page Options de paiement. Vide : repli sur contact@beev.co. */
   signatureUrl?: string;
+  /** Nombre de points de charge par borne : 1 (borne simple) ou 2 (borne
+   *  double — un poteau/mur avec 2 prises indépendantes). Distinct de
+   *  `quantity` (nombre de bornes achetées). Par défaut 1 si non renseigné. */
+  chargePoints?: 1 | 2;
 };
 
 // Calculs de l'offre en location d'une borne (par instance).
@@ -1495,7 +1499,9 @@ function drawSiteOverview(doc: jsPDF, client: ClientInfo, chargers: SelectedChar
   const totalChargers = chargers.reduce((s, sc) => s + sc.quantity, 0);
   const uniqueModels = new Set(chargers.map((sc) => `${sc.charger.brand} ${sc.charger.model}`));
   const modelsSummary = Array.from(uniqueModels).slice(0, 2).join(", ") + (uniqueModels.size > 2 ? "..." : "");
-  const powerBreakdown = chargers.map((sc) => `${sc.quantity} × ${sc.charger.powerKw} kW`).join(" + ");
+  // Points de charge par borne (1 = simple, 2 = double), pas le nombre de
+  // bornes achetées (déjà affiché séparément sous "Nombre de bornes").
+  const powerBreakdown = chargers.map((sc) => `${sc.chargePoints ?? 1} × ${sc.charger.powerKw} kW`).join(" + ");
 
   // === Colonne gauche : caractéristiques projet ===
   // Toutes les valeurs sont surchargeables via sc.siteSpecs (champs admin
@@ -1627,10 +1633,10 @@ function drawSiteProjectSynthesis(doc: jsPDF, client: ClientInfo, chargers: Sele
     { label: "Puissance électrique disponible", value: specs.edfPower || "Selon votre contrat d'électricité" },
   ];
   // Câble 22 kW : affiché seulement si au moins 1 borne triphasée
-  if (hasHighPower) rows.push({ label: "Type câble 22 kW (triphasé)", value: cable22 });
+  if (hasHighPower) rows.push({ label: "Type de câble", value: cable22 });
   // Câble 7,4 kW : affiché seulement si TOUTES les bornes sont monophasées
   // (si une seule est triphasée, le 7,4 n'a pas de sens d'apparaître)
-  if (hasLowPower && !hasHighPower) rows.push({ label: "Type câble 7,4 kW (monophasé)", value: cable74 });
+  if (hasLowPower && !hasHighPower) rows.push({ label: "Type de câble", value: cable74 });
   rows.push(
     { label: "Délai estimé", value: specs.estimatedDelay || "3 à 5 semaines après signature du devis" },
     { label: "Local technique et raccordement", value: specs.tgbtRoom || "Déterminés lors de la visite technique" },
@@ -1988,7 +1994,7 @@ async function drawSiteProductSheet(doc: jsPDF, sc: SelectedCharger) {
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8);
   doc.setTextColor(...SUB);
-  doc.text(`${v.brand} ${v.model} · borne sur poteau ou mur`, photoX + photoW / 2, y + 218, { align: "center" });
+  doc.text(`${v.brand} ${v.model}`, photoX + photoW / 2, y + 218, { align: "center" });
 
   // Bloc PRÉSENTATION (description longue) volontairement retiré sur demande
   // utilisateur — la fiche produit doit se limiter aux specs techniques pour
