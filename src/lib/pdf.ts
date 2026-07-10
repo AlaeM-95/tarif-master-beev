@@ -535,7 +535,11 @@ async function loadBrandFont(doc: jsPDF): Promise<string> {
     doc.addFileToVFS("Roobert-SemiBold.ttf", FONT_CACHE.semiBoldB64);
     doc.addFont("Roobert-SemiBold.ttf", "Roobert", "bold");
     return "Roobert";
-  } catch {
+  } catch (err) {
+    // Le repli est volontaire (Helvetica plutôt qu'un PDF cassé), mais il
+    // doit rester visible en console : sans ce log, un échec de chargement
+    // de la police de marque passe totalement inaperçu.
+    console.warn("[pdf] Police Roobert non chargée, repli sur Helvetica :", err);
     return "helvetica";
   }
 }
