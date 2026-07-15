@@ -2802,8 +2802,9 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   }
   const taxePollution = v.energy === "Électrique" ? 0 : v.energy === "Diesel" ? 650 : 130;
   const tvsAnnuelle = taxeCO2Annuelle + taxePollution;
-  // Barre d'alerte fiscale (sous le sous-titre)
-  if (malusTotal > 0 || tvsAnnuelle > 0) {
+  // Barre d'alerte fiscale (sous le sous-titre) — jamais affichée pour un
+  // utilitaire : exonéré de malus et de TVS (voir tco-calculator.ts).
+  if (!isUtilitaireCategory(v.category) && (malusTotal > 0 || tvsAnnuelle > 0)) {
     const ROSE_LIGHT: [number, number, number] = [253, 241, 238]; // Rose 20% charte
     const ROSE_ACCENT: [number, number, number] = [244, 184, 170]; // Rose charte
     const alertY = 168;
@@ -2840,8 +2841,9 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
 
   // ─── Photo + price card côte à côte ───
   // mainY décalé vers le bas si l'encart d'alerte fiscale est présent
-  // (sinon il chevaucherait avec le bloc photo/prix).
-  const hasFiscalAlert = malusTotal > 0 || tvsAnnuelle > 0;
+  // (sinon il chevaucherait avec le bloc photo/prix). Jamais pour un
+  // utilitaire : l'encart n'est de toute façon pas dessiné (voir plus haut).
+  const hasFiscalAlert = !isUtilitaireCategory(v.category) && (malusTotal > 0 || tvsAnnuelle > 0);
   const mainY = hasFiscalAlert ? 200 : 175;
   const mainH = 190;
   const photoW = (PAGE_W - M * 2 - 16) * 0.54;

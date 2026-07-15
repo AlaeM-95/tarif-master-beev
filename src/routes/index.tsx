@@ -3870,6 +3870,8 @@ function Spec({ icon, v }: { icon: React.ReactNode; v: string }) {
 // poids) et la TVS annuelle si > 0. Permet au commercial de vérifier la
 // cohérence du calcul avant présentation client.
 function FiscalWarningBadge({ vehicle, durationMonths }: { vehicle: Vehicle; durationMonths: number }) {
+  // Utilitaire : exonéré de malus CO2/poids et de TVS (voir tco-calculator.ts).
+  if (isUtilitaireCategory(vehicle.category)) return null;
   const malusCo2 = calculateMalusCO2(vehicle.co2 ?? 0);
   const malusPoids = calculateMalusPoids(vehicle.poidsVide ?? 0, vehicle.energy);
   const malusTotal = malusCo2 + malusPoids;
