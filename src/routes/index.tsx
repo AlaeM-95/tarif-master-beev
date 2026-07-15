@@ -1683,6 +1683,7 @@ function App() {
 
               <VehicleCatalogByBrand
                 vehicles={filteredVehicles}
+                allVehicles={vehicles}
                 allVehicleCount={vehicles.length}
                 selectedV={selectedV}
                 canEditPricing={canEditPricing}
@@ -1947,9 +1948,24 @@ function App() {
                       {/* Section véhicules — toujours affichée si au moins 1 sélectionné, quel que soit le projectType */}
                       {counts.v > 0 && (
                         <>
-                          <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wide">
-                            Véhicules ({counts.v})
-                          </p>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wide">
+                              Véhicules ({counts.v})
+                            </p>
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                className="text-[10px] font-semibold text-primary hover:underline"
+                                title="Coche « Inclure TCO dans la présentation » sur tous les véhicules sélectionnés, au lieu de le faire un par un"
+                                onClick={() => {
+                                  setSelectedV((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, { ...v, includeTco: true }])));
+                                  toast.success("Analyse TCO activée pour tous les véhicules sélectionnés");
+                                }}
+                              >
+                                Activer le TCO pour tous
+                              </button>
+                            )}
+                          </div>
                           {Object.values(selectedV).map((sv, idx, arr) => {
                             const key = sv.instanceId ?? sv.vehicle.id;
                             const tripartiteUrl = sv.vehicle.tripartitePdfUrl || vehicles.find((vv) => vv.brand === sv.vehicle.brand && vv.tripartitePdfUrl)?.tripartitePdfUrl;
@@ -2437,9 +2453,12 @@ function ClientCard({ client, setClient, isAdmin }: { client: any; setClient: (c
 // Si l'utilisateur tape une recherche, les marques avec résultats sont
 // automatiquement dépliées pour rendre les véhicules trouvables.
 function VehicleCatalogByBrand({
-  vehicles, allVehicleCount, selectedV, onToggle, onUpdate, onDelete, onDuplicate, existingCategories, leaserOffers, hasActiveSearch, compareIds, onToggleCompare, canEditPricing, isAdmin, brandLogos,
+  vehicles, allVehicles, allVehicleCount, selectedV, onToggle, onUpdate, onDelete, onDuplicate, existingCategories, leaserOffers, hasActiveSearch, compareIds, onToggleCompare, canEditPricing, isAdmin, brandLogos,
 }: {
   vehicles: Vehicle[];
+  /** Catalogue complet non filtré — utilisé pour proposer des véhicules
+   *  similaires (même marque) dont copier les caractéristiques techniques. */
+  allVehicles?: Vehicle[];
   allVehicleCount: number;
   selectedV: Record<string, SelectedVehicle>;
   onToggle: (v: Vehicle) => void;
@@ -2584,6 +2603,7 @@ function VehicleCatalogByBrand({
                           onToggleCompare={onToggleCompare ? () => onToggleCompare(v.id) : undefined}
                           isAdmin={isAdmin}
                           brandLogoUrl={brandLogos?.[v.brand]}
+                          allVehicles={allVehicles}
                         />
                       ))}
                     </div>
@@ -2657,6 +2677,7 @@ function VehicleCatalogByBrand({
                           onToggleCompare={onToggleCompare ? () => onToggleCompare(v.id) : undefined}
                           isAdmin={isAdmin}
                           brandLogoUrl={brandLogos?.[v.brand]}
+                          allVehicles={allVehicles}
                         />
                       ))}
                     </div>
@@ -3233,7 +3254,7 @@ function ConfirmDeleteButton({ label, onConfirm }: { label: string; onConfirm: (
   );
 }
 
-function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existingCategories = [], leaserOffers = [], isInCompare, onToggleCompare, onDuplicate, canEditPricing, brandTripartiteUrl, isAdmin, brandLogoUrl }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Vehicle>) => void; onDelete?: () => void; existingCategories?: string[]; leaserOffers?: LeaserOffer[]; isInCompare?: boolean; onToggleCompare?: () => void; onDuplicate?: () => void; canEditPricing?: boolean; brandTripartiteUrl?: string; isAdmin?: boolean; brandLogoUrl?: string }) {
+function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existingCategories = [], leaserOffers = [], isInCompare, onToggleCompare, onDuplicate, canEditPricing, brandTripartiteUrl, isAdmin, brandLogoUrl, allVehicles }: { vehicle: Vehicle; selected: boolean; onToggle: () => void; onUpdate?: (p: Partial<Vehicle>) => void; onDelete?: () => void; existingCategories?: string[]; leaserOffers?: LeaserOffer[]; isInCompare?: boolean; onToggleCompare?: () => void; onDuplicate?: () => void; canEditPricing?: boolean; brandTripartiteUrl?: string; isAdmin?: boolean; brandLogoUrl?: string; allVehicles?: Vehicle[] }) {
   // Contrat tripartite : propre à la fiche, sinon celui du constructeur (marque).
   const tripartiteUrl = (vehicle.tripartitePdfUrl && vehicle.tripartitePdfUrl.trim()) ? vehicle.tripartitePdfUrl : brandTripartiteUrl;
   const [editing, setEditing] = useState(false);
@@ -3465,6 +3486,47 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
         )}
         {editing && onUpdate && (
           <div className="space-y-2 pt-2 border-t border-border/50">
+            {(() => {
+              // Véhicules "similaires" : même marque, fiche différente. Permet
+              // de copier les caractéristiques physiques (dimensions, coffre,
+              // recharge...) d'une autre version du même modèle plutôt que de
+              // les ressaisir une par une à chaque nouvelle fiche/finition.
+              const similar = (allVehicles ?? [])
+                .filter((v) => v.id !== vehicle.id && v.brand.trim().toLowerCase() === vehicle.brand.trim().toLowerCase())
+                .sort((a, b) => `${a.model} ${a.version}`.localeCompare(`${b.model} ${b.version}`));
+              if (similar.length === 0) return null;
+              return (
+                <div className="rounded-md border border-primary/30 bg-primary/5 p-2 space-y-1.5">
+                  <Label className="text-[10px] text-muted-foreground uppercase">Copier les caractéristiques d'un véhicule similaire</Label>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const source = similar.find((v) => v.id === e.target.value);
+                      if (!source) return;
+                      onUpdate({
+                        category: source.category,
+                        dimensions: source.dimensions,
+                        trunkLitres: source.trunkLitres,
+                        cargoVolumeM3: source.cargoVolumeM3,
+                        chargeAcMaxKw: source.chargeAcMaxKw,
+                        chargeDcMaxKw: source.chargeDcMaxKw,
+                        chargeTime2080Ac: source.chargeTime2080Ac,
+                        chargeTime2080Dc: source.chargeTime2080Dc,
+                      });
+                      toast.success(`Caractéristiques copiées depuis ${source.brand} ${source.model} ${source.version}`);
+                      e.target.value = "";
+                    }}
+                    className="h-8 w-full rounded-md border border-border bg-card px-2 text-xs text-foreground"
+                  >
+                    <option value="">— Choisir un véhicule {vehicle.brand} —</option>
+                    {similar.map((v) => (
+                      <option key={v.id} value={v.id}>{v.model} · {v.version}</option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-muted-foreground">Copie catégorie, dimensions, coffre / volume de chargement et recharge AC/DC. Le reste (prix, batterie, autonomie...) reste à saisir pour cette fiche.</p>
+                </div>
+              );
+            })()}
             <div className="grid grid-cols-2 gap-2">
               <TxtField label="Marque" value={vehicle.brand} onChange={(s) => onUpdate({ brand: s })} />
               <TxtField label="Modèle" value={vehicle.model} onChange={(s) => onUpdate({ model: s })} />

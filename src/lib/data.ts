@@ -50,6 +50,7 @@ function dbToVehicle(row: VehicleRow): Vehicle {
     gallery: Array.isArray((row as any).gallery) ? ((row as any).gallery as string[]) : undefined,
     featured: (row as any).featured ?? false,
     trunkLitres: (row as any).trunk_litres ?? undefined,
+    cargoVolumeM3: (row as any).cargo_volume_m3 ?? undefined,
     chargeDcMaxKw: (row as any).charge_dc_max_kw ?? undefined,
     chargeAcMaxKw: (row as any).charge_ac_max_kw ?? undefined,
     dimensions: (row as any).dimensions ?? undefined,
@@ -108,6 +109,7 @@ function vehicleToDb(v: Vehicle): VehicleInsert {
   if (v.featured !== undefined) (row as any).featured = v.featured;
   // Specs étendues (migration 039)
   if (v.trunkLitres !== undefined) (row as any).trunk_litres = v.trunkLitres;
+  if (v.cargoVolumeM3 !== undefined) (row as any).cargo_volume_m3 = v.cargoVolumeM3;
   if (v.chargeDcMaxKw !== undefined) (row as any).charge_dc_max_kw = v.chargeDcMaxKw;
   if (v.chargeAcMaxKw !== undefined) (row as any).charge_ac_max_kw = v.chargeAcMaxKw;
   if (v.dimensions !== undefined) (row as any).dimensions = v.dimensions;
