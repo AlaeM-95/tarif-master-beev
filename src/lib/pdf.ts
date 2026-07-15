@@ -103,6 +103,14 @@ export function getVehicleSpecRows(v: Vehicle, cfg: PdfDisplayConfig): VehicleSp
   rows.push({ key: "range", label: "Autonomie / distance WLTP", value: v.rangeWltp > 0 ? `${v.rangeWltp} km` : "—" });
   rows.push({ key: "battery", label: "Capacité batterie", value: v.batteryKwh > 0 ? `${v.batteryKwh} kWh` : "—" });
   rows.push({ key: "power", label: "Puissance", value: `${v.powerHp} ch` });
+  // Volume de chargement en priorité pour un utilitaire : c'est une
+  // caractéristique décisive à l'achat, à faire figurer avant conso/CO2/CV
+  // fiscaux/score environnemental pour ne pas être coupé par la limite de
+  // 7 lignes affichées sur la fiche véhicule (mode admin).
+  const isUtil = isUtilitaireCategory(v.category);
+  if (isUtil && cfg.showVehicleTrunk && v.cargoVolumeM3) {
+    rows.push({ key: "trunk", label: "Volume de chargement", value: `${v.cargoVolumeM3} m³` });
+  }
   if (cfg.showVehicleConsumption) {
     if (isElec) {
       rows.push({ key: "consumption", label: "Consommation", value: `${v.consumptionElec ?? v.consumption} kWh/100 km` });
@@ -116,12 +124,10 @@ export function getVehicleSpecRows(v: Vehicle, cfg: PdfDisplayConfig): VehicleSp
   if (cfg.showVehicleCo2) rows.push({ key: "co2", label: "CO2", value: `${v.co2} g/km` });
   if (cfg.showVehicleFiscalHp) rows.push({ key: "fiscalHp", label: "Puissance fiscale", value: `${v.fiscalHp} CV` });
   if (cfg.showVehicleEnvScore && v.envScore !== undefined) rows.push({ key: "envScore", label: "Score environnemental", value: `${v.envScore} / 100` });
-  if (cfg.showVehicleTrunk) {
-    if (isUtilitaireCategory(v.category)) {
-      if (v.cargoVolumeM3) rows.push({ key: "trunk", label: "Volume de chargement", value: `${v.cargoVolumeM3} m³` });
-    } else if (v.trunkLitres) {
-      rows.push({ key: "trunk", label: "Volume de coffre", value: `${v.trunkLitres} L` });
-    }
+  // Volume de coffre (véhicules particuliers) : reste à sa place habituelle,
+  // le volume de chargement utilitaire est déjà inséré plus haut en priorité.
+  if (cfg.showVehicleTrunk && !isUtil && v.trunkLitres) {
+    rows.push({ key: "trunk", label: "Volume de coffre", value: `${v.trunkLitres} L` });
   }
   if (isElec && cfg.showVehicleChargeAc && v.chargeAcMaxKw) rows.push({ key: "chargeAc", label: "Recharge AC max", value: `${v.chargeAcMaxKw} kW` });
   if (isElec && cfg.showVehicleChargeDc && v.chargeDcMaxKw) rows.push({ key: "chargeDc", label: "Recharge DC max", value: `${v.chargeDcMaxKw} kW` });
