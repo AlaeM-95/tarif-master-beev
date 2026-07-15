@@ -189,6 +189,10 @@ export type Vehicle = {
   image: string;
   /** Volume de coffre en litres (norme VDA). */
   trunkLitres?: number;
+  /** Volume de chargement en m³ — affiché à la place du volume de coffre
+   *  quand category = "Utilitaire" (fourgons, camionnettes : mesurés en m³,
+   *  pas en litres). */
+  cargoVolumeM3?: number;
   /** Puissance maximale de recharge DC (rapide) en kW. */
   chargeDcMaxKw?: number;
   /** Puissance maximale de recharge AC (lente / borne) en kW. */
@@ -228,6 +232,14 @@ export type Vehicle = {
 // marginPct est appliqué uniquement à l'affichage côté client :
 // le PDF client affiche unitHt * (1 + marginPct/100), mais l'UI admin
 // montre les deux (prix d'achat + marge) pour le pilotage commercial.
+// Catégorie "Utilitaire" (fourgons, camionnettes) : régime fiscal et
+// commercial différent des véhicules particuliers — prix communiqués en HT,
+// pas de malus CO2/poids ni de TVS (exonération légale des véhicules
+// utilitaires N1/CTTE), volume de chargement en m³ plutôt que coffre en L.
+export function isUtilitaireCategory(category: string | undefined | null): boolean {
+  return (category ?? "").trim().toLowerCase() === "utilitaire";
+}
+
 export type LineItem = { label: string; qty: number; unitHt: number; marginPct?: number };
 
 // Prestations obligatoires, toujours incluses, non décochables

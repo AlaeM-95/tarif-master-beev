@@ -5,7 +5,7 @@
 // part salariale et employeur.
 // ============================================================================
 
-import type { Vehicle } from "./catalog";
+import { isUtilitaireCategory, type Vehicle } from "./catalog";
 
 // ---- Paramètres de contrat exposés à l'utilisateur ----
 export type TcoContractParams = {
@@ -209,11 +209,16 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
   const prixKwhDom = contract.prixKwhDomicile ?? DEFAULT_COUT_KWH_DOMICILE;
   const prixKwhPub = contract.prixKwhPublic ?? DEFAULT_COUT_KWH_PUBLIC;
   const coutEnergie = calculateCoutEnergie(v, contract.kmContrat, prixEssence, prixKwhDom, prixKwhPub);
-  const taxeCO2 = calculateTaxeCO2(v.co2 ?? 0);
-  const taxePollution = calculateTaxePollution(v.energy);
+  // Véhicules utilitaires (N1/CTTE) : exonérés de TVS et de malus CO2/poids,
+  // contrairement aux véhicules particuliers (VP). Ne pas les calculer plutôt
+  // que les calculer puis les masquer à l'affichage : ils ne doivent entrer
+  // dans aucun total (tcoTotal, coût employeur complet...).
+  const isUtilitaire = isUtilitaireCategory(v.category);
+  const taxeCO2 = isUtilitaire ? 0 : calculateTaxeCO2(v.co2 ?? 0);
+  const taxePollution = isUtilitaire ? 0 : calculateTaxePollution(v.energy);
   const tvsTotal = (taxeCO2 + taxePollution) * contract.dureeAnnees;
-  const malusCO2 = calculateMalusCO2(v.co2 ?? 0);
-  const malusPoids = calculateMalusPoids(v.poidsVide ?? 0, v.energy);
+  const malusCO2 = isUtilitaire ? 0 : calculateMalusCO2(v.co2 ?? 0);
+  const malusPoids = isUtilitaire ? 0 : calculateMalusPoids(v.poidsVide ?? 0, v.energy);
 
   // AND (Avantage Non Déductible) — annualisé sur 5 ans
   // Base d'amortissement = (prix catalogue + options) - remise commerciale.

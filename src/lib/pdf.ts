@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { BEEV_JOURNEYS, MANDATORY_SERVICES, type Charger, type LineItem, type ProjectType, type Vehicle } from "./catalog";
+import { BEEV_JOURNEYS, MANDATORY_SERVICES, isUtilitaireCategory, type Charger, type LineItem, type ProjectType, type Vehicle } from "./catalog";
 import { loadPdfSettings, hexToRgb } from "./pdf-settings";
 import { DEFAULT_PDF_CONFIG, type PdfDisplayConfig } from "./pdf-config";
 import { fetchTcoResultsForVehicles, type TcoResult } from "./tco-results";
@@ -116,7 +116,13 @@ export function getVehicleSpecRows(v: Vehicle, cfg: PdfDisplayConfig): VehicleSp
   if (cfg.showVehicleCo2) rows.push({ key: "co2", label: "CO2", value: `${v.co2} g/km` });
   if (cfg.showVehicleFiscalHp) rows.push({ key: "fiscalHp", label: "Puissance fiscale", value: `${v.fiscalHp} CV` });
   if (cfg.showVehicleEnvScore && v.envScore !== undefined) rows.push({ key: "envScore", label: "Score environnemental", value: `${v.envScore} / 100` });
-  if (cfg.showVehicleTrunk && v.trunkLitres) rows.push({ key: "trunk", label: "Volume de coffre", value: `${v.trunkLitres} L` });
+  if (cfg.showVehicleTrunk) {
+    if (isUtilitaireCategory(v.category)) {
+      if (v.cargoVolumeM3) rows.push({ key: "trunk", label: "Volume de chargement", value: `${v.cargoVolumeM3} m³` });
+    } else if (v.trunkLitres) {
+      rows.push({ key: "trunk", label: "Volume de coffre", value: `${v.trunkLitres} L` });
+    }
+  }
   if (isElec && cfg.showVehicleChargeAc && v.chargeAcMaxKw) rows.push({ key: "chargeAc", label: "Recharge AC max", value: `${v.chargeAcMaxKw} kW` });
   if (isElec && cfg.showVehicleChargeDc && v.chargeDcMaxKw) rows.push({ key: "chargeDc", label: "Recharge DC max", value: `${v.chargeDcMaxKw} kW` });
   if (isElec && cfg.showVehicleChargeTime2080Ac && v.chargeTime2080Ac) rows.push({ key: "chargeTime2080Ac", label: "Recharge 20-80 % AC", value: v.chargeTime2080Ac });
@@ -2863,6 +2869,11 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   const optionsTotalTtcCard = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
   const priceBeforeDiscount = v.priceTtc + optionsTotalTtcCard;
   const discounted = priceBeforeDiscount * (1 - sv.discountPct / 100);
+  // Utilitaire : prix communiqués en HT (TVA récupérable par l'entreprise sur
+  // les véhicules utilitaires, contrairement aux véhicules particuliers).
+  const isUtilPrice = isUtilitaireCategory(v.category);
+  const priceUnitLabel = isUtilPrice ? "HT" : "TTC";
+  const toDisplay = (n: number) => (isUtilPrice ? n / 1.2 : n);
   let py = mainY + 22;
   const rowPad = 14;
   const innerX = cardX + rowPad;
@@ -2872,11 +2883,11 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
   doc.setTextColor(...GREY_LABEL_DARK);
-  doc.text(lookupText(TEXTS, "vehicles", "vehicle_catalog_label", "PRIX CATALOGUE TTC"), innerX, py);
+  doc.text(isUtilPrice ? "PRIX CATALOGUE HT" : lookupText(TEXTS, "vehicles", "vehicle_catalog_label", "PRIX CATALOGUE TTC"), innerX, py);
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(10);
   doc.setTextColor(...BEIGE);
-  doc.text(eur(v.priceTtc), innerR, py, { align: "right" });
+  doc.text(eur(toDisplay(v.priceTtc)), innerR, py, { align: "right" });
   py += 9;
   doc.setDrawColor(70, 67, 62); // séparateur beige@14%
   doc.setLineWidth(0.4);
@@ -2888,11 +2899,11 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(9);
     doc.setTextColor(...GREY_LABEL_DARK);
-    doc.text("TOTAL OPTIONS TTC", innerX, py);
+    doc.text(`TOTAL OPTIONS ${priceUnitLabel}`, innerX, py);
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(10);
     doc.setTextColor(...BEIGE);
-    doc.text(`+ ${eur(optionsTotalTtcCard)}`, innerR, py, { align: "right" });
+    doc.text(`+ ${eur(toDisplay(optionsTotalTtcCard))}`, innerR, py, { align: "right" });
     py += 9;
     doc.line(innerX, py, innerR, py);
     py += 12;
@@ -2921,11 +2932,11 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(9);
     doc.setTextColor(...GREY_LABEL_DARK);
-    doc.text(lookupText(TEXTS, "vehicles", "vehicle_price_remise_label", "PRIX REMISÉ TTC"), innerX, py);
+    doc.text(isUtilPrice ? "PRIX REMISÉ HT" : lookupText(TEXTS, "vehicles", "vehicle_price_remise_label", "PRIX REMISÉ TTC"), innerX, py);
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(10);
     doc.setTextColor(...BEIGE);
-    doc.text(eur(discounted), innerR, py, { align: "right" });
+    doc.text(eur(toDisplay(discounted)), innerR, py, { align: "right" });
     py += 16;
   }
 
@@ -2941,14 +2952,14 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
   doc.setTextColor(...BLEU_ACCENT);
-  const loyerLabel = lookupText(TEXTS, "vehicles", "vehicle_monthly_label", "LOYER MENSUEL TTC");
+  const loyerLabel = isUtilPrice ? "LOYER MENSUEL HT" : lookupText(TEXTS, "vehicles", "vehicle_monthly_label", "LOYER MENSUEL TTC");
   doc.text(ADMIN_MODE ? loyerLabel : `${loyerLabel} · ${sv.durationMonths} MOIS`, innerX, py);
   py += 32;
   // Gros chiffre 36pt + "/ mois" 12pt à côté
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(34);
   doc.setTextColor(...BEIGE);
-  const monthlyText = eurLoyer(sv.negotiatedMonthly);
+  const monthlyText = eurLoyer(toDisplay(sv.negotiatedMonthly));
   doc.text(monthlyText, innerX, py);
   const monthlyW = doc.getTextWidth(monthlyText);
   doc.setFont(BRAND_FONT, "normal");

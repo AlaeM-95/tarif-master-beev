@@ -15,7 +15,7 @@ import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Pres
 import { toast } from "sonner";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type EnergyParams } from "@/lib/store";
 import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, computeChargerLease, getVehicleSpecRows, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
-import { BEEV_JOURNEYS, MANDATORY_SERVICES, catalogTypeOf, createBlankCharger, createBlankVehicle, type CatalogType, type Charger, type LineItem, type ProjectType, type Vehicle } from "@/lib/catalog";
+import { BEEV_JOURNEYS, MANDATORY_SERVICES, catalogTypeOf, createBlankCharger, createBlankVehicle, isUtilitaireCategory, type CatalogType, type Charger, type LineItem, type ProjectType, type Vehicle } from "@/lib/catalog";
 import { AdminBadge } from "@/components/admin-badge";
 import { ImageUpload } from "@/components/image-upload";
 import { FileUpload } from "@/components/file-upload";
@@ -2897,8 +2897,16 @@ function TcoCalculator({
                     <p className="text-[11px] text-muted-foreground truncate">{v.version} · {v.energy}</p>
                   </div>
                   <div className="text-right text-xs flex-shrink-0">
-                    <p className="font-semibold">{fmtEur(inst?.negotiatedMonthly ?? v.monthlyLld)}</p>
-                    <p className="text-[10px] text-muted-foreground">/mois TTC{inst && inst.negotiatedMonthly !== v.monthlyLld ? " (négocié)" : ""}</p>
+                    {(() => {
+                      const util = isUtilitaireCategory(v.category);
+                      const amount = inst?.negotiatedMonthly ?? v.monthlyLld;
+                      return (
+                        <>
+                          <p className="font-semibold">{fmtEur(util ? amount / 1.2 : amount)}</p>
+                          <p className="text-[10px] text-muted-foreground">/mois {util ? "HT" : "TTC"}{inst && inst.negotiatedMonthly !== v.monthlyLld ? " (négocié)" : ""}</p>
+                        </>
+                      );
+                    })()}
                   </div>
                 </button>
               );
@@ -3247,6 +3255,11 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
   // Indique si une image valide est fournie (sinon on cache l'<img> pour ne
   // pas afficher l'icône cassée ou le texte alt par-dessus le gradient).
   const hasImage = Boolean(vehicle.image && vehicle.image.trim() !== "");
+  // Utilitaire : prix communiqués en HT (les entreprises récupèrent la TVA
+  // sur les véhicules utilitaires, contrairement aux véhicules particuliers).
+  const isUtil = isUtilitaireCategory(vehicle.category);
+  const displayPrice = (ttc: number) => (isUtil ? ttc / 1.2 : ttc);
+  const priceUnit = isUtil ? "HT" : "TTC";
   return (
     <Card className={`overflow-hidden transition-all duration-300 ${selected ? "ring-2 ring-primary border-primary" : "hover:border-foreground/40 hover:shadow-lg"}`}>
       <div className="aspect-[4/3] bg-beev-violet-20 overflow-hidden relative group">
@@ -3338,7 +3351,7 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
         {/* Bandeau loyer mensuel en bas de l'image (overlay) */}
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-beev-black via-beev-black/80 to-transparent p-3 pt-8">
           <p className="text-[10px] text-beev-beige/70 uppercase tracking-wide">À partir de</p>
-          <p className="text-xl font-bold text-beev-beige leading-tight">{fmtEur(startingMonthly)}<span className="text-xs text-beev-beige/60 font-normal ml-1">/mois TTC</span></p>
+          <p className="text-xl font-bold text-beev-beige leading-tight">{fmtEur(displayPrice(startingMonthly))}<span className="text-xs text-beev-beige/60 font-normal ml-1">/mois {priceUnit}</span></p>
         </div>
       </div>
       <CardContent className="p-4 space-y-3">
@@ -3379,8 +3392,8 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
               <span className="font-semibold tabular-nums">{vehicle.powerHp} ch</span>
             </div>
             <div className="flex items-center justify-between py-1 border-t border-border/40">
-              <span className="text-muted-foreground">Prix catalogue TTC</span>
-              <span className="font-semibold tabular-nums">{fmtEur(vehicle.priceTtc)}</span>
+              <span className="text-muted-foreground">Prix catalogue {priceUnit}</span>
+              <span className="font-semibold tabular-nums">{fmtEur(displayPrice(vehicle.priceTtc))}</span>
             </div>
           </div>
         ) : (
@@ -3393,8 +3406,8 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
             {/* Prix catalogue : ligne pleine, label horizontal pour ne plus être
                 écrasé sur 3 lignes par les boutons d'actions. */}
             <div className="flex items-baseline justify-between pt-3 border-t border-border/50">
-              <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Prix catalogue TTC</span>
-              <span className="font-semibold text-foreground text-base">{fmtEur(vehicle.priceTtc)}</span>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Prix catalogue {priceUnit}</span>
+              <span className="font-semibold text-foreground text-base">{fmtEur(displayPrice(vehicle.priceTtc))}</span>
             </div>
           </>
         )}
@@ -3504,7 +3517,11 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
             </div>
             {/* Specs étendues — affichées sur fiche produit PDF + comparateur */}
             <div className="grid grid-cols-3 gap-2">
-              <NumField label="Coffre (L)" value={vehicle.trunkLitres ?? 0} onChange={(n) => onUpdate({ trunkLitres: n })} />
+              {isUtilitaireCategory(vehicle.category) ? (
+                <NumField label="Volume chargement (m³)" value={vehicle.cargoVolumeM3 ?? 0} onChange={(n) => onUpdate({ cargoVolumeM3: n })} step={0.1} />
+              ) : (
+                <NumField label="Coffre (L)" value={vehicle.trunkLitres ?? 0} onChange={(n) => onUpdate({ trunkLitres: n })} />
+              )}
               <NumField label="Recharge DC max (kW)" value={vehicle.chargeDcMaxKw ?? 0} onChange={(n) => onUpdate({ chargeDcMaxKw: n })} step={0.1} />
               <NumField label="Recharge AC max (kW)" value={vehicle.chargeAcMaxKw ?? 0} onChange={(n) => onUpdate({ chargeAcMaxKw: n })} step={0.1} />
             </div>
