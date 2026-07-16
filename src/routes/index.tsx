@@ -15,7 +15,7 @@ import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Pres
 import { toast } from "sonner";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type EnergyParams } from "@/lib/store";
 import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, computeChargerLease, getVehicleSpecRows, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
-import { BEEV_JOURNEYS, MANDATORY_SERVICES, catalogTypeOf, createBlankCharger, createBlankVehicle, isUtilitaireCategory, type CatalogType, type Charger, type LineItem, type ProjectType, type Vehicle } from "@/lib/catalog";
+import { BEEV_JOURNEYS, MANDATORY_SERVICES, catalogTypeOf, createBlankCharger, createBlankVehicle, isUtilitaireCategory, categoryGroupOf, CATEGORY_GROUP_LABEL, type CategoryGroupKey, type CatalogType, type Charger, type LineItem, type ProjectType, type Vehicle } from "@/lib/catalog";
 import { AdminBadge } from "@/components/admin-badge";
 import { ImageUpload } from "@/components/image-upload";
 import { FileUpload } from "@/components/file-upload";
@@ -2498,6 +2498,131 @@ function VehicleCatalogByBrand({
     return counts;
   }, [selectedV]);
 
+  // Vue par catégorie (admin) : bascule le premier niveau de regroupement de
+  // la marque vers la catégorie (citadines / berlines & SUV / utilitaires),
+  // avec la marque comme sous-niveau à l'intérieur. Même mécanique d'expand
+  // que la vue par marque, sur son propre état.
+  const [viewMode, setViewMode] = useState<"marque" | "categorie">("marque");
+  const [expandedCat, setExpandedCat] = useState<Set<CategoryGroupKey>>(new Set());
+  const CATEGORY_ORDER: CategoryGroupKey[] = ["citadines", "berlines_suv", "utilitaires", "autres"];
+  const byCategoryGroup = useMemo(() => {
+    const map = new Map<CategoryGroupKey, Vehicle[]>();
+    for (const v of vehicles) {
+      const k = categoryGroupOf(v.category);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(v);
+    }
+    return CATEGORY_ORDER.filter((k) => map.has(k)).map((k) => [k, map.get(k)!] as [CategoryGroupKey, Vehicle[]]);
+  }, [vehicles]);
+  const selectedCountByCategoryGroup = useMemo(() => {
+    const counts: Partial<Record<CategoryGroupKey, number>> = {};
+    for (const sv of Object.values(selectedV)) {
+      const k = categoryGroupOf(sv.vehicle.category);
+      counts[k] = (counts[k] ?? 0) + 1;
+    }
+    return counts;
+  }, [selectedV]);
+
+  // Grille de VehicleCard réutilisée par les deux vues, à n'importe quel
+  // niveau d'imbrication (le contrat tripartite se déduit de la liste passée,
+  // toujours homogène en marque au niveau où cette fonction est appelée).
+  const renderCardsGrid = (list: Vehicle[]) => {
+    const brandTripartiteUrl = list.find((v) => v.tripartitePdfUrl && v.tripartitePdfUrl.trim())?.tripartitePdfUrl;
+    return (
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {list.map((v) => (
+          <VehicleCard
+            key={v.id}
+            vehicle={v}
+            selected={Object.values(selectedV).some((sv) => sv.vehicle.id === v.id)}
+            onToggle={() => onToggle(v)}
+            onUpdate={onUpdate ? (p) => onUpdate(v.id, p) : undefined}
+            onDelete={onDelete ? () => onDelete(v) : undefined}
+            onDuplicate={onDuplicate ? () => onDuplicate(v) : undefined}
+            existingCategories={existingCategories}
+            leaserOffers={leaserOffers.filter((o) => o.vehicleId === v.id)}
+            canEditPricing={canEditPricing}
+            brandTripartiteUrl={brandTripartiteUrl}
+            isInCompare={compareIds?.has(v.id)}
+            onToggleCompare={onToggleCompare ? () => onToggleCompare(v.id) : undefined}
+            isAdmin={isAdmin}
+            brandLogoUrl={brandLogos?.[v.brand]}
+            allVehicles={allVehicles}
+          />
+        ))}
+      </div>
+    );
+  };
+
+  // Sous-sections par catégorie (utilisées à l'intérieur d'une marque
+  // dépliée, vue "Par marque") — un utilitaire ne se mélange jamais aux
+  // véhicules particuliers, même au sein d'une même marque.
+  const renderCategorySections = (list: Vehicle[]) => {
+    const map = new Map<CategoryGroupKey, Vehicle[]>();
+    for (const v of list) {
+      const k = categoryGroupOf(v.category);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(v);
+    }
+    const dotClass: Record<CategoryGroupKey, string> = {
+      citadines: "bg-beev-bleu", berlines_suv: "bg-beev-violet", utilitaires: "bg-beev-rose", autres: "bg-muted-foreground",
+    };
+    return (
+      <div className="space-y-4">
+        {CATEGORY_ORDER.filter((k) => map.has(k)).map((k) => {
+          const items = map.get(k)!;
+          return (
+            <div key={k}>
+              <div className="flex items-center gap-2 mb-2">
+                <span className={`w-2 h-2 rounded-full flex-none ${dotClass[k]}`} />
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{CATEGORY_GROUP_LABEL[k]}</span>
+                <span className="text-[10px] text-muted-foreground">{items.length}</span>
+                {k === "utilitaires" && (
+                  <span className="text-[9px] font-semibold uppercase rounded-full bg-beev-rose-30 text-beev-black px-1.5 py-0.5">Prix HT</span>
+                )}
+                <div className="flex-1 h-px bg-border" />
+              </div>
+              {renderCardsGrid(items)}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // Sous-sections par marque (utilisées à l'intérieur d'une catégorie
+  // dépliée, vue "Par catégorie").
+  const renderBrandSections = (list: Vehicle[]) => {
+    const map = new Map<string, Vehicle[]>();
+    for (const v of list) {
+      const b = v.brand || "Autre";
+      if (!map.has(b)) map.set(b, []);
+      map.get(b)!.push(v);
+    }
+    const entries = Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    return (
+      <div className="space-y-4">
+        {entries.map(([brand, items]) => (
+          <div key={brand}>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-5 h-5 rounded border bg-white grid place-content-center overflow-hidden flex-none">
+                {brandLogos?.[brand] ? (
+                  <img src={brandLogos[brand]} alt={brand} className="w-full h-full object-contain p-0.5" />
+                ) : (
+                  <span className="text-[7px] font-bold text-foreground/60">{brandInitials(brand)}</span>
+                )}
+              </div>
+              <span className="text-[11px] font-semibold text-muted-foreground">{brand}</span>
+              <span className="text-[10px] text-muted-foreground">{items.length}</span>
+              <div className="flex-1 h-px bg-border" />
+            </div>
+            {renderCardsGrid(items)}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   if (vehicles.length === 0) return null;
 
   return (
@@ -2517,101 +2642,149 @@ function VehicleCatalogByBrand({
       )}
       {isAdmin ? (
         <>
-          {/* Grille de logos marque — clic pour afficher/masquer les véhicules
-              de cette marque. Remplace la liste de noms par un repère visuel,
-              une fois les logos renseignés dans /admin/vehicles. */}
-          <div className="flex flex-wrap gap-2">
-            {byBrand.map(([brand, list]) => {
-              const isOpen = expanded.has(brand) || hasActiveSearch;
-              const selCount = selectedCountByBrand[brand] ?? 0;
-              return (
-                <button
-                  key={brand}
-                  type="button"
-                  title={`${brand} · ${list.length} modèle${list.length > 1 ? "s" : ""}`}
-                  onClick={() => {
-                    setExpanded((s) => {
-                      const next = new Set(s);
-                      if (next.has(brand)) next.delete(brand); else next.add(brand);
-                      return next;
-                    });
-                  }}
-                  className={`relative flex flex-col items-center gap-1 rounded-lg border p-2 w-[74px] flex-none transition-all ${
-                    isOpen ? "border-primary bg-primary/5 ring-1 ring-primary/30" : "border-border/60 bg-card hover:border-border"
-                  }`}
-                >
-                  <div className="w-11 h-11 rounded-md border bg-white grid place-content-center overflow-hidden">
-                    {brandLogos?.[brand] ? (
-                      <img src={brandLogos[brand]} alt={brand} className="w-full h-full object-contain p-1" />
-                    ) : (
-                      <span className="text-[11px] font-bold text-foreground/60">{brandInitials(brand)}</span>
-                    )}
-                  </div>
-                  <span className="text-[10px] text-muted-foreground">{list.length}</span>
-                  {selCount > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-[#35DA76] text-white text-[9px] font-bold grid place-content-center">
-                      {selCount}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+          {/* Bascule Par marque / Par catégorie — la marque reste le premier
+              niveau par défaut ; la vue catégorie inverse la hiérarchie pour
+              un commercial qui cherche d'abord un type de véhicule. */}
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase text-muted-foreground tracking-wide">Vue</span>
+            <div className="flex rounded-md border overflow-hidden text-xs">
+              <button type="button" onClick={() => setViewMode("marque")} className={`px-3 py-1.5 ${viewMode === "marque" ? "bg-foreground text-background font-semibold" : "hover:bg-muted"}`}>Par marque</button>
+              <button type="button" onClick={() => setViewMode("categorie")} className={`px-3 py-1.5 ${viewMode === "categorie" ? "bg-foreground text-background font-semibold" : "hover:bg-muted"}`}>Par catégorie</button>
+            </div>
           </div>
 
-          {/* Sections dépliées : une par marque sélectionnée dans la grille */}
-          <div className="space-y-2">
-            {byBrand.filter(([brand]) => expanded.has(brand) || hasActiveSearch).map(([brand, list]) => {
-              const stockCount = list.filter((v) => v.availableStock).length;
-              const minPrice = Math.min(...list.map((v) => v.priceTtc).filter((p) => p > 0)) || 0;
-              const brandTripartiteUrl = list.find((v) => v.tripartitePdfUrl && v.tripartitePdfUrl.trim())?.tripartitePdfUrl;
-              return (
-                <div key={brand} className="rounded-lg border border-primary/30 bg-primary/5">
-                  <div className="flex items-center gap-3 p-3 flex-wrap">
-                    <div className="w-8 h-8 rounded-md border bg-white grid place-content-center overflow-hidden flex-none" title={brand}>
-                      {brandLogos?.[brand] ? (
-                        <img src={brandLogos[brand]} alt={brand} className="w-full h-full object-contain p-1" />
-                      ) : (
-                        <span className="text-[9px] font-bold text-foreground/60">{brandInitials(brand)}</span>
+          {viewMode === "marque" ? (
+            <>
+              {/* Grille de logos marque — clic pour afficher/masquer les
+                  véhicules de cette marque. Remplace la liste de noms par un
+                  repère visuel, une fois les logos renseignés dans
+                  /admin/vehicles. */}
+              <div className="flex flex-wrap gap-2">
+                {byBrand.map(([brand, list]) => {
+                  const isOpen = expanded.has(brand) || hasActiveSearch;
+                  const selCount = selectedCountByBrand[brand] ?? 0;
+                  return (
+                    <button
+                      key={brand}
+                      type="button"
+                      title={`${brand} · ${list.length} modèle${list.length > 1 ? "s" : ""}`}
+                      onClick={() => {
+                        setExpanded((s) => {
+                          const next = new Set(s);
+                          if (next.has(brand)) next.delete(brand); else next.add(brand);
+                          return next;
+                        });
+                      }}
+                      className={`relative flex flex-col items-center gap-1 rounded-lg border p-2 w-[74px] flex-none transition-all ${
+                        isOpen ? "border-primary bg-primary/5 ring-1 ring-primary/30" : "border-border/60 bg-card hover:border-border"
+                      }`}
+                    >
+                      <div className="w-11 h-11 rounded-md border bg-white grid place-content-center overflow-hidden">
+                        {brandLogos?.[brand] ? (
+                          <img src={brandLogos[brand]} alt={brand} className="w-full h-full object-contain p-1" />
+                        ) : (
+                          <span className="text-[11px] font-bold text-foreground/60">{brandInitials(brand)}</span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">{list.length}</span>
+                      {selCount > 0 && (
+                        <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-[#35DA76] text-white text-[9px] font-bold grid place-content-center">
+                          {selCount}
+                        </span>
                       )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Sections dépliées : une par marque sélectionnée dans la grille */}
+              <div className="space-y-2">
+                {byBrand.filter(([brand]) => expanded.has(brand) || hasActiveSearch).map(([brand, list]) => {
+                  const stockCount = list.filter((v) => v.availableStock).length;
+                  const minPrice = Math.min(...list.map((v) => v.priceTtc).filter((p) => p > 0)) || 0;
+                  return (
+                    <div key={brand} className="rounded-lg border border-primary/30 bg-primary/5">
+                      <div className="flex items-center gap-3 p-3 flex-wrap">
+                        <div className="w-8 h-8 rounded-md border bg-white grid place-content-center overflow-hidden flex-none" title={brand}>
+                          {brandLogos?.[brand] ? (
+                            <img src={brandLogos[brand]} alt={brand} className="w-full h-full object-contain p-1" />
+                          ) : (
+                            <span className="text-[9px] font-bold text-foreground/60">{brandInitials(brand)}</span>
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground">{list.length} modèle{list.length > 1 ? "s" : ""}</span>
+                        {stockCount > 0 && (
+                          <span className="text-[10px] inline-flex items-center gap-1 rounded-full bg-[#35DA76]/10 text-[#35DA76] px-2 py-0.5 font-medium">
+                            {stockCount} en stock
+                          </span>
+                        )}
+                        <span className="ml-auto text-xs text-muted-foreground">
+                          À partir de <strong className="text-foreground">{fmtEur(minPrice)}</strong>
+                        </span>
+                      </div>
+                      <div className="px-3 pb-3">
+                        {renderCategorySections(list)}
+                      </div>
                     </div>
-                    <span className="text-xs text-muted-foreground">{list.length} modèle{list.length > 1 ? "s" : ""}</span>
-                    {stockCount > 0 && (
-                      <span className="text-[10px] inline-flex items-center gap-1 rounded-full bg-[#35DA76]/10 text-[#35DA76] px-2 py-0.5 font-medium">
-                        {stockCount} en stock
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            /* Vue par catégorie : premier niveau = famille de véhicule
+               (citadines, berlines & SUV, utilitaires...), la marque devient
+               le sous-niveau à l'intérieur. */
+            <div className="space-y-2">
+              {byCategoryGroup.map(([catKey, list]) => {
+                const isOpen = expandedCat.has(catKey) || hasActiveSearch;
+                const stockCount = list.filter((v) => v.availableStock).length;
+                const minPrice = Math.min(...list.map((v) => v.priceTtc).filter((p) => p > 0)) || 0;
+                const selCount = selectedCountByCategoryGroup[catKey] ?? 0;
+                return (
+                  <div key={catKey} className={`rounded-lg border ${isOpen ? "border-primary/40 bg-primary/5" : "bg-card"} ${selCount > 0 ? "ring-1 ring-[#35DA76]/40" : ""} transition-all`}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExpandedCat((s) => {
+                          const next = new Set(s);
+                          if (next.has(catKey)) next.delete(catKey); else next.add(catKey);
+                          return next;
+                        });
+                      }}
+                      className="w-full flex items-center justify-between gap-3 p-4 text-left hover:bg-accent/30 rounded-lg"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1 flex-wrap">
+                        <span className={`text-base transition-transform ${isOpen ? "rotate-90" : ""}`}>▶</span>
+                        <p className="font-semibold text-base">{CATEGORY_GROUP_LABEL[catKey]}</p>
+                        <span className="text-xs text-muted-foreground">{list.length} modèle{list.length > 1 ? "s" : ""}</span>
+                        {catKey === "utilitaires" && (
+                          <span className="text-[10px] font-semibold uppercase rounded-full bg-beev-rose-30 text-beev-black px-2 py-0.5">Prix HT</span>
+                        )}
+                        {stockCount > 0 && (
+                          <span className="text-[10px] inline-flex items-center gap-1 rounded-full bg-[#35DA76]/10 text-[#35DA76] px-2 py-0.5 font-medium">
+                            {stockCount} en stock
+                          </span>
+                        )}
+                        {selCount > 0 && (
+                          <span className="text-[10px] font-semibold uppercase rounded-full bg-[#35DA76] text-white px-2 py-0.5">
+                            {selCount} sélectionné{selCount > 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground flex-shrink-0">
+                        À partir de <strong className="text-foreground">{fmtEur(minPrice)}</strong>
                       </span>
+                    </button>
+                    {isOpen && (
+                      <div className="px-4 pb-4 pt-1">
+                        {renderBrandSections(list)}
+                      </div>
                     )}
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      À partir de <strong className="text-foreground">{fmtEur(minPrice)}</strong>
-                    </span>
                   </div>
-                  <div className="px-3 pb-3">
-                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                      {list.map((v) => (
-                        <VehicleCard
-                          key={v.id}
-                          vehicle={v}
-                          selected={Object.values(selectedV).some((sv) => sv.vehicle.id === v.id)}
-                          onToggle={() => onToggle(v)}
-                          onUpdate={onUpdate ? (p) => onUpdate(v.id, p) : undefined}
-                          onDelete={onDelete ? () => onDelete(v) : undefined}
-                          onDuplicate={onDuplicate ? () => onDuplicate(v) : undefined}
-                          existingCategories={existingCategories}
-                          leaserOffers={leaserOffers.filter((o) => o.vehicleId === v.id)}
-                          canEditPricing={canEditPricing}
-                          brandTripartiteUrl={brandTripartiteUrl}
-                          isInCompare={compareIds?.has(v.id)}
-                          onToggleCompare={onToggleCompare ? () => onToggleCompare(v.id) : undefined}
-                          isAdmin={isAdmin}
-                          brandLogoUrl={brandLogos?.[v.brand]}
-                          allVehicles={allVehicles}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </>
       ) : (
         /* Accordion vertical historique : 1 ligne par marque (nom en texte),

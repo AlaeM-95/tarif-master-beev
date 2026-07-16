@@ -240,6 +240,26 @@ export function isUtilitaireCategory(category: string | undefined | null): boole
   return (category ?? "").trim().toLowerCase() === "utilitaire";
 }
 
+// Regroupe les nombreuses valeurs libres de `category` (Citadine, Compacte,
+// Berline, SUV, SUV Coupé, Break, Utilitaire, texte libre...) en quelques
+// familles lisibles pour segmenter le catalogue, sans imposer une liste
+// fermée de catégories à l'admin. Utilitaire reste toujours isolé (régime
+// fiscal différent) ; le reste se répartit par gabarit.
+export type CategoryGroupKey = "citadines" | "berlines_suv" | "utilitaires" | "autres";
+export const CATEGORY_GROUP_LABEL: Record<CategoryGroupKey, string> = {
+  citadines: "Citadines & compactes",
+  berlines_suv: "Berlines, SUV & breaks",
+  utilitaires: "Utilitaires",
+  autres: "Autres",
+};
+export function categoryGroupOf(category: string | undefined | null): CategoryGroupKey {
+  const c = (category ?? "").trim().toLowerCase();
+  if (isUtilitaireCategory(c)) return "utilitaires";
+  if (/citad|compact/.test(c)) return "citadines";
+  if (/berlin|suv|break|coup|monospace|4x4|crossover/.test(c)) return "berlines_suv";
+  return "autres";
+}
+
 export type LineItem = { label: string; qty: number; unitHt: number; marginPct?: number };
 
 // Prestations obligatoires, toujours incluses, non décochables
