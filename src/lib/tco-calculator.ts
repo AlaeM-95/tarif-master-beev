@@ -49,6 +49,15 @@ export type TcoFullResult = {
    *  andAnnuel × TAUX_IS_ENTREPRISE (25%). C'est ce champ, et non
    *  andAnnuel, qui doit entrer dans tcoEmployeurComplet. */
   coutFiscalANDAnnuel: number;
+  /** andAnnuel × nombre d'ANNÉES FISCALES ENTIÈRES du contrat (et non
+   *  durationMonths / 12, une fraction sans réalité fiscale — une taxe
+   *  annuelle se compte en exercices pleins). Source unique : ne pas
+   *  recalculer andAnnuel × duree côté appelant, cf. anomalie relevée sur
+   *  le devis Renault Captur où ce recalcul dupliqué en TVS avait dérivé. */
+  andTotal: number;
+  /** coutFiscalANDAnnuel × années fiscales entières — le montant à utiliser
+   *  dans tcoEmployeurComplet. */
+  coutFiscalANDTotal: number;
   aenBrut: number;
   aenAbattement: number;
   aenAnnuel: number;
@@ -57,6 +66,8 @@ export type TcoFullResult = {
   partEmployeurAnnuelle: number;
   partSalarialeMensuelle: number;
   partEmployeurMensuelle: number;
+  /** partEmployeurAnnuelle × années fiscales entières du contrat. */
+  aenEmployeurTotal: number;
   tcoMensuel: number;
   tcoAnnuel: number;
   tcoParKm: number;
@@ -216,7 +227,15 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
   const isUtilitaire = isUtilitaireCategory(v.category);
   const taxeCO2 = isUtilitaire ? 0 : calculateTaxeCO2(v.co2 ?? 0);
   const taxePollution = isUtilitaire ? 0 : calculateTaxePollution(v.energy);
-  const tvsTotal = (taxeCO2 + taxePollution) * contract.dureeAnnees;
+  // Nombre d'ANNÉES FISCALES ENTIÈRES couvertes par le contrat, utilisé pour
+  // multiplier les taxes annuelles récurrentes (TVS, AND, AEN employeur).
+  // durationMonths / 12 est une fraction (ex. 49 mois = 4,0833) sans réalité
+  // fiscale : une taxe annuelle se compte en exercices pleins, pas en mois
+  // fractionnés. Anomalie repérée sur le devis Renault Captur (49 mois) :
+  // TVS affichait 339 × 4,0833 = 1 384 € au lieu de 339 × 4 = 1 356 €, le
+  // montant réellement facturé par le loueur sur la durée du contrat.
+  const dureeAnneesFiscales = Math.floor(contract.dureeAnnees);
+  const tvsTotal = (taxeCO2 + taxePollution) * dureeAnneesFiscales;
   const malusCO2 = isUtilitaire ? 0 : calculateMalusCO2(v.co2 ?? 0);
   const malusPoids = isUtilitaire ? 0 : calculateMalusPoids(v.poidsVide ?? 0, v.energy);
 
@@ -238,6 +257,8 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
   // montant. Le vrai surcoût est l'IS supplémentaire généré par cette
   // réintégration : andAnnuel × 25%.
   const coutFiscalANDAnnuel = andAnnuel * TAUX_IS_ENTREPRISE;
+  const andTotal = andAnnuel * dureeAnneesFiscales;
+  const coutFiscalANDTotal = coutFiscalANDAnnuel * dureeAnneesFiscales;
 
   // AEN — Avantage en Nature (méthode forfaitaire basée sur le loyer)
   // Taux forfaitaire 50% ; abattement 70% si EL avec éco-score, sinon 0%.
@@ -252,6 +273,7 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
   const partEmployeurAnnuelle = aenAnnuel * 0.42;
   const partSalarialeMensuelle = partSalarialeAnnuelle / 12;
   const partEmployeurMensuelle = partEmployeurAnnuelle / 12;
+  const aenEmployeurTotal = partEmployeurAnnuelle * dureeAnneesFiscales;
 
   const emissionsContrat = ((v.co2 ?? 0) * contract.kmContrat) / 1_000_000;
   const tcoTotal = loyerTotal + coutEnergie + tvsTotal + malusCO2 + malusPoids;
@@ -261,8 +283,8 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
   // Coût employeur complet : ajoute le coût FISCAL de l'AND (IS sur le
   // montant réintégré, pas le montant lui-même — voir coutFiscalANDAnnuel
   // ci-dessus) et la part employeur AEN (charges patronales, elle bien
-  // réellement décaissée), sur la durée du contrat.
-  const tcoEmployeurComplet = tcoTotal + coutFiscalANDAnnuel * contract.dureeAnnees + partEmployeurAnnuelle * contract.dureeAnnees;
+  // réellement décaissée), sur le nombre d'années fiscales entières.
+  const tcoEmployeurComplet = tcoTotal + coutFiscalANDTotal + aenEmployeurTotal;
 
   return {
     prixCatalogue,
@@ -278,6 +300,8 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
     malusPoids,
     andAnnuel,
     coutFiscalANDAnnuel,
+    andTotal,
+    coutFiscalANDTotal,
     aenBrut,
     aenAbattement,
     aenAnnuel,
@@ -286,6 +310,7 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
     partEmployeurAnnuelle,
     partSalarialeMensuelle,
     partEmployeurMensuelle,
+    aenEmployeurTotal,
     tcoMensuel,
     tcoAnnuel,
     tcoParKm,

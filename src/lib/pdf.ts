@@ -3308,6 +3308,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       // Calcul TCO complet à la volée — intègre options + remise commerciale.
       // sv.options sont saisies en TTC dans le panneau droit (convention UX).
       const duree = sv.durationMonths / 12;
+      const dureeEntiere = Math.floor(duree);
       const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
       const tcoFull = calculateTcoFull(sv.vehicle, {
         dureeAnnees: duree,
@@ -3333,7 +3334,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       // dans tco-calculator.ts : l'entreprise ne décaisse pas andAnnuel, elle
       // perd seulement la déduction fiscale dessus ; le vrai surcoût est
       // l'IS supplémentaire (25%) sur ce montant.
-      const tcoEmployeur = tcoTotal + tcoFull.coutFiscalANDAnnuel * duree + partEmpAnnuelle * duree;
+      const tcoEmployeur = tcoTotal + tcoFull.coutFiscalANDTotal + tcoFull.aenEmployeurTotal;
 
       // Ligne 1 : 3 colonnes (Malus CO2, Malus poids, TVS contrat).
       // Couleur orange si valeur > 0 pour signaler la charge à l'achat.
@@ -3342,7 +3343,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       const row1 = [
         { label: "MALUS CO2", value: tcoFull.malusCO2, formatted: eur(tcoFull.malusCO2) },
         { label: "MALUS POIDS", value: tcoFull.malusPoids, formatted: eur(tcoFull.malusPoids) },
-        { label: `TVS (${duree} ANS)`, value: tvsTotal, formatted: eur(tvsTotal) },
+        { label: `TVS (${dureeEntiere} ANS)`, value: tvsTotal, formatted: eur(tvsTotal) },
       ];
       const colW = (PAGE_W - M * 2 - 32) / 3;
       row1.forEach((col, i) => {
@@ -4068,8 +4069,8 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
       energie: r.coutEnergie,
       tvs: r.tvsTotal,
       malus: r.malusCO2 + r.malusPoids,
-      andTotal: r.andAnnuel * duree,
-      aenTotal: r.partEmployeurAnnuelle * duree,
+      andTotal: r.andTotal,
+      aenTotal: r.aenEmployeurTotal,
       coutEmployeur: r.tcoEmployeurComplet,
       annuel: r.tcoAnnuel,
       par100km: r.tcoParKm * 100,
@@ -4458,7 +4459,7 @@ async function drawTcoImpact(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: Energ
     const fisc = r.tvsTotal + r.malusCO2 + r.malusPoids;
     // Coût fiscal réel de l'AND (IS sur le montant réintégré), pas l'AND
     // brut — sinon ce segment + les autres dépasserait `total`.
-    const empl = r.coutFiscalANDAnnuel * duree + r.partEmployeurAnnuelle * duree;
+    const empl = r.coutFiscalANDTotal + r.aenEmployeurTotal;
     return { sv, total: r.tcoEmployeurComplet, loyer: r.loyerTotal, energie: r.coutEnergie, fisc, empl, r, duree };
   };
   type IItem = ReturnType<typeof compute>;
@@ -4590,7 +4591,7 @@ async function drawTcoImpact(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: Energ
   const detRow = (it: IItem) => [
     `${it.sv.vehicle.brand} ${it.sv.vehicle.model}${it.sv.vehicle.isCurrentFleet ? " (actuel)" : ""}`,
     eur(it.r.loyerTotal), eur(it.r.coutEnergie), eur(it.r.tvsTotal), eur(it.r.malusCO2 + it.r.malusPoids),
-    eur(it.r.andAnnuel * it.duree), eur(it.r.partEmployeurAnnuelle * it.duree), eur(it.total),
+    eur(it.r.andTotal), eur(it.r.aenEmployeurTotal), eur(it.total),
   ];
   const detBody: any[] = [];
   for (const g of order) {
@@ -4767,8 +4768,8 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   // Construit une ligne de données pour un véhicule.
   const buildRow = ({ sv, r, duree }: (typeof computed)[number]) => {
     const malusTotal = r.malusCO2 + r.malusPoids;
-    const andTotal = r.andAnnuel * duree;
-    const aenTotal = r.partEmployeurAnnuelle * duree;
+    const andTotal = r.andTotal;
+    const aenTotal = r.aenEmployeurTotal;
     // Affichage hiérarchisé : Marque + Modèle sur la 1re ligne, Version sur la
     // 2e (ou plusieurs si longue), durée/km sur la dernière. Sépare clairement
     // deux finitions d'un même modèle dans le tableau.
@@ -4855,7 +4856,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
     const fisc = c.r.tvsTotal + c.r.malusCO2 + c.r.malusPoids;
     // Coût fiscal réel de l'AND (IS sur le montant réintégré), pas l'AND
     // brut — sinon la somme des segments dépasserait `total`.
-    const empl = c.r.coutFiscalANDAnnuel * c.duree + c.r.partEmployeurAnnuelle * c.duree;
+    const empl = c.r.coutFiscalANDTotal + c.r.aenEmployeurTotal;
     const total = c.r.tcoEmployeurComplet; // source unique, cohérent avec le reste du PDF
     compMap.set(c.sv, { loyer: c.r.loyerTotal, energie: c.r.coutEnergie, fisc, empl, total });
     if (total > maxUsage) maxUsage = total;
