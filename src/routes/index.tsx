@@ -1171,6 +1171,7 @@ function App() {
                 <SelectedVehicleRow sv={sv} energy={energy}
                   index={idx} total={keys.length}
                   tripartiteUrl={tripartiteUrl}
+                  isAdmin={isAdmin}
                   onMove={(dir) => setSelectedV((s) => moveInRecord(s, configVKey, dir))}
                   onChange={(p) => setSelectedV((s) => ({ ...s, [configVKey]: { ...(s[configVKey] ?? sv), ...p } }))}
                   onApplyAll={(mutate) => setSelectedV((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, mutate(v)])))}
@@ -4225,7 +4226,7 @@ function VehicleSummaryCard({ sv, energy, onQty, onConfigure, onDuplicate, onRem
   );
 }
 
-function SelectedVehicleRow({ sv, energy, onChange, onApplyAll, onRemove, onDuplicate, index, total, onMove, tripartiteUrl }: { sv: SelectedVehicle; energy: EnergyParams; onChange: (p: Partial<SelectedVehicle>) => void; onApplyAll?: (mutate: (v: SelectedVehicle) => SelectedVehicle) => void; onRemove: () => void; onDuplicate?: () => void; index?: number; total?: number; onMove?: (dir: -1 | 1) => void; tripartiteUrl?: string }) {
+function SelectedVehicleRow({ sv, energy, onChange, onApplyAll, onRemove, onDuplicate, index, total, onMove, tripartiteUrl, isAdmin }: { sv: SelectedVehicle; energy: EnergyParams; onChange: (p: Partial<SelectedVehicle>) => void; onApplyAll?: (mutate: (v: SelectedVehicle) => SelectedVehicle) => void; onRemove: () => void; onDuplicate?: () => void; index?: number; total?: number; onMove?: (dir: -1 | 1) => void; tripartiteUrl?: string; isAdmin?: boolean }) {
   const [tab, setTab] = useState<"none" | "svc" | "opt">("none");
   const [newSvc, setNewSvc] = useState("");
   const [specsOpen, setSpecsOpen] = useState(false);
@@ -4344,6 +4345,19 @@ function SelectedVehicleRow({ sv, energy, onChange, onApplyAll, onRemove, onDupl
             onChange({ kmPerYear: years > 0 ? total / years : total });
           }}
         />
+        {isAdmin && multi && (
+          <button
+            type="button"
+            className="col-span-2 text-[10px] font-semibold text-[#3809EA] hover:underline text-left"
+            title="Applique la durée et le kilométrage de ce véhicule à toutes les autres offres du devis"
+            onClick={() => {
+              onApplyAll?.((v) => ({ ...v, durationMonths: sv.durationMonths, kmPerYear: sv.kmPerYear }));
+              toast.success("Durée et kilométrage appliqués à toutes les offres");
+            }}
+          >
+            Appliquer cette durée et ce kilométrage à toutes les offres
+          </button>
+        )}
         <div className="flex items-end gap-2 pb-1">
           <Switch id={`tco-${sv.instanceId ?? sv.vehicle.id}`} checked={sv.includeTco} onCheckedChange={(b) => onChange({ includeTco: b })} />
           <Label htmlFor={`tco-${sv.instanceId ?? sv.vehicle.id}`} className="text-[11px] leading-tight">Inclure TCO dans la présentation</Label>
@@ -4403,7 +4417,7 @@ function SelectedVehicleRow({ sv, energy, onChange, onApplyAll, onRemove, onDupl
         </div>
       )}
 
-      {isUtilitaireCategory(sv.vehicle.category) && sv.vehicle.energy === "Électrique" && (
+      {isAdmin && isUtilitaireCategory(sv.vehicle.category) && sv.vehicle.energy === "Électrique" && (
         <div className="rounded-md border border-beev-bleu/40 bg-beev-bleu-20 p-2 space-y-1.5">
           <NumField label="Prime CEE (€)" value={sv.primeCeeAmount ?? 0} onChange={(n) => onChange({ primeCeeAmount: n })} />
           {(sv.primeCeeAmount ?? 0) > 0 && (
