@@ -81,6 +81,12 @@ export type SelectedVehicle = {
    *  par le commercial dans le panneau de droite (cf. getVehicleSpecRows pour les
    *  clés). Par défaut vide = toutes les caractéristiques disponibles s'affichent. */
   hiddenSpecs?: string[];
+  /** Montant de la prime CEE (utilitaire électrique uniquement), saisi par le
+   *  commercial. Intégré au loyer mensuel affiché : l'entreprise l'avance à la
+   *  mise en service puis se le fait rembourser par l'organisme émetteur du
+   *  certificat d'économie d'énergie sous 2 à 3 mois. Si > 0, un encart
+   *  explicatif est affiché sur la fiche véhicule du PDF (cf. drawVehiclePage). */
+  primeCeeAmount?: number;
 };
 
 /** Une ligne de caractéristique technique de la fiche véhicule. */
@@ -96,12 +102,15 @@ export function getVehicleSpecRows(v: Vehicle, cfg: PdfDisplayConfig): VehicleSp
   const rows: VehicleSpecRow[] = [];
   const isElec = v.energy === "Électrique";
   const isPhev = v.energy === "Hybride Rechargeable";
+  // Utilitaire thermique/hybride : les caractéristiques électriques n'ont pas
+  // de sens (pas de batterie, pas de recharge) — masquées sur la fiche PDF.
+  const hideEvSpecs = isUtilitaireCategory(v.category) && !isElec;
   rows.push({ key: "energy", label: "Énergie", value: v.energy });
   // Autonomie : pour un EV / hybride rechargeable, c'est l'autonomie WLTP ;
   // pour un véhicule hors électrique, on affiche l'autonomie saisie dans le
   // panneau de configuration (champ « Autonomie km ») dès qu'elle est renseignée.
   rows.push({ key: "range", label: "Autonomie / distance WLTP", value: v.rangeWltp > 0 ? `${v.rangeWltp} km` : "—" });
-  rows.push({ key: "battery", label: "Capacité batterie", value: v.batteryKwh > 0 ? `${v.batteryKwh} kWh` : "—" });
+  if (!hideEvSpecs) rows.push({ key: "battery", label: "Capacité batterie", value: v.batteryKwh > 0 ? `${v.batteryKwh} kWh` : "—" });
   rows.push({ key: "power", label: "Puissance", value: `${v.powerHp} ch` });
   // Volume de chargement en priorité pour un utilitaire : c'est une
   // caractéristique décisive à l'achat, à faire figurer avant conso/CO2/CV
@@ -123,7 +132,7 @@ export function getVehicleSpecRows(v: Vehicle, cfg: PdfDisplayConfig): VehicleSp
   }
   if (cfg.showVehicleCo2) rows.push({ key: "co2", label: "CO2", value: `${v.co2} g/km` });
   if (cfg.showVehicleFiscalHp) rows.push({ key: "fiscalHp", label: "Puissance fiscale", value: `${v.fiscalHp} CV` });
-  if (cfg.showVehicleEnvScore && v.envScore !== undefined) rows.push({ key: "envScore", label: "Score environnemental", value: `${v.envScore} / 100` });
+  if (!hideEvSpecs && cfg.showVehicleEnvScore && v.envScore !== undefined) rows.push({ key: "envScore", label: "Score environnemental", value: `${v.envScore} / 100` });
   // Volume de coffre (véhicules particuliers) : reste à sa place habituelle,
   // le volume de chargement utilitaire est déjà inséré plus haut en priorité.
   if (cfg.showVehicleTrunk && !isUtil && v.trunkLitres) {
@@ -2998,6 +3007,29 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     doc.setTextColor(...SUB);
     doc.text(`N° de devis loueur : ${sv.leaserQuoteRef.trim()}`, M, y);
     y += 16;
+  }
+
+  // Prime CEE — utilitaire électrique uniquement. Le montant est intégré au
+  // loyer affiché plus haut : le client doit savoir qu'il l'avance et se le
+  // fait rembourser par la suite, sans quoi le loyer réel perçu serait erroné.
+  if (sv.primeCeeAmount && sv.primeCeeAmount > 0) {
+    const ceeText = `Une prime CEE de ${eur(sv.primeCeeAmount)} est intégrée à ce loyer mensuel. Ce montant est avancé par l'entreprise à la mise en service du véhicule, puis remboursé par l'organisme émetteur du certificat d'économie d'énergie dans un délai de 2 à 3 mois.`;
+    const ceeLines = doc.splitTextToSize(ceeText, PAGE_W - M * 2 - 24) as string[];
+    const ceeH = ceeLines.length * 11 + 28;
+    y = ensureSpace(doc, y, ceeH + 10, client, type);
+    doc.setFillColor(...BLEU_LIGHT);
+    doc.rect(M, y, PAGE_W - M * 2, ceeH, "F");
+    doc.setFillColor(...BLEU_ACCENT);
+    doc.rect(M, y, 3, ceeH, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...BLEU_ACCENT);
+    doc.text("PRIME CEE", M + 14, y + 12);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...INK);
+    doc.text(ceeLines, M + 14, y + 25);
+    y += ceeH + 14;
   }
 
   // Configurations alternatives — si le commercial a ajouté plusieurs scénarios

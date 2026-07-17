@@ -3431,6 +3431,10 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
   // Contrat tripartite : propre à la fiche, sinon celui du constructeur (marque).
   const tripartiteUrl = (vehicle.tripartitePdfUrl && vehicle.tripartitePdfUrl.trim()) ? vehicle.tripartitePdfUrl : brandTripartiteUrl;
   const [editing, setEditing] = useState(false);
+  // Utilitaire thermique/hybride : aucun des champs liés au véhicule électrique
+  // (recharge AC/DC, batterie, éco-score, score env.) n'a de sens — on les masque
+  // du formulaire d'édition catalogue pour ne pas polluer la fiche.
+  const hideEvFields = isUtilitaireCategory(vehicle.category) && vehicle.energy !== "Électrique";
   // Loyer « À partir de » : la plus basse offre loueur disponible ; à défaut, le
   // loyer catalogue saisi par l'ops/admin (monthlyLld).
   const startingMonthly = leaserOffers.length > 0
@@ -3707,27 +3711,35 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
               <TxtField label="Modèle" value={vehicle.model} onChange={(s) => onUpdate({ model: s })} />
               <NumField label="Prix TTC" value={vehicle.priceTtc} onChange={(n) => onUpdate({ priceTtc: n })} />
               <NumField label="Autonomie km" value={vehicle.rangeWltp} onChange={(n) => onUpdate({ rangeWltp: n })} />
-              <NumField label="Batterie kWh" value={vehicle.batteryKwh} onChange={(n) => onUpdate({ batteryKwh: n })} />
+              {!hideEvFields && (
+                <NumField label="Batterie kWh" value={vehicle.batteryKwh} onChange={(n) => onUpdate({ batteryKwh: n })} />
+              )}
               <NumField label="Puissance ch" value={vehicle.powerHp} onChange={(n) => onUpdate({ powerHp: n })} />
               <NumField label="Conso" value={vehicle.consumption} onChange={(n) => onUpdate({ consumption: n })} step={0.1} />
               <NumField label="CO₂ g/km" value={vehicle.co2} onChange={(n) => onUpdate({ co2: n })} />
               <NumField label="CV fiscaux" value={vehicle.fiscalHp} onChange={(n) => onUpdate({ fiscalHp: n })} />
-              <NumField label="Score env. (0-100)" value={vehicle.envScore ?? 0} onChange={(n) => onUpdate({ envScore: n })} />
-              <NumField label="Prix batterie HT" value={vehicle.prixBatterie ?? 0} onChange={(n) => onUpdate({ prixBatterie: n })} />
+              {!hideEvFields && (
+                <NumField label="Score env. (0-100)" value={vehicle.envScore ?? 0} onChange={(n) => onUpdate({ envScore: n })} />
+              )}
+              {!hideEvFields && (
+                <NumField label="Prix batterie HT" value={vehicle.prixBatterie ?? 0} onChange={(n) => onUpdate({ prixBatterie: n })} />
+              )}
               <NumField label="Poids vide (kg)" value={vehicle.poidsVide ?? 0} onChange={(n) => onUpdate({ poidsVide: n })} />
               <NumField label="Remise %" value={vehicle.remise ?? 0} onChange={(n) => onUpdate({ remise: n })} step={0.5} />
               <NumField label="Top du mois (rang)" value={vehicle.topRank ?? 0} onChange={(n) => onUpdate({ topRank: n })} />
-              <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground uppercase">Éco-score (AEN -70%)</Label>
-                <select
-                  value={vehicle.ecoScoreBool ? "yes" : "no"}
-                  onChange={(e) => onUpdate({ ecoScoreBool: e.target.value === "yes" })}
-                  className="h-8 w-full rounded-md border border-border bg-card px-2 text-xs text-foreground"
-                >
-                  <option value="no">Non</option>
-                  <option value="yes">Oui</option>
-                </select>
-              </div>
+              {!hideEvFields && (
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground uppercase">Éco-score (AEN -70%)</Label>
+                  <select
+                    value={vehicle.ecoScoreBool ? "yes" : "no"}
+                    onChange={(e) => onUpdate({ ecoScoreBool: e.target.value === "yes" })}
+                    className="h-8 w-full rounded-md border border-border bg-card px-2 text-xs text-foreground"
+                  >
+                    <option value="no">Non</option>
+                    <option value="yes">Oui</option>
+                  </select>
+                </div>
+              )}
               <div className="space-y-1">
                 <Label className="text-[10px] text-muted-foreground uppercase">Énergie</Label>
                 <select
@@ -3759,13 +3771,21 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
               ) : (
                 <NumField label="Coffre (L)" value={vehicle.trunkLitres ?? 0} onChange={(n) => onUpdate({ trunkLitres: n })} />
               )}
-              <NumField label="Recharge DC max (kW)" value={vehicle.chargeDcMaxKw ?? 0} onChange={(n) => onUpdate({ chargeDcMaxKw: n })} step={0.1} />
-              <NumField label="Recharge AC max (kW)" value={vehicle.chargeAcMaxKw ?? 0} onChange={(n) => onUpdate({ chargeAcMaxKw: n })} step={0.1} />
+              {!hideEvFields && (
+                <NumField label="Recharge DC max (kW)" value={vehicle.chargeDcMaxKw ?? 0} onChange={(n) => onUpdate({ chargeDcMaxKw: n })} step={0.1} />
+              )}
+              {!hideEvFields && (
+                <NumField label="Recharge AC max (kW)" value={vehicle.chargeAcMaxKw ?? 0} onChange={(n) => onUpdate({ chargeAcMaxKw: n })} step={0.1} />
+              )}
             </div>
             <div className="grid grid-cols-3 gap-2">
               <TxtField label="Dimensions (L × l × H)" value={vehicle.dimensions ?? ""} onChange={(s) => onUpdate({ dimensions: s })} />
-              <TxtField label="Recharge 20-80% AC" value={vehicle.chargeTime2080Ac ?? ""} onChange={(s) => onUpdate({ chargeTime2080Ac: s })} />
-              <TxtField label="Recharge 20-80% DC" value={vehicle.chargeTime2080Dc ?? ""} onChange={(s) => onUpdate({ chargeTime2080Dc: s })} />
+              {!hideEvFields && (
+                <TxtField label="Recharge 20-80% AC" value={vehicle.chargeTime2080Ac ?? ""} onChange={(s) => onUpdate({ chargeTime2080Ac: s })} />
+              )}
+              {!hideEvFields && (
+                <TxtField label="Recharge 20-80% DC" value={vehicle.chargeTime2080Dc ?? ""} onChange={(s) => onUpdate({ chargeTime2080Dc: s })} />
+              )}
             </div>
             <ImageUpload
               currentUrl={vehicle.image}
@@ -4383,6 +4403,16 @@ function SelectedVehicleRow({ sv, energy, onChange, onApplyAll, onRemove, onDupl
         </div>
       )}
 
+      {isUtilitaireCategory(sv.vehicle.category) && sv.vehicle.energy === "Électrique" && (
+        <div className="rounded-md border border-beev-bleu/40 bg-beev-bleu-20 p-2 space-y-1.5">
+          <NumField label="Prime CEE (€)" value={sv.primeCeeAmount ?? 0} onChange={(n) => onChange({ primeCeeAmount: n })} />
+          {(sv.primeCeeAmount ?? 0) > 0 && (
+            <p className="text-[10px] text-[#1E5A99] leading-snug">
+              Montant intégré à la mensualité affichée. Le client l'avance à la mise en service du véhicule et se le fait rembourser par l'organisme émetteur du certificat d'économie d'énergie sous 2 à 3 mois.
+            </p>
+          )}
+        </div>
+      )}
       <TxtField label="N° de devis loueur" value={sv.leaserQuoteRef ?? ""} onChange={(s) => onChange({ leaserQuoteRef: s })} />
       {tripartiteUrl && (
         <TripartiteViewerButton url={tripartiteUrl} vehicleLabel={`${sv.vehicle.brand} ${sv.vehicle.model}`} />
