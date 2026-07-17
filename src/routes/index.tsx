@@ -3096,7 +3096,7 @@ function TcoCalculator({
                       const amount = inst?.negotiatedMonthly ?? v.monthlyLld;
                       return (
                         <>
-                          <p className="font-semibold">{fmtEur(util ? amount / 1.2 : amount)}</p>
+                          <p className="font-semibold">{fmtEur(amount)}</p>
                           <p className="text-[10px] text-muted-foreground">/mois {util ? "HT" : "TTC"}{inst && inst.negotiatedMonthly !== v.monthlyLld ? " (négocié)" : ""}</p>
                         </>
                       );
@@ -3449,10 +3449,12 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
   // Indique si une image valide est fournie (sinon on cache l'<img> pour ne
   // pas afficher l'icône cassée ou le texte alt par-dessus le gradient).
   const hasImage = Boolean(vehicle.image && vehicle.image.trim() !== "");
-  // Utilitaire : prix communiqués en HT (les entreprises récupèrent la TVA
-  // sur les véhicules utilitaires, contrairement aux véhicules particuliers).
+  // Utilitaire : prix saisis DIRECTEMENT en HT par l'admin (les entreprises
+  // récupèrent la TVA sur les véhicules utilitaires, contrairement aux
+  // véhicules particuliers) — priceTtc / negotiatedMonthly contiennent donc
+  // déjà le montant HT pour un utilitaire, aucune conversion à appliquer,
+  // seul le libellé change.
   const isUtil = isUtilitaireCategory(vehicle.category);
-  const displayPrice = (ttc: number) => (isUtil ? ttc / 1.2 : ttc);
   const priceUnit = isUtil ? "HT" : "TTC";
   return (
     <Card className={`overflow-hidden transition-all duration-300 ${selected ? "ring-2 ring-primary border-primary" : "hover:border-foreground/40 hover:shadow-lg"}`}>
@@ -3545,7 +3547,7 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
         {/* Bandeau loyer mensuel en bas de l'image (overlay) */}
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-beev-black via-beev-black/80 to-transparent p-3 pt-8">
           <p className="text-[10px] text-beev-beige/70 uppercase tracking-wide">À partir de</p>
-          <p className="text-xl font-bold text-beev-beige leading-tight">{fmtEur(displayPrice(startingMonthly))}<span className="text-xs text-beev-beige/60 font-normal ml-1">/mois {priceUnit}</span></p>
+          <p className="text-xl font-bold text-beev-beige leading-tight">{fmtEur(startingMonthly)}<span className="text-xs text-beev-beige/60 font-normal ml-1">/mois {priceUnit}</span></p>
         </div>
       </div>
       <CardContent className="p-4 space-y-3">
@@ -3587,7 +3589,7 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
             </div>
             <div className="flex items-center justify-between py-1 border-t border-border/40">
               <span className="text-muted-foreground">Prix catalogue {priceUnit}</span>
-              <span className="font-semibold tabular-nums">{fmtEur(displayPrice(vehicle.priceTtc))}</span>
+              <span className="font-semibold tabular-nums">{fmtEur(vehicle.priceTtc)}</span>
             </div>
           </div>
         ) : (
@@ -3601,7 +3603,7 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
                 écrasé sur 3 lignes par les boutons d'actions. */}
             <div className="flex items-baseline justify-between pt-3 border-t border-border/50">
               <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Prix catalogue {priceUnit}</span>
-              <span className="font-semibold text-foreground text-base">{fmtEur(displayPrice(vehicle.priceTtc))}</span>
+              <span className="font-semibold text-foreground text-base">{fmtEur(vehicle.priceTtc)}</span>
             </div>
           </>
         )}
@@ -4186,7 +4188,7 @@ function VehicleSummaryCard({ sv, energy, onQty, onConfigure, onDuplicate, onRem
           </div>
         </div>
         <div className="rounded-lg bg-beev-bleu-20 border border-beev-bleu/40 p-1.5">
-          <div className="text-[9px] uppercase text-[#1E5A99] tracking-wide">Loyer/mois</div>
+          <div className="text-[9px] uppercase text-[#1E5A99] tracking-wide">Loyer/mois {isUtilitaireCategory(sv.vehicle.category) ? "HT" : ""}</div>
           <div className="text-sm font-bold text-beev-black mt-1">{fmtEur(sv.negotiatedMonthly)}</div>
         </div>
         <div className="rounded-lg bg-beev-beige border border-beev-black/5 p-1.5">
@@ -4305,7 +4307,7 @@ function SelectedVehicleRow({ sv, energy, onChange, onApplyAll, onRemove, onDupl
       <div className="grid grid-cols-2 gap-2">
         <NumField label="Quantité" value={sv.quantity} onChange={(n) => onChange({ quantity: n })} />
         <NumField label="Remise %" value={sv.discountPct} onChange={(n) => onChange({ discountPct: n })} step={0.5} />
-        <NumField label="Loyer TTC/mois" value={sv.negotiatedMonthly} onChange={(n) => onChange({ negotiatedMonthly: n })} />
+        <NumField label={isUtilitaireCategory(sv.vehicle.category) ? "Loyer HT/mois" : "Loyer TTC/mois"} value={sv.negotiatedMonthly} onChange={(n) => onChange({ negotiatedMonthly: n })} />
         {/* Durée : on préserve le KILOMÉTRAGE TOTAL contrat en recalculant le
             km/an interne quand la durée change (le total est l'entrée pilote). */}
         <NumField label="Durée (mois)" value={sv.durationMonths} onChange={(n) => {
@@ -5620,11 +5622,11 @@ function VehicleSlide({ sv, energy }: { sv: SelectedVehicle; energy: EnergyParam
           <img src={v.image} alt={`${v.brand} ${v.model}`} className="w-full h-full object-cover" />
         </div>
         <div className="rounded-2xl bg-primary text-primary-foreground p-8 flex flex-col justify-center">
-          <p className="text-xs uppercase opacity-70 mb-2">Loyer mensuel TTC · {sv.durationMonths} mois</p>
+          <p className="text-xs uppercase opacity-70 mb-2">Loyer mensuel {isUtilitaireCategory(v.category) ? "HT" : "TTC"} · {sv.durationMonths} mois</p>
           <p className="text-6xl font-bold tracking-tight">{fmtEur(sv.negotiatedMonthly)}</p>
           <p className="text-sm opacity-80 mt-2">× {sv.quantity} véhicule{sv.quantity > 1 ? "s" : ""} · {Math.round(sv.kmPerYear * (sv.durationMonths / 12)).toLocaleString("fr-FR")} km (contrat)</p>
           {sv.discountPct > 0 && (
-            <p className="text-xs opacity-70 mt-4">Prix catalogue {fmtEur(v.priceTtc)} TTC · remise négociée -{sv.discountPct}%</p>
+            <p className="text-xs opacity-70 mt-4">Prix catalogue {fmtEur(v.priceTtc)} {isUtilitaireCategory(v.category) ? "HT" : "TTC"} · remise négociée -{sv.discountPct}%</p>
           )}
         </div>
       </div>

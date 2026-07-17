@@ -2877,11 +2877,13 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   const optionsTotalTtcCard = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
   const priceBeforeDiscount = v.priceTtc + optionsTotalTtcCard;
   const discounted = priceBeforeDiscount * (1 - sv.discountPct / 100);
-  // Utilitaire : prix communiqués en HT (TVA récupérable par l'entreprise sur
-  // les véhicules utilitaires, contrairement aux véhicules particuliers).
+  // Utilitaire : prix saisis DIRECTEMENT en HT par l'admin (TVA récupérable
+  // par l'entreprise sur les véhicules utilitaires, contrairement aux
+  // véhicules particuliers) — v.priceTtc / sv.negotiatedMonthly contiennent
+  // donc déjà le montant HT pour un utilitaire, aucune conversion à
+  // appliquer, seul le libellé change.
   const isUtilPrice = isUtilitaireCategory(v.category);
   const priceUnitLabel = isUtilPrice ? "HT" : "TTC";
-  const toDisplay = (n: number) => (isUtilPrice ? n / 1.2 : n);
   let py = mainY + 22;
   const rowPad = 14;
   const innerX = cardX + rowPad;
@@ -2895,7 +2897,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(10);
   doc.setTextColor(...BEIGE);
-  doc.text(eur(toDisplay(v.priceTtc)), innerR, py, { align: "right" });
+  doc.text(eur(v.priceTtc), innerR, py, { align: "right" });
   py += 9;
   doc.setDrawColor(70, 67, 62); // séparateur beige@14%
   doc.setLineWidth(0.4);
@@ -2911,7 +2913,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(10);
     doc.setTextColor(...BEIGE);
-    doc.text(`+ ${eur(toDisplay(optionsTotalTtcCard))}`, innerR, py, { align: "right" });
+    doc.text(`+ ${eur(optionsTotalTtcCard)}`, innerR, py, { align: "right" });
     py += 9;
     doc.line(innerX, py, innerR, py);
     py += 12;
@@ -2944,7 +2946,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(10);
     doc.setTextColor(...BEIGE);
-    doc.text(eur(toDisplay(discounted)), innerR, py, { align: "right" });
+    doc.text(eur(discounted), innerR, py, { align: "right" });
     py += 16;
   }
 
@@ -2967,7 +2969,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(34);
   doc.setTextColor(...BEIGE);
-  const monthlyText = eurLoyer(toDisplay(sv.negotiatedMonthly));
+  const monthlyText = eurLoyer(sv.negotiatedMonthly);
   doc.text(monthlyText, innerX, py);
   const monthlyW = doc.getTextWidth(monthlyText);
   doc.setFont(BRAND_FONT, "normal");
