@@ -165,6 +165,25 @@ const LINE_E_GLOBAL = new RegExp(
 const EXCLUDE_LINE = /^(total ht|tva\b|total ttc|sous[- ]total|base ht|base d'imposition|remise globale|net à payer|escompte|acompte|page \d|signature|sas au capital|siren\b|siret\b|tva intr|description\b.*(prix|quantit|montant))/i;
 const EXCLUDE_LABEL = /^(d[ée]signation|montant ht|prix unitaire|qte|qté|quantit|tva|unit[ée])$/i;
 
+// Certains devis (ex. RIEUX&CO) terminent par une page « Récapitulatif » qui
+// reliste, sous forme de lignes qté×PU=total, les MÊMES sous-totaux déjà
+// détectés dans le détail des prestations (ex. « 1 Prestations 1,00
+// 10 790,00 10 790,00 » = le total du devis entier présenté comme une ligne
+// « qté 1 »). Sans coupure, le format D générique les détecte comme des
+// lignes valides et double-compte tout le devis. Dès qu'on rencontre ce
+// marqueur, on arrête la détection : tout ce qui suit est un doublon.
+const RECAP_SECTION = /\br[ée]capitulatif\b/i;
+
+// Numéro de repère en tête de ligne (« 1.1.1 », « 1.4 », « 1 ») utilisé par
+// les devis à plan numéroté (TGBT, Tranchée, Tirage de câble...). Ce n'est
+// pas une donnée de quantité/prix — mais un fragment comme « 1.2.2 » se
+// tokenise en deux nombres parasites (1.2 et 2) qui peuvent se faire passer
+// pour qté/PU par le format D générique sur une ligne SANS prix réel (ex.
+// prestation non chiffrée), au lieu d'être correctement ignorée. Retiré
+// uniquement pour le format D — les formats A/B/C/E exigent un marqueur
+// (unité, €, %) qu'un numéro de repère ne peut jamais produire.
+const LEADING_REF_NUM = /^\d+(?:\.\d+){0,4}\s+/;
+
 async function extractPdfText(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
@@ -382,6 +401,7 @@ function detectLines(rawText: string): { lines: ParsedQuoteLine[]; warnings: str
   for (const rawLine of textLines) {
     const line = rawLine.trim();
     if (!line) continue;
+    if (RECAP_SECTION.test(line)) break;
     if (EXCLUDE_LINE.test(line)) {
       labelBuffer = [];
       continue;
@@ -390,6 +410,9 @@ function detectLines(rawText: string): { lines: ParsedQuoteLine[]; warnings: str
       labelBuffer = [];
       continue;
     }
+    const refM = line.match(LEADING_REF_NUM);
+    const refPrefixLen = refM ? refM[0].length : 0;
+    const lineForNumbers = line.slice(refPrefixLen);
 
     // Format E (PU€ qté montant€) — testé EN PREMIER car le plus courant et
     // le plus discriminant (2 marqueurs €, pas de TVA par ligne). Regex
@@ -468,14 +491,19 @@ function detectLines(rawText: string): { lines: ParsedQuoteLine[]; warnings: str
         }
       }
       // Format D générique — dernier recours pour les devis non standard.
+      // On retire le numéro de repère de tête (cf. LEADING_REF_NUM) avant
+      // extraction pour ne pas le confondre avec qté/PU, puis on rajoute sa
+      // longueur à labelEnd pour repositionner la coupure sur la ligne
+      // ORIGINALE (matchIndex sert plus bas à découper `line`, pas
+      // `lineForNumbers`).
       if (!qtyStr) {
-        const gen = tryGenericLine(line);
+        const gen = tryGenericLine(lineForNumbers);
         if (gen) {
           qtyStr = String(gen.qty);
           puStr = String(gen.unitHt);
           totalStr = String(gen.total);
           unitStr = gen.unit;
-          matchIndex = gen.labelEnd;
+          matchIndex = gen.labelEnd + refPrefixLen;
         }
       }
     }
