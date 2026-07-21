@@ -243,6 +243,10 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
   // Base d'amortissement = (prix catalogue + options) - remise commerciale.
   // C'est le prix d'achat réel pour l'entreprise, plus juste que le prix
   // catalogue seul.
+  // L'AND (art. 39-4 CGI, plafond selon le CO2) ne s'applique qu'aux voitures
+  // particulières. Un utilitaire (N1, sans place arrière) en est exonéré, au
+  // même titre que la TVS et le malus ci-dessus — un utilitaire ne doit
+  // jamais afficher d'AND, quel que soit son prix ou son CO2.
   const plafondAND = getPlafondAND(v.co2 ?? 0);
   const prixCatalogue = v.priceTtc;
   const optionsTotal = Math.max(0, contract.optionsTotalTtc ?? 0);
@@ -250,7 +254,7 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
   const prixAvantRemise = prixCatalogue + optionsTotal;
   const remiseAmount = (prixAvantRemise * remisePct) / 100;
   const prixFinal = prixAvantRemise - remiseAmount;
-  const baseAND = prixFinal - (v.prixBatterie ?? 0) - plafondAND;
+  const baseAND = isUtilitaire ? 0 : prixFinal - (v.prixBatterie ?? 0) - plafondAND;
   const andAnnuel = baseAND > 0 ? baseAND / 5 : 0;
   // L'AND n'est pas un décaissement : l'entreprise ne paie pas andAnnuel
   // en tant que tel, elle perd seulement la déduction fiscale sur ce
