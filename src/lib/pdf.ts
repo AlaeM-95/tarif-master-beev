@@ -924,8 +924,9 @@ export async function generateProposalPdf(opts: {
     drawCompetitorComparison(doc, withCompetitor);
   }
   // Pages d'analyse TCO multi-véhicules, chacune activable indépendamment.
-  // Requièrent 2+ véhicules avec includeTco (sauf bilan carbone : 1 suffit).
-  const tcoEligible = v.length >= 2 && v.some((sv) => sv.includeTco);
+  // 1 véhicule avec includeTco suffit : la synthèse/détail garde son sens
+  // (récap des composantes du coût) même sans comparaison à un second modèle.
+  const tcoEligible = v.some((sv) => sv.includeTco);
   if (ADMIN_MODE) {
     // Page TCO FUSIONNÉE (admin) : bandeau d'impact + KPI + détail des
     // composantes sur une seule page (remplace le tableau de bord à barres).
