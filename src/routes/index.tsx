@@ -561,7 +561,7 @@ function App() {
           vehicle: v, quantity: 1, discountPct: v.remise ?? 0,
           negotiatedMonthly: negotiated,
           durationMonths: duration, kmPerYear,
-          includeTco: false, services: [], options: [],
+          includeTco: true, services: [], options: [],
         },
       };
     });
