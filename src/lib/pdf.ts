@@ -6,7 +6,7 @@ import { DEFAULT_PDF_CONFIG, type PdfDisplayConfig } from "./pdf-config";
 import { fetchTcoResultsForVehicles, type TcoResult } from "./tco-results";
 import { loadBeevPillars, type BeevPillar } from "./beev-pillars";
 import { loadPdfTexts, buildPdfTextMap, lookupText, lookupList, setPdfTextOverrides, type PdfTextMap } from "./pdf-texts";
-import { calculateTcoFull, calculateB2B2ETco, calculateMalusCO2, calculateMalusPoids, type B2B2ECalculatorInput } from "./tco-calculator";
+import { calculateTcoFull, calculateB2B2ETco, calculateMalusCO2, calculateMalusPoids, DEFAULT_B2B2E_INPUT, type B2B2ECalculatorInput } from "./tco-calculator";
 import type { EnergyParams } from "./store";
 
 export type ClientInfo = {
@@ -2762,6 +2762,128 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
   }
 }
 
+// Trace un segment en pointillés avec les seuls primitifs jsPDF garantis
+// disponibles (doc.line) — évite de dépendre de setLineDashPattern, dont le
+// support varie selon la version de jsPDF et n'est utilisé nulle part
+// ailleurs dans ce fichier.
+function drawDashedLine(doc: jsPDF, x1: number, y1: number, x2: number, y2: number, dashLen = 4, gapLen = 3) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist === 0) return;
+  const ux = dx / dist, uy = dy / dist;
+  let pos = 0;
+  while (pos < dist) {
+    const segEnd = Math.min(pos + dashLen, dist);
+    doc.line(x1 + ux * pos, y1 + uy * pos, x1 + ux * segEnd, y1 + uy * segEnd);
+    pos += dashLen + gapLen;
+  }
+}
+
+// ROI installation borne domicile (véhicules électriques uniquement) ———
+// Compare le coût cumulé « avec borne domicile » (investissement + kWh au
+// tarif domicile) au coût cumulé « sans borne » (100 % recharge publique,
+// plus chère) pour montrer à partir de quelle consommation l'installation
+// devient rentable. Dessiné en vectoriel (jsPDF), comme le reste du PDF —
+// pas d'image bitmap, cohérent avec le style du reste du document.
+// L'investissement borne reprend la même hypothèse par défaut que le
+// calculateur B2B2E (DEFAULT_B2B2E_INPUT.investBorneParCollabHt), faute de
+// connaître le prix négocié réel de LA borne de CE collaborateur ici.
+function drawHomeChargerRoi(doc: jsPDF, y: number, v: Vehicle, e: EnergyParams, client: ClientInfo, type: ProjectType): number {
+  const prixDom = e.kWhHome ?? 0.20;
+  const prixPub = e.kWhPublic ?? 0.45;
+  // Sans écart de prix domicile/public en faveur du domicile, il n'y a pas
+  // de seuil de rentabilité à montrer (la borne ne coûterait jamais moins).
+  if (prixPub <= prixDom) return y;
+  const investBorne = DEFAULT_B2B2E_INPUT.investBorneParCollabHt;
+  const seuilKwh = investBorne / (prixPub - prixDom);
+  const conso = v.consumptionElec ?? v.consumption ?? 18;
+  const seuilKm = conso > 0 ? (seuilKwh / conso) * 100 : 0;
+
+  const chartTop = ensureSpace(doc, y, 260, client, type);
+  y = chartTop;
+
+  doc.setFillColor(...LAVENDER);
+  doc.rect(M, y + 2, 24, 2.5, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text("ROI INSTALLATION BORNE DOMICILE", M + 32, y + 6);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...SUB);
+  doc.text(`Coût cumulé selon la consommation, sur la base de ${eur(investBorne)} d'investissement borne.`, M + 32, y + 18);
+  y += 34;
+
+  const plotX = M + 44;
+  const plotTop = y;
+  const plotBottom = y + 150;
+  const plotW = PAGE_W - M * 2 - 54;
+  const maxKwh = Math.max(seuilKwh * 1.7, 1000);
+  const costWithBorne = (kwh: number) => investBorne + kwh * prixDom;
+  const costNoBorne = (kwh: number) => kwh * prixPub;
+  const maxCost = Math.max(costWithBorne(maxKwh), costNoBorne(maxKwh));
+  const xAt = (kwh: number) => plotX + (kwh / maxKwh) * plotW;
+  const yAt = (cost: number) => plotBottom - Math.max(0, Math.min(1, cost / maxCost)) * (plotBottom - plotTop);
+
+  // Grille horizontale + labels axe Y (coût)
+  doc.setDrawColor(...RULE);
+  doc.setLineWidth(0.4);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(6.5);
+  for (let i = 0; i <= 4; i++) {
+    const gy = plotTop + (i / 4) * (plotBottom - plotTop);
+    doc.line(plotX, gy, plotX + plotW, gy);
+    doc.setTextColor(...SUB);
+    doc.text(eur(maxCost * (1 - i / 4)), plotX - 6, gy + 3, { align: "right" });
+  }
+  // Axe X (labels kWh)
+  for (let i = 0; i <= 4; i++) {
+    const kwhVal = (i / 4) * maxKwh;
+    doc.setTextColor(...SUB);
+    doc.text(`${Math.round(kwhVal)}`, xAt(kwhVal), plotBottom + 12, { align: "center" });
+  }
+  doc.setFontSize(7);
+  doc.text("kWh consommés", plotX + plotW / 2, plotBottom + 24, { align: "center" });
+
+  // Ligne « avec borne » (pleine, accent lavande)
+  doc.setDrawColor(...LAVENDER);
+  doc.setLineWidth(1.6);
+  doc.line(xAt(0), yAt(costWithBorne(0)), xAt(maxKwh), yAt(costWithBorne(maxKwh)));
+  // Ligne « sans borne » (pointillés, gris) — comparaison, pas la solution mise en avant
+  const GREY_LINE2: [number, number, number] = [150, 146, 138];
+  doc.setDrawColor(...GREY_LINE2);
+  doc.setLineWidth(1.6);
+  drawDashedLine(doc, xAt(0), yAt(costNoBorne(0)), xAt(maxKwh), yAt(costNoBorne(maxKwh)));
+
+  // Point de seuil de rentabilité
+  if (seuilKwh > 0 && seuilKwh < maxKwh) {
+    const px = xAt(seuilKwh);
+    const py = yAt(costWithBorne(seuilKwh));
+    doc.setFillColor(...INK);
+    doc.circle(px, py, 3, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...INK);
+    const seuilLabel = `Seuil de rentabilité : ${Math.round(seuilKwh)} kWh (~${Math.round(seuilKm)} km)`;
+    const labelX = px + 8 + doc.getTextWidth(seuilLabel) > plotX + plotW ? px - 8 - doc.getTextWidth(seuilLabel) : px + 8;
+    doc.text(seuilLabel, labelX, py - 8);
+  }
+
+  // Légende
+  const legY = plotBottom + 40;
+  doc.setFillColor(...LAVENDER);
+  doc.rect(plotX, legY - 6, 14, 3, "F");
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...INK);
+  doc.text(`Avec borne domicile : ${eur(investBorne)} + ${prixDom.toFixed(2)} €/kWh`, plotX + 20, legY - 3);
+  doc.setFillColor(...GREY_LINE2);
+  doc.rect(plotX, legY + 8, 14, 3, "F");
+  doc.text(`Sans borne, 100 % recharge publique : ${prixPub.toFixed(2)} €/kWh`, plotX + 20, legY + 11);
+
+  return legY + 22;
+}
+
 // ============ FICHE VÉHICULE ============
 async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams, idx: number, total: number, client: ClientInfo, type: ProjectType) {
   // Refonte design Claude/Beev — étape 3/5 :
@@ -3460,6 +3582,12 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
 
     // Avance du Y : utilise la hauteur totale déjà calculée (BG + encart fiscal)
     y += totalCardH + 12;
+
+    // ROI installation borne domicile — uniquement pour un véhicule électrique
+    // dont le TCO est calculé (même condition que l'encart fiscal ci-dessus).
+    if (sv.vehicle.energy === "Électrique") {
+      y = drawHomeChargerRoi(doc, y, sv.vehicle, e, client, type);
+    }
   }
 
   // Admin (v2) : prestations & services ET le détail des options sont désormais
