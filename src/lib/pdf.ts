@@ -207,6 +207,12 @@ export type SelectedCharger = {
   instanceId: string;
   charger: Charger;
   quantity: number;
+  /** Multiplie le prix de vente (lineItems) par `quantity`. Par défaut true
+   *  (comportement historique) : quantity = 2 double le prix, en supposant
+   *  que lineItems chiffre UNE seule borne. Décoché par le commercial quand
+   *  lineItems chiffre déjà le lot complet (N bornes) — quantity reste alors
+   *  purement informatif, sans effet sur le prix total. */
+  multiplyPriceByQty?: boolean;
   discountPct: number;
   installIncluded: boolean;
   siteName: string;
@@ -245,6 +251,14 @@ export type SelectedCharger = {
    *  `quantity` (nombre de bornes achetées). Par défaut 1 si non renseigné. */
   chargePoints?: 1 | 2;
 };
+
+/** Multiplicateur de prix à appliquer à `sc.lineItems` : `quantity` sauf si
+ *  le commercial a explicitement décoché `multiplyPriceByQty` (lineItems
+ *  chiffre alors déjà le lot complet). Source unique — ne pas réécrire
+ *  `sc.quantity` directement dans un calcul de prix. */
+export function chargerQtyMultiplier(sc: SelectedCharger): number {
+  return sc.multiplyPriceByQty === false ? 1 : Math.max(1, sc.quantity || 1);
+}
 
 // Calculs de l'offre en location d'une borne (par instance).
 export function computeChargerLease(sc: SelectedCharger) {
@@ -1400,12 +1414,27 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
   doc.setTextColor(...LAVENDER);
   doc.text(lookupText(TEXTS, "common", "cover_prepared_for_label", "PRÉPARÉE POUR"), M, labelY);
   doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(13);
+  // La raison sociale peut être longue au point de déborder sur la colonne
+  // « Préparée par » (ex. « AALBERTS SURFACE TECHNOLOGIE (AMBOISE) »
+  // chevauchant le nom du commercial). splitTextToSize seul ne suffisait pas
+  // (marge de sécurité insuffisante entre les 2 colonnes) : on réduit la
+  // police si la ligne la plus large dépasse encore la largeur dispo, puis on
+  // limite à 2 lignes avec troncature (…) plutôt que de laisser déborder.
+  const col1MaxW = colWidth - 30;
+  let companyFontSize = 13;
+  doc.setFontSize(companyFontSize);
+  let companyLines = doc.splitTextToSize(c.company || "—", col1MaxW) as string[];
+  while (companyFontSize > 9 && companyLines.some((l) => doc.getTextWidth(l) > col1MaxW)) {
+    companyFontSize -= 0.5;
+    doc.setFontSize(companyFontSize);
+    companyLines = doc.splitTextToSize(c.company || "—", col1MaxW) as string[];
+  }
+  if (companyLines.length > 2) {
+    let last = companyLines[1];
+    while (last.length > 4 && doc.getTextWidth(last + "…") > col1MaxW) last = last.slice(0, -1);
+    companyLines = [companyLines[0], last + "…"];
+  }
   doc.setTextColor(...BG);
-  // La raison sociale peut s'étaler sur 2 lignes : on dessine les lignes
-  // explicitement et on descend le contact en conséquence pour éviter le
-  // chevauchement nom client / contact (bug observé sur les noms longs).
-  const companyLines = doc.splitTextToSize(c.company || "—", colWidth - 20) as string[];
   const NAME_LINE_H = 15;
   doc.text(companyLines, M, nameY);
   const contactY = nameY + (companyLines.length - 1) * NAME_LINE_H + (lineY - nameY);
@@ -1422,9 +1451,22 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
   doc.setTextColor(...LAVENDER);
   doc.text(lookupText(TEXTS, "common", "cover_prepared_by_label", "PRÉPARÉE PAR"), col2X, labelY);
   doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(13);
+  // Même garde-fou côté commercial : évite un débordement en bord de page
+  // pour un nom long.
+  const col2MaxW = PAGE_W - M - col2X;
+  let salesRepFontSize = 13;
+  let salesRepText = c.salesRep || "Beev";
+  doc.setFontSize(salesRepFontSize);
+  while (salesRepFontSize > 9 && doc.getTextWidth(salesRepText) > col2MaxW) {
+    salesRepFontSize -= 0.5;
+    doc.setFontSize(salesRepFontSize);
+  }
+  if (doc.getTextWidth(salesRepText) > col2MaxW) {
+    while (salesRepText.length > 4 && doc.getTextWidth(salesRepText + "…") > col2MaxW) salesRepText = salesRepText.slice(0, -1);
+    salesRepText += "…";
+  }
   doc.setTextColor(...BG);
-  doc.text(c.salesRep || "Beev", col2X, nameY);
+  doc.text(salesRepText, col2X, nameY);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9.5);
   doc.setTextColor(...GREY_LINE);
@@ -2395,7 +2437,7 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[], client?
     : 0;
 
   // Total recalculé pour cohérence avec la page récap financier (hors bornes en location).
-  const total = chargers.reduce((sum, sc) => sc.leaseEnabled ? sum : sum + sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0) * sc.quantity, 0) + bureauControle;
+  const total = chargers.reduce((sum, sc) => sc.leaseEnabled ? sum : sum + sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0) * chargerQtyMultiplier(sc), 0) + bureauControle;
   // Montant total projet saisi manuellement (mode location) : s'il est renseigné,
   // il REMPLACE le total calculé (qui exclut les bornes en location).
   const manualTotal = chargers.reduce((sum, sc) => sum + (sc.leaseProjectTotalHt ?? 0), 0);
@@ -3713,7 +3755,7 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   // Le PDF client utilise les prix avec marge (lineItemClientUnit/Total).
   // Le prix d'achat (unitHt brut) et la marge restent invisibles côté client.
   const total_ = sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0);
-  const grandTotal = total_ * Math.max(1, sc.quantity);
+  const grandTotal = total_ * chargerQtyMultiplier(sc);
   // Mode LOCATION : on présente l'offre en loyer (option d'achat + résiliation)
   // à la place du chiffrage à l'achat.
   if (sc.leaseEnabled) {
@@ -6823,7 +6865,7 @@ function drawExecutiveSummary(
     }
   });
   chargers.forEach((sc) => {
-    chargersHt += sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0) * sc.quantity;
+    chargersHt += sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0) * chargerQtyMultiplier(sc);
   });
   const chargersTtc = chargersHt * 1.20;
 
@@ -7020,7 +7062,7 @@ function drawFinancialSummary(
     const rows: Array<[string, string, string]> = [];
     chargers.forEach((sc) => {
       const lineTotalHt = sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0);
-      const totalForSite = lineTotalHt * sc.quantity;
+      const totalForSite = lineTotalHt * chargerQtyMultiplier(sc);
       totalHt += totalForSite;
       const label = sc.siteName ? `${sc.siteName} — ${sc.charger.brand} ${sc.charger.model}` : `${sc.charger.brand} ${sc.charger.model}`;
       rows.push([

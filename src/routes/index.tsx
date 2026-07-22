@@ -14,7 +14,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles, Copy, BarChart3, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type EnergyParams } from "@/lib/store";
-import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, computeChargerLease, getVehicleSpecRows, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
+import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, computeChargerLease, chargerQtyMultiplier, getVehicleSpecRows, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
 import { BEEV_JOURNEYS, MANDATORY_SERVICES, catalogTypeOf, createBlankCharger, createBlankVehicle, isUtilitaireCategory, categoryGroupOf, CATEGORY_GROUP_LABEL, type CategoryGroupKey, type CatalogType, type Charger, type LineItem, type ProjectType, type Vehicle } from "@/lib/catalog";
 import { AdminBadge } from "@/components/admin-badge";
 import { ImageUpload } from "@/components/image-upload";
@@ -4738,10 +4738,13 @@ function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total,
   };
 
   const isHome = sc.charger.deployment === "domicile";
-  // Total client (avec marge) — c'est ce qui apparaît dans le PDF
-  const totalClient = sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0);
+  const qtyMult = chargerQtyMultiplier(sc);
+  // Total client (avec marge) — c'est ce qui apparaît dans le PDF. Multiplié
+  // par la quantité sauf si le commercial a décoché "Doubler le prix selon
+  // la quantité" (lineItems chiffre alors déjà le lot complet).
+  const totalClient = sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0) * qtyMult;
   // Total d'achat (sans marge) — pour le calcul de marge
-  const totalAchat = sc.lineItems.reduce((a, li) => a + li.qty * li.unitHt, 0);
+  const totalAchat = sc.lineItems.reduce((a, li) => a + li.qty * li.unitHt, 0) * qtyMult;
   const margeAbs = totalClient - totalAchat;
   const margePct = totalAchat > 0 ? (margeAbs / totalAchat) * 100 : 0;
 
@@ -4766,6 +4769,20 @@ function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total,
         <div className="col-span-2"><TxtField label="Adresse" value={sc.siteAddress} onChange={(s) => onChange({ siteAddress: s })} /></div>
         <NumField label={isHome ? "Nb collab." : "Quantité bornes"} value={sc.quantity} onChange={(n) => onChange({ quantity: n })} />
         <NumField label="Remise %" value={sc.discountPct} onChange={(n) => onChange({ discountPct: n })} step={0.5} />
+        {sc.quantity > 1 && (
+          <label className="col-span-2 flex items-start gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-3.5 w-3.5"
+              checked={sc.multiplyPriceByQty !== false}
+              onChange={(e) => onChange({ multiplyPriceByQty: e.target.checked })}
+            />
+            <span>
+              Doubler le prix de vente selon la quantité ({sc.quantity} × prix ligne).
+              Décochez si les lignes ci-dessous chiffrent déjà le lot complet — sinon la quantité reste indicative, sans effet sur le total.
+            </span>
+          </label>
+        )}
       </div>
 
       {/* Points de charge par borne : 1 (simple) ou 2 (double, un poteau/mur
@@ -5755,10 +5772,10 @@ function ChargerSlide({ sc, projectType }: { sc: SelectedCharger; projectType: P
                 <span>{isHome ? "Total HT par collaborateur" : "Total HT site"}</span>
                 <span className="tabular-nums">{fmtEur(total)}</span>
               </li>
-              {sc.quantity > 1 && (
+              {sc.quantity > 1 && chargerQtyMultiplier(sc) > 1 && (
                 <li className="flex justify-between text-primary font-semibold">
                   <span>Total HT × {sc.quantity}</span>
-                  <span className="tabular-nums">{fmtEur(total * sc.quantity)}</span>
+                  <span className="tabular-nums">{fmtEur(total * chargerQtyMultiplier(sc))}</span>
                 </li>
               )}
             </ul>
