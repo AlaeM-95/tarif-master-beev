@@ -12,6 +12,11 @@ export type EnergyParams = {
   kWhHome: number;
   kWhPublic: number;
   mixHomePct: number;
+  /** Coût HT d'installation d'une borne domicile, utilisé par le graphique
+   *  ROI installation borne domicile sur la fiche véhicule électrique (PDF).
+   *  Réglable par le commercial, contrairement à l'ancien défaut figé repris
+   *  du calculateur B2B2E. */
+  homeChargerCostHt: number;
 };
 
 export const DEFAULT_ENERGY: EnergyParams = {
@@ -21,6 +26,7 @@ export const DEFAULT_ENERGY: EnergyParams = {
   kWhHome: 0.4,
   kWhPublic: 0.6,
   mixHomePct: 85,
+  homeChargerCostHt: 1800,
 };
 
 function load<T>(key: string, fallback: T): T {

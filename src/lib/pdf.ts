@@ -2785,16 +2785,18 @@ function drawDashedLine(doc: jsPDF, x1: number, y1: number, x2: number, y2: numb
 // plus chère) pour montrer à partir de quelle consommation l'installation
 // devient rentable. Dessiné en vectoriel (jsPDF), comme le reste du PDF —
 // pas d'image bitmap, cohérent avec le style du reste du document.
-// L'investissement borne reprend la même hypothèse par défaut que le
-// calculateur B2B2E (DEFAULT_B2B2E_INPUT.investBorneParCollabHt), faute de
-// connaître le prix négocié réel de LA borne de CE collaborateur ici.
+// L'investissement borne est réglable par le commercial (« Prix borne
+// domicile HT », panneau Paramètres TCO & énergie) ; à défaut, reprend
+// l'hypothèse par défaut du calculateur B2B2E (investBorneParCollabHt).
 function drawHomeChargerRoi(doc: jsPDF, y: number, v: Vehicle, e: EnergyParams, client: ClientInfo, type: ProjectType): number {
   const prixDom = e.kWhHome ?? 0.20;
   const prixPub = e.kWhPublic ?? 0.45;
   // Sans écart de prix domicile/public en faveur du domicile, il n'y a pas
   // de seuil de rentabilité à montrer (la borne ne coûterait jamais moins).
   if (prixPub <= prixDom) return y;
-  const investBorne = DEFAULT_B2B2E_INPUT.investBorneParCollabHt;
+  // Réglable par le commercial (Paramètres TCO & énergie) ; à défaut, reprend
+  // l'hypothèse par défaut du calculateur B2B2E pour rester cohérent.
+  const investBorne = e.homeChargerCostHt ?? DEFAULT_B2B2E_INPUT.investBorneParCollabHt;
   const seuilKwh = investBorne / (prixPub - prixDom);
   const conso = v.consumptionElec ?? v.consumption ?? 18;
   const seuilKm = conso > 0 ? (seuilKwh / conso) * 100 : 0;

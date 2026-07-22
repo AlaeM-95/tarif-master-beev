@@ -3063,6 +3063,7 @@ function TcoCalculator({
           <NumField label="kWh domicile €" value={energy.kWhHome} onChange={(n) => setEnergy({ ...energy, kWhHome: n })} step={0.01} />
           <NumField label="kWh public €" value={energy.kWhPublic} onChange={(n) => setEnergy({ ...energy, kWhPublic: n })} step={0.01} />
           <NumField label="Mix domicile %" value={energy.mixHomePct} onChange={(n) => setEnergy({ ...energy, mixHomePct: n })} />
+          <NumField label="Prix borne domicile HT" value={energy.homeChargerCostHt ?? 1800} onChange={(n) => setEnergy({ ...energy, homeChargerCostHt: n })} />
         </CardContent>
       </Card>
 
@@ -3390,6 +3391,7 @@ function EnergyCard({ energy, setEnergy, reset }: { energy: EnergyParams; setEne
         <NumField label="kWh domicile €" value={energy.kWhHome} onChange={(n) => setEnergy({ ...energy, kWhHome: n })} step={0.01} />
         <NumField label="kWh public €" value={energy.kWhPublic} onChange={(n) => setEnergy({ ...energy, kWhPublic: n })} step={0.01} />
         <NumField label="Mix domicile %" value={energy.mixHomePct} onChange={(n) => setEnergy({ ...energy, mixHomePct: n })} />
+        <NumField label="Prix borne domicile HT" value={energy.homeChargerCostHt ?? 1800} onChange={(n) => setEnergy({ ...energy, homeChargerCostHt: n })} />
       </CardContent>
     </Card>
   );
