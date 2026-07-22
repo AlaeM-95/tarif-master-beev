@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "./supabase";
 import type { Database } from "./database.types";
 import type { ProjectType } from "./catalog";
-import type { SelectedCharger, SelectedVehicle } from "./pdf";
+import { chargerQtyMultiplier, type SelectedCharger, type SelectedVehicle } from "./pdf";
 import type { EnergyParams } from "./store";
 
 type ProposalRow = Database["public"]["Tables"]["proposals"]["Row"];
@@ -96,7 +96,7 @@ function computeTotal(
   });
   selectedC.forEach((sc) => {
     const sum = sc.lineItems.reduce((a, li) => a + li.qty * li.unitHt, 0);
-    total += sum * sc.quantity;
+    total += sum * chargerQtyMultiplier(sc);
   });
   return Math.round(total);
 }

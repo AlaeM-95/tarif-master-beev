@@ -13,7 +13,7 @@ import { useProposal, useProposals, PROPOSAL_STATUS_LABEL, PROPOSAL_STATUS_COLOR
 import { useUsers, ROLE_LABELS } from "@/lib/users";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Share2 } from "lucide-react";
-import { generateProposalPdf } from "@/lib/pdf";
+import { generateProposalPdf, chargerQtyMultiplier } from "@/lib/pdf";
 
 export const Route = createFileRoute("/proposals/$id")({
   component: ProposalDetailPage,
@@ -206,7 +206,7 @@ function ProposalDetailPage() {
                     <p className="text-sm font-medium">{sc.charger.brand} {sc.charger.model}</p>
                     <p className="text-xs text-muted-foreground">{sc.quantity} × · {sc.siteName || "—"}</p>
                   </div>
-                  <p className="text-sm font-semibold">{fmtEur(sc.lineItems.reduce((a, li) => a + li.qty * li.unitHt, 0))} HT</p>
+                  <p className="text-sm font-semibold">{fmtEur(sc.lineItems.reduce((a, li) => a + li.qty * li.unitHt, 0) * chargerQtyMultiplier(sc))} HT</p>
                 </div>
               ))}
             </CardContent>

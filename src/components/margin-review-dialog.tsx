@@ -2,7 +2,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Percent, FileText, ExternalLink, FileDown } from "lucide-react";
-import { lineItemClientUnit, lineItemClientTotal, type SelectedCharger } from "@/lib/pdf";
+import { lineItemClientUnit, lineItemClientTotal, chargerQtyMultiplier, type SelectedCharger } from "@/lib/pdf";
 import { MarginSelect } from "@/components/margin-select";
 import type { LineItem } from "@/lib/catalog";
 
@@ -21,9 +21,13 @@ export function MarginReviewDialog({ open, onClose, selectedChargers, onUpdateLi
   let grandTotalClient = 0;
   let grandTotalAchat = 0;
   selectedChargers.forEach((sc) => {
+    // Respecte le toggle "Doubler le prix de vente selon la quantité" —
+    // sc.quantity seul ignorait le cas où lineItems chiffre déjà le lot
+    // complet, doublant le total même case décochée.
+    const qtyMult = chargerQtyMultiplier(sc);
     sc.lineItems.forEach((li) => {
-      grandTotalClient += lineItemClientTotal(li) * sc.quantity;
-      grandTotalAchat += li.qty * li.unitHt * sc.quantity;
+      grandTotalClient += lineItemClientTotal(li) * qtyMult;
+      grandTotalAchat += li.qty * li.unitHt * qtyMult;
     });
   });
   const margeAbs = grandTotalClient - grandTotalAchat;
@@ -45,8 +49,9 @@ export function MarginReviewDialog({ open, onClose, selectedChargers, onUpdateLi
 
         <div className="space-y-6 py-2">
           {selectedChargers.map((sc) => {
-            const totalAchat = sc.lineItems.reduce((a, li) => a + li.qty * li.unitHt, 0);
-            const totalClient = sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0);
+            const qtyMult = chargerQtyMultiplier(sc);
+            const totalAchat = sc.lineItems.reduce((a, li) => a + li.qty * li.unitHt, 0) * qtyMult;
+            const totalClient = sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0) * qtyMult;
             const margeSite = totalClient - totalAchat;
             const margeSitePct = totalAchat > 0 ? (margeSite / totalAchat) * 100 : 0;
 
