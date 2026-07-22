@@ -772,7 +772,15 @@ export async function generateProposalPdf(opts: {
     break;
   }
 
-  await drawCover(doc, effectiveType, client, v.length, c.length);
+  // Points de charge totaux du site (quantité de bornes × points par borne) —
+  // même formule que « Synthèse projet » (aggregateSiteSpecs), pour que la
+  // couverture et la synthèse ne se contredisent jamais sur ce chiffre.
+  const sitePdcTotal = (() => {
+    const specs = aggregateSiteSpecs(c);
+    const totalUnits = c.reduce((s, sc) => s + (sc.quantity || 1), 0);
+    return totalUnits * (specs.pointsParBorne ?? 1);
+  })();
+  await drawCover(doc, effectiveType, client, v.length, c.length, sitePdcTotal);
 
   // Pages dédiées 'rapport site' — pour les projets bornes site entreprise,
   // inspiré du rapport visite technique Château la Commaraine.
@@ -1156,7 +1164,7 @@ export async function generateProposalPdf(opts: {
 // noire avec couleur d'accent par produit (voiture rose · domicile bleu · site
 // violet), eyebrow, chip client, grand titre éditorial, filet d'accent, chips,
 // puis bloc méta (préparée pour/par) + mentions légales.
-async function drawCoverV2(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nbC: number) {
+async function drawCoverV2(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nbC: number, sitePdcTotal: number) {
   const ROSE: [number, number, number] = [244, 184, 170];
   const BLEU: [number, number, number] = [165, 210, 255];
   const VIOLET: [number, number, number] = [211, 204, 216];
@@ -1195,7 +1203,12 @@ async function drawCoverV2(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: nu
   const chips = isCombined ? [`${nbV} véhicule${nbV > 1 ? "s" : ""}`, `${nbC} borne${nbC > 1 ? "s" : ""}`, "Offre combinée"]
     : type === "vehicles" ? [`${total} véhicule${total > 1 ? "s" : ""}`, "Location longue durée", "Multimarque"]
     : type === "home" ? [`${total} collaborateur${total > 1 ? "s" : ""}`, "Installation IRVE", "Supervision"]
-    : [`${total} point${total > 1 ? "s" : ""} de charge`, "Pose IRVE", "Mise en service OCPP"];
+    // Points de charge = quantité de bornes × points par borne (même calcul
+    // que « Synthèse projet »), pas le nombre de bornes lui-même — une borne
+    // double sur 2 unités = 4 points, pas 2. Repéré via un devis 2 bornes
+    // doubles affichant « 1 point de charge » ici alors que la synthèse
+    // affichait correctement « 4 PDC ».
+    : [`${sitePdcTotal} point${sitePdcTotal > 1 ? "s" : ""} de charge`, "Pose IRVE", "Mise en service OCPP"];
 
   // Carte héro noire
   const hy = 150, hh = 420, ix = M + 28;
@@ -1262,9 +1275,9 @@ async function drawCoverV2(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: nu
   doc.text("Beev · 5 rue Pleyel, 93200 Saint-Denis · SAS au capital de 63 245,02 € · RCS Bobigny 851 682 807", PAGE_W / 2, PAGE_H - 34, { align: "center" });
 }
 
-async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nbC: number) {
+async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nbC: number, sitePdcTotal: number) {
   // Rebrand v2 réservé aux comptes admin (le reste de la gamme suit page à page).
-  if (ADMIN_MODE) { await drawCoverV2(doc, type, c, nbV, nbC); return; }
+  if (ADMIN_MODE) { await drawCoverV2(doc, type, c, nbV, nbC, sitePdcTotal); return; }
   // Charte officielle Beev — couleurs synchronisées avec pdf_settings (admin)
   // INK     = colorInk    (texte principal, #111111 par défaut)
   // BG      = colorBg     (fond cream, #FCF9F2 par défaut)
