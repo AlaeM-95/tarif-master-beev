@@ -714,6 +714,16 @@ function App() {
   // v2 Sélection (admin) : clé du véhicule dont le panneau de réglages est ouvert.
   const [configVKey, setConfigVKey] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  // Langue du PDF généré (véhicules uniquement pour l'instant — cf. plan de
+  // traduction). Mémorisée en localStorage pour retrouver le dernier choix.
+  const [pdfLang, setPdfLang] = useState<"fr" | "en">(() => {
+    if (typeof window === "undefined") return "fr";
+    return (localStorage.getItem("beev_pdf_lang_v1") as "fr" | "en") || "fr";
+  });
+  const setPdfLangPersist = (l: "fr" | "en") => {
+    setPdfLang(l);
+    if (typeof window !== "undefined") localStorage.setItem("beev_pdf_lang_v1", l);
+  };
   const { config: pdfConfig, update: updatePdfConfig, reset: resetPdfConfig } = usePdfConfig();
   // Sous-titres de catalogue éditables par type de projet (depuis /admin/pdf).
   const { getSettings: getPdfSettings } = usePdfSettings();
@@ -798,6 +808,10 @@ function App() {
           textOverrides: Object.keys(pdfTextOverrides).length > 0 ? pdfTextOverrides : undefined,
           preview,
           adminMode: isAdmin,
+          // Anglais réservé au type véhicules pour l'instant (cf. plan de
+          // traduction) — le toggle FR/EN n'est de toute façon affiché que
+          // dans ce contexte, mais on sécurise ici aussi.
+          lang: projectType === "vehicles" ? pdfLang : "fr",
         }),
         timeout,
       ]);
@@ -1340,6 +1354,30 @@ function App() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {/* Langue du PDF — réservé au type véhicules pour l'instant (les
+                pages bornes site / B2B2E domicile ne sont pas encore
+                traduites, cf. plan de traduction). */}
+            {projectType === "vehicles" && (
+              <div className="flex rounded-md border overflow-hidden text-xs">
+                <button
+                  type="button"
+                  onClick={() => setPdfLangPersist("fr")}
+                  className={`px-2.5 py-1.5 font-medium ${pdfLang === "fr" ? "bg-foreground text-background" : "hover:bg-muted text-muted-foreground"}`}
+                  title="Générer le PDF en français"
+                >
+                  FR
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPdfLangPersist("en")}
+                  className={`px-2.5 py-1.5 font-medium ${pdfLang === "en" ? "bg-foreground text-background" : "hover:bg-muted text-muted-foreground"}`}
+                  title="Generate the PDF in English"
+                >
+                  EN
+                </button>
+              </div>
+            )}
 
             {/* Aperçu : ouvre le PDF dans un nouvel onglet sans télécharger. */}
             <Button
