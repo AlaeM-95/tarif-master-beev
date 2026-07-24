@@ -6027,12 +6027,12 @@ function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text("BILAN CARBONE · IMPACT RSE", M + 30, y - 4);
+  doc.text(L("BILAN CARBONE · IMPACT RSE", "CARBON FOOTPRINT · CSR IMPACT"), M + 30, y - 4);
   y += 14;
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(26);
   doc.setTextColor(...INK);
-  doc.text("Votre flotte évite des émissions de CO2.", M, y + 18);
+  doc.text(L("Votre flotte évite des émissions de CO2.", "Your fleet avoids CO2 emissions."), M, y + 18);
   y += 50;
 
   // Hypothèses : véhicule thermique de référence émet 135 g CO2/km
@@ -6064,7 +6064,10 @@ function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
-  const intro = `Sur la durée des contrats, votre sélection ${vehicles.length > 1 ? "de véhicules électriques" : "véhicule électrique"} parcourra ${(kmTotalFlotte / 1000).toFixed(0)} k km. Comparé à un parc thermique équivalent (${refCO2gKm} g CO2 / km en moyenne), l'économie d'émissions est significative.`;
+  const intro = L(
+    `Sur la durée des contrats, votre sélection ${vehicles.length > 1 ? "de véhicules électriques" : "véhicule électrique"} parcourra ${(kmTotalFlotte / 1000).toFixed(0)} k km. Comparé à un parc thermique équivalent (${refCO2gKm} g CO2 / km en moyenne), l'économie d'émissions est significative.`,
+    `Over the contract duration, your ${vehicles.length > 1 ? "selection of electric vehicles" : "electric vehicle"} will cover ${(kmTotalFlotte / 1000).toFixed(0)} k km. Compared to an equivalent combustion fleet (${refCO2gKm} g CO2 / km on average), the emissions savings are significant.`,
+  );
   const introL = doc.splitTextToSize(intro, PAGE_W - M * 2);
   doc.text(introL, M, y);
   y += introL.length * 13 + 20;
@@ -6075,7 +6078,7 @@ function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
   doc.setTextColor(...ROSE);
-  doc.text("CO2 ÉVITÉ SUR LA DURÉE DES CONTRATS", M + 20, y + 22);
+  doc.text(L("CO2 ÉVITÉ SUR LA DURÉE DES CONTRATS", "CO2 AVOIDED OVER THE CONTRACT DURATION"), M + 20, y + 22);
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(40);
   doc.setTextColor(...BG);
@@ -6083,15 +6086,18 @@ function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(220, 220, 220);
-  doc.text(`soit ${co2EviteFlotteKg.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} kg CO2 vs un parc thermique de référence (${refCO2gKm} g CO2 / km)`, M + 20, y + 86);
+  doc.text(L(
+    `soit ${co2EviteFlotteKg.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} kg CO2 vs un parc thermique de référence (${refCO2gKm} g CO2 / km)`,
+    `i.e. ${co2EviteFlotteKg.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} kg CO2 vs. a reference combustion fleet (${refCO2gKm} g CO2 / km)`,
+  ), M + 20, y + 86);
   y += 122;
 
   // 3 équivalences concrètes
   const eqWidth = (PAGE_W - M * 2 - 20) / 3;
   const equivalences = [
-    { label: "VOLS A/R PARIS-MARSEILLE", value: arRedAvionParisMarseille.toFixed(0), unit: "passagers", color: ROSE },
-    { label: "ARBRES PLANTÉS / AN", value: arbresPlantes.toFixed(0), unit: "arbres", color: [165, 210, 255] as [number, number, number] },
-    { label: "KM THERMIQUES ÉVITÉS", value: `${(ttKmEquivalents / 1000).toFixed(0)} k`, unit: "km", color: [211, 204, 216] as [number, number, number] },
+    { label: L("VOLS A/R PARIS-MARSEILLE", "PARIS-MARSEILLE ROUND TRIP FLIGHTS"), value: arRedAvionParisMarseille.toFixed(0), unit: L("passagers", "passengers"), color: ROSE },
+    { label: L("ARBRES PLANTÉS / AN", "TREES PLANTED / YEAR"), value: arbresPlantes.toFixed(0), unit: L("arbres", "trees"), color: [165, 210, 255] as [number, number, number] },
+    { label: L("KM THERMIQUES ÉVITÉS", "COMBUSTION KM AVOIDED"), value: `${(ttKmEquivalents / 1000).toFixed(0)} k`, unit: "km", color: [211, 204, 216] as [number, number, number] },
   ];
   equivalences.forEach((eq, i) => {
     const cx = M + i * (eqWidth + 10);
@@ -6118,12 +6124,12 @@ function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(9);
   doc.setTextColor(...SUB);
-  doc.text("DÉTAIL PAR VÉHICULE", M, y);
+  doc.text(L("DÉTAIL PAR VÉHICULE", "DETAIL BY VEHICLE"), M, y);
   y += 6;
   autoTable(doc, {
     startY: y + 4,
     theme: "plain",
-    head: [["Véhicule", "Version", "Motorisation", "Km contrat", "Émissions g/km", "CO2 émis", "CO2 évité"]],
+    head: [[L("Véhicule", "Vehicle"), L("Version", "Version"), L("Motorisation", "Powertrain"), L("Km contrat", "Contract km"), L("Émissions g/km", "Emissions g/km"), L("CO2 émis", "CO2 emitted"), L("CO2 évité", "CO2 avoided")]],
     body: vehicles.map((sv) => {
       const duree = sv.durationMonths / 12;
       const km = sv.kmPerYear * duree * (sv.quantity || 1);
@@ -6136,7 +6142,7 @@ function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
         sv.vehicle.version || "—",
         sv.vehicle.energy || "—",
         `${(km / 1000).toFixed(0)} k km`,
-        isElec ? "0 g (EL)" : `${co2gKm} g`,
+        isElec ? L("0 g (EL)", "0 g (EV)") : `${co2gKm} g`,
         isElec ? "0 kg" : `${co2Emi.toFixed(0)} kg`,
         { content: `${(co2Ref - co2Emi).toFixed(0)} kg`, styles: { fontStyle: "bold" as any, textColor: ROSE, halign: "center" as any } },
       ];
@@ -6157,7 +6163,10 @@ function drawCarbonImpact(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPara
   doc.setFontSize(7.5);
   doc.setTextColor(...SUB);
   doc.text(
-    "Estimation Beev 2026 · Référence thermique 135 g CO2/km (moyenne véhicules essence + diesel parc France). 1 arbre absorbe en moyenne 25 kg CO2/an (chêne adulte, ADEME). 1 A/R Paris-Marseille en avion = 270 kg CO2/passager.",
+    L(
+      "Estimation Beev 2026 · Référence thermique 135 g CO2/km (moyenne véhicules essence + diesel parc France). 1 arbre absorbe en moyenne 25 kg CO2/an (chêne adulte, ADEME). 1 A/R Paris-Marseille en avion = 270 kg CO2/passager.",
+      "Beev 2026 estimate · Combustion reference 135 g CO2/km (average of petrol + diesel vehicles, French fleet). 1 tree absorbs an average of 25 kg CO2/year (mature oak, ADEME). 1 Paris-Marseille round-trip flight = 270 kg CO2/passenger.",
+    ),
     M, y2, { maxWidth: PAGE_W - M * 2 },
   );
 }
