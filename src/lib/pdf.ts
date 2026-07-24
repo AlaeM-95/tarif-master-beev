@@ -265,9 +265,12 @@ export function chargerQtyMultiplier(sc: SelectedCharger): number {
   return sc.multiplyPriceByQty === false ? 1 : Math.max(1, sc.quantity || 1);
 }
 
-// Calculs de l'offre en location d'une borne (par instance).
+// Calculs de l'offre en location d'une borne (par instance). Respecte
+// multiplyPriceByQty comme le chiffrage à l'achat (chargerQtyMultiplier) :
+// sinon la case "Doubler le prix selon la quantité" décochée n'avait aucun
+// effet en mode location, seulement en mode achat.
 export function computeChargerLease(sc: SelectedCharger) {
-  return computeLeaseScenario(sc.leaseMonthly ?? 0, sc.leaseDurationMonths ?? 0, sc.quantity || 1);
+  return computeLeaseScenario(sc.leaseMonthly ?? 0, sc.leaseDurationMonths ?? 0, chargerQtyMultiplier(sc));
 }
 
 // Calcul d'UNE formule de location (loyer mensuel + durée + nb de bornes).
@@ -3685,7 +3688,7 @@ function drawChargerLeaseBlock(doc: jsPDF, sc: SelectedCharger, y: number, clien
   // Montants exacts : pas d'arrondi, on n'affiche les centimes que s'ils existent.
   const money = (n: number) => (Number.isInteger(n) ? eur(n) : eur2(n));
   const fullW = PAGE_W - M * 2;
-  const qty = Math.max(1, sc.quantity || 1);
+  const qty = chargerQtyMultiplier(sc);
   // Formules : formule principale (leaseMonthly / leaseDurationMonths) + formules
   // supplémentaires (leaseConfigs). On ne garde que celles dûment renseignées.
   const extras = (sc.leaseConfigs ?? []).filter((cfg) => (cfg.monthly ?? 0) > 0 && (cfg.durationMonths ?? 0) > 0);
