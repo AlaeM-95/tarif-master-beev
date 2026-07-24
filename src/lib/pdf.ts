@@ -4883,20 +4883,26 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text(ADMIN_MODE ? "ANALYSE TCO · SYNTHÈSE & DÉTAIL" : "ANALYSE TCO · DÉTAIL DES COMPOSANTES", M + 30, y - 4);
+  doc.text(ADMIN_MODE ? L("ANALYSE TCO · SYNTHÈSE & DÉTAIL", "TCO ANALYSIS · SUMMARY & DETAIL") : L("ANALYSE TCO · DÉTAIL DES COMPOSANTES", "TCO ANALYSIS · COMPONENT DETAIL"), M + 30, y - 4);
   y += 14;
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(ADMIN_MODE ? 30 : 26);
   doc.setTextColor(...INK);
-  doc.text(ADMIN_MODE ? "Coût total de possession." : "Tableau de décomposition du TCO", M, y + 18);
+  doc.text(ADMIN_MODE ? L("Coût total de possession.", "Total cost of ownership.") : L("Tableau de décomposition du TCO", "TCO breakdown table"), M, y + 18);
   y += 50;
 
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
   const intro = ADMIN_MODE
-    ? "Classement par COÛT EMPLOYEUR COMPLET croissant = loyer + énergie + TVS + malus + AND + AEN employeur (sur la durée du contrat, options et remise incluses). L'AEN salarié est indiqué à titre informatif, non compté dans le coût employeur."
-    : "Chaque composante du coût total de possession est détaillée par véhicule sur la durée du contrat (options et remise commerciale incluses). Le « coût employeur complet » ajoute au TCO d'usage (loyer + énergie + TVS + malus, repris du tableau de bord) l'amortissement non déductible (AND) et l'avantage en nature employeur (AEN) ; les véhicules restent classés par TCO d'usage croissant.";
+    ? L(
+        "Classement par COÛT EMPLOYEUR COMPLET croissant = loyer + énergie + TVS + malus + AND + AEN employeur (sur la durée du contrat, options et remise incluses). L'AEN salarié est indiqué à titre informatif, non compté dans le coût employeur.",
+        "Ranked by increasing FULL EMPLOYER COST = lease + energy + TVS + penalty + AND + employer AEN (over the contract duration, options and discount included). The employee AEN is shown for information only, not counted in the employer cost.",
+      )
+    : L(
+        "Chaque composante du coût total de possession est détaillée par véhicule sur la durée du contrat (options et remise commerciale incluses). Le « coût employeur complet » ajoute au TCO d'usage (loyer + énergie + TVS + malus, repris du tableau de bord) l'amortissement non déductible (AND) et l'avantage en nature employeur (AEN) ; les véhicules restent classés par TCO d'usage croissant.",
+        "Each component of the total cost of ownership is detailed by vehicle over the contract duration (options and commercial discount included). The \"full employer cost\" adds to the usage TCO (lease + energy + TVS + penalty, carried over from the dashboard) the non-deductible depreciation (AND) and the employer's benefit-in-kind share (AEN); vehicles remain ranked by increasing usage TCO.",
+      );
   const introL = doc.splitTextToSize(intro, PAGE_W - M * 2);
   doc.text(introL, M, y);
   y += introL.length * 13 + 16;
@@ -4940,23 +4946,23 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
       doc.setFillColor(...PRODUCT_ACCENT);
       doc.roundedRect(M + 14, y + 14, 5, bh - 28, 2.5, 2.5, "F");
       doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(7.5); doc.setTextColor(...PRODUCT_ACCENT);
-      doc.text("RECOMMANDATION BEEV", M + 28, y + 19);
+      doc.text(L("RECOMMANDATION BEEV", "BEEV RECOMMENDATION"), M + 28, y + 19);
       doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(15); doc.setTextColor(252, 249, 242);
       doc.text(`${best.sv.vehicle.brand} ${best.sv.vehicle.model}`.slice(0, 36), M + 28, y + 40);
       doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(8.5); doc.setTextColor(206, 206, 206);
-      doc.text("Le coût employeur complet le plus bas de la sélection.", M + 28, y + 55);
+      doc.text(L("Le coût employeur complet le plus bas de la sélection.", "The lowest full employer cost in the selection."), M + 28, y + 55);
       doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(22); doc.setTextColor(255, 255, 255);
       doc.text(`${best.per100.toFixed(2)} €/100km`, M + W - 16, y + 36, { align: "right" });
       doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(8.5); doc.setTextColor(...PRODUCT_ACCENT);
-      doc.text(`${eur(ecart)} économisés sur le contrat (−${ecartPct.toFixed(0)} %)`, M + W - 16, y + 53, { align: "right" });
+      doc.text(L(`${eur(ecart)} économisés sur le contrat (−${ecartPct.toFixed(0)} %)`, `${eur(ecart)} saved over the contract (−${ecartPct.toFixed(0)}%)`), M + W - 16, y + 53, { align: "right" });
       y += bh + 14;
       // 4 KPI
       const kc = (W - 30) / 4;
       const kpiData: { lab: string; val: string; sub: string; c: number[] }[] = [
-        { lab: "MEILLEUR COÛT TOTAL", val: `${best.per100.toFixed(2)} €`, sub: `/100km · ${best.sv.vehicle.brand} ${best.sv.vehicle.model}`.slice(0, 32), c: [165, 210, 255] },
-        { lab: "COÛT TOTAL LE + ÉLEVÉ", val: `${worst.per100.toFixed(2)} €`, sub: `/100km · ${worst.sv.vehicle.brand} ${worst.sv.vehicle.model}`.slice(0, 32), c: [244, 184, 170] },
-        { lab: "ÉCART SUR CONTRAT", val: eur(ecart), sub: "pire vs meilleur", c: INK },
-        { lab: "ÉCART %", val: `${ecartPct.toFixed(1)} %`, sub: "pire − meilleur ÷ pire", c: [211, 204, 216] },
+        { lab: L("MEILLEUR COÛT TOTAL", "BEST TOTAL COST"), val: `${best.per100.toFixed(2)} €`, sub: `/100km · ${best.sv.vehicle.brand} ${best.sv.vehicle.model}`.slice(0, 32), c: [165, 210, 255] },
+        { lab: L("COÛT TOTAL LE + ÉLEVÉ", "HIGHEST TOTAL COST"), val: `${worst.per100.toFixed(2)} €`, sub: `/100km · ${worst.sv.vehicle.brand} ${worst.sv.vehicle.model}`.slice(0, 32), c: [244, 184, 170] },
+        { lab: L("ÉCART SUR CONTRAT", "GAP OVER CONTRACT"), val: eur(ecart), sub: L("pire vs meilleur", "worst vs best"), c: INK },
+        { lab: L("ÉCART %", "GAP %"), val: `${ecartPct.toFixed(1)} %`, sub: L("pire − meilleur ÷ pire", "worst − best ÷ worst"), c: [211, 204, 216] },
       ];
       kpiData.forEach((k, i) => {
         const kx = M + i * (kc + 10);
@@ -4983,8 +4989,11 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
       doc,
       y,
       eur(curTotal),
-      "coût employeur complet actuel (×durée)",
-      "Coût complet de votre flotte thermique actuelle sur la durée. Les véhicules électriques proposés ci-dessous réduisent ce total.",
+      L("coût employeur complet actuel (×durée)", "current full employer cost (×duration)"),
+      L(
+        "Coût complet de votre flotte thermique actuelle sur la durée. Les véhicules électriques proposés ci-dessous réduisent ce total.",
+        "Full cost of your current combustion fleet over the duration. The electric vehicles proposed below reduce this total.",
+      ),
     );
   }
 
@@ -5031,7 +5040,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
     // deux finitions d'un même modèle dans le tableau.
     const brandModel = `${sv.vehicle.brand} ${sv.vehicle.model}`.trim();
     const ver = (sv.vehicle.version ?? "").trim();
-    const durKm = `${sv.durationMonths} mois · ${((sv.kmPerYear * sv.durationMonths / 12) / 1000).toFixed(0)}k km`;
+    const durKm = `${sv.durationMonths} ${L("mois", "months")} · ${((sv.kmPerYear * sv.durationMonths / 12) / 1000).toFixed(0)}k km`;
     const label = [brandModel, ver, durKm].filter(Boolean).join("\n");
     return [
       { content: label, styles: { halign: "left" as any, fontStyle: "normal" as any, fontSize: 8.5 } },
@@ -5074,7 +5083,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   const rowVehicles: (SelectedVehicle | null)[] = [];
   // 1) FLOTTE ACTUELLE en tête (bandeau noir), triée du plus cher au moins cher.
   if (detCurrent.length > 0) {
-    tcoBody.push(sectionHeaderRow("Flotte actuelle", 9, INK, true));
+    tcoBody.push(sectionHeaderRow(L("Flotte actuelle", "Current fleet"), 9, INK, true));
     rowVehicles.push(null);
     for (const c of [...detCurrent].sort((a, b) => b.r.tcoEmployeurComplet - a.r.tcoEmployeurComplet)) {
       tcoBody.push(buildRow(c)); rowVehicles.push(c.sv);
@@ -5082,13 +5091,13 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   }
   // 2) Véhicules électriques proposés (groupés ou non).
   if (detCurrent.length > 0 && !hasGroups && detEv.length > 0) {
-    tcoBody.push(sectionHeaderRow("Véhicules électriques proposés", 9, GROUP_COLORS[2]));
+    tcoBody.push(sectionHeaderRow(L("Véhicules électriques proposés", "Proposed electric vehicles"), 9, GROUP_COLORS[2]));
     rowVehicles.push(null);
   }
   let groupIdx = 0;
   for (const g of groupOrder) {
     if (hasGroups) {
-      const label = g === "__none__" ? "Autres véhicules" : g;
+      const label = g === "__none__" ? L("Autres véhicules", "Other vehicles") : g;
       const gColor = GROUP_COLORS[groupIdx % GROUP_COLORS.length];
       tcoBody.push([{ content: label.toUpperCase(), colSpan: 9, styles: { fillColor: gColor, textColor: INK, fontStyle: "bold" as any, fontSize: 9, halign: "center" as any, cellPadding: 6 } }]);
       rowVehicles.push(null);
@@ -5122,9 +5131,10 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   const SEG_EMPL: [number, number, number] = [244, 184, 170]; // rose (charges employeur AND + AEN)
   if (ADMIN_MODE) {
     doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(7); doc.setTextColor(...SUB);
-    doc.text("DÉCOMPOSITION", M, y + 4);
-    let lx = M + doc.getTextWidth("DÉCOMPOSITION") + 12;
-    const lgs: [string, [number, number, number]][] = [["Loyer", INK], ["Énergie", SEG_ENERGIE], ["Fiscalité", SEG_FISC], ["Charges empl.", SEG_EMPL]];
+    const decompLabel2 = L("DÉCOMPOSITION", "BREAKDOWN");
+    doc.text(decompLabel2, M, y + 4);
+    let lx = M + doc.getTextWidth(decompLabel2) + 12;
+    const lgs: [string, [number, number, number]][] = [[L("Loyer", "Lease"), INK], [L("Énergie", "Energy"), SEG_ENERGIE], [L("Fiscalité", "Tax"), SEG_FISC], [L("Charges empl.", "Employer charges"), SEG_EMPL]];
     doc.setFont(BRAND_FONT, "normal");
     for (const [lab, col] of lgs) {
       doc.setFillColor(col[0], col[1], col[2]); doc.rect(lx, y - 3, 9, 7, "F"); lx += 13;
@@ -5137,15 +5147,15 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
     startY: y,
     theme: "plain",
     head: [[
-      "VÉHICULE",
-      "LOYER\nTOTAL",
-      "ÉNERGIE",
-      "TVS\n(×durée)",
-      "MALUS\n(achat)",
-      "AND\n(×durée)",
-      "AEN EMPL.\n(×durée)",
-      "AEN SAL.\n/mois (info)",
-      "COÛT EMPL.\nCOMPLET",
+      L("VÉHICULE", "VEHICLE"),
+      L("LOYER\nTOTAL", "LEASE\nTOTAL"),
+      L("ÉNERGIE", "ENERGY"),
+      L("TVS\n(×durée)", "TVS\n(×duration)"),
+      L("MALUS\n(achat)", "PENALTY\n(purchase)"),
+      L("AND\n(×durée)", "AND\n(×duration)"),
+      L("AEN EMPL.\n(×durée)", "AEN EMPLOYER\n(×duration)"),
+      L("AEN SAL.\n/mois (info)", "AEN EMPLOYEE\n/month (info)"),
+      L("COÛT EMPL.\nCOMPLET", "FULL EMPL.\nCOST"),
     ]],
     body: tcoBody,
     headStyles: { fillColor: ADMIN_MODE ? INK : LAVENDER, textColor: 255, fontSize: 7.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 5, halign: "center" as any, valign: "middle" as any },
@@ -5213,7 +5223,10 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   // est plus bas, mais ce rappel visuel au plus près du tableau évite de mal
   // lire la colonne AND comme un coût direct.
   {
-    const noteText = "La colonne AND n'est pas un montant payé directement par l'entreprise : c'est la base sur laquelle elle perd le droit de déduire de l'impôt sur les sociétés. Le surcoût réel, égal à 25 % de ce montant, est déjà intégré dans la colonne « Coût employeur complet ».";
+    const noteText = L(
+      "La colonne AND n'est pas un montant payé directement par l'entreprise : c'est la base sur laquelle elle perd le droit de déduire de l'impôt sur les sociétés. Le surcoût réel, égal à 25 % de ce montant, est déjà intégré dans la colonne « Coût employeur complet ».",
+      "The AND column is not an amount paid directly by the company: it is the base on which it loses the right to deduct from corporate tax (AND stands for Avantage Non Déductible, a French tax rule). The real extra cost, equal to 25% of this amount, is already included in the \"Full employer cost\" column.",
+    );
     const noteLines = doc.splitTextToSize(noteText, PAGE_W - M * 2 - 24) as string[];
     const noteH = noteLines.length * 11 + 16;
     y2 = ensureSpace(doc, y2, noteH + 10, client, "vehicles");
@@ -5232,7 +5245,16 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   // Notes méthodologiques : réaffichées pour tous (admin inclus). Masquées
   // depuis le 30/06 pour "épurer" la page admin, mais un calcul fiscal sans
   // sa méthode n'est pas vérifiable — la transparence prime sur l'épure.
-  const legendLines = [
+  const legendLines = PDF_LANG === "en" ? [
+    "Cells in pink signal an additional tax charge at purchase (CO2 penalty, weight penalty) or a non-zero annual company car tax.",
+    "The full employer cost adds the lease, energy, company car tax, penalties, the AND tax impact and the employer's share of the benefit-in-kind, over the contract duration.",
+    "The AND (Avantage Non Déductible, non-deductible depreciation, a French tax rule) is the portion of the purchase price above the tax ceiling set according to the vehicle's CO2 emissions, after deducting the battery price, amortized over 5 years.",
+    "The AND is not a disbursement for the company: it is an amount it cannot deduct from its taxable income. The real cost borne is the additional corporate tax generated by this amount, i.e. 25% of the AND. It is this amount, not the raw AND, that enters the full employer cost.",
+    "The employer's share of the benefit-in-kind (AEN) is 42% of the calculated benefit-in-kind, with a 70% reduction for electric vehicles benefiting from the environmental score.",
+    "The employee's benefit-in-kind, calculated on 50% of the monthly lease with the same electric reduction, is taxable for the employee. It is shown for information only and is not included in the full employer cost or the TCO.",
+    "The total lease equals the negotiated monthly lease multiplied by the contract duration, recoverable VAT included for long-term leasing.",
+    "The energy cost equals the vehicle's consumption multiplied by the contract mileage and the fuel or electricity price, based on 85% home charging and 15% public charging.",
+  ] : [
     "Les cellules en rose signalent une charge fiscale supplémentaire à l'achat (malus CO2, malus au poids) ou une taxe annuelle sur les véhicules de société non nulle.",
     "Le coût employeur complet additionne le loyer, l'énergie, la taxe sur les véhicules de société, les malus, l'impact fiscal de l'AND et la part employeur de l'avantage en nature, sur la durée du contrat.",
     "L'AND (avantage non déductible) correspond à la part du prix d'achat qui dépasse le plafond fiscal fixé selon les émissions de CO2 du véhicule, après déduction du prix de la batterie, amortie sur 5 ans.",
@@ -5256,7 +5278,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(8.5);
     doc.setTextColor(...INK);
-    doc.text("MÉTHODE DE CALCUL", M, top);
+    doc.text(L("MÉTHODE DE CALCUL", "CALCULATION METHOD"), M, top);
     doc.setDrawColor(...RULE);
     doc.line(M, top + 4, PAGE_W - M, top + 4);
     return top + titleLineH;
