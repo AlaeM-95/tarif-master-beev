@@ -8127,13 +8127,18 @@ function drawLegend(doc: jsPDF) {
 
 function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   let y = 130;
-  eyebrow(doc, lookupText(TEXTS, "common", "next_steps_eyebrow", "PROCHAINES ÉTAPES"), y);
+  eyebrow(doc, lookupText(TEXTS, "common", "next_steps_eyebrow", L("PROCHAINES ÉTAPES", "NEXT STEPS")), y);
   y += 32;
-  title(doc, lookupText(TEXTS, "common", "next_steps_title", "Validation et lancement du projet."), y);
+  title(doc, lookupText(TEXTS, "common", "next_steps_title", L("Validation et lancement du projet.", "Validating and launching the project.")), y);
   y += 36;
 
   const stepsByType: Record<ProjectType, [string, string, string][]> = {
-    vehicles: [
+    vehicles: PDF_LANG === "en" ? [
+      ["1", "Approving the LLD offer", "Order confirmation signed, final vehicle selection, choice of lessor (Ayvens, Arval, Athlon…)."],
+      ["2", "Financing review", "Building the lessor's credit file, approval from the risk department."],
+      ["3", "Ordering from manufacturers", "Issuing the vehicle orders, tracking manufacturing and the delivery schedule."],
+      ["4", "Delivery & entry into service", "Delivery of the vehicles on site, handover, activation of fuel cards / charging badges."],
+    ] : [
       ["1", "Validation de l'offre LLD", "Bon pour accord signé, sélection des véhicules définitive, choix du loueur (Ayvens, Arval, Athlon…)."],
       ["2", "Étude de financement", "Constitution du dossier crédit-bailleur, accord de la direction des risques."],
       ["3", "Commande auprès des constructeurs", "Émission des commandes véhicules, suivi de fabrication et planning de livraison."],
@@ -8179,13 +8184,16 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
-  doc.text(lookupText(TEXTS, "common", "bpa_conditions_title", "CONDITIONS COMMERCIALES"), M, y);
+  doc.text(lookupText(TEXTS, "common", "bpa_conditions_title", L("CONDITIONS COMMERCIALES", "COMMERCIAL TERMS")), M, y);
   y += 14;
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9.5);
   doc.setTextColor(...INK);
   const fallback: Record<ProjectType, string> = {
-    vehicles: "Offre valable 30 jours. Loyers exprimés en TTC, sous réserve de disponibilité constructeur, d'évolution de la fiscalité applicable et d'acceptation par la direction des risques du loueur. TCO indicatif, hors malus, hors aides locales.",
+    vehicles: L(
+      "Offre valable 30 jours. Loyers exprimés en TTC, sous réserve de disponibilité constructeur, d'évolution de la fiscalité applicable et d'acceptation par la direction des risques du loueur. TCO indicatif, hors malus, hors aides locales.",
+      "Offer valid for 30 days. Leases shown incl. VAT, subject to manufacturer availability, changes to applicable tax rules, and approval by the lessor's risk department. Indicative TCO, excluding penalties and local incentives.",
+    ),
     home: "Offre valable 30 jours. Tarifs HT, pose 0–10 m incluse. Au-delà : devis complémentaire après visite technique. Le mandat d'installation est signé individuellement par chaque collaborateur bénéficiaire.",
     site: "Offre valable 30 jours. Tarifs HT, sous réserve de visite technique sur site. Le devis ferme par site est émis après audit IRVE. Garantie constructeur 3 ans, extensible 6 ans en option.",
   };
@@ -8200,7 +8208,7 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
 
   // Bon pour accord — libellé adapté au type
   const bpaTitle: Record<ProjectType, string> = {
-    vehicles: "BON POUR ACCORD — OFFRE VÉHICULES LLD",
+    vehicles: L("BON POUR ACCORD — OFFRE VÉHICULES LLD", "ORDER CONFIRMATION · VEHICLE LLD OFFER"),
     home: "BON POUR ACCORD — DÉPLOIEMENT DOMICILE COLLABORATEURS",
     site: "BON POUR ACCORD — DÉPLOIEMENT SITE ENTREPRISE",
   };
@@ -8213,7 +8221,10 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   doc.setFontSize(9.5);
   doc.setTextColor(...INK);
   const bpaText: Record<ProjectType, string> = {
-    vehicles: "Le client confirme la sélection des véhicules ci-avant et autorise Beev à transmettre les bons de commande LLD au loueur retenu, sous réserve de l'accord risque.",
+    vehicles: L(
+      "Le client confirme la sélection des véhicules ci-avant et autorise Beev à transmettre les bons de commande LLD au loueur retenu, sous réserve de l'accord risque.",
+      "The client confirms the vehicle selection above and authorizes Beev to send the LLD purchase orders to the selected lessor, subject to risk department approval.",
+    ),
     home: "L'employeur valide le cadre du déploiement B2B2E. Chaque installation au domicile d'un collaborateur fera l'objet d'un mandat individuel signé par le collaborateur concerné.",
     site: "Le client autorise Beev à lancer l'étude technique sur site. Le devis ferme par site sera émis après audit IRVE et signé séparément avant pose.",
   };
@@ -8231,7 +8242,7 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(9);
   doc.setTextColor(...SUB);
-  doc.text(lookupText(TEXTS, "common", "bpa_client_box_title", "CADRE RÉSERVÉ AU CLIENT"), M + 16, y + 18);
+  doc.text(lookupText(TEXTS, "common", "bpa_client_box_title", L("CADRE RÉSERVÉ AU CLIENT", "CLIENT SECTION")), M + 16, y + 18);
 
   // 2 colonnes : infos client | signature
   const colY = y + 36;
@@ -8241,15 +8252,15 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
   doc.setTextColor(...INK);
-  doc.text(lookupText(TEXTS, "common", "bpa_date_label", "Date de signature :"), M + 16, colY);
+  doc.text(lookupText(TEXTS, "common", "bpa_date_label", L("Date de signature :", "Signature date:")), M + 16, colY);
   doc.setDrawColor(...INK);
   doc.setLineWidth(0.5);
   doc.line(M + 100, colY + 2, M + 16 + colW - 10, colY + 2);
 
-  doc.text(lookupText(TEXTS, "common", "bpa_name_label", "Nom & qualité :"), M + 16, colY + 22);
+  doc.text(lookupText(TEXTS, "common", "bpa_name_label", L("Nom & qualité :", "Name & title:")), M + 16, colY + 22);
   doc.line(M + 100, colY + 24, M + 16 + colW - 10, colY + 24);
 
-  doc.text(lookupText(TEXTS, "common", "bpa_phone_label", "Téléphone :"), M + 16, colY + 44);
+  doc.text(lookupText(TEXTS, "common", "bpa_phone_label", L("Téléphone :", "Phone:")), M + 16, colY + 44);
   doc.line(M + 100, colY + 46, M + 16 + colW - 10, colY + 46);
 
   // Colonne droite : zone signature
@@ -8258,13 +8269,13 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
   doc.setTextColor(...SUB);
-  doc.text(lookupText(TEXTS, "common", "bpa_signature_label", "Signature et cachet de l'entreprise"), sigX, colY);
+  doc.text(lookupText(TEXTS, "common", "bpa_signature_label", L("Signature et cachet de l'entreprise", "Company signature and stamp")), sigX, colY);
   doc.setDrawColor(...INK);
   doc.setLineWidth(0.5);
   doc.rect(sigX, colY + 6, sigW, 60);
   doc.setFontSize(7);
   doc.setTextColor(160, 160, 165);
-  doc.text("(faire précéder de la mention 'Bon pour accord')", sigX, colY + 75);
+  doc.text(L("(faire précéder de la mention 'Bon pour accord')", "(precede with the words 'Approved for order')"), sigX, colY + 75);
 
   // Sous-bandeau : références Beev pour démarrer
   y += sigH + 14;
@@ -8273,12 +8284,12 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(9);
   doc.setTextColor(...ACCENT);
-  doc.text(lookupText(TEXTS, "common", "bpa_contact_title", "VOTRE INTERLOCUTEUR BEEV"), M + 16, y + 14);
+  doc.text(lookupText(TEXTS, "common", "bpa_contact_title", L("VOTRE INTERLOCUTEUR BEEV", "YOUR BEEV CONTACT")), M + 16, y + 14);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
   doc.setTextColor(255, 255, 255);
   const repInfo = [c.salesRep, c.salesRepEmail, c.salesRepPhone].filter(Boolean).join(" · ");
-  doc.text(repInfo || "Commercial grand compte Beev", M + 16, y + 28);
+  doc.text(repInfo || L("Commercial grand compte Beev", "Beev key account manager"), M + 16, y + 28);
 }
 
 // ============ HEADER / FOOTER / HELPERS ============
