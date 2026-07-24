@@ -4836,6 +4836,19 @@ function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total,
         </div>
       </div>
 
+      <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+        <input
+          type="checkbox"
+          className="mt-0.5 h-3.5 w-3.5"
+          checked={!!sc.hideInclusionNote}
+          onChange={(e) => onChange({ hideInclusionNote: e.target.checked })}
+        />
+        <span>
+          Masquer l'encart "Inclus dans la prestation" / "Location du matériel seul" pour cette borne.
+          Le toggle global de la Configuration PDF continue de s'appliquer aux autres bornes.
+        </span>
+      </label>
+
       {/* Mode Achat / Location (leasing). En location : loyer + durée saisis par
           le commercial, option d'achat (10%) et résiliation calculées, présentés
           dans le PDF à la place du chiffrage à l'achat. */}

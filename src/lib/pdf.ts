@@ -255,6 +255,10 @@ export type SelectedCharger = {
    *  double — un poteau/mur avec 2 prises indépendantes). Distinct de
    *  `quantity` (nombre de bornes achetées). Par défaut 1 si non renseigné. */
   chargePoints?: 1 | 2;
+  /** Masque l'encart "Inclus dans la prestation" / "Location du matériel seul"
+   *  pour CETTE borne uniquement, sans désactiver le toggle global
+   *  showChargerInclusionNote (qui s'applique à toutes les bornes du PDF). */
+  hideInclusionNote?: boolean;
 };
 
 /** Multiplicateur de prix à appliquer à `sc.lineItems` : `quantity` sauf si
@@ -4036,9 +4040,12 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   }
   } // fin du gating showChargerLineItems
 
-  if (!PDF_CFG.showChargerInclusionNote) return;
+  if (!PDF_CFG.showChargerInclusionNote || sc.hideInclusionNote) return;
   // Location du matériel seul : on remplace le contenu de l'encart par la seule
-  // mention « matériel seul, sans installation » (titre + item uniques).
+  // mention « matériel seul, sans installation », en gardant une ligne sur la
+  // supervision Beev Connect : elle reste disponible en option même quand la
+  // pose n'est pas incluse (c'est un service logiciel, indépendant de
+  // l'installation physique).
   const equipOnly = !!(sc.leaseEnabled && sc.leaseEquipmentOnly);
   // Encart "Inclus dans la prestation" en liste de bullets propres
   const fallbackInclusions = isHome
@@ -4059,7 +4066,12 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
         // modèle (champ warranty éditable dans /admin/chargers).
       ];
   const inclusions = equipOnly
-    ? ["Location du matériel seul, sans prestation d'installation"]
+    ? [
+        "Location du matériel seul, sans prestation d'installation",
+        isHome
+          ? "Supervision Beev Connect disponible en option (indépendante de la pose)"
+          : "Supervision Beev Connect disponible en option, y compris sans prestation d'installation",
+      ]
     : lookupList(TEXTS, isHome ? "home" : "site", "charger_inclusion_items", fallbackInclusions);
   const lineH = 13;
   const padTop = 14;
