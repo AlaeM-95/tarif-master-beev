@@ -6,8 +6,13 @@ import { lineItemClientUnit, lineItemClientTotal, chargerQtyMultiplier, type Sel
 import { MarginSelect } from "@/components/margin-select";
 import type { LineItem } from "@/lib/catalog";
 
+// maximumFractionDigits: 2 (pas 0) : la marge appliquée donne souvent un PU
+// client avec centimes. Arrondir le PU affiché à l'euro cachait ces centimes
+// alors que les totaux (Total client, Total HT du PDF) restent calculés sur
+// la valeur exacte non arrondie — qté × PU affiché ne correspondait plus au
+// Total affiché.
 const fmt = (n: number) =>
-  new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
+  new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(n);
 
 type Props = {
   open: boolean;

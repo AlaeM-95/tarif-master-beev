@@ -3697,7 +3697,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   }
   if (PDF_CFG.showVehicleOptions && sv.options.length) {
     body.push([{ content: L("Options & accessoires inclus", "Options & accessories included"), colSpan: 4, styles: { fillColor: BG, fontStyle: "bold", textColor: INK } }]);
-    sv.options.forEach((li) => body.push([li.label, String(li.qty), eur(li.unitHt), eur(li.qty * li.unitHt)]));
+    sv.options.forEach((li) => body.push([li.label, String(li.qty), eur2(li.unitHt), eur2(li.qty * li.unitHt)]));
   }
   // Si tout est masqué, on saute le tableau pour ne pas avoir un cadre vide.
   if (body.length === 0) return;
@@ -4018,8 +4018,15 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
     body: sc.lineItems.map((li) => [
       li.label,
       String(li.qty),
-      eur(lineItemClientUnit(li)),
-      eur(lineItemClientTotal(li)),
+      // eur2 (2 décimales max, masquées si nulles) plutôt que eur (arrondi à
+      // l'euro) : la marge appliquée (marginPct) donne souvent un prix
+      // unitaire avec centimes. Arrondir le PU HT affiché cachait ces
+      // centimes tout en gardant le Total HT calculé sur la valeur exacte
+      // non arrondie — qté × PU affiché ne correspondait alors plus au Total
+      // HT affiché (ex. 12 × 134 € affichés = 1 608 €, quand le vrai calcul
+      // 12 × 134,40 € = 1 612,80 € arrondissait le Total HT à 1 613 €).
+      eur2(lineItemClientUnit(li)),
+      eur2(lineItemClientTotal(li)),
     ]),
     foot: showLineItemFooter ? [[
       {
@@ -4033,7 +4040,7 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
         styles: { halign: "right", fontStyle: "normal", textColor: INK, fillColor: BG, cellPadding: 8, font: BRAND_FONT },
       },
       {
-        content: eur(total_),
+        content: eur2(total_),
         styles: { halign: "right", fontStyle: "bold", textColor: ACCENT_TEXT, fillColor: BG, cellPadding: 8, fontSize: 12, font: BRAND_FONT },
       },
     ]] : undefined,
@@ -4067,7 +4074,7 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
     const label = `Pour ${sc.quantity} ${unitLabel}`;
     doc.text(label, M + 14, y + 22);
     doc.setFontSize(14);
-    doc.text(`Total HT : ${eur(grandTotal)}`, PAGE_W - M - 14, y + 22, { align: "right" });
+    doc.text(`Total HT : ${eur2(grandTotal)}`, PAGE_W - M - 14, y + 22, { align: "right" });
     y += 46;
   }
   } // fin du gating showChargerLineItems

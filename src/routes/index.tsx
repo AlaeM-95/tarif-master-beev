@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogT
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles, Copy, BarChart3, Receipt } from "lucide-react";
 import { toast } from "sonner";
-import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, type EnergyParams } from "@/lib/store";
+import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, fmtEur2, type EnergyParams } from "@/lib/store";
 import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, computeChargerLease, chargerQtyMultiplier, getVehicleSpecRows, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
 import { BEEV_JOURNEYS, MANDATORY_SERVICES, catalogTypeOf, createBlankCharger, createBlankVehicle, isUtilitaireCategory, categoryGroupOf, CATEGORY_GROUP_LABEL, type CategoryGroupKey, type CatalogType, type Charger, type LineItem, type ProjectType, type Vehicle } from "@/lib/catalog";
 import { AdminBadge } from "@/components/admin-badge";
@@ -5081,14 +5081,17 @@ function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total,
                   <div className="space-y-0.5">
                     <Label className="text-[9px] uppercase text-[#3809EA]">PU client</Label>
                     <div className="h-7 px-2 text-xs text-right flex items-center justify-end font-semibold text-[#3809EA] rounded-md bg-[#3809EA]/5">
-                      {fmtEur(clientUnit)}
+                      {fmtEur2(clientUnit)}
                     </div>
                   </div>
                 </div>
-                {/* Ligne 3 : totaux */}
+                {/* Ligne 3 : totaux. fmtEur2 (pas fmtEur) : la marge donne
+                    souvent un PU avec centimes ; arrondir PU/Total à l'euro
+                    empêchait de vérifier qté × PU = Total (ex. 12 × 134 €
+                    affichés ≠ 1 613 € affiché, calculé sur 134,40 € exact). */}
                 <div className="flex justify-between items-center text-[10px] text-muted-foreground pt-1 border-t border-dashed border-border">
-                  <span>Total achat <strong className="text-[#111111]">{fmtEur(lineTotalAchat)}</strong></span>
-                  <span className="font-semibold text-[#3809EA]">Total client {fmtEur(lineTotalClient)}</span>
+                  <span>Total achat <strong className="text-[#111111]">{fmtEur2(lineTotalAchat)}</strong></span>
+                  <span className="font-semibold text-[#3809EA]">Total client {fmtEur2(lineTotalClient)}</span>
                 </div>
               </div>
             );
@@ -5840,7 +5843,7 @@ function ChargerSlide({ sc, projectType }: { sc: SelectedCharger; projectType: P
                 <li key={i} className="flex justify-between gap-3 border-b py-1.5">
                   <span>{li.label}</span>
                   <span className="text-muted-foreground tabular-nums whitespace-nowrap">
-                    {li.qty} × {fmtEur(lineItemClientUnit(li))}
+                    {li.qty} × {fmtEur2(lineItemClientUnit(li))}
                   </span>
                 </li>
               ))}
