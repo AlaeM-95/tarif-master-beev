@@ -362,6 +362,22 @@ let PDF_CFG: PdfDisplayConfig = DEFAULT_PDF_CONFIG;
 // chaque type de projet). Positionné par generateProposalPdf (adminMode).
 let ADMIN_MODE = false;
 
+// Langue du PDF généré. Défaut "fr" : comportement inchangé si le paramètre
+// n'est pas fourni. Positionné par generateProposalPdf (lang). Les nombres,
+// devises et dates restent au format français dans les 2 langues (toujours
+// une transaction en euros sous droit fiscal français) — seuls les mots
+// changent, via le helper L() ci-dessous.
+let PDF_LANG: "fr" | "en" = "fr";
+
+// Traduction inline : garde le texte anglais collé à côté du français au
+// point d'appel plutôt qu'un dictionnaire séparé à resynchroniser à chaque
+// changement de texte. Périmètre actuel (voir plan) : pages véhicules
+// uniquement — les pages bornes site / B2B2E domicile n'appellent pas L()
+// et restent en français quel que soit PDF_LANG.
+function L(fr: string, en: string): string {
+  return PDF_LANG === "en" ? en : fr;
+}
+
 // Rebrand v2 (admin) : couleur d'accent du produit courant — rose (véhicules),
 // bleu (domicile B2B2E), violet (site). Pilote eyebrows / en-tête / accents.
 const PRODUCT_ROSE: [number, number, number] = [244, 184, 170];
@@ -680,11 +696,15 @@ export async function generateProposalPdf(opts: {
   /** Compte admin : déverrouille les améliorations réservées (chiffrage en
    *  location, BPA propre à chaque type). */
   adminMode?: boolean;
+  /** Langue du PDF généré. Défaut "fr" — comportement inchangé si omis.
+   *  Périmètre actuel : pages véhicules uniquement (voir L() plus haut). */
+  lang?: "fr" | "en";
 }) {
   const { projectType, client, vehicles, chargers, energy, pdfConfig, b2b2eInput, textOverrides, preview } = opts;
   const cfg: PdfDisplayConfig = pdfConfig ?? DEFAULT_PDF_CONFIG;
   PDF_CFG = cfg; // expose la config pour les fonctions draw*
   ADMIN_MODE = !!opts.adminMode;
+  PDF_LANG = opts.lang ?? "fr";
   PRODUCT_ACCENT = projectType === "home" ? PRODUCT_BLEU : projectType === "site" ? PRODUCT_VIOLET : PRODUCT_ROSE;
   // Active les overrides texte pour ce devis (priorité max dans lookupText
   // / lookupList). Reset en fin de fonction.
@@ -1185,23 +1205,29 @@ async function drawCoverV2(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: nu
     doc.text("Beev", M, 66);
   }
   doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(8); doc.setTextColor(...SUB);
-  doc.text("PROPOSITION COMMERCIALE", PAGE_W - M, 60, { align: "right" });
+  doc.text(L("PROPOSITION COMMERCIALE", "BUSINESS PROPOSAL"), PAGE_W - M, 60, { align: "right" });
 
-  const eyebrow = isCombined ? "PROPOSITION · MULTI-PRODUITS"
-    : type === "vehicles" ? "PROPOSITION · FLOTTE VÉHICULES"
-    : type === "home" ? "RECHARGE DOMICILE · B2B2E"
-    : "INFRASTRUCTURE DE RECHARGE · SITE";
-  const headline = isCombined ? ["Votre transition", "électrique, clé en main."]
-    : type === "vehicles" ? ["Électrifier votre flotte,", "sans la complexité."]
+  const eyebrow = isCombined ? L("PROPOSITION · MULTI-PRODUITS", "PROPOSAL · MULTI-PRODUCT")
+    : type === "vehicles" ? L("PROPOSITION · FLOTTE VÉHICULES", "PROPOSAL · VEHICLE FLEET")
+    : type === "home" ? L("RECHARGE DOMICILE · B2B2E", "HOME CHARGING · B2B2E")
+    : L("INFRASTRUCTURE DE RECHARGE · SITE", "CHARGING INFRASTRUCTURE · SITE");
+  const headline = isCombined ? (PDF_LANG === "en" ? ["Your electric", "transition, end to end."] : ["Votre transition", "électrique, clé en main."])
+    : type === "vehicles" ? (PDF_LANG === "en" ? ["Electrify your fleet,", "without the complexity."] : ["Électrifier votre flotte,", "sans la complexité."])
     : type === "home" ? ["La recharge chez", "vos collaborateurs."]
     : ["Électrifier", "vos sites."];
   const total = isCombined ? nbV + nbC : type === "vehicles" ? nbV : nbC;
-  const subtitle = isCombined ? "Véhicules électriques, bornes de recharge et pilotage. Un interlocuteur unique, de la sélection à la mise en route."
-    : type === "vehicles" ? "Véhicules électriques multimarques, financement LLD négocié et accompagnement de A à Z par un interlocuteur unique."
+  const subtitle = isCombined ? L(
+      "Véhicules électriques, bornes de recharge et pilotage. Un interlocuteur unique, de la sélection à la mise en route.",
+      "Electric vehicles, charging stations and fleet management. One single point of contact, from selection to rollout.",
+    )
+    : type === "vehicles" ? L(
+      "Véhicules électriques multimarques, financement LLD négocié et accompagnement de A à Z par un interlocuteur unique.",
+      "Multi-brand electric vehicles, negotiated long-term lease financing, and end-to-end support from a single point of contact.",
+    )
     : type === "home" ? "Kit clé en main installé au domicile, supervision Beev Home Charging et remboursement automatisé de l'énergie professionnelle."
     : "Étude de site, matériel premium, pose IRVE certifiée, génie civil, mise en service OCPP et supervision Beev Connect.";
-  const chips = isCombined ? [`${nbV} véhicule${nbV > 1 ? "s" : ""}`, `${nbC} borne${nbC > 1 ? "s" : ""}`, "Offre combinée"]
-    : type === "vehicles" ? [`${total} véhicule${total > 1 ? "s" : ""}`, "Location longue durée", "Multimarque"]
+  const chips = isCombined ? [L(`${nbV} véhicule${nbV > 1 ? "s" : ""}`, `${nbV} vehicle${nbV > 1 ? "s" : ""}`), L(`${nbC} borne${nbC > 1 ? "s" : ""}`, `${nbC} charger${nbC > 1 ? "s" : ""}`), L("Offre combinée", "Combined offer")]
+    : type === "vehicles" ? [L(`${total} véhicule${total > 1 ? "s" : ""}`, `${total} vehicle${total > 1 ? "s" : ""}`), L("Location longue durée", "Long-term lease"), L("Multimarque", "Multi-brand")]
     : type === "home" ? [`${total} collaborateur${total > 1 ? "s" : ""}`, "Installation IRVE", "Supervision"]
     // Points de charge = quantité de bornes × points par borne (même calcul
     // que « Synthèse projet »), pas le nombre de bornes lui-même — une borne
@@ -1256,23 +1282,26 @@ async function drawCoverV2(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: nu
   const ref = `BEEV-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
   let by = hy + hh + 34;
   doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(8.5); doc.setTextColor(...SUB);
-  doc.text(`Devis ${ref}  ·  ${lookupText(TEXTS, "common", "cover_validity", "Validité 30 jours à compter de l'émission")}`, M, by);
+  doc.text(`${L("Devis", "Quote")} ${ref}  ·  ${lookupText(TEXTS, "common", "cover_validity", L("Validité 30 jours à compter de l'émission", "Valid for 30 days from the issue date"))}`, M, by);
   by += 14;
   doc.setDrawColor(...RULE); doc.setLineWidth(0.6);
   doc.line(M, by, PAGE_W - M, by);
   by += 22;
   const colW = W / 2;
   doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(8); doc.setTextColor(...ACCENT_TEXT);
-  doc.text(lookupText(TEXTS, "common", "cover_prepared_for_label", "PRÉPARÉE POUR"), M, by);
-  doc.text(lookupText(TEXTS, "common", "cover_prepared_by_label", "PRÉPARÉE PAR"), M + colW, by);
+  doc.text(lookupText(TEXTS, "common", "cover_prepared_for_label", L("PRÉPARÉE POUR", "PREPARED FOR")), M, by);
+  doc.text(lookupText(TEXTS, "common", "cover_prepared_by_label", L("PRÉPARÉE PAR", "PREPARED BY")), M + colW, by);
   doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(13); doc.setTextColor(...INK);
   doc.text((company).slice(0, 40), M, by + 18);
   doc.text((c.salesRep || "Beev").slice(0, 40), M + colW, by + 18);
   doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(9.5); doc.setTextColor(...SUB);
-  doc.text(lookupText(TEXTS, "common", "cover_tagline", "Le copilote de l'électrification des flottes · beev.co"), M, by + 44);
+  doc.text(lookupText(TEXTS, "common", "cover_tagline", L("Le copilote de l'électrification des flottes · beev.co", "The all-in-one copilot for fleet electrification · beev.co")), M, by + 44);
 
   doc.setFontSize(8); doc.setTextColor(...SUB);
-  doc.text("Beev · 5 rue Pleyel, 93200 Saint-Denis · SAS au capital de 63 245,02 € · RCS Bobigny 851 682 807", PAGE_W / 2, PAGE_H - 34, { align: "center" });
+  doc.text(L(
+    "Beev · 5 rue Pleyel, 93200 Saint-Denis · SAS au capital de 63 245,02 € · RCS Bobigny 851 682 807",
+    "Beev · 5 rue Pleyel, 93200 Saint-Denis, France · SAS with share capital of €63,245.02 · RCS Bobigny 851 682 807",
+  ), PAGE_W / 2, PAGE_H - 34, { align: "center" });
 }
 
 async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: number, nbC: number, sitePdcTotal: number) {
@@ -1357,8 +1386,8 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
   doc.setFontSize(11);
   doc.setTextColor(...LAVENDER);
   const kicker = isCombinedOffer
-    ? "PROPOSITION COMMERCIALE · MULTI-PRODUITS"
-    : type === "vehicles" ? "PROPOSITION COMMERCIALE · FLOTTE VÉHICULES"
+    ? L("PROPOSITION COMMERCIALE · MULTI-PRODUITS", "BUSINESS PROPOSAL · MULTI-PRODUCT")
+    : type === "vehicles" ? L("PROPOSITION COMMERCIALE · FLOTTE VÉHICULES", "BUSINESS PROPOSAL · VEHICLE FLEET")
     : type === "home" ? "PROPOSITION COMMERCIALE · BORNES DOMICILE"
     : "PROPOSITION COMMERCIALE · BORNES SITE";
   doc.text(kicker, M, 260);
@@ -1386,9 +1415,9 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
   doc.setTextColor(...BG);
   const total = isCombinedOffer ? nbV + nbC : (type === "vehicles" ? nbV : nbC);
   const sub = isCombinedOffer
-    ? `Offre combinée : ${nbV} véhicule${nbV > 1 ? "s" : ""} et ${nbC} borne${nbC > 1 ? "s" : ""} de recharge`
+    ? L(`Offre combinée : ${nbV} véhicule${nbV > 1 ? "s" : ""} et ${nbC} borne${nbC > 1 ? "s" : ""} de recharge`, `Combined offer: ${nbV} vehicle${nbV > 1 ? "s" : ""} and ${nbC} charging station${nbC > 1 ? "s" : ""}`)
     : type === "vehicles"
-    ? `${total} véhicule${total > 1 ? "s" : ""} électrique${total > 1 ? "s" : ""} en location longue durée`
+    ? L(`${total} véhicule${total > 1 ? "s" : ""} électrique${total > 1 ? "s" : ""} en location longue durée`, `${total} electric vehicle${total > 1 ? "s" : ""} on long-term lease`)
     : type === "home"
     ? `Kit clé en main pour ${total} collaborateur${total > 1 ? "s" : ""} équipé${total > 1 ? "s" : ""} au domicile`
     : `Déploiement IRVE pour ${total} site${total > 1 ? "s" : ""} entreprise`;
@@ -1399,7 +1428,7 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
   doc.setFontSize(10);
   doc.setTextColor(...GREY_LABEL);
   doc.text(
-    lookupText(TEXTS, "common", "cover_tagline", "Le copilote de l'électrification des flottes · beev.co"),
+    lookupText(TEXTS, "common", "cover_tagline", L("Le copilote de l'électrification des flottes · beev.co", "The all-in-one copilot for fleet electrification · beev.co")),
     M,
     sepY + 60,
   );
@@ -1410,7 +1439,7 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8.5);
   doc.setTextColor(...GREY_LABEL);
-  doc.text(`Devis ${ref}  ·  ${lookupText(TEXTS, "common", "cover_validity", "Validité 30 jours à compter de l'émission")}`, M, cardsY - 16);
+  doc.text(`${L("Devis", "Quote")} ${ref}  ·  ${lookupText(TEXTS, "common", "cover_validity", L("Validité 30 jours à compter de l'émission", "Valid for 30 days from the issue date"))}`, M, cardsY - 16);
 
   doc.setDrawColor(70, 67, 62);
   doc.setLineWidth(0.5);
@@ -1425,7 +1454,7 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
   doc.setTextColor(...LAVENDER);
-  doc.text(lookupText(TEXTS, "common", "cover_prepared_for_label", "PRÉPARÉE POUR"), M, labelY);
+  doc.text(lookupText(TEXTS, "common", "cover_prepared_for_label", L("PRÉPARÉE POUR", "PREPARED FOR")), M, labelY);
   doc.setFont(BRAND_FONT, "bold");
   // La raison sociale peut être longue au point de déborder sur la colonne
   // « Préparée par » (ex. « AALBERTS SURFACE TECHNOLOGIE (AMBOISE) »
@@ -1462,7 +1491,7 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
   doc.setTextColor(...LAVENDER);
-  doc.text(lookupText(TEXTS, "common", "cover_prepared_by_label", "PRÉPARÉE PAR"), col2X, labelY);
+  doc.text(lookupText(TEXTS, "common", "cover_prepared_by_label", L("PRÉPARÉE PAR", "PREPARED BY")), col2X, labelY);
   doc.setFont(BRAND_FONT, "bold");
   // Même garde-fou côté commercial : évite un débordement en bord de page
   // pour un nom long.
@@ -1491,11 +1520,11 @@ async function drawCover(doc: jsPDF, type: ProjectType, c: ClientInfo, nbV: numb
   doc.setFontSize(6.5);
   doc.setTextColor(...GREY_FOOT);
   doc.text(
-    lookupText(TEXTS, "common", "footer_confidential", "DOCUMENT CONFIDENTIEL · USAGE INTERNE CLIENT"),
+    lookupText(TEXTS, "common", "footer_confidential", L("DOCUMENT CONFIDENTIEL · USAGE INTERNE CLIENT", "CONFIDENTIAL DOCUMENT · CLIENT INTERNAL USE")),
     M,
     PAGE_H - 30,
   );
-  const refText = `Réf. ${ref} · contact@beev.co`;
+  const refText = `${L("Réf.", "Ref.")} ${ref} · contact@beev.co`;
   doc.text(refText, PAGE_W - M, PAGE_H - 30, { align: "right" });
   // Lien cliquable sur la mention email du footer couverture
   const refW = doc.getTextWidth(refText);
@@ -2637,9 +2666,9 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[], client?
 
 function drawWhyBeev(doc: jsPDF, type: ProjectType) {
   let y = 130;
-  eyebrow(doc, lookupText(TEXTS, "common", "why_beev_eyebrow", "NOTRE APPROCHE"), y);
+  eyebrow(doc, lookupText(TEXTS, "common", "why_beev_eyebrow", L("NOTRE APPROCHE", "OUR APPROACH")), y);
   y += 32;
-  const whyBeevTitleFallback = type === "vehicles" ? "Pourquoi confier vos véhicules à Beev." :
+  const whyBeevTitleFallback = type === "vehicles" ? L("Pourquoi confier vos véhicules à Beev.", "Why entrust your vehicles to Beev.") :
               type === "home" ? "Le forfait clé en main pour vos collaborateurs." :
               "Un déploiement IRVE site entreprise sans friction.";
   title(doc, lookupText(TEXTS, type, "why_beev_title", whyBeevTitleFallback), y);
@@ -2650,7 +2679,10 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
   doc.setTextColor(...INK);
 
   const intros: Record<ProjectType, string> = {
-    vehicles: "Beev centralise pour vous le sourcing constructeur (Tesla, Mercedes, Renault, VW, Hyundai, Kia, Peugeot…), le financement LLD (Ayvens, Arval, Athlon, Leaseplan), et l'assistance multimarque tout au long de la vie du contrat. Loyers exprimés en TTC.",
+    vehicles: L(
+      "Beev centralise pour vous le sourcing constructeur (Tesla, Mercedes, Renault, VW, Hyundai, Kia, Peugeot…), le financement LLD (Ayvens, Arval, Athlon, Leaseplan), et l'assistance multimarque tout au long de la vie du contrat. Loyers exprimés en TTC.",
+      "Beev centralizes manufacturer sourcing for you (Tesla, Mercedes, Renault, VW, Hyundai, Kia, Peugeot…), long-term lease financing (Ayvens, Arval, Athlon, Leaseplan), and multi-brand support throughout the contract. Rents shown including VAT.",
+    ),
     home: "Vous équipez vos collaborateurs roulant en véhicule électrique d'une borne à leur domicile. Beev gère l'intégralité : vente, installation IRVE certifiée par nos techniciens partenaries, supervision, et remboursement automatisé de l'énergie consommée à titre professionnel.",
     site: "Vous électrifiez vos sites tertiaires, logistiques ou commerciaux. Beev prend en charge l'étude de site, le matériel premium (Alfen, Schneider, Hager, Smappee), la pose IRVE certifiée, le génie civil, la mise en service OCPP et la formation des utilisateurs.",
   };
@@ -2660,12 +2692,18 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
   y += l1.length * 14 + 16;
 
   doc.setFont(BRAND_FONT, "bold");
-  doc.text(lookupText(TEXTS, type, "why_beev_changes_header", "Concrètement, ce qui change pour vous :"), M, y);
+  doc.text(lookupText(TEXTS, type, "why_beev_changes_header", L("Concrètement, ce qui change pour vous :", "In practical terms, here's what changes for you:")), M, y);
   y += 18;
   doc.setFont(BRAND_FONT, "normal");
 
   const bulletsByType: Record<ProjectType, string[]> = {
-    vehicles: [
+    vehicles: PDF_LANG === "en" ? [
+      "A single point of contact for your entire EV fleet.",
+      "Key account negotiated rates across all manufacturers.",
+      "Systematic TCO study (lease + energy) vs. a combustion-engine benchmark.",
+      "Maintenance, 24/7 assistance and total loss management always included.",
+      "Dedicated key account management.",
+    ] : [
       "Un interlocuteur unique pour l'intégralité de votre flotte VE.",
       "Tarifs négociés grand compte sur tous les constructeurs.",
       "Étude TCO (loyer + énergie) systématique vs référence thermique.",
@@ -2705,9 +2743,14 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(9);
     doc.setTextColor(...ACCENT);
-    doc.text(lookupText(TEXTS, "common", "why_beev_chiffres_title", "BEEV EN CHIFFRES"), M + 16, y + 18);
+    doc.text(lookupText(TEXTS, "common", "why_beev_chiffres_title", L("BEEV EN CHIFFRES", "BEEV IN NUMBERS")), M + 16, y + 18);
 
-    const stats: Array<{ value: string; label: string }> = [
+    const stats: Array<{ value: string; label: string }> = PDF_LANG === "en" ? [
+      { value: "5000+", label: "companies\nsupported" },
+      { value: "90%", label: "charging stations\ninstalled in under 20 business days" },
+      { value: "350+", label: "partner EVSE\ntechnicians" },
+      { value: "97 %", label: "satisfied clients\n(NPS 2025)" },
+    ] : [
       { value: "5000+", label: "entreprises\naccompagnées" },
       { value: "90%", label: "bornes\ninstallées en moins de 20 jours ouvrés" },
       { value: "350+", label: "techniciens\nIRVE partenaire" },
@@ -2739,7 +2782,10 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
     doc.setFontSize(11);
     doc.setTextColor(...INK);
     const quoteByType: Record<ProjectType, { quote: string; author: string }> = {
-      vehicles: {
+      vehicles: PDF_LANG === "en" ? {
+        quote: "\"Beev helped us electrify 30 vehicles in 2 months, with a single point of contact and flawless follow-through.\"",
+        author: "CFO · Mid-cap logistics company, 180 employees",
+      } : {
         quote: "« Beev nous a permis d'électrifier 30 véhicules en 2 mois, avec un interlocuteur unique et un suivi sans faille. »",
         author: "DAF · ETI logistique 180 collaborateurs",
       },
@@ -8019,7 +8065,7 @@ function drawValidation(doc: jsPDF, type: ProjectType, c: ClientInfo) {
 
 // ============ HEADER / FOOTER / HELPERS ============
 function drawHeader(doc: jsPDF, c: ClientInfo, type: ProjectType) {
-  const tag = type === "vehicles" ? "Offre véhicules LLD" : type === "home" ? "Déploiement domicile (B2B2E)" : "Déploiement site entreprise";
+  const tag = type === "vehicles" ? L("Offre véhicules LLD", "EV fleet lease offer") : type === "home" ? "Déploiement domicile (B2B2E)" : "Déploiement site entreprise";
   if (ADMIN_MODE) {
     // v2 : en-tête épuré — logo paramétré (dashboard) + point d'accent produit
     // (gauche), client + objet (droite), filet fin.
@@ -8128,7 +8174,7 @@ function drawWatermark(doc: jsPDF) {
     doc.setFontSize(120);
     doc.setTextColor(240, 238, 232); // gris cream très clair
     // Texte diagonal au centre de la page — angle non typé selon versions jsPDF
-    (doc.text as any)("DEVIS", PAGE_W / 2, PAGE_H / 2 + 40, {
+    (doc.text as any)(L("DEVIS", "QUOTE"), PAGE_W / 2, PAGE_H / 2 + 40, {
       align: "center",
       angle: 35,
     });
@@ -8161,14 +8207,14 @@ function drawFooter(doc: jsPDF, c: ClientInfo, page: number, total: number) {
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(7.5);
   doc.setTextColor(...SUB);
-  doc.text("Document confidentiel · usage interne client", PAGE_W / 2, PAGE_H - 42, { align: "center" });
+  doc.text(L("Document confidentiel · usage interne client", "Confidential document · client internal use"), PAGE_W / 2, PAGE_H - 42, { align: "center" });
   doc.text("beev.co · contact@beev.co", PAGE_W / 2, PAGE_H - 32, { align: "center" });
 
   // Droite : numérotation page
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
   doc.setTextColor(...INK);
-  doc.text(`Page ${page} / ${total}`, PAGE_W - M, PAGE_H - 42, { align: "right" });
+  doc.text(L(`Page ${page} / ${total}`, `Page ${page} of ${total}`), PAGE_W - M, PAGE_H - 42, { align: "right" });
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(7.5);
   doc.setTextColor(...SUB);
