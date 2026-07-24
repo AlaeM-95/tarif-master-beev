@@ -4730,7 +4730,7 @@ async function drawTcoImpact(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: Energ
     const currents = list.filter((i) => i.sv.vehicle.isCurrentFleet).sort((a, b) => b.total - a.total);
     const evs = list.filter((i) => !i.sv.vehicle.isCurrentFleet).sort((a, b) => a.total - b.total);
     if (!currents.length || !evs.length) continue;
-    cards.push({ g: g === "—" ? "Remplacement" : g, ref: currents[0], evs });
+    cards.push({ g: g === "—" ? L("Remplacement", "Replacement") : g, ref: currents[0], evs });
     evs.forEach((ev) => pairedEvs.add(ev));
     totalEco += Math.max(0, currents[0].total - evs[0].total);
     totalRef += currents[0].total;
@@ -4739,28 +4739,29 @@ async function drawTcoImpact(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: Energ
   const maxTotal = Math.max(1, ...items.map((i) => i.total));
 
   let y = 116;
-  eyebrow(doc, "ANALYSE TCO · IMPACT DU PASSAGE À L'ÉLECTRIQUE", y); y += 32;
-  title(doc, "Ce que vous économisez.", y); y += 40;
+  eyebrow(doc, L("ANALYSE TCO · IMPACT DU PASSAGE À L'ÉLECTRIQUE", "TCO ANALYSIS · IMPACT OF SWITCHING TO ELECTRIC"), y); y += 32;
+  title(doc, L("Ce que vous économisez.", "What you save."), y); y += 40;
 
   const W = PAGE_W - M * 2;
   // Hero économie totale
   const hh = 76;
   doc.setFillColor(...INK); doc.roundedRect(M, y, W, hh, 14, 14, "F");
   doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(8); doc.setTextColor(...GOOD_LT);
-  doc.text("ÉCONOMIE TOTALE SUR LA FLOTTE", M + 22, y + 24);
+  doc.text(L("ÉCONOMIE TOTALE SUR LA FLOTTE", "TOTAL FLEET SAVINGS"), M + 22, y + 24);
   doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(34); doc.setTextColor(255, 255, 255);
   doc.text(`− ${eur(totalEco)}`, M + 22, y + 55);
   doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(26); doc.setTextColor(...GOOD_LT);
   doc.text(`− ${totalPct.toFixed(0)} %`, M + W - 22, y + 42, { align: "right" });
   doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(8); doc.setTextColor(200, 200, 200);
-  doc.text("vs votre flotte actuelle · coût employeur complet", M + W - 22, y + 57, { align: "right" });
+  doc.text(L("vs votre flotte actuelle · coût employeur complet", "vs. your current fleet · full employer cost"), M + W - 22, y + 57, { align: "right" });
   y += hh + 16;
 
   // Légende
   doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(7); doc.setTextColor(...SUB);
-  doc.text("DÉCOMPOSITION", M, y + 4);
-  let lx = M + doc.getTextWidth("DÉCOMPOSITION") + 12;
-  const lgs: [string, [number, number, number]][] = [["Loyer", INK], ["Énergie", SEG_ENERGIE], ["Fiscalité", SEG_FISC], ["Charges empl.", SEG_EMPL]];
+  const decompLabel = L("DÉCOMPOSITION", "BREAKDOWN");
+  doc.text(decompLabel, M, y + 4);
+  let lx = M + doc.getTextWidth(decompLabel) + 12;
+  const lgs: [string, [number, number, number]][] = [[L("Loyer", "Lease"), INK], [L("Énergie", "Energy"), SEG_ENERGIE], [L("Fiscalité", "Tax"), SEG_FISC], [L("Charges empl.", "Employer charges"), SEG_EMPL]];
   doc.setFont(BRAND_FONT, "normal");
   for (const [lab, col] of lgs) { doc.setFillColor(col[0], col[1], col[2]); doc.rect(lx, y - 3, 9, 7, "F"); lx += 13; doc.setTextColor(...SUB); doc.text(lab, lx, y + 4); lx += doc.getTextWidth(lab) + 14; }
   y += 18;
@@ -4781,7 +4782,7 @@ async function drawTcoImpact(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: Energ
     doc.text(name, textX, cy);
     const nameW = doc.getTextWidth(name);
     // Badge rôle
-    const badgeTxt = isEv ? "Recommandé" : "Actuel";
+    const badgeTxt = isEv ? L("Recommandé", "Recommended") : L("Actuel", "Current");
     doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(6.5);
     const btw = doc.getTextWidth(badgeTxt);
     doc.setFillColor(isEv ? 253 : 238, isEv ? 241 : 236, isEv ? 238 : 230);
@@ -4826,7 +4827,7 @@ async function drawTcoImpact(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: Energ
   if (leftover.length) {
     if (y + 40 + leftover.length * 16 > FOOTER_LIMIT) { doc.addPage(); drawHeader(doc, client, type); y = 116; }
     doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(8); doc.setTextColor(...SUB);
-    doc.text("AUTRES VÉHICULES PROPOSÉS", M, y + 6); y += 16;
+    doc.text(L("AUTRES VÉHICULES PROPOSÉS", "OTHER PROPOSED VEHICLES"), M, y + 6); y += 16;
     doc.setDrawColor(...RULE); doc.setLineWidth(0.4);
     for (const it of leftover.sort((a, b) => a.total - b.total)) {
       doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(11); doc.setTextColor(...INK);
@@ -4840,18 +4841,18 @@ async function drawTcoImpact(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: Energ
   y += 8;
   if (y + 70 > FOOTER_LIMIT) { doc.addPage(); drawHeader(doc, client, type); y = 116; }
   doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(8.5); doc.setTextColor(...SUB);
-  doc.text("DÉTAIL DES COMPOSANTES", M, y); y += 8;
+  doc.text(L("DÉTAIL DES COMPOSANTES", "COMPONENT DETAIL"), M, y); y += 8;
   // Corps groupé par groupe de comparaison (intertitre par groupe), actuel(s)
   // en tête de groupe puis EV. Ordre des groupes identique aux cartes.
   const detRow = (it: IItem) => [
-    `${it.sv.vehicle.brand} ${it.sv.vehicle.model}${it.sv.vehicle.isCurrentFleet ? " (actuel)" : ""}`,
+    `${it.sv.vehicle.brand} ${it.sv.vehicle.model}${it.sv.vehicle.isCurrentFleet ? L(" (actuel)", " (current)") : ""}`,
     eur(it.r.loyerTotal), eur(it.r.coutEnergie), eur(it.r.tvsTotal), eur(it.r.malusCO2 + it.r.malusPoids),
     eur(it.r.andTotal), eur(it.r.aenEmployeurTotal), eur(it.total),
   ];
   const detBody: any[] = [];
   for (const g of order) {
     const list = gmap.get(g)!;
-    const label = g === "—" ? "Sans groupe de comparaison" : g;
+    const label = g === "—" ? L("Sans groupe de comparaison", "No comparison group") : g;
     detBody.push([{ content: label.toUpperCase(), colSpan: 8, styles: { fillColor: [246, 242, 236] as [number, number, number], textColor: INK, fontStyle: "bold" as any, halign: "left" as any, cellPadding: 6, fontSize: 9 } }]);
     const gCur = list.filter((i) => i.sv.vehicle.isCurrentFleet).sort((a, b) => b.total - a.total);
     const gEv = list.filter((i) => !i.sv.vehicle.isCurrentFleet).sort((a, b) => a.total - b.total);
@@ -4860,7 +4861,7 @@ async function drawTcoImpact(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: Energ
   autoTable(doc, {
     startY: y,
     theme: "plain",
-    head: [["VÉHICULE", "LOYER", "ÉNERGIE", "TVS", "MALUS", "AND", "AEN EMPL.", "COÛT EMPL."]],
+    head: [[L("VÉHICULE", "VEHICLE"), L("LOYER", "LEASE"), L("ÉNERGIE", "ENERGY"), "TVS", L("MALUS", "PENALTY"), "AND", L("AEN EMPL.", "AEN EMPLOYER"), L("COÛT EMPL.", "EMPLOYER COST")]],
     body: detBody,
     headStyles: { fillColor: INK, textColor: 255, fontSize: 7.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 5, halign: "right" as any },
     bodyStyles: { fontSize: 8, cellPadding: 5, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, halign: "right" as any },
