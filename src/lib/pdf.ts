@@ -4155,16 +4155,16 @@ function drawFleetSynthesis(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPa
       { content: b.current ? vehicleLabel(b.current.vehicle, 32) : "—", styles: { halign: "left" } },
       { content: String(qty), styles: { halign: "center" } },
       { content: ev ? vehicleLabel(ev.vehicle, 32) : "—", styles: { halign: "left", fontStyle: "bold" } },
-      { content: ev ? `${eur(ev.negotiatedMonthly)}/mois` : "—", styles: { halign: "center" } },
+      { content: ev ? `${eur(ev.negotiatedMonthly)}${L("/mois", "/month")}` : "—", styles: { halign: "center" } },
       { content: ecoVeh > 0 ? `− ${eur(ecoVeh)}` : "—", styles: { halign: "center" } },
       { content: ecoVeh > 0 ? `− ${eur(ecoVeh * qty)}` : "—", styles: { halign: "center", fontStyle: "bold", textColor: ACCENT_TEXT } },
     ]);
   }
 
   let y = 116;
-  eyebrow(doc, "SYNTHÈSE FLOTTE", y);
+  eyebrow(doc, L("SYNTHÈSE FLOTTE", "FLEET SUMMARY"), y);
   y += 26;
-  title(doc, "Votre flotte électrifiée en un coup d'œil", y);
+  title(doc, L("Votre flotte électrifiée en un coup d'œil", "Your electrified fleet at a glance"), y);
   y += 40;
 
   // Bandeau économie totale (rose, texte noir)
@@ -4173,18 +4173,18 @@ function drawFleetSynthesis(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPa
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
   doc.setTextColor(...INK);
-  doc.text("ÉCONOMIE TOTALE DE LA FLOTTE / AN", M + 18, y + 22);
+  doc.text(L("ÉCONOMIE TOTALE DE LA FLOTTE / AN", "TOTAL FLEET SAVINGS / YEAR"), M + 18, y + 22);
   doc.setFontSize(30);
   doc.text(totalEcoAn > 0 ? `− ${eur(totalEcoAn)}` : "—", M + 18, y + 56);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
-  doc.text(`${totalVeh} véhicules · ${groups.size} segments · vs flotte thermique actuelle`, PAGE_W - M - 18, y + 56, { align: "right" });
+  doc.text(L(`${totalVeh} véhicules · ${groups.size} segments · vs flotte thermique actuelle`, `${totalVeh} vehicles · ${groups.size} segments · vs current combustion fleet`), PAGE_W - M - 18, y + 56, { align: "right" });
   y += 96;
 
   autoTable(doc, {
     startY: y,
     theme: "plain",
-    head: [["Modèle actuel", "Qté", "Remplacement électrique", "Loyer", "Éco / véh. / an", "Éco flotte / an"]],
+    head: [[L("Modèle actuel", "Current model"), L("Qté", "Qty"), L("Remplacement électrique", "Electric replacement"), L("Loyer", "Lease"), L("Éco / véh. / an", "Savings / vehicle / year"), L("Éco flotte / an", "Fleet savings / year")]],
     body,
     headStyles: { fillColor: INK, textColor: 255, fontSize: 8, fontStyle: "bold", font: BRAND_FONT, cellPadding: 6 },
     bodyStyles: { fontSize: 8.5, cellPadding: 6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
@@ -4198,7 +4198,10 @@ function drawFleetSynthesis(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPa
   doc.setFontSize(7.5);
   doc.setTextColor(...SUB);
   doc.text(
-    "Économie = écart de TCO annuel (loyer + énergie + fiscalité) entre le véhicule thermique actuel et l'électrique proposé, × quantité. Détail par véhicule dans l'analyse TCO. Le comparateur présente les alternatives par segment.",
+    L(
+      "Économie = écart de TCO annuel (loyer + énergie + fiscalité) entre le véhicule thermique actuel et l'électrique proposé, × quantité. Détail par véhicule dans l'analyse TCO. Le comparateur présente les alternatives par segment.",
+      "Savings = annual TCO gap (lease + energy + tax) between the current combustion vehicle and the proposed EV, × quantity. Per-vehicle detail in the TCO analysis. The comparator presents alternatives by segment.",
+    ),
     M, ny, { maxWidth: PAGE_W - M * 2 },
   );
 }
@@ -6190,10 +6193,10 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
   eyebrow(
     doc,
     groupName
-      ? `COMPARATEUR · ${groupName.toUpperCase()}`
+      ? L(`COMPARATEUR · ${groupName.toUpperCase()}`, `COMPARISON · ${groupName.toUpperCase()}`)
       : isBeforeAfter
-        ? lookupText(TEXTS, "vehicles", "comparator_before_after_eyebrow", "FLOTTE ACTUELLE · PROPOSITION BEEV")
-        : lookupText(TEXTS, "vehicles", "comparator_eyebrow", "COMPARATEUR VÉHICULES"),
+        ? lookupText(TEXTS, "vehicles", "comparator_before_after_eyebrow", L("FLOTTE ACTUELLE · PROPOSITION BEEV", "CURRENT FLEET · BEEV PROPOSAL"))
+        : lookupText(TEXTS, "vehicles", "comparator_eyebrow", L("COMPARATEUR VÉHICULES", "VEHICLE COMPARISON")),
     y,
   );
   y += 32;
@@ -6201,8 +6204,8 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
   // « Votre flotte actuelle face à notre proposition Beev » passe sur 2
   // lignes) et avancer y en conséquence, sinon l'intro chevauche la 2e ligne.
   const titleText = isBeforeAfter
-    ? lookupText(TEXTS, "vehicles", "comparator_before_after_title", "Votre flotte actuelle face à notre proposition Beev")
-    : lookupText(TEXTS, "vehicles", "comparator_title", "Quel modèle choisir ?");
+    ? lookupText(TEXTS, "vehicles", "comparator_before_after_title", L("Votre flotte actuelle face à notre proposition Beev", "Your current fleet vs. our Beev proposal"))
+    : lookupText(TEXTS, "vehicles", "comparator_title", L("Quel modèle choisir ?", "Which model should you choose?"));
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(22);
   doc.setTextColor(...INK);
@@ -6215,9 +6218,11 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
   doc.setTextColor(...SUB);
   const introText = isBeforeAfter
     ? lookupText(TEXTS, "vehicles", "comparator_before_after_intro",
-        "À gauche, votre flotte actuelle. À droite, les véhicules Beev qui peuvent la remplacer. Les écarts sur le coût, la consommation et le CO2 sont mis en évidence.")
+        L("À gauche, votre flotte actuelle. À droite, les véhicules Beev qui peuvent la remplacer. Les écarts sur le coût, la consommation et le CO2 sont mis en évidence.",
+          "On the left, your current fleet. On the right, the Beev vehicles that can replace it. Differences in cost, consumption and CO2 are highlighted."))
     : lookupText(TEXTS, "vehicles", "comparator_intro",
-        "Comparaison côte à côte des caractéristiques clés. Les cellules surlignées indiquent la meilleure valeur sur chaque ligne (prix le plus bas, autonomie la plus haute, etc.).");
+        L("Comparaison côte à côte des caractéristiques clés. Les cellules surlignées indiquent la meilleure valeur sur chaque ligne (prix le plus bas, autonomie la plus haute, etc.).",
+          "Side-by-side comparison of key specifications. Highlighted cells indicate the best value on each row (lowest price, longest range, etc.)."));
   const introLinesHdr = doc.splitTextToSize(introText, PAGE_W - M * 2);
   doc.text(introLinesHdr, M, y);
   y += introLinesHdr.length * 13 + 12;
@@ -6248,19 +6253,19 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
   // Toutes les colonnes de données sont CENTRÉES (en-tête + valeurs). La
   // colonne Véhicule reste à gauche (image + nom + chip).
   const cols: Col[] = [
-    { key: "veh", header: "Véhicule", align: "left" },
-    { key: "prix", header: "Prix TTC", align: "center" as const },
-    ...(showLoyer ? [{ key: "loyer", header: "Loyer/mois", align: "center" as const }] : []),
-    { key: "auto", header: "Autonomie", align: "center" as const },
-    { key: "conso", header: "Conso", align: "center" as const },
-    { key: "energie", header: "Énergie", align: "center" as const },
+    { key: "veh", header: L("Véhicule", "Vehicle"), align: "left" },
+    { key: "prix", header: L("Prix TTC", "Price (incl. VAT)"), align: "center" as const },
+    ...(showLoyer ? [{ key: "loyer", header: L("Loyer/mois", "Lease/month"), align: "center" as const }] : []),
+    { key: "auto", header: L("Autonomie", "Range"), align: "center" as const },
+    { key: "conso", header: L("Conso", "Consumption"), align: "center" as const },
+    { key: "energie", header: L("Énergie", "Energy"), align: "center" as const },
   ];
 
   const cellFor = (sv: SelectedVehicle, key: string): string => {
     switch (key) {
       case "veh": return vehicleLabel(sv.vehicle);
       case "prix": return sv.vehicle.priceTtc > 0 ? eur(sv.vehicle.priceTtc) : "—";
-      case "loyer": return (sv.negotiatedMonthly ?? 0) > 0 ? `${eur(sv.negotiatedMonthly)}/mois` : "—";
+      case "loyer": return (sv.negotiatedMonthly ?? 0) > 0 ? `${eur(sv.negotiatedMonthly)}${L("/mois", "/month")}` : "—";
       case "auto": return sv.vehicle.rangeWltp > 0 ? `${sv.vehicle.rangeWltp} km` : "—";
       case "conso": return consoOf(sv).txt;
       case "energie": return sv.vehicle.energy;
@@ -6312,7 +6317,7 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
       // Chip statut (uniquement en mode mixte flotte / proposition)
       if (isBeforeAfter) {
         const isFleet = !!sv.vehicle.isCurrentFleet;
-        const label = isFleet ? "FLOTTE ACTUELLE" : "PROPOSITION BEEV";
+        const label = isFleet ? L("FLOTTE ACTUELLE", "CURRENT FLEET") : L("PROPOSITION BEEV", "BEEV PROPOSAL");
         doc.setFont(BRAND_FONT, "bold");
         doc.setFontSize(6);
         const tw = doc.getTextWidth(label);
@@ -6334,7 +6339,10 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
   doc.setTextColor(...SUB);
   doc.text(
     lookupText(TEXTS, "vehicles", "comparator_footnote",
-      "Données constructeur. Le CO2 est forcé à 0 g/km pour les véhicules électriques (convention Beev). Consommation exprimée en kWh/100 km (électrique) ou L/100 km (autres motorisations)."),
+      L(
+        "Données constructeur. Le CO2 est forcé à 0 g/km pour les véhicules électriques (convention Beev). Consommation exprimée en kWh/100 km (électrique) ou L/100 km (autres motorisations).",
+        "Manufacturer data. CO2 is set to 0 g/km for electric vehicles (Beev convention). Consumption shown in kWh/100 km (electric) or L/100 km (other powertrains).",
+      )),
     M, yEnd, { maxWidth: PAGE_W - M * 2 },
   );
 }
@@ -6352,15 +6360,18 @@ function drawCompetitorComparison(doc: jsPDF, vehicles: SelectedVehicle[]) {
   const LAVENDER_COLOR: [number, number, number] = ADMIN_MODE ? [29, 29, 29] : [56, 9, 234];
 
   let y = 130;
-  eyebrow(doc, lookupText(TEXTS, "vehicles", "competitor_eyebrow", "MISE EN CONCURRENCE"), y);
+  eyebrow(doc, lookupText(TEXTS, "vehicles", "competitor_eyebrow", L("MISE EN CONCURRENCE", "COMPETITIVE COMPARISON")), y);
   y += 32;
-  title(doc, lookupText(TEXTS, "vehicles", "competitor_title", "Votre offre actuelle face à notre proposition Beev"), y);
+  title(doc, lookupText(TEXTS, "vehicles", "competitor_title", L("Votre offre actuelle face à notre proposition Beev", "Your current offer vs. our Beev proposal")), y);
   y += 36;
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
   const introText = lookupText(TEXTS, "vehicles", "competitor_intro",
-    "Sur les mêmes véhicules, comparaison côte à côte de votre offre actuelle avec notre proposition Beev. Les économies mensuelles et sur la durée du contrat sont mises en évidence.");
+    L(
+      "Sur les mêmes véhicules, comparaison côte à côte de votre offre actuelle avec notre proposition Beev. Les économies mensuelles et sur la durée du contrat sont mises en évidence.",
+      "On the same vehicles, side-by-side comparison of your current offer with our Beev proposal. Monthly and full-contract savings are highlighted.",
+    ));
   const introLines = doc.splitTextToSize(introText, PAGE_W - M * 2);
   doc.text(introLines, M, y);
   // Espace réel = nombre de lignes × interligne (~13pt) + marge avant le
@@ -6405,7 +6416,7 @@ function drawCompetitorComparison(doc: jsPDF, vehicles: SelectedVehicle[]) {
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(9);
     doc.setTextColor(...SUB);
-    doc.text(`Quantité ${sv.quantity} · ${sv.vehicle.energy}`, M, y);
+    doc.text(`${L("Quantité", "Quantity")} ${sv.quantity} · ${sv.vehicle.energy}`, M, y);
     y += 16;
 
     // Disposition en N+1 colonnes : N offres concurrentes (rose) + 1 Beev (bleu)
@@ -6447,13 +6458,13 @@ function drawCompetitorComparison(doc: jsPDF, vehicles: SelectedVehicle[]) {
       doc.setFont(BRAND_FONT, "normal");
       doc.setFontSize(7.5);
       doc.setTextColor(...SUB);
-      doc.text("TTC/mois", cx + 10, y + 70);
+      doc.text(L("TTC/mois", "incl. VAT/month"), cx + 10, y + 70);
       doc.setFontSize(8);
       doc.setTextColor(...INK);
       // Durée et kilométrage sur la MÊME ligne, séparés par un point médian
       // (séparateur de charte Beev). Trait fin vertical dessiné entre les
       // deux pour bien marquer la séparation demandée.
-      const durTxt = `${duration} mois`;
+      const durTxt = `${duration} ${L("mois", "months")}`;
       const kmTxt = `${Math.round(kmPerYear * (duration / 12)).toLocaleString("fr-FR")} km`;
       const lineY = y + 88;
       doc.text(durTxt, cx + 10, lineY);
@@ -6470,10 +6481,10 @@ function drawCompetitorComparison(doc: jsPDF, vehicles: SelectedVehicle[]) {
       const cx = M + idx * (colW + gap);
       drawOfferCard(
         cx,
-        `OFFRE ${offers.length > 1 ? idx + 1 : "ACTUELLE"}`,
+        offers.length > 1 ? L(`OFFRE ${idx + 1}`, `OFFER ${idx + 1}`) : L("OFFRE ACTUELLE", "CURRENT OFFER"),
         PINK,
         ROSE_LIGHT,
-        offer.loueur || `Loueur ${idx + 1}`,
+        offer.loueur || L(`Loueur ${idx + 1}`, `Lessor ${idx + 1}`),
         offer.monthlyTtc,
         offer.durationMonths,
         offer.kmPerYear,
@@ -6484,7 +6495,7 @@ function drawCompetitorComparison(doc: jsPDF, vehicles: SelectedVehicle[]) {
     const beevX = M + offers.length * (colW + gap);
     drawOfferCard(
       beevX,
-      "OFFRE BEEV",
+      L("OFFRE BEEV", "BEEV OFFER"),
       LAVENDER_COLOR,
       BLUE_LIGHT,
       "Beev",
@@ -6502,14 +6513,16 @@ function drawCompetitorComparison(doc: jsPDF, vehicles: SelectedVehicle[]) {
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(9.5);
       doc.setTextColor(...GREEN);
-      const refLabel = offers.length > 1 ? "vs offre la plus chère" : "vs votre offre actuelle";
-      doc.text(`Économie Beev (${refLabel}) : ${eur(bestSavings)} / mois · ${eur(bestSavings * sv.durationMonths)} sur ${sv.durationMonths} mois`,
-        M + 14, y + 19);
+      const refLabel = offers.length > 1 ? L("vs offre la plus chère", "vs. most expensive offer") : L("vs votre offre actuelle", "vs. your current offer");
+      doc.text(L(
+        `Économie Beev (${refLabel}) : ${eur(bestSavings)} / mois · ${eur(bestSavings * sv.durationMonths)} sur ${sv.durationMonths} mois`,
+        `Beev savings (${refLabel}): ${eur(bestSavings)} / month · ${eur(bestSavings * sv.durationMonths)} over ${sv.durationMonths} months`,
+      ), M + 14, y + 19);
       if (sv.quantity > 1) {
         doc.setFont(BRAND_FONT, "normal");
         doc.setFontSize(8.5);
         doc.setTextColor(...INK);
-        const totalRow = `× ${sv.quantity} véhicules = ${eur(bestSavings * sv.durationMonths * sv.quantity)}`;
+        const totalRow = L(`× ${sv.quantity} véhicules = ${eur(bestSavings * sv.durationMonths * sv.quantity)}`, `× ${sv.quantity} vehicles = ${eur(bestSavings * sv.durationMonths * sv.quantity)}`);
         doc.text(totalRow, PAGE_W - M - 14 - doc.getTextWidth(totalRow), y + 19);
       }
       y += econH + 16;
@@ -6521,7 +6534,10 @@ function drawCompetitorComparison(doc: jsPDF, vehicles: SelectedVehicle[]) {
       // le titre du véhicule suivant.
       doc.setFont(BRAND_FONT, "normal");
       doc.setFontSize(9);
-      const noteText = `Notre offre est ${eur(Math.abs(bestSavings))}/mois plus chère que la meilleure offre concurrente. Beev apporte d'autres avantages : services, accompagnement et conditions de fin de contrat.`;
+      const noteText = L(
+        `Notre offre est ${eur(Math.abs(bestSavings))}/mois plus chère que la meilleure offre concurrente. Beev apporte d'autres avantages : services, accompagnement et conditions de fin de contrat.`,
+        `Our offer is ${eur(Math.abs(bestSavings))}/month more expensive than the best competing offer. Beev brings other benefits: services, support, and end-of-contract terms.`,
+      );
       const noteLines = doc.splitTextToSize(noteText, PAGE_W - M * 2 - 28);
       const noteH = noteLines.length * 12 + 16;
       doc.setFillColor(252, 251, 248); // beige charte
@@ -6543,15 +6559,15 @@ function drawCompetitorComparison(doc: jsPDF, vehicles: SelectedVehicle[]) {
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(10);
     doc.setTextColor(...PINK);
-    doc.text("ÉCONOMIE GLOBALE BEEV", M + 16, y + 17);
+    doc.text(L("ÉCONOMIE GLOBALE BEEV", "OVERALL BEEV SAVINGS"), M + 16, y + 17);
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(20);
     doc.setTextColor(255, 255, 255);
-    doc.text(`${eur(totalMonthlySavings)} / mois`, M + 16, y + 38);
+    doc.text(L(`${eur(totalMonthlySavings)} / mois`, `${eur(totalMonthlySavings)} / month`), M + 16, y + 38);
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(11);
     doc.setTextColor(255, 255, 255);
-    const totalText = `Soit ${eur(totalContractSavings)} sur la durée totale des contrats`;
+    const totalText = L(`Soit ${eur(totalContractSavings)} sur la durée totale des contrats`, `That's ${eur(totalContractSavings)} over the total contract duration`);
     doc.text(totalText, PAGE_W - M - 16 - doc.getTextWidth(totalText), y + 35);
   }
 }
