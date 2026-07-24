@@ -2355,6 +2355,12 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
   const showMaintenance = aggregated.includeMaintenance === true;
   const showBureauControle = aggregated.includeBureauControle === true;
   const showConsuel = aggregated.includeConsuel === true;
+  // Même source numérique que le calcul du "MONTANT TOTAL PROJET" dans
+  // drawSitePaymentOptions (slug site_pay_bureau_ht) : évite qu'un admin qui
+  // modifie ce montant depuis la Configuration des textes PDF ne désynchronise
+  // silencieusement l'affichage de cette page (qui utilisait jusqu'ici un
+  // texte libre indépendant, jamais recalculé) du total réellement facturé.
+  const bureauControleAmount = Math.max(0, parseFloat(t("site_pay_bureau_ht", "700")) || 700);
   // Si rien à afficher côté colonne gauche, on ne dessine pas la box rose
   // (la page reste cohérente avec uniquement la maintenance à droite).
   const showLeftCol = showBureauControle || showConsuel;
@@ -2409,7 +2415,7 @@ function drawSiteCompliance(doc: jsPDF, chargers: SelectedCharger[]) {
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(18);
     doc.setTextColor(...INK);
-    doc.text(t("site_comp_bureau_price", "700 € HT"), M + 14, ly + 22);
+    doc.text(t("site_comp_bureau_price", `${eur(bureauControleAmount)} HT`), M + 14, ly + 22);
 
     ly += 56;
     // Séparateur entre Bureau de Contrôle et Consuel uniquement si Consuel
