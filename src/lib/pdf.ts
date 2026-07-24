@@ -3924,10 +3924,18 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   let y = Math.max(imgY + imgH, fy) + 18;
 
   // PRÉSENTATION (description longue) en pleine largeur — placée APRÈS l'image
-  // et POINTS FORTS, AVANT le tableau de chiffrage. Sa hauteur s'adapte au
-  // contenu sans empiéter sur le tableau ni déborder hors page.
+  // et POINTS FORTS, AVANT le tableau de chiffrage. Texte affiché en entier
+  // (plus de troncature à 18 lignes avec ellipsis) : on calcule la hauteur
+  // RÉELLE nécessaire pour le label + tout le texte AVANT de dessiner, pour
+  // que ensureSpace décide d'un saut de page propre si ça ne tient pas sur la
+  // page courante, plutôt que de couper le texte artificiellement.
   if (sc.charger.description && sc.charger.description.trim().length > 0) {
-    y = ensureSpace(doc, y, 60, client, type);
+    const fullW = PAGE_W - M * 2;
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(10);
+    const descLines = doc.splitTextToSize(sc.charger.description, fullW) as string[];
+    const neededH = 14 + descLines.length * 13 + 16;
+    y = ensureSpace(doc, y, neededH, client, type);
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(8.5);
     doc.setTextColor(...LAVENDER);
@@ -3936,17 +3944,8 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(10);
     doc.setTextColor(...INK);
-    const fullW = PAGE_W - M * 2;
-    const descLines = doc.splitTextToSize(sc.charger.description, fullW);
-    // Cap raisonnable pour ne pas pousser le tableau en page suivante : 18
-    // lignes max ≈ 234 pts. Au-delà, on tronque avec ellipsis. L'admin peut
-    // raccourcir la description si besoin.
-    const MAX_LINES = 18;
-    const displayed = descLines.length > MAX_LINES
-      ? [...descLines.slice(0, MAX_LINES - 1), descLines[MAX_LINES - 1] + " …"]
-      : descLines;
-    doc.text(displayed, M, y);
-    y += displayed.length * 13 + 16;
+    doc.text(descLines, M, y);
+    y += descLines.length * 13 + 16;
   }
 
   // Le PDF client utilise les prix avec marge (lineItemClientUnit/Total).
