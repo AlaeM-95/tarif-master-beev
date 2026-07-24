@@ -264,6 +264,14 @@ export type SelectedCharger = {
    *  totaux). Utile quand la fiche ne contient plus rien de pertinent une fois
    *  points forts/présentation/encart désactivés. */
   hideFromPdf?: boolean;
+  /** Masque UNIQUEMENT le tableau de chiffrage à l'achat (Prestation/Qté/PU HT/
+   *  Total HT) + l'encart "Pour N bornes/collaborateurs" pour CETTE borne, en
+   *  gardant le reste de la fiche (points forts, présentation, offre en
+   *  location le cas échéant). Utile en mode location + compte admin : le
+   *  chiffrage à l'achat reste affiché par défaut pour les comptes admin
+   *  (postes de dépense internes), ce qui n'est pas toujours pertinent à
+   *  montrer sur ce devis précis. */
+  hideAchatPricing?: boolean;
 };
 
 /** Multiplicateur de prix à appliquer à `sc.lineItems` : `quantity` sauf si
@@ -3981,8 +3989,10 @@ async function drawChargerPage(doc: jsPDF, sc: SelectedCharger, type: ProjectTyp
   // par showChargerLineItems. Si l'admin a décoché la case, on saute tout.
   // En mode location, le chiffrage à l'achat est masqué par défaut, MAIS reste
   // affiché pour les comptes admin (ADMIN_MODE) : ils veulent voir les postes
-  // de dépense même quand le devis est présenté en location.
-  if (PDF_CFG.showChargerLineItems && (!sc.leaseEnabled || ADMIN_MODE)) {
+  // de dépense même quand le devis est présenté en location. hideAchatPricing
+  // permet de forcer le masquage au cas par cas (par borne), même pour un
+  // compte admin, sans toucher à l'offre en location au-dessus.
+  if (PDF_CFG.showChargerLineItems && (!sc.leaseEnabled || ADMIN_MODE) && !sc.hideAchatPricing) {
   y = ensureSpace(doc, y, 110, client, type);
   // Pour le scope SITE, on supprime le footer "Total HT par site" : ce total
   // est partiel (n'inclut pas le bureau de contrôle 700 €), donc il

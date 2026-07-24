@@ -4878,6 +4878,20 @@ function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total,
                 <NumField label="Durée du contrat (mois)" value={sc.leaseDurationMonths ?? 36} onChange={(n) => onChange({ leaseDurationMonths: n })} />
               </div>
               {isAdmin && (
+                <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-3.5 w-3.5"
+                    checked={!!sc.hideAchatPricing}
+                    onChange={(e) => onChange({ hideAchatPricing: e.target.checked })}
+                  />
+                  <span>
+                    Masquer le tableau de chiffrage à l'achat sur cette fiche (les comptes admin le voient par défaut
+                    même en location). Garde l'offre en location ci-dessus intacte.
+                  </span>
+                </label>
+              )}
+              {isAdmin && (
                 <div className="rounded-md border border-[#3809EA]/30 bg-[#3809EA]/[0.05] p-2 space-y-1">
                   <NumField label="Montant total projet HT (page 7 · Options de paiement)" value={sc.leaseProjectTotalHt ?? 0} onChange={(n) => onChange({ leaseProjectTotalHt: n })} />
                   <p className="text-[10px] text-muted-foreground">Réservé admin. S'il est renseigné, ce montant remplace le total affiché dans la page « Options de paiement » (utile quand tout est en location, donc total à l'achat = 0).</p>
