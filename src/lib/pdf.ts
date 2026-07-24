@@ -7552,16 +7552,19 @@ function drawFiscalAdvantages(doc: jsPDF, vehicles: SelectedVehicle[], energy: E
   const ROSE: [number, number, number] = [244, 184, 170];
 
   let y = 130;
-  eyebrow(doc, lookupText(TEXTS, "common", "fiscal_eyebrow", "FISCALITÉ ENTREPRISE 2026"), y);
+  eyebrow(doc, lookupText(TEXTS, "common", "fiscal_eyebrow", L("FISCALITÉ ENTREPRISE 2026", "CORPORATE TAX 2026")), y);
   y += 32;
-  title(doc, lookupText(TEXTS, "common", "fiscal_title", "Vos avantages fiscaux à l'électrification."), y);
+  title(doc, lookupText(TEXTS, "common", "fiscal_title", L("Vos avantages fiscaux à l'électrification.", "Your tax advantages from electrification.")), y);
   y += 36;
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
   const intro = doc.splitTextToSize(
     lookupText(TEXTS, "common", "fiscal_intro",
-      "L'électrification de votre flotte ouvre des leviers fiscaux concrets : exonération de TVS, récupération de TVA sur la recharge, absence de malus. Voici ce qui s'applique à votre projet."),
+      L(
+        "L'électrification de votre flotte ouvre des leviers fiscaux concrets : exonération de TVS, récupération de TVA sur la recharge, absence de malus. Voici ce qui s'applique à votre projet.",
+        "Electrifying your fleet opens up concrete tax levers: TVS exemption, VAT recovery on charging, no penalty. Here's what applies to your project.",
+      )),
     PAGE_W - M * 2);
   doc.text(intro, M, y);
   y += intro.length * 13 + 18;
@@ -7588,29 +7591,41 @@ function drawFiscalAdvantages(doc: jsPDF, vehicles: SelectedVehicle[], energy: E
   type Card = { label: string; value: string; sub: string; bg: [number, number, number]; accent: [number, number, number] };
   const cards: Card[] = [
     {
-      label: "TAXE SUR LES VÉHICULES DE SOCIÉTÉ",
-      value: "0 € de TVS",
+      label: L("TAXE SUR LES VÉHICULES DE SOCIÉTÉ", "COMPANY CAR TAX (TVS)"),
+      value: L("0 € de TVS", "€0 TVS"),
       sub: tvsEvitee > 0
-        ? `Véhicules électriques exonérés. Soit ${eur(tvsEvitee)} évités vs votre flotte thermique actuelle.`
-        : "Les véhicules 100 % électriques sont exonérés des taxes annuelles sur les véhicules de société (CO2 + ancienneté).",
+        ? L(`Véhicules électriques exonérés. Soit ${eur(tvsEvitee)} évités vs votre flotte thermique actuelle.`, `Electric vehicles are exempt. That's ${eur(tvsEvitee)} avoided vs. your current combustion fleet.`)
+        : L(
+            "Les véhicules 100 % électriques sont exonérés des taxes annuelles sur les véhicules de société (CO2 + ancienneté).",
+            "100% electric vehicles are exempt from the annual company car taxes (CO2 + age).",
+          ),
       bg: GREEN_LIGHT, accent: GREEN,
     },
     {
-      label: "MALUS À L'ACHAT",
-      value: "0 € de malus",
-      sub: "Les véhicules électriques sont exonérés du malus CO2 et du malus au poids — économie immédiate à l'acquisition.",
+      label: L("MALUS À L'ACHAT", "PURCHASE PENALTY"),
+      value: L("0 € de malus", "€0 penalty"),
+      sub: L(
+        "Les véhicules électriques sont exonérés du malus CO2 et du malus au poids — économie immédiate à l'acquisition.",
+        "Electric vehicles are exempt from the CO2 penalty and the weight penalty, an immediate saving at acquisition.",
+      ),
       bg: ROSE_LIGHT, accent: ROSE,
     },
     {
-      label: "TVA SUR LA RECHARGE",
-      value: "Récupérable 100 %",
-      sub: "La TVA sur l'électricité consommée pour la recharge de la flotte est intégralement récupérable.",
+      label: L("TVA SUR LA RECHARGE", "VAT ON CHARGING"),
+      value: L("Récupérable 100 %", "100% recoverable"),
+      sub: L(
+        "La TVA sur l'électricité consommée pour la recharge de la flotte est intégralement récupérable.",
+        "VAT on the electricity consumed for charging the fleet is fully recoverable.",
+      ),
       bg: BLUE_LIGHT, accent: ADMIN_MODE ? [30, 90, 153] : [56, 9, 234],
     },
     {
-      label: "TVA SUR LE VÉHICULE",
-      value: utilEvs.length > 0 ? `${utilEvs.length} utilitaire${utilEvs.length > 1 ? "s" : ""} éligible${utilEvs.length > 1 ? "s" : ""}` : "Utilitaires uniquement",
-      sub: "Récupérable UNIQUEMENT sur les véhicules utilitaires 100 % électriques. Sur les véhicules de tourisme, la TVA à l'achat / LLD n'est pas récupérable.",
+      label: L("TVA SUR LE VÉHICULE", "VAT ON THE VEHICLE"),
+      value: utilEvs.length > 0 ? L(`${utilEvs.length} utilitaire${utilEvs.length > 1 ? "s" : ""} éligible${utilEvs.length > 1 ? "s" : ""}`, `${utilEvs.length} eligible van${utilEvs.length > 1 ? "s" : ""}`) : L("Utilitaires uniquement", "Vans only"),
+      sub: L(
+        "Récupérable UNIQUEMENT sur les véhicules utilitaires 100 % électriques. Sur les véhicules de tourisme, la TVA à l'achat / LLD n'est pas récupérable.",
+        "Recoverable ONLY on 100% electric vans. On passenger vehicles, VAT on purchase / LLD lease is not recoverable.",
+      ),
       bg: VIOLET_LIGHT, accent: [108, 94, 130],
     },
   ];
@@ -7645,12 +7660,15 @@ function drawFiscalAdvantages(doc: jsPDF, vehicles: SelectedVehicle[], energy: E
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(9);
   doc.setTextColor(...INK);
-  doc.text("AVANTAGE EN NATURE & AMORTISSEMENTS", M + 14, y + 18);
+  doc.text(L("AVANTAGE EN NATURE & AMORTISSEMENTS", "BENEFIT-IN-KIND & DEPRECIATION"), M + 14, y + 18);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
   doc.text(
-    "Les véhicules électriques bénéficient d'un abattement de 70 % sur l'avantage en nature (plafonné), et le plafond d'amortissement non déductible (AND) est relevé pour l'électrique. Ces leviers réduisent le coût employeur réel, intégré dans nos calculs TCO.",
+    L(
+      "Les véhicules électriques bénéficient d'un abattement de 70 % sur l'avantage en nature (plafonné), et le plafond d'amortissement non déductible (AND) est relevé pour l'électrique. Ces leviers réduisent le coût employeur réel, intégré dans nos calculs TCO.",
+      "Electric vehicles benefit from a 70% reduction on the benefit-in-kind (AEN, capped), and the non-deductible depreciation ceiling (AND) is raised for electric. These levers reduce the real employer cost, included in our TCO calculations.",
+    ),
     M + 14, y + 34, { maxWidth: PAGE_W - M * 2 - 28 },
   );
   y += 64 + 16;
@@ -7660,7 +7678,10 @@ function drawFiscalAdvantages(doc: jsPDF, vehicles: SelectedVehicle[], energy: E
   doc.setFontSize(7);
   doc.setTextColor(...SUB);
   doc.text(
-    "Sources : Code général des impôts, barèmes 2026 (TVS, AND/AEN, malus CO2 et poids), service-public.fr / impots.gouv.fr. Synthèse indicative, à ajuster selon la situation fiscale propre à votre entreprise.",
+    L(
+      "Sources : Code général des impôts, barèmes 2026 (TVS, AND/AEN, malus CO2 et poids), service-public.fr / impots.gouv.fr. Synthèse indicative, à ajuster selon la situation fiscale propre à votre entreprise.",
+      "Sources: French General Tax Code, 2026 scales (TVS, AND/AEN, CO2 and weight penalty), service-public.fr / impots.gouv.fr. Indicative summary, to be adjusted to your company's specific tax situation.",
+    ),
     M, y, { maxWidth: PAGE_W - M * 2 },
   );
 }
