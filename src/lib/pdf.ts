@@ -4276,15 +4276,18 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
   const COLOR_BEST: [number, number, number] = ADMIN_MODE ? [29, 29, 29] : [53, 218, 118];
 
   let y = 116;
-  eyebrow(doc, "ANALYSE TCO · TABLEAU DE BORD", y);
+  eyebrow(doc, L("ANALYSE TCO · TABLEAU DE BORD", "TCO ANALYSIS · DASHBOARD"), y);
   y += 32;
-  title(doc, "Décomposition du coût total de possession.", y);
+  title(doc, L("Décomposition du coût total de possession.", "Breakdown of the total cost of ownership."), y);
   y += 30;
 
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
-  const intro = "Classement par TCO d'usage : loyer LLD, coût énergie, fiscalité (TVS) et malus à l'achat. Le véhicule en haut a le TCO d'usage le plus bas. Ce TCO d'usage n'inclut pas l'AND ni l'AEN employeur : le coût employeur complet (qui les ajoute) est détaillé dans la page « Détail des composantes ».";
+  const intro = L(
+    "Classement par TCO d'usage : loyer LLD, coût énergie, fiscalité (TVS) et malus à l'achat. Le véhicule en haut a le TCO d'usage le plus bas. Ce TCO d'usage n'inclut pas l'AND ni l'AEN employeur : le coût employeur complet (qui les ajoute) est détaillé dans la page « Détail des composantes ».",
+    "Ranked by usage TCO: lease, energy cost, tax (TVS) and purchase penalty. The vehicle at the top has the lowest usage TCO. This usage TCO does not include the AND or the employer's AEN share: the full employer cost (which adds them) is detailed on the \"Component detail\" page.",
+  );
   const introL = doc.splitTextToSize(intro, PAGE_W - M * 2);
   doc.text(introL, M, y);
   y += introL.length * 13 + 14;
@@ -4321,7 +4324,7 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
   }).sort((a, b) => a.total - b.total);
 
   if (rows.length === 0) {
-    doc.text(lookupText(TEXTS, "vehicles", "tco_compare_empty", "Aucun véhicule sélectionné pour l'analyse TCO."), M, y);
+    doc.text(lookupText(TEXTS, "vehicles", "tco_compare_empty", L("Aucun véhicule sélectionné pour l'analyse TCO.", "No vehicle selected for the TCO analysis.")), M, y);
     return;
   }
 
@@ -4342,8 +4345,11 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
       doc,
       y,
       `${avgCur.toFixed(2)} €/100km`,
-      `coût moyen actuel · ${dashCurrent.length} véh.`,
-      `Le meilleur véhicule électrique proposé revient à ${bestEv.toFixed(2)} €/100km, soit ${ecoPct.toFixed(0)} % d'économie par véhicule sur votre usage.`,
+      L(`coût moyen actuel · ${dashCurrent.length} véh.`, `current average cost · ${dashCurrent.length} veh.`),
+      L(
+        `Le meilleur véhicule électrique proposé revient à ${bestEv.toFixed(2)} €/100km, soit ${ecoPct.toFixed(0)} % d'économie par véhicule sur votre usage.`,
+        `The best proposed electric vehicle costs ${bestEv.toFixed(2)} €/100km, a ${ecoPct.toFixed(0)}% saving per vehicle on your usage.`,
+      ),
     );
   }
 
@@ -4353,28 +4359,28 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
   const cardH = 70;
   const kpis = [
     {
-      label: "MEILLEUR TCO",
+      label: L("MEILLEUR TCO", "BEST TCO"),
       value: `${cheapest.par100km.toFixed(2)} €/100km`,
       // Version incluse pour distinguer 2 finitions du même modèle
       sub: vehicleLabel(cheapest.sv.vehicle, 30),
       color: COLOR_ENERGIE,
     },
     {
-      label: "TCO LE PLUS ÉLEVÉ",
+      label: L("TCO LE PLUS ÉLEVÉ", "HIGHEST TCO"),
       value: `${mostExpensive.par100km.toFixed(2)} €/100km`,
       sub: vehicleLabel(mostExpensive.sv.vehicle, 30),
       color: COLOR_MALUS,
     },
     {
-      label: "ÉCART SUR CONTRAT",
+      label: L("ÉCART SUR CONTRAT", "GAP OVER CONTRACT"),
       value: eur(ecartTotal),
-      sub: "économie potentielle pire vs meilleur",
+      sub: L("économie potentielle pire vs meilleur", "potential savings, worst vs best"),
       color: COLOR_LOYER,
     },
     {
-      label: "ÉCART %",
+      label: L("ÉCART %", "GAP %"),
       value: `${ecartPct.toFixed(1)} %`,
-      sub: "pire − meilleur ÷ pire",
+      sub: L("pire − meilleur ÷ pire", "worst − best ÷ worst"),
       color: COLOR_TVS,
     },
   ];
@@ -4402,10 +4408,10 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
 
   // === Légende couleurs des composantes ===
   const legend = [
-    { label: "Loyer LLD", color: COLOR_LOYER },
-    { label: "Énergie", color: COLOR_ENERGIE },
-    { label: "TVS / fiscalité", color: COLOR_TVS },
-    { label: "Malus à l'achat", color: COLOR_MALUS },
+    { label: L("Loyer LLD", "Lease"), color: COLOR_LOYER },
+    { label: L("Énergie", "Energy"), color: COLOR_ENERGIE },
+    { label: L("TVS / fiscalité", "TVS / tax"), color: COLOR_TVS },
+    { label: L("Malus à l'achat", "Purchase penalty"), color: COLOR_MALUS },
   ];
   let lx = M;
   legend.forEach((l) => {
@@ -4436,7 +4442,7 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
     const gmap = new Map<string, typeof rows>();
     const order: string[] = [];
     for (const r of rows) {
-      const g = (r.sv.comparisonGroup ?? "").trim() || "Autres véhicules";
+      const g = (r.sv.comparisonGroup ?? "").trim() || L("Autres véhicules", "Other vehicles");
       if (!gmap.has(g)) { gmap.set(g, []); order.push(g); }
       gmap.get(g)!.push(r);
     }
@@ -4459,7 +4465,7 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
       doc.addPage();
       drawHeader(doc, (client ?? { company: "", date: "" }) as ClientInfo, type ?? "vehicles");
       y = 130;
-      eyebrow(doc, "ANALYSE TCO · TABLEAU DE BORD (SUITE)", y);
+      eyebrow(doc, L("ANALYSE TCO · TABLEAU DE BORD (SUITE)", "TCO ANALYSIS · DASHBOARD (CONTINUED)"), y);
       y += 30;
     }
     if (it.header !== undefined) {
@@ -4521,7 +4527,7 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(7);
     doc.setTextColor(...SUB);
-    const tagTxt = isCur ? "actuel · " : "";
+    const tagTxt = isCur ? L("actuel · ", "current · ") : "";
     if (verRank) {
       doc.text(verRank.slice(0, 30), M + 22, y + 16);
       doc.text(`${tagTxt}${r.par100km.toFixed(2)} €/100km · × ${r.sv.quantity}`, M + 22, y + 25);
@@ -4564,7 +4570,7 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...LAVENDER);
-  doc.text("DÉTAIL CHARGES FISCALES ANNEXES PAR VÉHICULE", M, y);
+  doc.text(L("DÉTAIL CHARGES FISCALES ANNEXES PAR VÉHICULE", "DETAIL OF ADDITIONAL TAX CHARGES BY VEHICLE"), M, y);
   y += 14;
 
   // Sépare la flotte actuelle (thermiques) des EV proposés.
@@ -4579,8 +4585,11 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
       doc,
       y,
       eur(curFisc),
-      "TVS + malus actuels (×durée)",
-      "Charges fiscales annexes que vos véhicules thermiques supportent aujourd'hui. Elles sont fortement réduites, voire nulles, en passant à l'électrique.",
+      L("TVS + malus actuels (×durée)", "Current TVS + penalty (×duration)"),
+      L(
+        "Charges fiscales annexes que vos véhicules thermiques supportent aujourd'hui. Elles sont fortement réduites, voire nulles, en passant à l'électrique.",
+        "Additional tax charges your combustion vehicles bear today. They are sharply reduced, or eliminated, when switching to electric.",
+      ),
     );
   }
 
@@ -4603,7 +4612,7 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
   const fiscalRowSvs: (SelectedVehicle | null)[] = [];
   // 1) Flotte actuelle en tête (bandeau noir)
   if (fiscalCurrent.length > 0) {
-    fiscalBody.push(sectionHeaderRow("Flotte actuelle", 6, INK, true));
+    fiscalBody.push(sectionHeaderRow(L("Flotte actuelle", "Current fleet"), 6, INK, true));
     fiscalRowSvs.push(null);
     for (const r of [...fiscalCurrent].sort((a, b) => b.coutEmployeur - a.coutEmployeur)) {
       fiscalBody.push(buildFiscalRow(r)); fiscalRowSvs.push(r.sv);
@@ -4614,7 +4623,7 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
     const gOrder: string[] = [];
     const gMap = new Map<string, typeof rows>();
     for (const r of fiscalEv) {
-      const g = fGroupKey(r.sv) || "Autres véhicules";
+      const g = fGroupKey(r.sv) || L("Autres véhicules", "Other vehicles");
       if (!gMap.has(g)) { gMap.set(g, []); gOrder.push(g); }
       gMap.get(g)!.push(r);
     }
@@ -4629,7 +4638,7 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
     }
   } else {
     if (fiscalCurrent.length > 0 && fiscalEv.length > 0) {
-      fiscalBody.push(sectionHeaderRow("Véhicules électriques proposés", 6, fGroupColors[2]));
+      fiscalBody.push(sectionHeaderRow(L("Véhicules électriques proposés", "Proposed electric vehicles"), 6, fGroupColors[2]));
       fiscalRowSvs.push(null);
     }
     for (const r of fiscalEv) { fiscalBody.push(buildFiscalRow(r)); fiscalRowSvs.push(r.sv); }
@@ -4644,7 +4653,7 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
   autoTable(doc, {
     startY: y,
     theme: "plain",
-    head: [["Véhicule", "Malus (achat)", "TVS (×durée)", "AND (×durée)", "AEN empl. (×durée)", "Coût empl. complet"]],
+    head: [[L("Véhicule", "Vehicle"), L("Malus (achat)", "Penalty (purchase)"), L("TVS (×durée)", "TVS (×duration)"), L("AND (×durée)", "AND (×duration)"), L("AEN empl. (×durée)", "AEN employer (×duration)"), L("Coût empl. complet", "Full employer cost")]],
     body: fiscalBody,
     headStyles: { fillColor: ADMIN_MODE ? INK : LAVENDER, textColor: 255, fontSize: 7, fontStyle: "bold", font: BRAND_FONT, cellPadding: 4, halign: "center" as any },
     bodyStyles: { fontSize: 8, cellPadding: 4, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
@@ -4670,7 +4679,10 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
   doc.setFontSize(7.5);
   doc.setTextColor(...SUB);
   doc.text(
-    "Estimation Beev 2026 : loyer LLD × durée + énergie sur kilométrage prévu + TVS annualisée + malus à l'achat. AND/AEN selon barèmes fiscaux 2026. Valeurs indicatives, à confirmer auprès du loueur retenu.",
+    L(
+      "Estimation Beev 2026 : loyer LLD × durée + énergie sur kilométrage prévu + TVS annualisée + malus à l'achat. AND/AEN selon barèmes fiscaux 2026. Valeurs indicatives, à confirmer auprès du loueur retenu.",
+      "Beev 2026 estimate: lease × duration + energy over expected mileage + annualized TVS + purchase penalty. AND/AEN per 2026 tax scales. Indicative values, to be confirmed with the selected lessor.",
+    ),
     M,
     y,
     { maxWidth: PAGE_W - M * 2 },
