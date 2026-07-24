@@ -5816,7 +5816,17 @@ async function drawChargerProductSheet(doc: jsPDF, ch: Charger, _client: ClientI
   const desc = ch.description && ch.description.trim()
     ? ch.description.trim()
     : `Borne de recharge ${ch.powerKw} kW${/tri/i.test(ch.type) ? " triphasée" : " monophasée"}, ${ch.type}.`;
-  const descLines = (doc.splitTextToSize(desc, PAGE_W - M * 2) as string[]).slice(0, 3);
+  // Cette fiche est une page unique sans pagination (pas d'ensureSpace) : les
+  // atouts + photo + caractéristiques clés qui suivent occupent une hauteur
+  // fixe d'environ 410pt. On n'écrête donc la description que si elle menace
+  // réellement de faire déborder ce bloc du bas de page, plutôt qu'à un
+  // nombre de lignes arbitraire (l'ancien plafond fixe à 3 lignes coupait le
+  // texte même quand la page avait largement la place de l'afficher en
+  // entier).
+  const descAllLines = doc.splitTextToSize(desc, PAGE_W - M * 2) as string[];
+  const reservedBelow = 410;
+  const maxDescLines = Math.max(3, Math.floor((FOOTER_LIMIT - y - reservedBelow) / 14));
+  const descLines = descAllLines.slice(0, maxDescLines);
   doc.text(descLines, M, y);
   y += descLines.length * 14 + 24;
 
