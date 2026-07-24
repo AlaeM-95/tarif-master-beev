@@ -6916,16 +6916,16 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
 // ============ GARANTIES & ENGAGEMENTS BEEV ============
 function drawGuarantees(doc: jsPDF, type: ProjectType) {
   let y = 130;
-  eyebrow(doc, lookupText(TEXTS, "common", "pillars_eyebrow", "GARANTIES & ENGAGEMENTS BEEV"), y);
+  eyebrow(doc, lookupText(TEXTS, "common", "pillars_eyebrow", L("GARANTIES & ENGAGEMENTS BEEV", "BEEV GUARANTEES & COMMITMENTS")), y);
   y += 32;
-  title(doc, lookupText(TEXTS, "common", "pillars_title", "Ce que Beev s'engage à tenir."), y);
+  title(doc, lookupText(TEXTS, "common", "pillars_title", L("Ce que Beev s'engage à tenir.", "What Beev commits to.")), y);
   y += 36;
 
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10.5);
   doc.setTextColor(...SUB);
   const intro = type === "vehicles"
-    ? "Au-delà du tarif catalogue, Beev s'engage sur la qualité opérationnelle pendant toute la durée du contrat LLD."
+    ? L("Au-delà du tarif catalogue, Beev s'engage sur la qualité opérationnelle pendant toute la durée du contrat LLD.", "Beyond the catalog price, Beev commits to operational quality throughout the LLD contract.")
     : type === "home"
     ? "Pour chaque collaborateur équipé, Beev pilote l'installation, la supervision et l'exploitation pendant toute la durée du contrat."
     : "Pour chaque site IRVE, Beev s'engage sur des SLA opérationnels mesurables, du déploiement à l'exploitation.";
@@ -6935,7 +6935,38 @@ function drawGuarantees(doc: jsPDF, type: ProjectType) {
 
   // 3 piliers d'engagement (cartes alignées)
   const pillarsByType: Record<ProjectType, Array<{ title: string; metric: string; details: string[] }>> = {
-    vehicles: [
+    vehicles: PDF_LANG === "en" ? [
+      {
+        title: "SINGLE POINT OF CONTACT",
+        metric: "Reply within 1 business day",
+        details: [
+          "A dedicated key account manager",
+          "Shared fleet management hotline",
+          "Lessor coordination (Ayvens, Arval, Athlon, Leaseplan)",
+          "Tracking of deliveries and manufacturer incidents",
+        ],
+      },
+      {
+        title: "MAINTENANCE INCLUDED",
+        metric: "All networks",
+        details: [
+          "Manufacturer servicing, all networks",
+          "24/7 assistance, roadside breakdown service",
+          "Replacement vehicle per contract",
+          "Financial loss guarantee in case of theft/accident",
+        ],
+      },
+      {
+        title: "FLEET MANAGER DASHBOARD",
+        metric: "Live dashboard",
+        details: [
+          "Multi-user access to Beev Fleet Manager",
+          "Tracking of delivery and return reports",
+          "Updates on applicable tax rules",
+          "Consolidated reporting on request",
+        ],
+      },
+    ] : [
       {
         title: "INTERLOCUTEUR UNIQUE",
         metric: "Réponse J+1",
@@ -7082,12 +7113,12 @@ function drawGuarantees(doc: jsPDF, type: ProjectType) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(10);
   doc.setTextColor(...ACCENT);
-  doc.text("BEEV EN CHIFFRES (2026)", M + 16, y + 20);
+  doc.text(L("BEEV EN CHIFFRES (2026)", "BEEV IN NUMBERS (2026)"), M + 16, y + 20);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(255, 255, 255);
-  doc.text("Le copilote tout-en-un de l'électrification des flottes en France :", M + 16, y + 36);
-  doc.text("vente VE multi-marques · installation IRVE · logiciel Fleet Manager.", M + 16, y + 50);
+  doc.text(L("Le copilote tout-en-un de l'électrification des flottes en France :", "The all-in-one copilot for fleet electrification in France:"), M + 16, y + 36);
+  doc.text(L("vente VE multi-marques · installation IRVE · logiciel Fleet Manager.", "multi-brand EV sales · EVSE installation · Fleet Manager software."), M + 16, y + 50);
 }
 
 // ============ EXECUTIVE SUMMARY (page "EN BREF" — décideur) ============
