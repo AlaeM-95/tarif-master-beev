@@ -4803,6 +4803,15 @@ function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total,
           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onRemove}><Trash2 className="w-3 h-3" /></Button>
         </div>
       </div>
+      <label className="flex items-center gap-2 text-xs cursor-pointer">
+        <input
+          type="checkbox"
+          checked={!!sc.hideFromPdf}
+          onChange={(e) => onChange({ hideFromPdf: e.target.checked })}
+          className="h-4 w-4 accent-beev-bleu"
+        />
+        <span>Masquer la fiche détaillée de cette borne dans le PDF (reste dans le devis et les totaux)</span>
+      </label>
       <div className="grid grid-cols-2 gap-2">
         <TxtField label={isHome ? "Collaborateur" : "Site (nom)"} value={sc.siteName} onChange={(s) => onChange({ siteName: s })} />
         <TxtField label="Contact" value={sc.siteContact} onChange={(s) => onChange({ siteContact: s })} />

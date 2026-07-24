@@ -259,6 +259,11 @@ export type SelectedCharger = {
    *  pour CETTE borne uniquement, sans désactiver le toggle global
    *  showChargerInclusionNote (qui s'applique à toutes les bornes du PDF). */
   hideInclusionNote?: boolean;
+  /** Masque la fiche détaillée (drawChargerPage) de CETTE borne dans le PDF
+   *  généré, sans la retirer du devis (chiffrage interne, comparateur B2B2E,
+   *  totaux). Utile quand la fiche ne contient plus rien de pertinent une fois
+   *  points forts/présentation/encart désactivés. */
+  hideFromPdf?: boolean;
 };
 
 /** Multiplicateur de prix à appliquer à `sc.lineItems` : `quantity` sauf si
@@ -1048,12 +1053,16 @@ export async function generateProposalPdf(opts: {
     }
     if (mode === "catalogue" || mode === "both") {
       // Catalogue = fiche détaillée par collaborateur (format complet : points
-      // forts, présentation, chiffrage Total HT par collaborateur).
-      for (let i = 0; i < chargersHome.length; i++) {
+      // forts, présentation, chiffrage Total HT par collaborateur). hideFromPdf
+      // exclut une borne de cette fiche sans la retirer du devis (chiffrage,
+      // comparateur B2B2E, totaux) — numérotation "N / total" recalculée sur
+      // les bornes effectivement affichées.
+      const chargersHomeVisible = chargersHome.filter((sc) => !sc.hideFromPdf);
+      for (let i = 0; i < chargersHomeVisible.length; i++) {
         try {
           doc.addPage();
           drawHeader(doc, client, "home");
-          await drawChargerPage(doc, chargersHome[i], "home", i + 1, chargersHome.length, client);
+          await drawChargerPage(doc, chargersHomeVisible[i], "home", i + 1, chargersHomeVisible.length, client);
         } catch (e) { console.error("[pdf] fiche borne collaborateur :", e); }
       }
     }
@@ -1082,10 +1091,14 @@ export async function generateProposalPdf(opts: {
     drawHomeConnectKit(doc, client);
   }
 
-  for (let i = 0; i < chargersSite.length; i++) {
+  // hideFromPdf exclut une borne de sa fiche détaillée sans la retirer du
+  // devis — numérotation "SITE N / total" recalculée sur les bornes
+  // effectivement affichées.
+  const chargersSiteVisible = chargersSite.filter((sc) => !sc.hideFromPdf);
+  for (let i = 0; i < chargersSiteVisible.length; i++) {
     doc.addPage();
     drawHeader(doc, client, "site");
-    await drawChargerPage(doc, chargersSite[i], "site", i + 1, chargersSite.length, client);
+    await drawChargerPage(doc, chargersSiteVisible[i], "site", i + 1, chargersSiteVisible.length, client);
   }
 
   // Slide Supervision Beev Connect (site entreprise) — toggle PDF config.
