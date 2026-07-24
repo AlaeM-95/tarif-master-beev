@@ -2514,8 +2514,11 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[], client?
   // Total recalculé pour cohérence avec la page récap financier (hors bornes en location).
   const total = chargers.reduce((sum, sc) => sc.leaseEnabled ? sum : sum + sc.lineItems.reduce((a, li) => a + lineItemClientTotal(li), 0) * chargerQtyMultiplier(sc), 0) + bureauControle;
   // Montant total projet saisi manuellement (mode location) : s'il est renseigné,
-  // il REMPLACE le total calculé (qui exclut les bornes en location).
-  const manualTotal = chargers.reduce((sum, sc) => sum + (sc.leaseProjectTotalHt ?? 0), 0);
+  // il REMPLACE le total calculé (qui exclut les bornes en location). Ne compter
+  // que les bornes ACTUELLEMENT en location : sinon une borne repassée en achat
+  // après avoir eu ce champ renseigné en location laisse une valeur fantôme qui
+  // écrase silencieusement le total achat correctement recalculé.
+  const manualTotal = chargers.reduce((sum, sc) => sum + (sc.leaseEnabled ? (sc.leaseProjectTotalHt ?? 0) : 0), 0);
   const displayTotal = manualTotal > 0 ? manualTotal : total;
   const ttc = displayTotal * 1.2;
   const acompte50 = ttc * 0.5;
