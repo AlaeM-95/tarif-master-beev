@@ -7257,11 +7257,11 @@ function drawFinancialSummary(
   const isCombined = hasVehicles && hasChargers;
 
   let y = 130;
-  eyebrow(doc, lookupText(TEXTS, "common", "financial_eyebrow", "SYNTHÈSE FINANCIÈRE"), y);
+  eyebrow(doc, lookupText(TEXTS, "common", "financial_eyebrow", L("SYNTHÈSE FINANCIÈRE", "FINANCIAL SUMMARY")), y);
   y += 32;
   const titleText = isCombined
-    ? "Récapitulatif loyers LLD + bornes HT/TTC."
-    : (hasVehicles ? "Récapitulatif loyers LLD." : "Récapitulatif HT / TVA / TTC.");
+    ? L("Récapitulatif loyers LLD + bornes HT/TTC.", "Summary of LLD leases + charging stations (excl./incl. VAT).")
+    : (hasVehicles ? L("Récapitulatif loyers LLD.", "Summary of LLD leases.") : L("Récapitulatif HT / TVA / TTC.", "Summary excl. VAT / VAT / incl. VAT."));
   title(doc, titleText, y);
   y += 30;
 
@@ -7272,7 +7272,7 @@ function drawFinancialSummary(
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(11);
       doc.setTextColor(...SUB);
-      doc.text(lookupText(TEXTS, "common", "financial_vehicles_title", "VÉHICULES — LOYERS LLD TTC"), M, y);
+      doc.text(lookupText(TEXTS, "common", "financial_vehicles_title", L("VÉHICULES — LOYERS LLD TTC", "VEHICLES — LLD LEASES (INCL. VAT)")), M, y);
       y += 14;
     }
     // Pour les véhicules : récap LLD mensuel + annuel TTC (la fiscalité TVA récupérée)
@@ -7286,7 +7286,7 @@ function drawFinancialSummary(
       annualTotal += annual;
       rows.push([
         `${sv.vehicle.brand} ${sv.vehicle.model}`,
-        `${sv.quantity} × ${sv.durationMonths} mois`,
+        `${sv.quantity} × ${sv.durationMonths} ${L("mois", "months")}`,
         eurLoyer(sv.negotiatedMonthly),
         eurLoyer(monthly),
       ]);
@@ -7296,15 +7296,15 @@ function drawFinancialSummary(
       startY: y,
       theme: "grid",
       head: [[
-        lookupText(TEXTS, "common", "financial_head_vehicle", "Véhicule"),
-        lookupText(TEXTS, "common", "financial_head_conditions", "Conditions"),
-        lookupText(TEXTS, "common", "financial_head_unit_monthly", "Loyer unitaire/mois"),
-        lookupText(TEXTS, "common", "financial_head_total_monthly", "Loyer mensuel TTC"),
+        lookupText(TEXTS, "common", "financial_head_vehicle", L("Véhicule", "Vehicle")),
+        lookupText(TEXTS, "common", "financial_head_conditions", L("Conditions", "Terms")),
+        lookupText(TEXTS, "common", "financial_head_unit_monthly", L("Loyer unitaire/mois", "Unit lease/month")),
+        lookupText(TEXTS, "common", "financial_head_total_monthly", L("Loyer mensuel TTC", "Monthly lease (incl. VAT)")),
       ]],
       body: rows,
       foot: [
-        ["", "", { content: lookupText(TEXTS, "common", "financial_foot_total_label", "Loyer mensuel total TTC"), styles: { fontStyle: "bold", halign: "right" } }, { content: eurLoyer(monthlyTotal), styles: { fontStyle: "bold", halign: "right", fillColor: BG } }],
-        ["", "", { content: "Loyer annuel total TTC", styles: { fontStyle: "bold", halign: "right" } }, { content: eurLoyer(annualTotal), styles: { fontStyle: "bold", halign: "right", fillColor: ACCENT, textColor: 255 } }],
+        ["", "", { content: lookupText(TEXTS, "common", "financial_foot_total_label", L("Loyer mensuel total TTC", "Total monthly lease (incl. VAT)")), styles: { fontStyle: "bold", halign: "right" } }, { content: eurLoyer(monthlyTotal), styles: { fontStyle: "bold", halign: "right", fillColor: BG } }],
+        ["", "", { content: L("Loyer annuel total TTC", "Total annual lease (incl. VAT)"), styles: { fontStyle: "bold", halign: "right" } }, { content: eurLoyer(annualTotal), styles: { fontStyle: "bold", halign: "right", fillColor: ACCENT, textColor: 255 } }],
       ],
       headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT },
       bodyStyles: { fontSize: 9.5, cellPadding: 6, textColor: INK, lineColor: RULE, font: BRAND_FONT },
@@ -7317,7 +7317,10 @@ function drawFinancialSummary(
     // Mention TVA
     doc.setFontSize(9);
     doc.setTextColor(...SUB);
-    doc.text(lookupText(TEXTS, "common", "financial_vehicles_tva_note", "Loyers exprimés en TTC. Conformément à la fiscalité LLD, la TVA sur le loyer véhicule électrique est récupérable à 100 %."), M, y);
+    doc.text(lookupText(TEXTS, "common", "financial_vehicles_tva_note", L(
+      "Loyers exprimés en TTC. Conformément à la fiscalité LLD, la TVA sur le loyer véhicule électrique est récupérable à 100 %.",
+      "Leases shown incl. VAT. Under LLD tax rules, VAT on the electric vehicle lease is 100% recoverable.",
+    )), M, y);
     y += 28;
   }
 
@@ -7328,7 +7331,7 @@ function drawFinancialSummary(
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(11);
       doc.setTextColor(...SUB);
-      doc.text(lookupText(TEXTS, "common", "financial_chargers_title", "BORNES DE RECHARGE — HT / TVA / TTC"), M, y);
+      doc.text(lookupText(TEXTS, "common", "financial_chargers_title", L("BORNES DE RECHARGE — HT / TVA / TTC", "CHARGING STATIONS — EXCL. VAT / VAT / INCL. VAT")), M, y);
       y += 14;
     }
     // Pour les chargers (home / site) : tableau HT par site + TVA 20 % + TTC
@@ -7341,7 +7344,7 @@ function drawFinancialSummary(
       const label = sc.siteName ? `${sc.siteName} — ${sc.charger.brand} ${sc.charger.model}` : `${sc.charger.brand} ${sc.charger.model}`;
       rows.push([
         label,
-        `${sc.quantity} ${sc.charger.deployment === "domicile" ? "collab." : "borne(s)"}`,
+        `${sc.quantity} ${sc.charger.deployment === "domicile" ? L("collab.", "employee(s)") : L("borne(s)", "charger(s)")}`,
         eur(totalForSite),
       ]);
     });
@@ -7351,12 +7354,12 @@ function drawFinancialSummary(
     autoTable(doc, {
       startY: y,
       theme: "grid",
-      head: [["Désignation", "Quantité", "Total HT"]],
+      head: [[L("Désignation", "Description"), L("Quantité", "Quantity"), L("Total HT", "Total (excl. VAT)")]],
       body: rows,
       foot: [
-        ["", { content: "Sous-total HT", styles: { fontStyle: "bold", halign: "right" } }, { content: eur(totalHt), styles: { halign: "right", fontStyle: "bold" } }],
-        ["", { content: "TVA 20 %", styles: { halign: "right" } }, { content: eur(tva), styles: { halign: "right" } }],
-        ["", { content: "Total TTC", styles: { fontStyle: "bold", halign: "right" } }, { content: eur(ttc), styles: { halign: "right", fontStyle: "bold", fillColor: ACCENT, textColor: 255 } }],
+        ["", { content: L("Sous-total HT", "Subtotal (excl. VAT)"), styles: { fontStyle: "bold", halign: "right" } }, { content: eur(totalHt), styles: { halign: "right", fontStyle: "bold" } }],
+        ["", { content: L("TVA 20 %", "VAT 20%"), styles: { halign: "right" } }, { content: eur(tva), styles: { halign: "right" } }],
+        ["", { content: L("Total TTC", "Total (incl. VAT)"), styles: { fontStyle: "bold", halign: "right" } }, { content: eur(ttc), styles: { halign: "right", fontStyle: "bold", fillColor: ACCENT, textColor: 255 } }],
       ],
       headStyles: { fillColor: INK, textColor: 255, fontSize: 9, fontStyle: "bold", font: BRAND_FONT },
       bodyStyles: { fontSize: 9.5, cellPadding: 6, textColor: INK, lineColor: RULE, font: BRAND_FONT },
@@ -7374,11 +7377,15 @@ function drawFinancialSummary(
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(9);
     doc.setTextColor(...SUB);
-    doc.text(lookupText(TEXTS, "common", "financial_payment_title", "MODALITÉS DE PAIEMENT (À CONFIRMER LORS DE LA SIGNATURE)"), M + 16, y + 16);
+    doc.text(lookupText(TEXTS, "common", "financial_payment_title", L("MODALITÉS DE PAIEMENT (À CONFIRMER LORS DE LA SIGNATURE)", "PAYMENT TERMS (TO BE CONFIRMED AT SIGNING)")), M + 16, y + 16);
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(9);
     doc.setTextColor(...INK);
-    const modalities = [
+    const modalities = PDF_LANG === "en" ? [
+      "50% on order, 50% on commissioning.",
+      "Deposit invoiced within 8 days. Balance within 30 days after work completion.",
+      "20% VAT invoiced according to the regime applicable to your company.",
+    ] : [
       "50 % à la commande, 50 % à la mise en service.",
       "Acompte facturé sous 8 jours. Solde sous 30 jours après réception des travaux.",
       "TVA 20 % facturée selon le régime applicable à votre entreprise.",
