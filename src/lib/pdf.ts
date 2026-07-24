@@ -6691,7 +6691,7 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
     const catsList = [...categories].map((c) => c.toUpperCase()).join(" · ");
     doc.text(L(
       `Les véhicules comparés appartiennent à plusieurs catégories (${catsList}). Le match n'est pas à 100 %, utilisez ces données avec prudence.`,
-      `The compared vehicles belong to several categories (${catsList}). This is not a 100% match — use this data with caution.`,
+      `The compared vehicles belong to several categories (${catsList}). This is not a 100% match, so use this data with caution.`,
     ), M + 14, y + 28, { maxWidth: PAGE_W - M * 2 - 24 });
     y += 46;
   }
@@ -7306,7 +7306,7 @@ function drawFinancialSummary(
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(11);
       doc.setTextColor(...SUB);
-      doc.text(lookupText(TEXTS, "common", "financial_vehicles_title", L("VÉHICULES — LOYERS LLD TTC", "VEHICLES — LLD LEASES (INCL. VAT)")), M, y);
+      doc.text(lookupText(TEXTS, "common", "financial_vehicles_title", L("VÉHICULES — LOYERS LLD TTC", "VEHICLES · LLD LEASES (INCL. VAT)")), M, y);
       y += 14;
     }
     // Pour les véhicules : récap LLD mensuel + annuel TTC (la fiscalité TVA récupérée)
@@ -7365,7 +7365,7 @@ function drawFinancialSummary(
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(11);
       doc.setTextColor(...SUB);
-      doc.text(lookupText(TEXTS, "common", "financial_chargers_title", L("BORNES DE RECHARGE — HT / TVA / TTC", "CHARGING STATIONS — EXCL. VAT / VAT / INCL. VAT")), M, y);
+      doc.text(lookupText(TEXTS, "common", "financial_chargers_title", L("BORNES DE RECHARGE — HT / TVA / TTC", "CHARGING STATIONS · EXCL. VAT / VAT / INCL. VAT")), M, y);
       y += 14;
     }
     // Pour les chargers (home / site) : tableau HT par site + TVA 20 % + TTC
@@ -7442,7 +7442,42 @@ function drawJourney(doc: jsPDF, type: ProjectType, _client: ClientInfo) {
   const VIOLET: [number, number, number] = [211, 204, 216]; // #D3CCD8
   const ROSE: [number, number, number] = [244, 184, 170]; // #F4B8AA pour le "Beev"
 
-  const fallbackJourney = BEEV_JOURNEYS[type];
+  // BEEV_JOURNEYS est un objet partagé importé de catalog.ts, aussi utilisé
+  // par l'éditeur WYSIWYG de l'app (index.tsx) hors génération PDF — on ne
+  // le modifie pas selon PDF_LANG (fuite possible vers l'UI French-only du
+  // commercial). La traduction anglaise reste locale à cette fonction,
+  // uniquement pour le type véhicules (périmètre actuel).
+  const journeyVehiclesEn = {
+    intro: "From vehicle selection to delivery at the dealership or at your employees' homes, Beev orchestrates the entire journey and keeps you a single point of contact throughout the LLD contract.",
+    steps: [
+      {
+        n: "1", title: "Fleet scoping", duration: "Day 0 > Day 3",
+        summary: "Final selection of the number of vehicles, brands, models, duration/mileage pairing, options and services.",
+        beev: [], client: [],
+      },
+      {
+        n: "2", title: "Financing file setup", duration: "Day 3 > Day 10",
+        summary: "Collection of the accounting documents required for the lease financing review.",
+        beev: [], client: [],
+      },
+      {
+        n: "3", title: "Signing the purchase orders", duration: "Day 10 > Day 15",
+        summary: "Once financing is approved, issuance and signing of the manufacturer LLD purchase orders.",
+        beev: [], client: [],
+      },
+      {
+        n: "4", title: "Choosing the delivery location", duration: "Day 15 > delivery",
+        summary: "Selecting the city to engage the nearest partner dealership, for delivery at the dealership, to an employee, or at head office.",
+        beev: [], client: [],
+      },
+      {
+        n: "5", title: "Beev Fleet Manager monitoring", duration: "Ongoing",
+        summary: "Tracking synchronized on our Fleet Manager. Ryma takes over the manufacturer relationship and keeps you informed.",
+        beev: [], client: [],
+      },
+    ],
+  };
+  const fallbackJourney = (type === "vehicles" && PDF_LANG === "en") ? journeyVehiclesEn : BEEV_JOURNEYS[type];
   const j = PDF_CONTENT.steps.length > 0
     ? { intro: fallbackJourney.intro, steps: PDF_CONTENT.steps }
     : fallbackJourney;
@@ -7454,7 +7489,7 @@ function drawJourney(doc: jsPDF, type: ProjectType, _client: ClientInfo) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text(lookupText(TEXTS, "common", "journey_eyebrow", "PARCOURS CLIENT BEEV — DE A À Z"), M + 30, y - 4);
+  doc.text(lookupText(TEXTS, "common", "journey_eyebrow", L("PARCOURS CLIENT BEEV — DE A À Z", "BEEV CLIENT JOURNEY · START TO FINISH")), M + 30, y - 4);
   y += 14;
 
   // Title (.ptitle 33px ≈ 25pt)
@@ -7893,8 +7928,8 @@ function drawFinancialSynthesis(
     doc.setFontSize(11);
     doc.setTextColor(...INK);
     const detailTitle = currentFleet.length > 0
-      ? L("DÉTAIL DES LOYERS — FLOTTE ACTUELLE vs PROPOSITION BEEV", "LEASE DETAIL — CURRENT FLEET vs. BEEV PROPOSAL")
-      : L("DÉTAIL DES LOYERS — PROPOSITION BEEV", "LEASE DETAIL — BEEV PROPOSAL");
+      ? L("DÉTAIL DES LOYERS — FLOTTE ACTUELLE vs PROPOSITION BEEV", "LEASE DETAIL · CURRENT FLEET vs. BEEV PROPOSAL")
+      : L("DÉTAIL DES LOYERS — PROPOSITION BEEV", "LEASE DETAIL · BEEV PROPOSAL");
     doc.text(detailTitle, M, y);
     y += 8;
 
