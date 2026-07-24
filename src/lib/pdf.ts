@@ -6609,15 +6609,18 @@ function drawCompetitorComparison(doc: jsPDF, vehicles: SelectedVehicle[]) {
 
 function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams) {
   let y = 130;
-  eyebrow(doc, lookupText(TEXTS, "vehicles", "tco_compare_eyebrow", "COMPARAISON TCO ENTRE VÉHICULES"), y);
+  eyebrow(doc, lookupText(TEXTS, "vehicles", "tco_compare_eyebrow", L("COMPARAISON TCO ENTRE VÉHICULES", "TCO COMPARISON BETWEEN VEHICLES")), y);
   y += 32;
-  title(doc, "Quel véhicule offre le meilleur coût total ?", y);
+  title(doc, L("Quel véhicule offre le meilleur coût total ?", "Which vehicle offers the best total cost?"), y);
   y += 36;
 
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10.5);
   doc.setTextColor(...SUB);
-  const intro = "Comparaison directe des véhicules sélectionnés sur le coût total de possession (TCO). Le véhicule le moins coûteux par 100 km est mis en évidence.";
+  const intro = L(
+    "Comparaison directe des véhicules sélectionnés sur le coût total de possession (TCO). Le véhicule le moins coûteux par 100 km est mis en évidence.",
+    "Direct comparison of the selected vehicles on total cost of ownership (TCO). The least expensive vehicle per 100 km is highlighted.",
+  );
   const introL = doc.splitTextToSize(intro, PAGE_W - M * 2);
   doc.text(introL, M, y);
   y += introL.length * 14 + 18;
@@ -6672,12 +6675,15 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(8.5);
     doc.setTextColor(150, 100, 0);
-    doc.text("⚠ ATTENTION : COMPARAISON ENTRE CATÉGORIES DIFFÉRENTES", M + 14, y + 14);
+    doc.text(L("⚠ ATTENTION : COMPARAISON ENTRE CATÉGORIES DIFFÉRENTES", "⚠ WARNING: COMPARISON BETWEEN DIFFERENT CATEGORIES"), M + 14, y + 14);
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(8);
     doc.setTextColor(120, 80, 0);
     const catsList = [...categories].map((c) => c.toUpperCase()).join(" · ");
-    doc.text(`Les véhicules comparés appartiennent à plusieurs catégories (${catsList}). Le match n'est pas à 100 %, utilisez ces données avec prudence.`, M + 14, y + 28, { maxWidth: PAGE_W - M * 2 - 24 });
+    doc.text(L(
+      `Les véhicules comparés appartiennent à plusieurs catégories (${catsList}). Le match n'est pas à 100 %, utilisez ces données avec prudence.`,
+      `The compared vehicles belong to several categories (${catsList}). This is not a 100% match — use this data with caution.`,
+    ), M + 14, y + 28, { maxWidth: PAGE_W - M * 2 - 24 });
     y += 46;
   }
 
@@ -6701,11 +6707,11 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
   doc.setTextColor(...SUB);
-  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_col_vehicle", "VÉHICULE"), colLabelX, y);
+  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_col_vehicle", L("VÉHICULE", "VEHICLE")), colLabelX, y);
   doc.text(lookupText(TEXTS, "vehicles", "tco_compare_col_per100", "TCO / 100 KM"), colBarX, y);
-  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_col_tco", "PRIX TCO"), colTco100X + tcoPer100W - 6, y, { align: "right" });
-  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_col_total", "TCO TOTAL"), colTcoTotalX + tcoTotalW - 6, y, { align: "right" });
-  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_col_gap", "ÉCART"), colEcartX, y, { align: "right" });
+  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_col_tco", L("PRIX TCO", "TCO PRICE")), colTco100X + tcoPer100W - 6, y, { align: "right" });
+  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_col_total", L("TCO TOTAL", "TOTAL TCO")), colTcoTotalX + tcoTotalW - 6, y, { align: "right" });
+  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_col_gap", L("ÉCART", "GAP")), colEcartX, y, { align: "right" });
   y += 6;
   doc.setDrawColor(...RULE);
   doc.line(chartX, y, chartX + chartW, y);
@@ -6737,7 +6743,7 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
     doc.setFontSize(7);
     doc.setTextColor(...SUB);
     const versionShort = (row.sv.vehicle.version ?? "").slice(0, 30);
-    const subParts = [versionShort, `× ${row.sv.quantity}`, row.synced ? "sync" : null].filter(Boolean);
+    const subParts = [versionShort, `× ${row.sv.quantity}`, row.synced ? L("sync", "synced") : null].filter(Boolean);
     doc.text(subParts.join(" · "), colLabelX + 20, y + 17);
 
     // === Colonne barre (largeur clampée pour ne jamais déborder) ===
@@ -6768,7 +6774,7 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(10);
       doc.setTextColor(...ACCENT);
-      doc.text(lookupText(TEXTS, "vehicles", "tco_compare_best", "MEILLEUR"), colEcartX, y + 12, { align: "right" });
+      doc.text(lookupText(TEXTS, "vehicles", "tco_compare_best", L("MEILLEUR", "BEST")), colEcartX, y + 12, { align: "right" });
     } else {
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(10);
@@ -6806,7 +6812,7 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(9);
   doc.setTextColor(...ACCENT);
-  doc.text(`ÉCART ENTRE LE MOINS CHER ET LE PLUS CHER`, chartX + 16, y + 18);
+  doc.text(L("ÉCART ENTRE LE MOINS CHER ET LE PLUS CHER", "GAP BETWEEN CHEAPEST AND MOST EXPENSIVE"), chartX + 16, y + 18);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8);
   doc.setTextColor(180, 180, 185);
@@ -6819,7 +6825,7 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8);
   doc.setTextColor(180, 180, 185);
-  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_chart1_label", "ÉCART / 100 KM"), chartX + 16, y + 52);
+  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_chart1_label", L("ÉCART / 100 KM", "GAP / 100 KM")), chartX + 16, y + 52);
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(18);
   doc.setTextColor(255, 255, 255);
@@ -6828,7 +6834,7 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8);
   doc.setTextColor(180, 180, 185);
-  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_chart2_label", "ÉCART ANNUEL (PAR VÉHICULE)"), chartX + 16 + colW, y + 52);
+  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_chart2_label", L("ÉCART ANNUEL (PAR VÉHICULE)", "ANNUAL GAP (PER VEHICLE)")), chartX + 16 + colW, y + 52);
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(18);
   doc.setTextColor(255, 255, 255);
@@ -6837,7 +6843,7 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(8);
   doc.setTextColor(180, 180, 185);
-  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_chart3_label", "ÉCART SUR DURÉE CONTRAT"), chartX + 16 + 2 * colW, y + 52);
+  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_chart3_label", L("ÉCART SUR DURÉE CONTRAT", "GAP OVER CONTRACT DURATION")), chartX + 16 + 2 * colW, y + 52);
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(18);
   doc.setTextColor(...ACCENT);
@@ -6855,12 +6861,20 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(9);
     doc.setTextColor(...LAVENDER);
-    doc.text("BASES DE CALCUL · HYPOTHÈSES BEEV 2026", M + 16, y + 18);
+    doc.text(L("BASES DE CALCUL · HYPOTHÈSES BEEV 2026", "CALCULATION BASIS · BEEV 2026 ASSUMPTIONS"), M + 16, y + 18);
 
     const fuelL = e.fuelPriceL ?? 1.75;
     const kwhDom = e.kWhHome ?? 0.4;
     const kwhPub = e.kWhPublic ?? 0.6;
-    const lines = [
+    const lines = PDF_LANG === "en" ? [
+      `· Petrol / Diesel fuel: ${fuelL.toFixed(2)} €/L`,
+      `· Electricity: ${kwhDom.toFixed(2)} €/kWh home (85%) + ${kwhPub.toFixed(2)} €/kWh public (15%)`,
+      `· TVS: 2026 scale (CO2 tax by bracket + pollution tax €130 petrol / €650 diesel / €0 electric) × contract duration`,
+      `· CO2 penalty at purchase: 2026 scale (€0 below 108 g, capped at €80,000 above 192 g)`,
+      `· Weight penalty at purchase: from 1500 kg (100 kg reduction for hybrid, 200 kg for PHEV, electric exempt)`,
+      `· AND (Avantage Non Déductible, non-deductible depreciation): (catalog price + options incl. VAT) − discount − battery − ceiling, amortized over 5 years`,
+      `· AEN (Avantage en Nature, benefit-in-kind): 50% of the annual lease, 70% reduction for eco-scored electric vehicles`,
+    ] : [
       `· Carburant SP95 / Diesel : ${fuelL.toFixed(2)} €/L`,
       `· Électricité : ${kwhDom.toFixed(2)} €/kWh domicile (85 %) + ${kwhPub.toFixed(2)} €/kWh public (15 %)`,
       `· TVS : barème 2026 (taxe CO2 par tranche + taxe pollution 130 € essence / 650 € diesel / 0 € électrique) × durée contrat`,
@@ -6882,7 +6896,10 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(7.5);
   doc.setTextColor(...SUB);
-  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_footnote", "Comparaison entre les véhicules de votre sélection uniquement. Estimation indicative basée sur les paramètres énergie & kilométrage du projet."), M, y, {
+  doc.text(lookupText(TEXTS, "vehicles", "tco_compare_footnote", L(
+    "Comparaison entre les véhicules de votre sélection uniquement. Estimation indicative basée sur les paramètres énergie & kilométrage du projet.",
+    "Comparison between the vehicles in your selection only. Indicative estimate based on the project's energy and mileage parameters.",
+  )), M, y, {
     maxWidth: PAGE_W - M * 2,
   });
 }
