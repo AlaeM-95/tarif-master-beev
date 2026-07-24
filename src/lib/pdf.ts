@@ -7131,9 +7131,9 @@ function drawExecutiveSummary(
   e: EnergyParams,
 ) {
   let y = 116;
-  eyebrow(doc, lookupText(TEXTS, "common", "executive_eyebrow", "EN BREF · POUR LE COMITÉ DE DIRECTION"), y);
+  eyebrow(doc, lookupText(TEXTS, "common", "executive_eyebrow", L("EN BREF · POUR LE COMITÉ DE DIRECTION", "AT A GLANCE · FOR THE EXECUTIVE COMMITTEE")), y);
   y += 32;
-  const execTitleFallback = type === "vehicles" ? "Votre flotte électrique en synthèse." :
+  const execTitleFallback = type === "vehicles" ? L("Votre flotte électrique en synthèse.", "Your electric fleet in summary.") :
             type === "home" ? "Votre déploiement domicile en synthèse." :
             "Votre projet IRVE site en synthèse.";
   title(doc, lookupText(TEXTS, type, "executive_title", execTitleFallback), y);
@@ -7143,7 +7143,10 @@ function drawExecutiveSummary(
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
   const introText = type === "vehicles"
-    ? `Cette page résume l'essentiel pour ${c.company || "votre entreprise"} : périmètre, budget, économies attendues et engagements Beev.`
+    ? L(
+        `Cette page résume l'essentiel pour ${c.company || "votre entreprise"} : périmètre, budget, économies attendues et engagements Beev.`,
+        `This page summarizes the essentials for ${c.company || "your company"}: scope, budget, expected savings and Beev commitments.`,
+      )
     : `Cette page résume l'essentiel pour ${c.company || "votre entreprise"} : périmètre, budget, modalités et engagements Beev.`;
   const introLines = doc.splitTextToSize(introText, PAGE_W - M * 2);
   doc.text(introLines, M, y);
@@ -7180,23 +7183,23 @@ function drawExecutiveSummary(
   const rowH = 100;
 
   // KPI 1 : Périmètre
-  drawKpiBlock(doc, M, startY, colW, rowH, "PÉRIMÈTRE DU PROJET", [
+  drawKpiBlock(doc, M, startY, colW, rowH, L("PÉRIMÈTRE DU PROJET", "PROJECT SCOPE"), [
     type === "vehicles"
-      ? { label: "Véhicules étudiés", value: String(vehiclesCount), accent: true }
+      ? { label: L("Véhicules étudiés", "Vehicles studied"), value: String(vehiclesCount), accent: true }
       : { label: type === "home" ? "Bornes domicile" : "Bornes site", value: String(chargers.reduce((a, sc) => a + sc.quantity, 0)), accent: true },
     type === "vehicles" && vehicles[0]
-      ? { label: "Durée LLD", value: `${vehicles[0].durationMonths} mois` }
+      ? { label: L("Durée LLD", "LLD duration"), value: `${vehicles[0].durationMonths} ${L("mois", "months")}` }
       : { label: "Type", value: type === "home" ? "B2B2E" : "IRVE site" },
     type === "vehicles" && vehicles[0]
-      ? { label: "Kilométrage", value: `${fmt(Math.round(vehicles[0].kmPerYear * vehicles[0].durationMonths / 12))} km (contrat)` }
+      ? { label: L("Kilométrage", "Mileage"), value: L(`${fmt(Math.round(vehicles[0].kmPerYear * vehicles[0].durationMonths / 12))} km (contrat)`, `${fmt(Math.round(vehicles[0].kmPerYear * vehicles[0].durationMonths / 12))} km (contract)`) }
       : { label: "Modèles", value: String(chargers.length) },
   ]);
 
   // KPI 2 : Investissement
-  drawKpiBlock(doc, M + colW + 12, startY, colW, rowH, "INVESTISSEMENT", type === "vehicles" ? [
-    { label: "Loyer mensuel TTC", value: eurLoyer(monthlyTtc), accent: true },
-    { label: "Loyer annuel TTC", value: eurLoyer(annualTtc) },
-    { label: "Total contrat", value: eurLoyer(totalContrat) },
+  drawKpiBlock(doc, M + colW + 12, startY, colW, rowH, L("INVESTISSEMENT", "INVESTMENT"), type === "vehicles" ? [
+    { label: L("Loyer mensuel TTC", "Monthly lease (incl. VAT)"), value: eurLoyer(monthlyTtc), accent: true },
+    { label: L("Loyer annuel TTC", "Annual lease (incl. VAT)"), value: eurLoyer(annualTtc) },
+    { label: L("Total contrat", "Total contract"), value: eurLoyer(totalContrat) },
   ] : [
     { label: "Total HT", value: eur(chargersHt), accent: true },
     { label: "TVA 20 %", value: eur(chargersTtc - chargersHt) },
@@ -7204,10 +7207,10 @@ function drawExecutiveSummary(
   ]);
 
   // KPI 3 : Coût total de possession (vehicles) ou Garanties (chargers)
-  drawKpiBlock(doc, M, startY + rowH + 12, colW, rowH, type === "vehicles" ? "COÛT TOTAL DE POSSESSION (TCO)" : "GARANTIES MATÉRIEL", type === "vehicles" ? [
-    { label: "TCO total flotte", value: tcoTotalFlotte > 0 ? eur(tcoTotalFlotte) : "—", accent: tcoTotalFlotte > 0 },
-    { label: "TCO moyen / véhicule / an", value: tcoTotalFlotte > 0 && vehiclesCount > 0 && vehicles[0] ? eur(tcoTotalFlotte / vehiclesCount / (vehicles[0].durationMonths / 12)) : "—" },
-    { label: "TVA récupérable LLD VE", value: "100 %" },
+  drawKpiBlock(doc, M, startY + rowH + 12, colW, rowH, type === "vehicles" ? L("COÛT TOTAL DE POSSESSION (TCO)", "TOTAL COST OF OWNERSHIP (TCO)") : "GARANTIES MATÉRIEL", type === "vehicles" ? [
+    { label: L("TCO total flotte", "Total fleet TCO"), value: tcoTotalFlotte > 0 ? eur(tcoTotalFlotte) : "—", accent: tcoTotalFlotte > 0 },
+    { label: L("TCO moyen / véhicule / an", "Average TCO / vehicle / year"), value: tcoTotalFlotte > 0 && vehiclesCount > 0 && vehicles[0] ? eur(tcoTotalFlotte / vehiclesCount / (vehicles[0].durationMonths / 12)) : "—" },
+    { label: L("TVA récupérable LLD VE", "Recoverable VAT, EV LLD"), value: "100 %" },
   ] : [
     { label: "Garantie matériel", value: type === "home" ? "2 à 4 ans" : "3 ans (ext. 6)", accent: true },
     { label: "Pose IRVE certifiée", value: type === "home" ? "Seris" : "Beev × partenaires" },
@@ -7215,10 +7218,10 @@ function drawExecutiveSummary(
   ]);
 
   // KPI 4 : Engagements Beev
-  drawKpiBlock(doc, M + colW + 12, startY + rowH + 12, colW, rowH, "ENGAGEMENTS BEEV", [
-    { label: "Interlocuteur dédié", value: "Grand compte", accent: true },
-    { label: "Hotline réactive", value: "Réponse J+1 ouvré" },
-    { label: type === "vehicles" ? "Maintenance & assistance" : "Mise en service OCPP", value: "Incluses" },
+  drawKpiBlock(doc, M + colW + 12, startY + rowH + 12, colW, rowH, L("ENGAGEMENTS BEEV", "BEEV COMMITMENTS"), [
+    { label: L("Interlocuteur dédié", "Dedicated contact"), value: L("Grand compte", "Key account"), accent: true },
+    { label: L("Hotline réactive", "Responsive hotline"), value: L("Réponse J+1 ouvré", "Reply within 1 business day") },
+    { label: type === "vehicles" ? L("Maintenance & assistance", "Maintenance & assistance") : "Mise en service OCPP", value: L("Incluses", "Included") },
   ]);
 
   // Prochaine étape en bas
@@ -7230,12 +7233,12 @@ function drawExecutiveSummary(
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(10);
   doc.setTextColor(...ACCENT);
-  doc.text(lookupText(TEXTS, "common", "bpa_next_step_label", "PROCHAINE ÉTAPE"), M + 16, y + 18);
+  doc.text(lookupText(TEXTS, "common", "bpa_next_step_label", L("PROCHAINE ÉTAPE", "NEXT STEP")), M + 16, y + 18);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(11);
   doc.setTextColor(255, 255, 255);
   const nextStep = type === "vehicles"
-    ? "Signature du Bon Pour Accord, commande des véhicules auprès des loueurs sous 10 jours ouvrés."
+    ? L("Signature du Bon Pour Accord, commande des véhicules auprès des loueurs sous 10 jours ouvrés.", "Signing the order confirmation, vehicles ordered from lessors within 10 business days.")
     : type === "home"
     ? "Validation du cadre du programme, intégration des collaborateurs en parallèle."
     : "Validation de l'offre cadre, étude technique site sous 5 jours ouvrés.";
