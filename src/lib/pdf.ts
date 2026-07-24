@@ -7706,15 +7706,18 @@ function drawFinancialSynthesis(
   const GREEN_LIGHT: [number, number, number] = [219, 238, 220];
 
   let y = 130;
-  eyebrow(doc, lookupText(TEXTS, "common", "synthesis_eyebrow", "SYNTHÈSE FINANCIÈRE & ENVIRONNEMENTALE"), y);
+  eyebrow(doc, lookupText(TEXTS, "common", "synthesis_eyebrow", L("SYNTHÈSE FINANCIÈRE & ENVIRONNEMENTALE", "FINANCIAL & ENVIRONMENTAL SUMMARY")), y);
   y += 32;
-  title(doc, lookupText(TEXTS, "common", "synthesis_title", "Ce que ce projet vous apporte, chiffré."), y);
+  title(doc, lookupText(TEXTS, "common", "synthesis_title", L("Ce que ce projet vous apporte, chiffré.", "What this project brings you, in figures.")), y);
   y += 36;
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
   const synthIntro = lookupText(TEXTS, "common", "synthesis_intro",
-    "Récapitulatif sur la durée totale des contrats : coût total, économies négociées vs vos offres actuelles, fiscalité évitée par l'électrification et empreinte carbone évitée.");
+    L(
+      "Récapitulatif sur la durée totale des contrats : coût total, économies négociées vs vos offres actuelles, fiscalité évitée par l'électrification et empreinte carbone évitée.",
+      "Summary over the total contract duration: total cost, negotiated savings vs. your current offers, tax avoided through electrification, and avoided carbon footprint.",
+    ));
   const synthIntroLines = doc.splitTextToSize(synthIntro, PAGE_W - M * 2);
   doc.text(synthIntroLines, M, y);
   // Espace réel calculé sur le nombre de lignes (l'intro fait 2 lignes) + marge,
@@ -7792,27 +7795,27 @@ function drawFinancialSynthesis(
   const kpis: Kpi[] = [];
   if (savingsVsCompetitors > 0) {
     kpis.push({
-      label: "ÉCONOMIES vs OFFRES ACTUELLES",
+      label: L("ÉCONOMIES vs OFFRES ACTUELLES", "SAVINGS vs. CURRENT OFFERS"),
       value: eur(savingsVsCompetitors),
-      sub: "Cumul sur la durée des contrats",
+      sub: L("Cumul sur la durée des contrats", "Cumulative over the contract duration"),
       bg: GREEN_LIGHT,
       accent: GREEN,
     });
   }
   if (tvsAvoided > 0) {
     kpis.push({
-      label: "TVS ÉVITÉE PAR ÉLECTRIFICATION",
+      label: L("TVS ÉVITÉE PAR ÉLECTRIFICATION", "TVS AVOIDED THROUGH ELECTRIFICATION"),
       value: eur(tvsAvoided),
-      sub: "Cumul sur la durée des contrats",
+      sub: L("Cumul sur la durée des contrats", "Cumulative over the contract duration"),
       bg: ROSE_LIGHT,
       accent: ROSE,
     });
   }
   if (co2AvoidedKg > 0) {
     kpis.push({
-      label: "CO2 ÉVITÉ",
+      label: L("CO2 ÉVITÉ", "CO2 AVOIDED"),
       value: `${Math.round(co2AvoidedKg).toLocaleString("fr-FR")} kg`,
-      sub: `≈ ${Math.round(co2AvoidedKg / 25).toLocaleString("fr-FR")} arbres absorbant 1 an`,
+      sub: L(`≈ ${Math.round(co2AvoidedKg / 25).toLocaleString("fr-FR")} arbres absorbant 1 an`, `≈ ${Math.round(co2AvoidedKg / 25).toLocaleString("fr-FR")} trees absorbing for 1 year`),
       bg: VIOLET_LIGHT,
       accent: [108, 190, 94],
     });
@@ -7856,8 +7859,8 @@ function drawFinancialSynthesis(
     doc.setFontSize(11);
     doc.setTextColor(...INK);
     const detailTitle = currentFleet.length > 0
-      ? "DÉTAIL DES LOYERS — FLOTTE ACTUELLE vs PROPOSITION BEEV"
-      : "DÉTAIL DES LOYERS — PROPOSITION BEEV";
+      ? L("DÉTAIL DES LOYERS — FLOTTE ACTUELLE vs PROPOSITION BEEV", "LEASE DETAIL — CURRENT FLEET vs. BEEV PROPOSAL")
+      : L("DÉTAIL DES LOYERS — PROPOSITION BEEV", "LEASE DETAIL — BEEV PROPOSAL");
     doc.text(detailTitle, M, y);
     y += 8;
 
@@ -7879,16 +7882,19 @@ function drawFinancialSynthesis(
     const rows = detailVehicles.map((sv) => {
       const base = [
         vehicleLabel(sv.vehicle, 32),
-        sv.vehicle.isCurrentFleet ? "Flotte actuelle" : "Proposition Beev",
+        sv.vehicle.isCurrentFleet ? L("Flotte actuelle", "Current fleet") : L("Proposition Beev", "Beev proposal"),
         `${sv.quantity}`,
-        `${sv.durationMonths} mois · ${((sv.kmPerYear * sv.durationMonths / 12) / 1000).toFixed(0)}k km (contrat)`,
+        L(
+          `${sv.durationMonths} mois · ${((sv.kmPerYear * sv.durationMonths / 12) / 1000).toFixed(0)}k km (contrat)`,
+          `${sv.durationMonths} months · ${((sv.kmPerYear * sv.durationMonths / 12) / 1000).toFixed(0)}k km (contract)`,
+        ),
         eurLoyer(sv.negotiatedMonthly),
       ];
       return hasGroups ? [(sv.comparisonGroup ?? "").trim() || "—", ...base] : base;
     });
     const head = hasGroups
-      ? [["Groupe", "Véhicule", "Statut", "Qté", "Conditions", "Loyer / mois"]]
-      : [["Véhicule", "Statut", "Qté", "Conditions", "Loyer / mois"]];
+      ? [[L("Groupe", "Group"), L("Véhicule", "Vehicle"), L("Statut", "Status"), L("Qté", "Qty"), L("Conditions", "Terms"), L("Loyer / mois", "Lease / month")]]
+      : [[L("Véhicule", "Vehicle"), L("Statut", "Status"), L("Qté", "Qty"), L("Conditions", "Terms"), L("Loyer / mois", "Lease / month")]];
     const loyerCol = hasGroups ? 5 : 4;
     const colStyles: any = hasGroups
       ? { 0: { cellWidth: 64 }, 2: { cellWidth: 78 }, 3: { halign: "center", cellWidth: 28 }, 5: { halign: "right", fontStyle: "bold" } }
@@ -7925,7 +7931,10 @@ function drawFinancialSynthesis(
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(7.5);
     doc.setTextColor(...SUB);
-    doc.text("Rose : véhicule de votre flotte actuelle à remplacer.  Vert : loyer le plus bas du groupe comparé.", M, afterY + 14);
+    doc.text(L(
+      "Rose : véhicule de votre flotte actuelle à remplacer.  Vert : loyer le plus bas du groupe comparé.",
+      "Pink: vehicle from your current fleet to be replaced.  Green: lowest lease in the compared group.",
+    ), M, afterY + 14);
   }
 }
 
