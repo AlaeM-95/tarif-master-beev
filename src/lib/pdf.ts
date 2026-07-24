@@ -8018,16 +8018,19 @@ function drawLegend(doc: jsPDF) {
   const GREEN: [number, number, number] = [108, 190, 94];
 
   let y = 130;
-  eyebrow(doc, lookupText(TEXTS, "common", "legend_eyebrow", "LÉGENDE · COULEURS & SYMBOLES"), y);
+  eyebrow(doc, lookupText(TEXTS, "common", "legend_eyebrow", L("LÉGENDE · COULEURS & SYMBOLES", "LEGEND · COLORS & SYMBOLS")), y);
   y += 32;
-  title(doc, lookupText(TEXTS, "common", "legend_title", "Comment lire ce document."), y);
+  title(doc, lookupText(TEXTS, "common", "legend_title", L("Comment lire ce document.", "How to read this document.")), y);
   y += 36;
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
   doc.text(
     lookupText(TEXTS, "common", "legend_intro",
-      "Ce document combine plusieurs vues (fiches véhicule, comparateurs, mise en concurrence). Les couleurs et badges ci-dessous vous aident à naviguer rapidement."),
+      L(
+        "Ce document combine plusieurs vues (fiches véhicule, comparateurs, mise en concurrence). Les couleurs et badges ci-dessous vous aident à naviguer rapidement.",
+        "This document combines several views (vehicle fiches, comparators, competitive comparison). The colors and badges below help you navigate quickly.",
+      )),
     M, y, { maxWidth: PAGE_W - M * 2 },
   );
   y += 30;
@@ -8036,28 +8039,43 @@ function drawLegend(doc: jsPDF) {
   const items: LegendItem[] = [
     {
       color: ROSE,
-      label: "FLOTTE ACTUELLE",
-      desc: "Véhicule de votre flotte existante (en cours de contrat). Apparaît dans le comparateur pour visualiser l'écart avec notre proposition.",
+      label: L("FLOTTE ACTUELLE", "CURRENT FLEET"),
+      desc: L(
+        "Véhicule de votre flotte existante (en cours de contrat). Apparaît dans le comparateur pour visualiser l'écart avec notre proposition.",
+        "Vehicle from your existing fleet (contract in progress). Appears in the comparator to visualize the gap with our proposal.",
+      ),
     },
     {
       color: BLUE,
-      label: "PROPOSITION BEEV",
-      desc: "Véhicule électrique que nous vous proposons en remplacement ou en nouvel ajout. Détaillé sur sa propre fiche.",
+      label: L("PROPOSITION BEEV", "BEEV PROPOSAL"),
+      desc: L(
+        "Véhicule électrique que nous vous proposons en remplacement ou en nouvel ajout. Détaillé sur sa propre fiche.",
+        "Electric vehicle we propose as a replacement or new addition. Detailed on its own fiche.",
+      ),
     },
     {
       color: VIOLET,
-      label: "HYBRIDE / TRANSITION",
-      desc: "Véhicule hybride rechargeable ou non rechargeable. Énergie mixte, conso thermique + consommation électrique en mode EV.",
+      label: L("HYBRIDE / TRANSITION", "HYBRID / TRANSITION"),
+      desc: L(
+        "Véhicule hybride rechargeable ou non rechargeable. Énergie mixte, conso thermique + consommation électrique en mode EV.",
+        "Plug-in or non-plug-in hybrid vehicle. Mixed energy, combustion consumption plus electric consumption in EV mode.",
+      ),
     },
     {
       color: GREEN,
-      label: "ÉCONOMIE / IMPACT POSITIF",
-      desc: "Indique un gain mesurable : économie €/mois vs l'offre concurrente, TVS évitée, CO2 économisé, etc.",
+      label: L("ÉCONOMIE / IMPACT POSITIF", "SAVINGS / POSITIVE IMPACT"),
+      desc: L(
+        "Indique un gain mesurable : économie €/mois vs l'offre concurrente, TVS évitée, CO2 économisé, etc.",
+        "Indicates a measurable gain: savings €/month vs. the competing offer, TVS avoided, CO2 saved, etc.",
+      ),
     },
     {
       color: [29, 29, 29],
-      label: "INFORMATION PRINCIPALE",
-      desc: "Données contractuelles clés (loyer mensuel, MONTANT TOTAL PROJET, BPA). Charte Beev — Black officiel.",
+      label: L("INFORMATION PRINCIPALE", "KEY INFORMATION"),
+      desc: L(
+        "Données contractuelles clés (loyer mensuel, MONTANT TOTAL PROJET, BPA). Charte Beev — Black officiel.",
+        "Key contractual data (monthly lease, TOTAL PROJECT AMOUNT, order confirmation). Official Beev black brand color.",
+      ),
     },
   ];
 
@@ -8088,13 +8106,22 @@ function drawLegend(doc: jsPDF) {
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(9);
     doc.setTextColor(...INK);
-    doc.text("SYMBOLES UTILISÉS", M + 14, y + 16);
+    doc.text(L("SYMBOLES UTILISÉS", "SYMBOLS USED"), M + 14, y + 16);
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(9);
     doc.setTextColor(...SUB);
-    doc.text("·  Cellules surlignées dans le comparateur = meilleure valeur sur la ligne (prix le plus bas, autonomie la plus haute, etc.).", M + 14, y + 32, { maxWidth: PAGE_W - M * 2 - 28 });
-    doc.text("·  Loyer affiché en TTC. La TVA sur les loyers LLD véhicules électriques est récupérable à 100 %.", M + 14, y + 46, { maxWidth: PAGE_W - M * 2 - 28 });
-    doc.text("·  CO2 évité estimé sur une référence thermique de 130 g/km (moyenne France) — ajustable selon votre flotte actuelle.", M + 14, y + 60, { maxWidth: PAGE_W - M * 2 - 28 });
+    doc.text(L(
+      "·  Cellules surlignées dans le comparateur = meilleure valeur sur la ligne (prix le plus bas, autonomie la plus haute, etc.).",
+      "·  Highlighted cells in the comparator = best value on the row (lowest price, longest range, etc.).",
+    ), M + 14, y + 32, { maxWidth: PAGE_W - M * 2 - 28 });
+    doc.text(L(
+      "·  Loyer affiché en TTC. La TVA sur les loyers LLD véhicules électriques est récupérable à 100 %.",
+      "·  Lease shown incl. VAT. VAT on electric vehicle LLD leases is 100% recoverable.",
+    ), M + 14, y + 46, { maxWidth: PAGE_W - M * 2 - 28 });
+    doc.text(L(
+      "·  CO2 évité estimé sur une référence thermique de 130 g/km (moyenne France) — ajustable selon votre flotte actuelle.",
+      "·  CO2 avoided estimated on a 130 g/km combustion reference (France average), adjustable based on your current fleet.",
+    ), M + 14, y + 60, { maxWidth: PAGE_W - M * 2 - 28 });
   }
 }
 
