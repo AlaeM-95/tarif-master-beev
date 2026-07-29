@@ -4195,7 +4195,7 @@ function FiscalWarningBadge({ vehicle, durationMonths }: { vehicle: Vehicle; dur
       </div>
       {malusTotal > 0 && (
         <div className="flex justify-between">
-          <span className="text-muted-foreground">Malus à l'achat (CO₂ + poids)</span>
+          <span className="text-muted-foreground">Malus TTC (CO₂ + poids)</span>
           <span className="font-semibold">{malusTotal.toLocaleString("fr-FR")} €</span>
         </div>
       )}

@@ -3104,7 +3104,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(8);
     const parts: string[] = [];
-    if (malusTotal > 0) parts.push(L(`Malus achat : ${eur(malusTotal)}`, `Purchase penalty: ${eur(malusTotal)}`));
+    if (malusTotal > 0) parts.push(L(`Malus TTC : ${eur(malusTotal)}`, `Penalty (incl. VAT): ${eur(malusTotal)}`));
     if (tvsAnnuelle > 0) parts.push(L(`TVS : ${eur(tvsAnnuelle)} / an`, `TVS: ${eur(tvsAnnuelle)} / year`));
     doc.text(parts.join("  ·  "), M + 10, alertY + 18);
   }
@@ -6942,16 +6942,16 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
       `· Petrol / Diesel fuel: ${fuelL.toFixed(2)} €/L`,
       `· Electricity: ${kwhDom.toFixed(2)} €/kWh home (85%) + ${kwhPub.toFixed(2)} €/kWh public (15%)`,
       `· TVS: 2026 scale (CO2 tax by bracket + pollution tax €130 petrol / €650 diesel / €0 electric) × contract duration`,
-      `· CO2 penalty at purchase: 2026 scale (€0 below 108 g, capped at €80,000 above 192 g)`,
-      `· Weight penalty at purchase: from 1500 kg (100 kg reduction for hybrid, 200 kg for PHEV, electric exempt)`,
+      `· CO2 penalty, incl. VAT: 2026 scale (€0 below 108 g, capped at €80,000 above 192 g), plus VAT on lease refinancing`,
+      `· Weight penalty, incl. VAT: from 1500 kg (100 kg reduction for hybrid, 200 kg capped at 15% of weight for PHEV with ≥50 km electric range, electric exempt), plus VAT on lease refinancing`,
       `· AND (Avantage Non Déductible, non-deductible depreciation): (catalog price + options incl. VAT) − discount − battery − ceiling, amortized over 5 years`,
       `· AEN (Avantage en Nature, benefit-in-kind): 50% of the annual lease, 70% reduction for eco-scored electric vehicles`,
     ] : [
       `· Carburant SP95 / Diesel : ${fuelL.toFixed(2)} €/L`,
       `· Électricité : ${kwhDom.toFixed(2)} €/kWh domicile (85 %) + ${kwhPub.toFixed(2)} €/kWh public (15 %)`,
       `· TVS : barème 2026 (taxe CO2 par tranche + taxe pollution 130 € essence / 650 € diesel / 0 € électrique) × durée contrat`,
-      `· Malus CO2 à l'achat : barème 2026 (0 € < 108 g, plafonné à 80 000 € au-delà de 192 g)`,
-      `· Malus poids à l'achat : à partir de 1500 kg (abattement 100 kg hybride, 200 kg PHEV, exonération électrique)`,
+      `· Malus CO2 TTC : barème 2026 (0 € < 108 g, plafonné à 80 000 € au-delà de 192 g), majoré de la TVA sur la refacturation en LLD`,
+      `· Malus poids TTC : à partir de 1500 kg (abattement 100 kg hybride, 200 kg plafonné à 15 % du poids pour PHEV ≥ 50 km d'autonomie électrique, exonération électrique), majoré de la TVA sur la refacturation en LLD`,
       `· AND (Avantage Non Déductible) : (prix catalogue + options TTC) − remise − batterie − plafond, amorti sur 5 ans`,
       `· AEN (Avantage en Nature) : 50 % du loyer annuel, abattement 70 % si véhicule électrique éco-scoré`,
     ];

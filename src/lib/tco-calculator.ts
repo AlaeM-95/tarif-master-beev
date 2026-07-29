@@ -126,7 +126,15 @@ function calculateTaxePollution(energy: Vehicle["energy"]): number {
   return 130;
 }
 
-// Malus CO₂ 2026 — barème officiel, 0€ jusqu'à 107g, plafonné à 80 000€ au-delà de 192g
+// TVA appliquée à la refacturation du malus par le loueur en LLD, conformément
+// au CIBS (code d'imposition des biens et services) — confirmé par un devis
+// loueur réel (Ayvens) : le malus lui-même n'est pas soumis à TVA en tant que
+// taxe versée à l'État, mais sa REFACTURATION au locataire dans le cadre d'un
+// contrat de location l'est. Ce tool modélisant uniquement des scénarios LLD
+// (loyer, durée de contrat), le malus retourné par ces fonctions est donc TTC.
+const TVA_REFACTURATION_MALUS = 1.2;
+
+// Malus CO₂ 2026 — barème officiel HT, 0€ jusqu'à 107g, plafonné à 80 000€ au-delà de 192g
 export function calculateMalusCO2(co2: number): number {
   const bareme: [number, number][] = [
     [108, 50], [109, 75], [110, 100], [111, 125], [112, 150],
@@ -147,10 +155,13 @@ export function calculateMalusCO2(co2: number): number {
     [183, 55023], [184, 58134], [185, 61245], [186, 64356], [187, 67467],
     [188, 70578], [189, 73689], [190, 76800], [191, 79911], [192, 80000],
   ];
-  if (co2 < 108) return 0;
-  if (co2 > 192) return 80000;
-  const entry = bareme.find(([g]) => g === Math.round(co2));
-  return entry ? entry[1] : 80000;
+  let ht = 0;
+  if (co2 > 192) ht = 80000;
+  else if (co2 >= 108) {
+    const entry = bareme.find(([g]) => g === Math.round(co2));
+    ht = entry ? entry[1] : 80000;
+  }
+  return ht * TVA_REFACTURATION_MALUS;
 }
 
 // Malus poids 2026 — abattement pour véhicules électrifiés
@@ -188,7 +199,7 @@ export function calculateMalusPoids(poids: number, energy: Vehicle["energy"], ra
     const kg = Math.max(0, Math.min(masseTaxable, to) - from);
     malus += kg * rate;
   }
-  return malus;
+  return malus * TVA_REFACTURATION_MALUS;
 }
 
 // Coût énergie sur la durée du contrat.
