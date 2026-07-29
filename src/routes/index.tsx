@@ -4171,7 +4171,7 @@ function FiscalWarningBadge({ vehicle, durationMonths }: { vehicle: Vehicle; dur
   // Utilitaire : exonéré de malus CO2/poids et de TVS (voir tco-calculator.ts).
   if (isUtilitaireCategory(vehicle.category)) return null;
   const malusCo2 = calculateMalusCO2(vehicle.co2 ?? 0);
-  const malusPoids = calculateMalusPoids(vehicle.poidsVide ?? 0, vehicle.energy);
+  const malusPoids = calculateMalusPoids(vehicle.poidsVide ?? 0, vehicle.energy, vehicle.rangeWltp);
   const malusTotal = malusCo2 + malusPoids;
   // TVS = taxe CO₂ + taxe pollution × durée
   const co2 = vehicle.co2 ?? 0;

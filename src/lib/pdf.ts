@@ -3073,7 +3073,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   // charge fiscale du véhicule au moment de l'arbitrage.
   // Calcul rapide TVS annuelle (taxe CO2 + pollution)
   const malusCo2 = calculateMalusCO2(v.co2 ?? 0);
-  const malusPoids = calculateMalusPoids(v.poidsVide ?? 0, v.energy);
+  const malusPoids = calculateMalusPoids(v.poidsVide ?? 0, v.energy, v.rangeWltp);
   const malusTotal = malusCo2 + malusPoids;
   let taxeCO2Annuelle = 0;
   const co2v = v.co2 ?? 0;

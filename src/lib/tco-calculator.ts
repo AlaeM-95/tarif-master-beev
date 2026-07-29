@@ -154,20 +154,31 @@ export function calculateMalusCO2(co2: number): number {
 }
 
 // Malus poids 2026 — abattement pour véhicules électrifiés
-export function calculateMalusPoids(poids: number, energy: Vehicle["energy"]): number {
+export function calculateMalusPoids(poids: number, energy: Vehicle["energy"], rangeWltp?: number): number {
   if (energy === "Électrique") return 0;
   let abattement = 0;
-  if (energy === "Hybride Rechargeable") abattement = 200;
-  else if (energy === "Hybride" || energy === "Mild Hybrid") abattement = 100;
+  // Hybride rechargeable : abattement de 200 kg, plafonné à 15 % de la masse
+  // en ordre de marche, et soumis à une autonomie électrique WLTP ≥ 50 km
+  // (Art. 1012 ter A CGI, confirmé en vigueur jusqu'à 2028 a minima). Un PHEV
+  // avec moins de 50 km d'autonomie électrique ne bénéficie d'AUCUN abattement.
+  if (energy === "Hybride Rechargeable" && (rangeWltp ?? 0) >= 50) {
+    abattement = Math.min(200, poids * 0.15);
+  } else if (energy === "Hybride" || energy === "Mild Hybrid") {
+    abattement = 100;
+  }
   const masseTaxable = Math.max(poids - abattement, 0);
   if (masseTaxable < 1500) return 0;
-  // Barème officiel 2025/2026 (taxe sur la masse en ordre de marche), tarifs
+  // Barème officiel 2026 (taxe sur la masse en ordre de marche), tarifs
   // marginaux par fraction de kg au-dessus de 1500 kg :
-  //   1500–1599 : 10 €/kg · 1600–1799 : 15 · 1800–1899 : 20 · 1900–1999 : 25 · ≥2000 : 30.
+  //   1500–1699 : 10 €/kg · 1700–1799 : 15 · 1800–1899 : 20 · 1900–1999 : 25 · ≥2000 : 30.
   // Calcul par tranches (comme l'IR) : on taxe chaque fraction à son tarif.
+  // Bornes vérifiées contre un devis loueur réel (Ayvens) : l'ancienne version
+  // de ce barème avait la limite du premier palier à 1600 kg au lieu de 1700,
+  // ce qui surtaxait de 100 kg à 15 €/kg au lieu de 10 €/kg (+500 € sur un
+  // malus de ~12 500 €, retombant à 30 € près du montant réel du loueur).
   const tranches: [number, number, number][] = [
-    [1500, 1600, 10],
-    [1600, 1800, 15],
+    [1500, 1700, 10],
+    [1700, 1800, 15],
     [1800, 1900, 20],
     [1900, 2000, 25],
     [2000, Infinity, 30],
@@ -237,7 +248,7 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
   const dureeAnneesFiscales = Math.floor(contract.dureeAnnees);
   const tvsTotal = (taxeCO2 + taxePollution) * dureeAnneesFiscales;
   const malusCO2 = isUtilitaire ? 0 : calculateMalusCO2(v.co2 ?? 0);
-  const malusPoids = isUtilitaire ? 0 : calculateMalusPoids(v.poidsVide ?? 0, v.energy);
+  const malusPoids = isUtilitaire ? 0 : calculateMalusPoids(v.poidsVide ?? 0, v.energy, v.rangeWltp);
 
   // AND (Avantage Non Déductible) — annualisé sur 5 ans
   // Base d'amortissement = (prix catalogue + options) - remise commerciale.
