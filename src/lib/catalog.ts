@@ -159,7 +159,11 @@ export type Vehicle = {
   priceTtc: number;
   monthlyLld: number;
   // Champs fiscaux (calcul TCO complet — voir src/lib/tco-calculator.ts)
-  prixBatterie?: number; // pour le calcul AND
+  // Prix batterie TTC (facturation séparée à l'acquisition). Déduit de la base
+  // AND qui est elle-même en TTC — art. 39-4 CGI, plafond calculé sur le "prix
+  // d'acquisition taxes comprises" (BOFiP). Ne PAS saisir en HT : ça sous-
+  // évaluerait la déduction et gonflerait artificiellement l'AND calculé.
+  prixBatterie?: number;
   poidsVide?: number; // pour le malus poids (kg)
   ecoScoreBool?: boolean; // éco-score officiel ouvrant abattement AEN
   // Éco-score en cours d'obtention (communication commerciale uniquement) :

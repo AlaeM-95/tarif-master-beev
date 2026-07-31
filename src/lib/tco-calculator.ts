@@ -276,6 +276,10 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
   const prixAvantRemise = prixCatalogue + optionsTotal;
   const remiseAmount = (prixAvantRemise * remisePct) / 100;
   const prixFinal = prixAvantRemise - remiseAmount;
+  // v.prixBatterie doit être en TTC (comme prixFinal) : le plafond de l'art.
+  // 39-4 CGI porte sur le "prix d'acquisition taxes comprises" (BOFiP), et la
+  // déduction batterie s'applique sur cette même base — un prix batterie HT
+  // sous-évaluerait la déduction et gonflerait l'AND calculé.
   const baseAND = isUtilitaire ? 0 : prixFinal - (v.prixBatterie ?? 0) - plafondAND;
   const andAnnuel = baseAND > 0 ? baseAND / 5 : 0;
   // L'AND n'est pas un décaissement : l'entreprise ne paie pas andAnnuel
