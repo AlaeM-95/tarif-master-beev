@@ -3532,7 +3532,7 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
           )}
           {vehicle.ecoScoreBool && <Badge className="bg-[#35DA76] text-white text-[10px] border-0 font-semibold">Éco-score</Badge>}
           {!vehicle.ecoScoreBool && vehicle.ecoScoreUpcoming && (
-            <Badge className="bg-white text-[#35DA76] border border-[#35DA76] text-[10px] font-semibold">Prochainement éco-scoré</Badge>
+            <Badge className="bg-[#F5A623] text-white text-[10px] border-0 font-semibold">Prochainement éco-scoré</Badge>
           )}
           {vehicle.shortlist && <Badge className="bg-beev-rose text-beev-black text-[10px] border-0 font-semibold">★ Recommandé</Badge>}
           {vehicle.custom && <Badge className="bg-beev-beige text-beev-black text-[10px] border-0">Custom</Badge>}

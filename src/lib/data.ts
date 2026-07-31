@@ -29,6 +29,7 @@ function dbToVehicle(row: VehicleRow): Vehicle {
     prixBatterie: (row as any).prix_batterie ?? 0,
     poidsVide: (row as any).poids_vide ?? 0,
     ecoScoreBool: (row as any).eco_score_bool ?? false,
+    ecoScoreUpcoming: (row as any).eco_score_upcoming ?? false,
     remise: (row as any).remise ?? 0,
     carburantInclus: (row as any).carburant_inclus ?? false,
     consoMinThermique: (row as any).conso_min_thermique ?? 0,
@@ -86,6 +87,7 @@ function vehicleToDb(v: Vehicle): VehicleInsert {
   if (v.prixBatterie !== undefined) (row as any).prix_batterie = v.prixBatterie;
   if (v.poidsVide !== undefined) (row as any).poids_vide = v.poidsVide;
   if (v.ecoScoreBool !== undefined) (row as any).eco_score_bool = v.ecoScoreBool;
+  if (v.ecoScoreUpcoming !== undefined) (row as any).eco_score_upcoming = v.ecoScoreUpcoming;
   if (v.remise !== undefined) (row as any).remise = v.remise;
   if (v.carburantInclus !== undefined) (row as any).carburant_inclus = v.carburantInclus;
   if (v.consoMinThermique !== undefined) (row as any).conso_min_thermique = v.consoMinThermique;

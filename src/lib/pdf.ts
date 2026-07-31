@@ -3006,6 +3006,26 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setTextColor(...SUB);
   doc.text(L(`VÉHICULE ${idx} / ${total}`, `VEHICLE ${idx} / ${total}`), M + 30, 109);
 
+  // Badge éco-score, aligné sur la ligne de l'eyebrow (au-dessus du titre) :
+  // vert plein si officiellement obtenu (ecoScoreBool, ouvre l'abattement
+  // AEN 70 % — voir tco-calculator.ts), orange plein si en cours d'obtention
+  // (ecoScoreUpcoming, communication commerciale uniquement, aucun effet
+  // fiscal). Mutuellement exclusifs.
+  if (v.ecoScoreBool || v.ecoScoreUpcoming) {
+    const GREEN: [number, number, number] = [53, 218, 118];
+    const ORANGE: [number, number, number] = [245, 166, 35];
+    const eyebrowW = doc.getTextWidth(L(`VÉHICULE ${idx} / ${total}`, `VEHICLE ${idx} / ${total}`));
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7.5);
+    const ecoText = v.ecoScoreBool ? L("ÉCO-SCORE", "ECO-SCORE") : L("PROCHAINEMENT ÉCO-SCORÉ", "ECO-SCORE COMING SOON");
+    const ecoW = doc.getTextWidth(ecoText) + 12;
+    const ecoX = M + 30 + eyebrowW + 10;
+    doc.setFillColor(...(v.ecoScoreBool ? GREEN : ORANGE));
+    doc.roundedRect(ecoX, 101, ecoW, 13, 6.5, 6.5, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.text(ecoText, ecoX + ecoW / 2, 110, { align: "center" });
+  }
+
   // Badge en haut à droite : « FLOTTE ACTUELLE » (rose) si véhicule à
   // remplacer, sinon « PROPOSITION BEEV » (bleu) — pour distinguer
   // visuellement le statut de chaque fiche dans le devis.
@@ -3068,38 +3088,6 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setTextColor(...SUB);
   const subtitleText = `${v.version} · ${v.category} · ${v.energy}`;
   doc.text(subtitleText, M, 158);
-  // Badge éco-score officiel (ouvre l'abattement AEN 70 % — voir tco-calculator.ts) :
-  // accolé à droite du sous-titre, sur la même ligne, en vert charte (#35DA76).
-  if (v.ecoScoreBool) {
-    const GREEN: [number, number, number] = [53, 218, 118];
-    const subtitleW = doc.getTextWidth(subtitleText);
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(7.5);
-    const ecoText = L("ÉCO-SCORE", "ECO-SCORE");
-    const ecoW = doc.getTextWidth(ecoText) + 12;
-    const ecoX = M + subtitleW + 10;
-    doc.setFillColor(...GREEN);
-    doc.roundedRect(ecoX, 150, ecoW, 13, 6.5, 6.5, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.text(ecoText, ecoX + ecoW / 2, 159, { align: "center" });
-  } else if (v.ecoScoreUpcoming) {
-    // Éco-score en cours d'obtention : même emplacement, badge contour vert
-    // (pas de remplissage plein) pour bien le distinguer du badge confirmé
-    // ci-dessus — communication commerciale uniquement, aucun effet fiscal.
-    const GREEN: [number, number, number] = [53, 218, 118];
-    const subtitleW = doc.getTextWidth(subtitleText);
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(7.5);
-    const ecoText = L("PROCHAINEMENT ÉCO-SCORÉ", "ECO-SCORE COMING SOON");
-    const ecoW = doc.getTextWidth(ecoText) + 12;
-    const ecoX = M + subtitleW + 10;
-    doc.setDrawColor(...GREEN);
-    doc.setLineWidth(0.8);
-    doc.setFillColor(255, 255, 255);
-    doc.roundedRect(ecoX, 150, ecoW, 13, 6.5, 6.5, "FD");
-    doc.setTextColor(...GREEN);
-    doc.text(ecoText, ecoX + ecoW / 2, 159, { align: "center" });
-  }
 
   // ─── Encart ALERTE FISCALE — visible si le véhicule génère un malus
   // à l'achat ou une TVS. Permet au client de prendre conscience de la
