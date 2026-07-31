@@ -162,6 +162,10 @@ export type Vehicle = {
   prixBatterie?: number; // pour le calcul AND
   poidsVide?: number; // pour le malus poids (kg)
   ecoScoreBool?: boolean; // éco-score officiel ouvrant abattement AEN
+  // Éco-score en cours d'obtention (communication commerciale uniquement) :
+  // n'ouvre AUCUN abattement AEN tant que ecoScoreBool n'est pas passé à true,
+  // contrairement à ecoScoreBool qui a un effet fiscal réel.
+  ecoScoreUpcoming?: boolean;
   remise?: number; // remise commerciale en % sur prix catalogue (base AND)
   carburantInclus?: boolean;
   consoMinThermique?: number; // L/100km min (carburant si thermique/hybride)

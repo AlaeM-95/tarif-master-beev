@@ -3082,6 +3082,23 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     doc.roundedRect(ecoX, 150, ecoW, 13, 6.5, 6.5, "F");
     doc.setTextColor(255, 255, 255);
     doc.text(ecoText, ecoX + ecoW / 2, 159, { align: "center" });
+  } else if (v.ecoScoreUpcoming) {
+    // Éco-score en cours d'obtention : même emplacement, badge contour vert
+    // (pas de remplissage plein) pour bien le distinguer du badge confirmé
+    // ci-dessus — communication commerciale uniquement, aucun effet fiscal.
+    const GREEN: [number, number, number] = [53, 218, 118];
+    const subtitleW = doc.getTextWidth(subtitleText);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7.5);
+    const ecoText = L("PROCHAINEMENT ÉCO-SCORÉ", "ECO-SCORE COMING SOON");
+    const ecoW = doc.getTextWidth(ecoText) + 12;
+    const ecoX = M + subtitleW + 10;
+    doc.setDrawColor(...GREEN);
+    doc.setLineWidth(0.8);
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(ecoX, 150, ecoW, 13, 6.5, 6.5, "FD");
+    doc.setTextColor(...GREEN);
+    doc.text(ecoText, ecoX + ecoW / 2, 159, { align: "center" });
   }
 
   // ─── Encart ALERTE FISCALE — visible si le véhicule génère un malus

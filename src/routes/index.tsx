@@ -3531,6 +3531,9 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
             <Badge className={`text-[10px] font-semibold border ${energyBadgeCls}`}>{vehicle.energy}</Badge>
           )}
           {vehicle.ecoScoreBool && <Badge className="bg-[#35DA76] text-white text-[10px] border-0 font-semibold">Éco-score</Badge>}
+          {!vehicle.ecoScoreBool && vehicle.ecoScoreUpcoming && (
+            <Badge className="bg-white text-[#35DA76] border border-[#35DA76] text-[10px] font-semibold">Prochainement éco-scoré</Badge>
+          )}
           {vehicle.shortlist && <Badge className="bg-beev-rose text-beev-black text-[10px] border-0 font-semibold">★ Recommandé</Badge>}
           {vehicle.custom && <Badge className="bg-beev-beige text-beev-black text-[10px] border-0">Custom</Badge>}
           {vehicle.availableStock !== undefined && vehicle.availableStock > 0 && (
@@ -3773,11 +3776,15 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
                 <div className="space-y-1">
                   <Label className="text-[10px] text-muted-foreground uppercase">Éco-score (AEN -70%)</Label>
                   <select
-                    value={vehicle.ecoScoreBool ? "yes" : "no"}
-                    onChange={(e) => onUpdate({ ecoScoreBool: e.target.value === "yes" })}
+                    value={vehicle.ecoScoreBool ? "yes" : vehicle.ecoScoreUpcoming ? "upcoming" : "no"}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      onUpdate({ ecoScoreBool: v === "yes", ecoScoreUpcoming: v === "upcoming" });
+                    }}
                     className="h-8 w-full rounded-md border border-border bg-card px-2 text-xs text-foreground"
                   >
                     <option value="no">Non</option>
+                    <option value="upcoming">Prochainement</option>
                     <option value="yes">Oui</option>
                   </select>
                 </div>
