@@ -3066,7 +3066,23 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
-  doc.text(`${v.version} · ${v.category} · ${v.energy}`, M, 158);
+  const subtitleText = `${v.version} · ${v.category} · ${v.energy}`;
+  doc.text(subtitleText, M, 158);
+  // Badge éco-score officiel (ouvre l'abattement AEN 70 % — voir tco-calculator.ts) :
+  // accolé à droite du sous-titre, sur la même ligne, en vert charte (#35DA76).
+  if (v.ecoScoreBool) {
+    const GREEN: [number, number, number] = [53, 218, 118];
+    const subtitleW = doc.getTextWidth(subtitleText);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7.5);
+    const ecoText = L("ÉCO-SCORE", "ECO-SCORE");
+    const ecoW = doc.getTextWidth(ecoText) + 12;
+    const ecoX = M + subtitleW + 10;
+    doc.setFillColor(...GREEN);
+    doc.roundedRect(ecoX, 150, ecoW, 13, 6.5, 6.5, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.text(ecoText, ecoX + ecoW / 2, 159, { align: "center" });
+  }
 
   // ─── Encart ALERTE FISCALE — visible si le véhicule génère un malus
   // à l'achat ou une TVS. Permet au client de prendre conscience de la
@@ -4208,7 +4224,7 @@ function drawFleetSynthesis(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPa
       { content: b.current ? vehicleLabel(b.current.vehicle, 32) : "—", styles: { halign: "left" } },
       { content: String(qty), styles: { halign: "center" } },
       { content: ev ? vehicleLabel(ev.vehicle, 32) : "—", styles: { halign: "left", fontStyle: "bold" } },
-      { content: ev ? `${eur(ev.negotiatedMonthly)}${L("/mois", "/month")}` : "—", styles: { halign: "center" } },
+      { content: ev ? `${eurLoyer(ev.negotiatedMonthly)}${L("/mois", "/month")}` : "—", styles: { halign: "center" } },
       { content: ecoVeh > 0 ? `− ${eur(ecoVeh)}` : "—", styles: { halign: "center" } },
       { content: ecoVeh > 0 ? `− ${eur(ecoVeh * qty)}` : "—", styles: { halign: "center", fontStyle: "bold", textColor: ACCENT_TEXT } },
     ]);
@@ -6372,7 +6388,7 @@ async function drawVehicleComparator(doc: jsPDF, vehicles: SelectedVehicle[], gr
     switch (key) {
       case "veh": return vehicleLabel(sv.vehicle);
       case "prix": return sv.vehicle.priceTtc > 0 ? eur(sv.vehicle.priceTtc) : "—";
-      case "loyer": return (sv.negotiatedMonthly ?? 0) > 0 ? `${eur(sv.negotiatedMonthly)}${L("/mois", "/month")}` : "—";
+      case "loyer": return (sv.negotiatedMonthly ?? 0) > 0 ? `${eurLoyer(sv.negotiatedMonthly)}${L("/mois", "/month")}` : "—";
       case "auto": return sv.vehicle.rangeWltp > 0 ? `${sv.vehicle.rangeWltp} km` : "—";
       case "conso": return consoOf(sv).txt;
       case "energie": return sv.vehicle.energy;
@@ -6561,7 +6577,7 @@ function drawCompetitorComparison(doc: jsPDF, vehicles: SelectedVehicle[]) {
       // Loyer en gros sur sa propre ligne — pas de texte à droite pour éviter
       // toute superposition avec le « TTC/mois » qui passe en-dessous.
       doc.setFontSize(18);
-      doc.text(`${eur(monthly)}`, cx + 10, y + 58);
+      doc.text(`${eurLoyer(monthly)}`, cx + 10, y + 58);
       doc.setFont(BRAND_FONT, "normal");
       doc.setFontSize(7.5);
       doc.setTextColor(...SUB);

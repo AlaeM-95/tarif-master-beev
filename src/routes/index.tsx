@@ -3530,6 +3530,7 @@ function VehicleCard({ vehicle, selected, onToggle, onUpdate, onDelete, existing
           ) : (
             <Badge className={`text-[10px] font-semibold border ${energyBadgeCls}`}>{vehicle.energy}</Badge>
           )}
+          {vehicle.ecoScoreBool && <Badge className="bg-[#35DA76] text-white text-[10px] border-0 font-semibold">Éco-score</Badge>}
           {vehicle.shortlist && <Badge className="bg-beev-rose text-beev-black text-[10px] border-0 font-semibold">★ Recommandé</Badge>}
           {vehicle.custom && <Badge className="bg-beev-beige text-beev-black text-[10px] border-0">Custom</Badge>}
           {vehicle.availableStock !== undefined && vehicle.availableStock > 0 && (
@@ -4250,7 +4251,7 @@ function VehicleSummaryCard({ sv, energy, onQty, onConfigure, onDuplicate, onRem
         </div>
         <div className="rounded-lg bg-beev-bleu-20 border border-beev-bleu/40 p-1.5">
           <div className="text-[9px] uppercase text-[#1E5A99] tracking-wide">Loyer/mois {isUtilitaireCategory(sv.vehicle.category) ? "HT" : ""}</div>
-          <div className="text-sm font-bold text-beev-black mt-1">{fmtEur(sv.negotiatedMonthly)}</div>
+          <div className="text-sm font-bold text-beev-black mt-1">{fmtEur2(sv.negotiatedMonthly)}</div>
         </div>
         <div className="rounded-lg bg-beev-beige border border-beev-black/5 p-1.5">
           <div className="text-[9px] uppercase text-muted-foreground tracking-wide">TCO/100km</div>
@@ -5763,7 +5764,7 @@ function VehicleSlide({ sv, energy }: { sv: SelectedVehicle; energy: EnergyParam
         </div>
         <div className="rounded-2xl bg-primary text-primary-foreground p-8 flex flex-col justify-center">
           <p className="text-xs uppercase opacity-70 mb-2">Loyer mensuel {isUtilitaireCategory(v.category) ? "HT" : "TTC"} · {sv.durationMonths} mois</p>
-          <p className="text-6xl font-bold tracking-tight">{fmtEur(sv.negotiatedMonthly)}</p>
+          <p className="text-6xl font-bold tracking-tight">{fmtEur2(sv.negotiatedMonthly)}</p>
           <p className="text-sm opacity-80 mt-2">× {sv.quantity} véhicule{sv.quantity > 1 ? "s" : ""} · {Math.round(sv.kmPerYear * (sv.durationMonths / 12)).toLocaleString("fr-FR")} km (contrat)</p>
           {sv.discountPct > 0 && (
             <p className="text-xs opacity-70 mt-4">Prix catalogue {fmtEur(v.priceTtc)} {isUtilitaireCategory(v.category) ? "HT" : "TTC"} · remise négociée -{sv.discountPct}%</p>
