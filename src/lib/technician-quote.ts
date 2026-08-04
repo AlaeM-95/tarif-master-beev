@@ -535,7 +535,22 @@ function detectLines(rawText: string): { lines: ParsedQuoteLine[]; warnings: str
         unitHt,
       });
     } else {
-      if (labelBuffer.length < 6) labelBuffer.push(line);
+      // Certains devis affichent le prix sur la 1RE ligne d'un paragraphe de
+      // description, la suite du texte arrivant APRÈS sans aucun chiffre
+      // (ex. « Réalisation d'une tranchée…, dans 12,00 Forfait 54,00 € 648,00 €
+      // \nla limite de 60 cm de profondeur… »). Sans ce cas, cette suite finit
+      // dans labelBuffer et se retrouve accolée en PRÉFIXE de la ligne
+      // SUIVANTE (sans rapport), au lieu de rester avec sa propre ligne.
+      // Heuristique : une ligne qui ne commence PAS par une majuscule (suite
+      // de phrase, référence technique en minuscule/chiffre) est très
+      // probablement la continuation de la ligne déjà détectée juste avant.
+      const looksLikeContinuation = lines.length > 0 && !/^[A-ZÀ-Ý]/.test(line);
+      if (looksLikeContinuation) {
+        const last = lines[lines.length - 1];
+        last.label = softCleanLabel(`${last.label} ${line}`).replace(/\s+/g, " ").trim();
+      } else if (labelBuffer.length < 6) {
+        labelBuffer.push(line);
+      }
     }
   }
   return { lines, warnings };
