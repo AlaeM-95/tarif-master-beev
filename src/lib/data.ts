@@ -374,7 +374,14 @@ export function useChargersData() {
     if (!current) return;
     const merged = { ...current, ...patch };
     const error = await updateChargerRow(id, chargerToDb(merged));
-    if (error) console.error("Erreur update charger:", error);
+    if (error) {
+      console.error("Erreur update charger:", error);
+      // Throw (comme useVehiclesData.update) : sans ça, un échec de sauvegarde
+      // (colonne manquante, RLS, réseau) était invisible pour l'utilisateur —
+      // invalidate() masquait l'échec en re-synchronisant sur l'ancien état
+      // sans jamais remonter l'erreur au caller.
+      throw new Error(error.message);
+    }
     invalidate();
   };
 

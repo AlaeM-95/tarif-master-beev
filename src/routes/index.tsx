@@ -1729,7 +1729,7 @@ function App() {
                 isAdmin={isAdmin}
                 brandLogos={brandLogos}
                 onToggle={toggleV}
-                onUpdate={isSales ? updateVehicle : undefined}
+                onUpdate={isSales ? (id, patch) => updateVehicle(id, patch).catch((e: Error) => toast.error(`Échec de la sauvegarde : ${e.message}`)) : undefined}
                 onDelete={isOps ? async (v) => {
                   if (vehicleSelected(v.id)) toggleV(v);
                   const result = await removeVehicle(v.id);
@@ -1836,7 +1836,7 @@ function App() {
                 {chargersHome.map((c) => (
                   <ChargerCard key={c.id} charger={c} selected={chargerSelected(c.id)}
                     onToggle={() => toggleC(c)}
-                    onUpdate={isSales ? (p) => updateCharger(c.id, p) : undefined}
+                    onUpdate={isSales ? (p) => updateCharger(c.id, p).catch((e: Error) => toast.error(`Échec de la sauvegarde : ${e.message}`)) : undefined}
                     onDelete={isOps ? async () => {
                       if (chargerSelected(c.id)) toggleC(c);
                       const result = await removeCharger(c.id);
@@ -1924,7 +1924,7 @@ function App() {
                 {chargersSite.map((c) => (
                   <ChargerCard key={c.id} charger={c} selected={chargerSelected(c.id)}
                     onToggle={() => toggleC(c)}
-                    onUpdate={isSales ? (p) => updateCharger(c.id, p) : undefined}
+                    onUpdate={isSales ? (p) => updateCharger(c.id, p).catch((e: Error) => toast.error(`Échec de la sauvegarde : ${e.message}`)) : undefined}
                     onDelete={isOps ? async () => {
                       if (chargerSelected(c.id)) toggleC(c);
                       const result = await removeCharger(c.id);
