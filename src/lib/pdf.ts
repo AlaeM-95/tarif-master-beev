@@ -5393,11 +5393,11 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
 // entre la solution Beev (recharge domicile + itinérance + supervision)
 // et la solution thermique de référence (carburant SP95/Diesel).
 function drawB2B2ETco(doc: jsPDF, input: B2B2ECalculatorInput) {
-  // Charte Beev 2026 : Rose #F4B8AA · Bleu #A5D2FF · Violet #D3CCD8 · Black ·
-  // Beige. On utilise les 3 accents (rose/bleu/violet) pour varier les KPI.
+  // Charte Beev 2026 : Rose #F4B8AA porte l'économie, Vert #35DA76 (même
+  // couleur que le badge éco-score véhicule) porte l'impact carbone, Noir
+  // pour la référence thermique. Une seule couleur = une seule famille
+  // d'info — voir le détail dans les 4 KPI plus bas.
   const PINK: [number, number, number] = [244, 184, 170]; // rose charte
-  const BLEU: [number, number, number] = [165, 210, 255]; // #A5D2FF bleu charte
-  const VIOLET: [number, number, number] = [211, 204, 216]; // #D3CCD8 violet charte
   const result = calculateB2B2ETco(input);
 
   let y = 116;
@@ -5425,7 +5425,9 @@ function drawB2B2ETco(doc: jsPDF, input: B2B2ECalculatorInput) {
 
   // === Bandeau ÉCONOMIE (la valeur reine) ===
   // Fond rose charte (#F4B8AA) : texte en NOIR (#1D1D1D) pour le contraste —
-  // le texte blanc sur rose clair était illisible (bug charte).
+  // le texte blanc sur rose clair était illisible (bug charte). Badge noir
+  // "− X %" à droite : le chiffre d'écart doit se voir sans lire la note en
+  // petit texte en dessous.
   doc.setFillColor(...LAVENDER);
   doc.roundedRect(M, y, PAGE_W - M * 2, 100, 8, 8, "F");
   doc.setFont(BRAND_FONT, "bold");
@@ -5433,36 +5435,58 @@ function drawB2B2ETco(doc: jsPDF, input: B2B2ECalculatorInput) {
   doc.setTextColor(...INK);
   doc.text("ÉCONOMIE TOTALE SUR CONTRAT", M + 16, y + 20);
   doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(34);
+  doc.setFontSize(38);
   doc.setTextColor(...INK);
-  doc.text(eur(result.economieFlotteTotale), M + 16, y + 60);
+  doc.text(eur(result.economieFlotteTotale), M + 16, y + 62);
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(9);
   doc.setTextColor(...INK);
   doc.text(
-    `soit ${eur(result.economieFlotteAnnuelle)} / an · ${eur(result.economieParCollabParAn)} par collaborateur / an · ${result.economiePct.toFixed(1)} % moins cher que le thermique`,
-    M + 16, y + 80,
+    `soit ${eur(result.economieFlotteAnnuelle)} / an · ${eur(result.economieParCollabParAn)} par collaborateur / an`,
+    M + 16, y + 82,
   );
+  {
+    const badgeW = 110;
+    const badgeH = 60;
+    const badgeX = PAGE_W - M - 16 - badgeW;
+    const badgeY = y + 20;
+    doc.setFillColor(...INK);
+    doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 8, 8, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(20);
+    doc.setTextColor(...LAVENDER);
+    doc.text(`− ${result.economiePct.toFixed(0)} %`, badgeX + badgeW / 2, badgeY + 30, { align: "center" });
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...BG);
+    doc.text("VS THERMIQUE", badgeX + badgeW / 2, badgeY + 46, { align: "center" });
+  }
   y += 112;
 
-  // === 4 KPIs colorés ===
+  // === 4 KPIs : une seule règle de couleur — le rose porte l'économie, le
+  // vert (même couleur que le badge éco-score véhicule) porte l'impact
+  // carbone, ROI et km restent neutres (ce sont des repères, pas des gains).
+  // Avant : rose/violet/bleu/noir sur les 4 tuiles sans raison de les
+  // distinguer — un mélange de couleurs sans signification (retour client).
+  const GREEN_LIGHT: [number, number, number] = [221, 244, 230];
+  const GREEN_TEXT: [number, number, number] = [20, 107, 57];
+  const PINK_LIGHT: [number, number, number] = [251, 228, 221];
+  const PINK_TEXT: [number, number, number] = [138, 76, 59];
   const kpiW = (PAGE_W - M * 2 - 30) / 4;
   const kpiH = 80;
-  const kpis = [
-    { label: "ÉCONOMIE / COLLAB / AN", value: eur(result.economieParCollabParAn), color: PINK, sub: "vs solution thermique" },
-    { label: "ROI BORNE", value: result.roiMois > 0 && result.roiMois < 120 ? `${result.roiMois.toFixed(0)} mois` : "—", color: VIOLET, sub: "avant amortissement complet" },
-    { label: "CO2 ÉVITÉ", value: `${result.co2EviteTonnes.toFixed(1)} t`, color: BLEU, sub: `sur ${input.dureeAnnees} ans (135 g/km évité)` },
-    { label: "KM CONTRAT / COLLAB", value: `${(result.kmTotalParCollab / 1000).toFixed(0)} k km`, color: INK, sub: `${input.kmParAnParCollab.toLocaleString("fr-FR")} km/an` },
+  const kpis: Array<{ label: string; value: string; sub: string; fill: [number, number, number]; text: [number, number, number] }> = [
+    { label: "ÉCONOMIE / COLLAB / AN", value: eur(result.economieParCollabParAn), sub: "vs solution thermique", fill: PINK_LIGHT, text: PINK_TEXT },
+    { label: "ROI BORNE", value: result.roiMois > 0 && result.roiMois < 120 ? `${result.roiMois.toFixed(0)} mois` : "—", sub: "avant amortissement complet", fill: BG, text: SUB },
+    { label: "CO2 ÉVITÉ", value: `${result.co2EviteTonnes.toFixed(1)} t`, sub: `sur ${input.dureeAnnees} ans (135 g/km évité)`, fill: GREEN_LIGHT, text: GREEN_TEXT },
+    { label: "KM CONTRAT / COLLAB", value: `${(result.kmTotalParCollab / 1000).toFixed(0)} k km`, sub: `${input.kmParAnParCollab.toLocaleString("fr-FR")} km/an`, fill: BG, text: SUB },
   ];
   kpis.forEach((k, i) => {
     const cx = M + i * (kpiW + 10);
-    doc.setFillColor(...BG);
+    doc.setFillColor(...k.fill);
     doc.roundedRect(cx, y, kpiW, kpiH, 6, 6, "F");
-    doc.setFillColor(...k.color);
-    doc.rect(cx, y, kpiW, 3, "F");
-    doc.setFont(BRAND_FONT, "normal");
+    doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(7);
-    doc.setTextColor(...SUB);
+    doc.setTextColor(...k.text);
     doc.text(k.label, cx + 10, y + 18);
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(17);
@@ -5470,7 +5494,7 @@ function drawB2B2ETco(doc: jsPDF, input: B2B2ECalculatorInput) {
     doc.text(k.value, cx + 10, y + 44);
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(7.5);
-    doc.setTextColor(...SUB);
+    doc.setTextColor(...k.text);
     const subL = doc.splitTextToSize(k.sub, kpiW - 20);
     doc.text(subL.slice(0, 2), cx + 10, y + 60);
   });
@@ -5566,7 +5590,24 @@ function drawB2B2ETco(doc: jsPDF, input: B2B2ECalculatorInput) {
   drawCostLine(rx, `Carburant (${input.prixCarbL.toFixed(2)} €/L × ${(result.energieCarbParCollab * input.nbCollabs).toFixed(0)} L)`, eur(result.coutCarbFlotteTotal), lineTop);
   drawColTotal(rx, "COÛT TOTAL THERMIQUE", eur(result.coutCarbFlotteTotal));
 
-  y += colH + 20;
+  // Connecteur d'écart, à cheval sur le bas des 2 colonnes : rend explicite le
+  // calcul (coût thermique − coût Beev) que le lecteur devait sinon faire de
+  // tête en comparant les deux totaux.
+  {
+    const gapText = `− ${eur(result.economieFlotteTotale)} · − ${result.economiePct.toFixed(0)} % au profit de Beev`;
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(9.5);
+    const gapW = doc.getTextWidth(gapText) + 28;
+    const gapH = 22;
+    const gapX = M + (PAGE_W - M * 2 - gapW) / 2;
+    const gapY = y + colH - gapH / 2;
+    doc.setFillColor(...INK);
+    doc.roundedRect(gapX, gapY, gapW, gapH, 11, 11, "F");
+    doc.setTextColor(...LAVENDER);
+    doc.text(gapText, gapX + gapW / 2, gapY + 14.5, { align: "center" });
+  }
+
+  y += colH + 26;
 
   // === Encart Bases de calcul (transparence) ===
   if (y < FOOTER_LIMIT - 90) {
