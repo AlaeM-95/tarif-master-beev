@@ -331,7 +331,12 @@ export function lineItemClientUnit(li: LineItem): number {
 }
 
 export function lineItemClientTotal(li: LineItem): number {
-  return lineItemClientUnit(li) * li.qty;
+  // Arrondi au centime ICI (pas seulement à l'affichage) : sinon un total en
+  // pied de tableau qui somme les lignes (chacune déjà arrondie à l'affichage)
+  // pouvait tomber 1 centime au-dessus ou en dessous de la somme visible des
+  // lignes — ex. 920,00 + 549,99 + 120,00 affichés = 1 589,99, mais le total
+  // calculait sur les valeurs exactes non arrondies et affichait 1 590,00.
+  return Math.round(lineItemClientUnit(li) * li.qty * 100) / 100;
 }
 
 // === CHARTE GRAPHIQUE BEEV 2026 ===
