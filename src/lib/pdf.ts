@@ -5992,8 +5992,13 @@ function drawHomeConnectKit(doc: jsPDF, _client: ClientInfo) {
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(26);
   doc.setTextColor(...INK);
-  doc.text("La recharge à domicile, remboursée sans paperasse", M, y + 16, { maxWidth: PAGE_W - M * 2 });
-  y += 44;
+  // splitTextToSize (pas l'option maxWidth de doc.text, qui enroule le texte
+  // SANS que le code appelant sache combien de lignes ont été produites) :
+  // le titre passe sur 2 lignes selon la longueur du texte, mais l'avance de
+  // y restait fixe (44), faisant chevaucher l'intro sur la 2e ligne du titre.
+  const titleLines = doc.splitTextToSize("La recharge à domicile, remboursée sans paperasse", PAGE_W - M * 2) as string[];
+  doc.text(titleLines, M, y + 16);
+  y += 44 + (titleLines.length - 1) * 28;
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
