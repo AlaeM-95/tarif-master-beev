@@ -6160,7 +6160,7 @@ function drawHomeConnectKit(doc: jsPDF, _client: ClientInfo) {
 // Explique au collaborateur/à l'entreprise les 5 étapes entre la demande et la
 // première recharge remboursée. Opt-in commercial (cfg.showHomeChargerJourney),
 // affiché uniquement sur le parcours bornes domicile.
-function drawHomeChargerJourney(doc: jsPDF, _client: ClientInfo) {
+function drawHomeChargerJourney(doc: jsPDF, client: ClientInfo) {
   const PINK: [number, number, number] = [244, 184, 170];
   const PINK_LIGHT: [number, number, number] = [251, 228, 221];
   const PINK_TEXT: [number, number, number] = [138, 76, 59];
@@ -6267,7 +6267,27 @@ function drawHomeChargerJourney(doc: jsPDF, _client: ClientInfo) {
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(9);
     const descLines = doc.splitTextToSize(s.desc, textW) as string[];
-    const stepH = 18 + descLines.length * 12 + 20;
+    // Hauteur du bloc calculée en RELATIF (indépendante de y) : nécessaire
+    // pour appeler ensureSpace AVANT de fixer les positions absolues — sinon
+    // un saut de page recalcule y mais les offsets déjà figés (titleY, etc.)
+    // pointeraient encore vers l'ancienne page.
+    // Écart NETTEMENT plus grand après le tag qu'avant lui : sinon le tag de
+    // l'étape N (collé à ~2pt de l'étape N+1 dans la version précédente) se
+    // lisait comme appartenant au titre suivant plutôt qu'à sa propre
+    // description (bug remonté).
+    const tagPillH = 16;
+    const descBlockH = (descLines.length - 1) * 12 + 4; // bas visuel de la dernière ligne, relatif au 1er offset
+    const stepH = 22 + descBlockH + 16 - 8 + tagPillH + 26; // descTopY + bloc desc + gap tag + pill + gap suivant
+
+    // Saut de page propre si l'étape ne tient pas sur la page courante (texte
+    // plus long qu'attendu, traduction, police différente…) : ensureSpace
+    // recalcule y à 116 après avoir redessiné l'en-tête, plutôt que de laisser
+    // le contenu déborder silencieusement en bas de page.
+    y = ensureSpace(doc, y, stepH, client, "home");
+
+    const titleY = y + 4;
+    const descTopY = y + 22;
+    const tagPillTop = descTopY + descBlockH + 16 - 8;
 
     // Ligne de connexion entre les puces (dessinée avant le texte, sous les
     // cercles), sauf après la dernière étape.
@@ -6287,21 +6307,20 @@ function drawHomeChargerJourney(doc: jsPDF, _client: ClientInfo) {
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(11.5);
     doc.setTextColor(...INK);
-    doc.text(s.title, textX, y + 4);
+    doc.text(s.title, textX, titleY);
 
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(9);
     doc.setTextColor(...SUB);
-    doc.text(descLines, textX, y + 20);
+    doc.text(descLines, textX, descTopY);
 
-    const tagY = y + 20 + descLines.length * 12 + 10;
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(7);
     const tagW = doc.getTextWidth(s.tag) + 16;
     doc.setFillColor(...s.tagFill);
-    doc.roundedRect(textX, tagY - 9, tagW, 15, 7.5, 7.5, "F");
+    doc.roundedRect(textX, tagPillTop, tagW, tagPillH, tagPillH / 2, tagPillH / 2, "F");
     doc.setTextColor(...s.tagText);
-    doc.text(s.tag, textX + tagW / 2, tagY + 1, { align: "center" });
+    doc.text(s.tag, textX + tagW / 2, tagPillTop + tagPillH / 2 + 2.5, { align: "center" });
 
     y += stepH;
   });
