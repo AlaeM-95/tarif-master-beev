@@ -834,7 +834,7 @@ function App() {
     "showSiteEquipments", "showSiteProductSheet", "showSiteSupervision", "showSiteCompliance",
     "showSitePaymentOptions", "showSupervisionConnect",
   ]);
-  const HOME_PREVIEW_KEYS = new Set<string>(["showB2B2ETco", "showSupervisionHome", "showHomeConnectKit"]);
+  const HOME_PREVIEW_KEYS = new Set<string>(["showB2B2ETco", "showSupervisionHome", "showHomeConnectKit", "showHomeChargerJourney"]);
   const demoVehicles = (): SelectedVehicle[] => {
     const therm = vehicles.find((v) => v.energy !== "Électrique");
     const evs = vehicles.filter((v) => v.energy === "Électrique").slice(0, therm ? 3 : 4);
@@ -1906,6 +1906,8 @@ function App() {
               }}
               includeHomeKit={pdfConfig.showHomeConnectKit ?? false}
               setIncludeHomeKit={(v) => updatePdfConfig({ showHomeConnectKit: v })}
+              includeHomeChargerJourney={pdfConfig.showHomeChargerJourney ?? false}
+              setIncludeHomeChargerJourney={(v) => updatePdfConfig({ showHomeChargerJourney: v })}
             />
           )}
 

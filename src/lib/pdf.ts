@@ -1103,6 +1103,13 @@ export async function generateProposalPdf(opts: {
     drawHeader(doc, client, "home");
     drawHomeConnectKit(doc, client);
   }
+  // Parcours « Mise à disposition » (5 étapes) — opt-in, uniquement sur le
+  // parcours bornes domicile (B2B2E).
+  if (cfg.showHomeChargerJourney && chargersHome.length > 0) {
+    doc.addPage();
+    drawHeader(doc, client, "home");
+    drawHomeChargerJourney(doc, client);
+  }
 
   // hideFromPdf exclut une borne de sa fiche détaillée sans la retirer du
   // devis — numérotation "SITE N / total" recalculée sur les bornes
@@ -6148,6 +6155,157 @@ function drawHomeConnectKit(doc: jsPDF, _client: ClientInfo) {
   doc.text("Accompagnement Beev à chaque étape · bornes@beev.co", M, y);
 }
 
+
+// ============ PARCOURS « MISE À DISPOSITION » BORNE DOMICILE (B2B2E) ============
+// Explique au collaborateur/à l'entreprise les 5 étapes entre la demande et la
+// première recharge remboursée. Opt-in commercial (cfg.showHomeChargerJourney),
+// affiché uniquement sur le parcours bornes domicile.
+function drawHomeChargerJourney(doc: jsPDF, _client: ClientInfo) {
+  const PINK: [number, number, number] = [244, 184, 170];
+  const PINK_LIGHT: [number, number, number] = [251, 228, 221];
+  const PINK_TEXT: [number, number, number] = [138, 76, 59];
+  const GREEN_LIGHT: [number, number, number] = [221, 244, 230];
+  const GREEN_TEXT: [number, number, number] = [20, 107, 57];
+  const NEUTRAL: [number, number, number] = [247, 242, 228];
+
+  let y = 116;
+  doc.setFillColor(...PINK);
+  doc.rect(M, y - 8, 22, 2, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  doc.text("MISE À DISPOSITION · BORNE DOMICILE COLLABORATEUR", M + 30, y - 4);
+  y += 14;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(26);
+  doc.setTextColor(...INK);
+  const titleLines = doc.splitTextToSize("Sa borne à domicile, sans qu'il s'occupe de rien", PAGE_W - M * 2) as string[];
+  doc.text(titleLines, M, y + 16);
+  y += 44 + (titleLines.length - 1) * 28;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...SUB);
+  const intro = doc.splitTextToSize(
+    "Du diagnostic électrique à la première recharge remboursée : le parcours complet pour équiper un collaborateur en télétravail ou en usage domicile-travail, piloté de bout en bout par Beev.",
+    PAGE_W - M * 2,
+  ) as string[];
+  doc.text(intro, M, y);
+  y += intro.length * 13 + 20;
+
+  // --- Bandeau 3 chiffres clés ---
+  const stats = [
+    { n: "48 h", l: "Étude technique" },
+    { n: "2-3 sem.", l: "Jusqu'à l'installation" },
+    { n: "0", l: "Démarche pour le collaborateur" },
+  ];
+  const statW = (PAGE_W - M * 2) / 3;
+  doc.setDrawColor(...RULE);
+  doc.setLineWidth(0.5);
+  doc.line(M, y, PAGE_W - M, y);
+  y += 22;
+  stats.forEach((s, i) => {
+    const sx = M + i * statW;
+    if (i > 0) { doc.setDrawColor(...RULE); doc.line(sx, y - 22, sx, y + 4); }
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(17);
+    doc.setTextColor(...INK);
+    doc.text(s.n, sx + (i === 0 ? 0 : 16), y - 6);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...SUB);
+    doc.text(s.l.toUpperCase(), sx + (i === 0 ? 0 : 16), y + 6);
+  });
+  y += 30;
+  doc.setDrawColor(...RULE);
+  doc.line(M, y, PAGE_W - M, y);
+  y += 26;
+
+  // --- 5 étapes ---
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(...SUB);
+  doc.text("LE PARCOURS EN 5 ÉTAPES", M, y);
+  y += 20;
+
+  const steps: Array<{ title: string; desc: string; tag: string; circleFill: [number, number, number]; circleText: [number, number, number]; tagFill: [number, number, number]; tagText: [number, number, number] }> = [
+    {
+      title: "Photos & étude à distance",
+      desc: "Le collaborateur envoie par e-mail les photos de son tableau électrique, de son compteur et de l'emplacement souhaité. Un technicien IRVE certifié réalise l'étude de faisabilité à distance.",
+      tag: "COLLABORATEUR · 5 MIN",
+      circleFill: PINK, circleText: INK, tagFill: PINK_LIGHT, tagText: PINK_TEXT,
+    },
+    {
+      title: "Chiffrage personnalisé",
+      desc: "Beev établit un devis borne + pose selon la configuration réelle du domicile (distance au tableau, disjoncteur disponible, travaux éventuels), transmis à l'entreprise pour validation.",
+      tag: "ENTREPRISE · VALIDATION DEVIS",
+      circleFill: NEUTRAL, circleText: INK, tagFill: NEUTRAL, tagText: SUB,
+    },
+    {
+      title: "Planification",
+      desc: "Une fois le devis validé, le collaborateur choisit son créneau d'intervention directement avec le technicien assigné, sans repasser par les équipes RH ou fleet.",
+      tag: "COLLABORATEUR · PRISE DE RDV",
+      circleFill: NEUTRAL, circleText: INK, tagFill: NEUTRAL, tagText: SUB,
+    },
+    {
+      title: "Livraison & installation",
+      desc: "Pose de la borne (ou de la prise) par le technicien IRVE, raccordement au tableau, tests de sécurité et mise en service — en une seule intervention, généralement en 2 à 4 heures.",
+      tag: "TECHNICIEN IRVE CERTIFIÉ",
+      circleFill: NEUTRAL, circleText: INK, tagFill: NEUTRAL, tagText: SUB,
+    },
+    {
+      title: "Activation Beev Home Charging",
+      desc: "Connexion de la borne à la supervision Beev : chaque recharge professionnelle est détectée, classée et remboursée automatiquement chaque mois, sans justificatif à fournir.",
+      tag: "AUTOMATIQUE DÈS LA MISE EN SERVICE",
+      circleFill: GREEN_LIGHT, circleText: GREEN_TEXT, tagFill: GREEN_LIGHT, tagText: GREEN_TEXT,
+    },
+  ];
+
+  const circleR = 15;
+  const textX = M + circleR * 2 + 16;
+  const textW = PAGE_W - M - textX;
+  steps.forEach((s, i) => {
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    const descLines = doc.splitTextToSize(s.desc, textW) as string[];
+    const stepH = 18 + descLines.length * 12 + 20;
+
+    // Ligne de connexion entre les puces (dessinée avant le texte, sous les
+    // cercles), sauf après la dernière étape.
+    if (i < steps.length - 1) {
+      doc.setDrawColor(228, 220, 197);
+      doc.setLineWidth(1);
+      doc.line(M + circleR, y + circleR * 2 - 4, M + circleR, y + stepH + circleR - 4);
+    }
+
+    doc.setFillColor(...s.circleFill);
+    doc.circle(M + circleR, y + circleR - 4, circleR, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(...s.circleText);
+    doc.text(String(i + 1), M + circleR, y + circleR - 4 + 4, { align: "center" });
+
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(11.5);
+    doc.setTextColor(...INK);
+    doc.text(s.title, textX, y + 4);
+
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...SUB);
+    doc.text(descLines, textX, y + 20);
+
+    const tagY = y + 20 + descLines.length * 12 + 10;
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7);
+    const tagW = doc.getTextWidth(s.tag) + 16;
+    doc.setFillColor(...s.tagFill);
+    doc.roundedRect(textX, tagY - 9, tagW, 15, 7.5, 7.5, "F");
+    doc.setTextColor(...s.tagText);
+    doc.text(s.tag, textX + tagW / 2, tagY + 1, { align: "center" });
+
+    y += stepH;
+  });
+}
 
 // ============ BILAN CARBONE — Page dédiée RSE ============
 // Argument vente RSE : montre les émissions CO2 évitées par la flotte

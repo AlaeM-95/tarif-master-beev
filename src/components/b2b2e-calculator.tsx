@@ -82,9 +82,14 @@ type Props = {
   /** Kit collaborateur « Beev Home Connect » inclus dans le PDF (opt-in). */
   includeHomeKit: boolean;
   setIncludeHomeKit: (v: boolean) => void;
+  /** Parcours « Mise à disposition » (5 étapes : photos, chiffrage,
+   *  planification, installation, activation supervision) inclus dans le
+   *  PDF (opt-in). */
+  includeHomeChargerJourney: boolean;
+  setIncludeHomeChargerJourney: (v: boolean) => void;
 };
 
-export function B2B2ECalculator({ input, update, reset, includeInPdf, setIncludeInPdf, suggestedNbCollabs, supervisionPriceDisplay, onSupervisionPriceDisplay, supervisionFeatures, onSupervisionFeatures, includeHomeKit, setIncludeHomeKit }: Props) {
+export function B2B2ECalculator({ input, update, reset, includeInPdf, setIncludeInPdf, suggestedNbCollabs, supervisionPriceDisplay, onSupervisionPriceDisplay, supervisionFeatures, onSupervisionFeatures, includeHomeKit, setIncludeHomeKit, includeHomeChargerJourney, setIncludeHomeChargerJourney }: Props) {
   const [openDetails, setOpenDetails] = useState(false);
   const result = calculateB2B2ETco(input);
 
@@ -224,6 +229,14 @@ export function B2B2ECalculator({ input, update, reset, includeInPdf, setInclude
             <Label htmlFor="b2b2e-homekit" className="text-xs leading-tight">
               Inclure le kit collaborateur « Beev Home Connect »
               <span className="block text-[10px] text-muted-foreground font-normal">Page tutoriel supervision / remboursement à domicile</span>
+            </Label>
+          </div>
+          {/* Parcours mise à disposition — opt-in dans le PDF. */}
+          <div className="flex items-start gap-2 pt-1 border-t border-[#3809EA]/10">
+            <Switch id="b2b2e-journey" checked={includeHomeChargerJourney} onCheckedChange={setIncludeHomeChargerJourney} className="mt-0.5" />
+            <Label htmlFor="b2b2e-journey" className="text-xs leading-tight">
+              Inclure le parcours « Mise à disposition »
+              <span className="block text-[10px] text-muted-foreground font-normal">Page 5 étapes : photos par mail, chiffrage, planification, installation, supervision</span>
             </Label>
           </div>
         </div>
