@@ -6640,6 +6640,58 @@ async function drawModelYCompare(
   const autoDiff = (premium.vehicle.rangeWltp ?? 0) - (propulsion.vehicle.rangeWltp ?? 0);
   const nbFeatures = rows.filter((r) => (r.premium ?? "").trim() && r.premium.trim() !== (r.propulsion ?? "").trim()).length;
 
+  // ─── Gain de temps sur les arrêts de recharge (argument gestionnaire de flotte) ──
+  // Hypothèse : sur longue distance, chaque recharge rapide couvre la fenêtre
+  // 20-80 % ≈ 60 % de l'autonomie. Nb d'arrêts sur le contrat = km total /
+  // (autonomie utile). L'autonomie utile est dérivée de la consommation réelle et
+  // de la batterie quand disponibles (batterie × 60 % / conso × 100), sinon de
+  // l'autonomie WLTP. Le temps par arrêt = durée de recharge 20-80 % DC (ou 30 min
+  // par défaut). Le gain = temps de recharge Propulsion − temps de recharge Premium.
+  const USABLE = 0.6; // fenêtre 20-80 %
+  const kmContratOf = (sv: SelectedVehicle) => {
+    const perYear = sv.kmPerYear ?? 0;
+    const months = sv.durationMonths ?? 0;
+    return perYear > 0 && months > 0 ? Math.round((perYear * months) / 12) : 0;
+  };
+  const kmContrat = kmContratOf(premium) || kmContratOf(propulsion);
+  // Autonomie utile par recharge rapide (km).
+  const usableRangeOf = (sv: SelectedVehicle) => {
+    const batt = sv.vehicle.batteryKwh ?? 0;
+    const conso = sv.vehicle.consumption ?? 0;
+    if (batt > 0 && conso > 0) return (batt * USABLE * 100) / conso;
+    const wltp = sv.vehicle.rangeWltp ?? 0;
+    return wltp > 0 ? wltp * USABLE : 0;
+  };
+  // Durée d'un arrêt de recharge rapide (min) — parse "27 min", "1h05", "45".
+  const parseMinutes = (raw?: string): number => {
+    if (!raw) return 30;
+    const s = raw.toLowerCase().replace(/\s/g, "");
+    const h = s.match(/(\d+)\s*h\s*(\d+)?/);
+    if (h) return parseInt(h[1], 10) * 60 + (h[2] ? parseInt(h[2], 10) : 0);
+    const m = s.match(/(\d+)\s*min/);
+    if (m) return parseInt(m[1], 10);
+    const n = s.match(/(\d+)/);
+    return n ? parseInt(n[1], 10) : 30;
+  };
+  const stopsOf = (sv: SelectedVehicle) => {
+    const ur = usableRangeOf(sv);
+    return kmContrat > 0 && ur > 0 ? kmContrat / ur : 0;
+  };
+  const stopsP = stopsOf(propulsion);
+  const stopsPrem = stopsOf(premium);
+  const stopsSaved = Math.max(0, Math.round(stopsP - stopsPrem));
+  const chargeMinP = stopsP * parseMinutes(propulsion.vehicle.chargeTime2080Dc);
+  const chargeMinPrem = stopsPrem * parseMinutes(premium.vehicle.chargeTime2080Dc);
+  const minutesSaved = Math.max(0, Math.round(chargeMinP - chargeMinPrem));
+  const hasTimeSaving = kmContrat > 0 && minutesSaved > 0;
+  // Format "3 h 20" / "45 min".
+  const fmtDuration = (min: number) => {
+    if (min < 60) return `${min} min`;
+    const h = Math.floor(min / 60);
+    const m = Math.round(min - h * 60);
+    return m > 0 ? `${h} h ${m}` : `${h} h`;
+  };
+
   const [imgP, imgPrem] = await preloadVehicleThumbs([propulsion, premium]);
 
   let y = 130;
@@ -6770,8 +6822,8 @@ async function drawModelYCompare(
   const rowW = (contentW - colGap) / 2;
   const rowH = 44;
   const rowGap = 10;
-  // On garde de la place pour le bandeau verdict (≈ 78pt) en bas de page.
-  const verdictH = 80;
+  // On garde de la place pour le bandeau verdict en bas de page.
+  const verdictH = hasTimeSaving ? 120 : 84;
   const maxRowsVert = Math.floor((FOOTER_LIMIT - y - verdictH - 14) / (rowH + rowGap));
   const maxRows = Math.max(1, maxRowsVert) * 2;
   const visibleRows = rows.slice(0, maxRows);
@@ -6825,37 +6877,83 @@ async function drawModelYCompare(
   const usedRows = Math.ceil(visibleRows.length / 2);
   y = y + usedRows * (rowH + rowGap) + 6;
 
-  // ─── Bandeau verdict ───────────────────────────────────────────────────
+  // ─── Bandeau verdict — orienté gestionnaire de flotte : gain de temps sur les
+  //     arrêts de recharge, mis en regard du surcoût de loyer. ──────────────
   const vY = Math.max(y, FOOTER_LIMIT - verdictH);
+  const bandH = verdictH - 8;
   doc.setFillColor(...INK);
-  doc.roundedRect(M, vY, contentW, verdictH - 8, 12, 12, "F");
+  doc.roundedRect(M, vY, contentW, bandH, 12, 12, "F");
+
+  // Colonne gauche : surcoût de loyer (ancrage coût).
+  const leftW = 180;
   const bigStr = `${delta >= 0 ? "+ " : "− "}${eur(Math.abs(delta))}`;
   doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(26);
+  doc.setFontSize(24);
   doc.setTextColor(...ROSE);
-  doc.text(bigStr, M + 22, vY + 34);
+  doc.text(bigStr, M + 22, vY + 40);
   const bigW = doc.getTextWidth(bigStr);
   doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(11);
+  doc.setFontSize(10.5);
   doc.setTextColor(255, 255, 255);
-  doc.text("/mois", M + 22 + bigW + 6, vY + 34);
-  // Texte
-  const parts: string[] = [];
-  if (autoDiff > 0) parts.push(`+ ${autoDiff} km d'autonomie`);
-  if (nbFeatures > 0) parts.push(`${nbFeatures} équipement${nbFeatures > 1 ? "s" : ""} de confort`);
-  const lead = parts.length ? `La finition Premium apporte ${parts.join(" et ")}. ` : "";
-  const cumuleStr = duree > 0 && delta !== 0
-    ? `Sur ${duree} mois, l'écart de loyer représente ${eur(Math.abs(cumule))} TTC.`
-    : "";
-  const txtX = M + 22 + bigW + 70;
+  doc.text("/mois", M + 22 + bigW + 6, vY + 40);
   doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(9.5);
-  doc.setTextColor(237, 231, 222);
-  const vLines = doc.splitTextToSize(
-    `${lead}Pertinente pour les conducteurs à fort kilométrage et les trajets longue distance. ${cumuleStr}`,
-    contentW - (txtX - M) - 22,
-  );
-  doc.text(vLines.slice(0, 3), txtX, vY + 22);
+  doc.setFontSize(8.5);
+  doc.setTextColor(170, 165, 158);
+  doc.text("Surcoût de loyer de la finition Premium", M + 22, vY + 58);
+  if (duree > 0 && delta !== 0) {
+    doc.text(`Soit ${eur(Math.abs(cumule))} sur ${duree} mois de contrat`, M + 22, vY + 72);
+  }
+
+  if (hasTimeSaving) {
+    // Séparateur vertical.
+    doc.setDrawColor(78, 78, 82);
+    doc.setLineWidth(0.8);
+    doc.line(M + leftW, vY + 18, M + leftW, vY + bandH - 18);
+
+    const rx = M + leftW + 22;
+    const rw = M + contentW - 22 - rx;
+    // Titre de section.
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...ROSE);
+    doc.text("GAIN DE TEMPS · ARRÊTS DE RECHARGE", rx, vY + 22);
+    // Chiffre héro : temps de recharge économisé.
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(21);
+    doc.setTextColor(255, 255, 255);
+    const heroStr = `− ${fmtDuration(minutesSaved)}`;
+    doc.text(heroStr, rx, vY + 46);
+    const heroW = doc.getTextWidth(heroStr);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...ROSE);
+    doc.text("de recharge / conducteur", rx + heroW + 8, vY + 46);
+    // Base de calcul + bénéfice.
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8.8);
+    doc.setTextColor(220, 215, 208);
+    const consoPrem = premium.vehicle.consumption ?? 0;
+    const base = `Sur ${fmt(kmContrat)} km au contrat : ${stopsSaved} arrêt${stopsSaved > 1 ? "s" : ""} de recharge en moins grâce à l'autonomie supérieure (base ${consoPrem > 0 ? `${cleanSpaces(String(consoPrem).replace(".", ","))} kWh/100 km, ` : ""}recharge rapide 20-80 %).`;
+    const benefit = "Autant de temps productif rendu aux équipes en déplacement, pour un confort de conduite également renforcé.";
+    const rLines = doc.splitTextToSize(`${base} ${benefit}`, rw);
+    doc.text(rLines.slice(0, 4), rx, vY + 62);
+  } else {
+    // Repli : pas de données km/conso → argument confort + autonomie.
+    const parts: string[] = [];
+    if (autoDiff > 0) parts.push(`+ ${autoDiff} km d'autonomie`);
+    if (nbFeatures > 0) parts.push(`${nbFeatures} équipement${nbFeatures > 1 ? "s" : ""} de confort`);
+    const lead = parts.length ? `La finition Premium apporte ${parts.join(" et ")}. ` : "";
+    const rx = M + leftW + 22;
+    const rw = M + contentW - 22 - rx;
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(237, 231, 222);
+    const vLines = doc.splitTextToSize(
+      `${lead}Pertinente pour les conducteurs à fort kilométrage et les trajets longue distance : moins d'arrêts de recharge, plus de temps sur la route.`,
+      rw,
+    );
+    doc.text(vLines.slice(0, 4), rx, vY + 26);
+  }
 }
 
 // ============ COMPARATEUR VÉHICULES (vertical, véhicules en lignes) ============
