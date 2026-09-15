@@ -6692,7 +6692,21 @@ async function drawModelYCompare(
     return m > 0 ? `${h} h ${m}` : `${h} h`;
   };
 
-  const [imgP, imgPrem] = await preloadVehicleThumbs([propulsion, premium]);
+  // Photos aplaties sur le FOND de leur carte respective (blanc pour la carte
+  // Propulsion, rose-soft pour la carte Premium) : jsPDF ne gère pas l'alpha PNG,
+  // donc sans ce fond adapté un cadre blanc apparaîtrait sur la carte teintée.
+  const loadFlat = async (sv: SelectedVehicle, bg: [number, number, number]): Promise<LoadedImage | null> => {
+    const url = sv.vehicle.image?.trim();
+    if (!url) return null;
+    const li = await loadImage(url);
+    if (!li) return null;
+    try {
+      const flat = await flattenPngToJpeg(li.dataUrl, li.w, li.h, bg);
+      return { dataUrl: flat, w: li.w, h: li.h, format: "JPEG" as const };
+    } catch { return li; }
+  };
+  const imgP = await loadFlat(propulsion, [255, 255, 255]);
+  const imgPrem = await loadFlat(premium, ROSE_SOFT);
 
   let y = 130;
   eyebrow(doc, "COMPARATIF · TESLA MODEL Y", y);
@@ -6715,7 +6729,7 @@ async function drawModelYCompare(
   // ─── Deux cartes en tête ───────────────────────────────────────────────
   const cardGap = 16;
   const cardW = (contentW - cardGap) / 2;
-  const cardH = 156;
+  const cardH = 172;
   const cardY = y;
   const drawHeadCard = (
     x: number,
@@ -6754,39 +6768,40 @@ async function drawModelYCompare(
     const versionLabel = premiumCard ? "Premium Propulsion" : "Propulsion";
     doc.text(versionLabel, x + 16, cardY + 40);
     // Photo
-    drawContainedImage(doc, img, x + 16, cardY + 48, cardW - 32, 56);
-    // Loyer
+    drawContainedImage(doc, img, x + 16, cardY + 46, cardW - 32, 54);
+    // Loyer (ligne dédiée : prix + « / mois TTC ») — le badge delta est placé
+    // sur SA PROPRE ligne juste en dessous pour ne jamais chevaucher le suffixe.
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(21);
     doc.setTextColor(...(premiumCard ? ROSE_DEEP : INK));
     const loyerStr = loyer > 0 ? eurLoyer(loyer) : "—";
-    doc.text(loyerStr, x + 16, cardY + 128);
+    doc.text(loyerStr, x + 16, cardY + 122);
     const lw = doc.getTextWidth(loyerStr);
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(9);
     doc.setTextColor(...GREY);
-    doc.text("/ mois TTC", x + 16 + lw + 6, cardY + 128);
-    // Badge delta (carte premium)
+    doc.text("/ mois TTC", x + 16 + lw + 6, cardY + 122);
+    // Badge delta (carte premium) — ligne dédiée sous le prix, aligné à gauche.
     if (premiumCard && delta !== 0) {
       const dStr = `${delta > 0 ? "+ " : "− "}${eur(Math.abs(delta))} / mois`;
       doc.setFont(BRAND_FONT, "bold");
-      doc.setFontSize(9);
+      doc.setFontSize(8.5);
       const dw = doc.getTextWidth(dStr) + 16;
       doc.setFillColor(255, 255, 255);
       doc.setDrawColor(...ROSE);
       doc.setLineWidth(1);
-      doc.roundedRect(x + cardW - dw - 16, cardY + 116, dw, 17, 8.5, 8.5, "FD");
+      doc.roundedRect(x + 16, cardY + 130, dw, 16, 8, 8, "FD");
       doc.setTextColor(...ROSE_DEEP);
-      doc.text(dStr, x + cardW - dw - 16 + 8, cardY + 127.5);
+      doc.text(dStr, x + 16 + 8, cardY + 140.5);
     }
-    // Chips (autonomie / puissance / batterie)
+    // Chips (autonomie / puissance / batterie) — même ligne sur les deux cartes.
     const chips = [
       `Autonomie ${sv.vehicle.rangeWltp ?? 0} km`,
       `Puissance ${sv.vehicle.powerHp ?? 0} ch`,
       `Batterie ${sv.vehicle.batteryKwh ?? 0} kWh`,
     ];
     let chx = x + 16;
-    const chy = cardY + 140;
+    const chy = cardY + 154;
     doc.setFontSize(8);
     for (const c of chips) {
       doc.setFont(BRAND_FONT, "normal");
