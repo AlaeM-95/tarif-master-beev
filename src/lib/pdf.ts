@@ -2,7 +2,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { BEEV_JOURNEYS, MANDATORY_SERVICES, isUtilitaireCategory, type Charger, type LineItem, type ProjectType, type Vehicle } from "./catalog";
 import { loadPdfSettings, hexToRgb } from "./pdf-settings";
-import { DEFAULT_PDF_CONFIG, type PdfDisplayConfig } from "./pdf-config";
+import { DEFAULT_PDF_CONFIG, DEFAULT_MODEL_Y_COMPARE_ROWS, type PdfDisplayConfig, type ModelYCompareRow, type ModelYComparePicto } from "./pdf-config";
 import { fetchTcoResultsForVehicles, type TcoResult } from "./tco-results";
 import { loadBeevPillars, type BeevPillar } from "./beev-pillars";
 import { loadPdfTexts, buildPdfTextMap, lookupText, lookupList, setPdfTextOverrides, type PdfTextMap } from "./pdf-texts";
@@ -964,6 +964,27 @@ export async function generateProposalPdf(opts: {
       doc.addPage();
       drawHeader(doc, client, "vehicles");
       await drawVehicleComparator(doc, v, undefined, client);
+    }
+  }
+
+  // ─── Comparatif Model Y (admin) : Propulsion vs Premium Propulsion ───────
+  // N'apparaît que si la case est cochée ET que les deux finitions Model Y sont
+  // présentes au devis. Détection tolérante (marque TESLA, modèle « Model Y »,
+  // version avec / sans « PREMIUM », toutes deux contenant « PROPULSION »).
+  if (ADMIN_MODE && cfg.showModelYCompare) {
+    const isMY = (sv: SelectedVehicle) =>
+      /TESLA/i.test(sv.vehicle.brand) && /MODEL\s*Y/i.test(sv.vehicle.model);
+    const propulsionSv = v.find(
+      (sv) => isMY(sv) && /PROPULSION/i.test(sv.vehicle.version) && !/PREMIUM/i.test(sv.vehicle.version),
+    );
+    const premiumSv = v.find((sv) => isMY(sv) && /PREMIUM/i.test(sv.vehicle.version));
+    if (propulsionSv && premiumSv) {
+      const myRows = (cfg.modelYCompareRows && cfg.modelYCompareRows.length > 0)
+        ? cfg.modelYCompareRows
+        : DEFAULT_MODEL_Y_COMPARE_ROWS;
+      doc.addPage();
+      drawHeader(doc, client, "vehicles");
+      await drawModelYCompare(doc, propulsionSv, premiumSv, myRows, client);
     }
   }
 
@@ -6515,6 +6536,326 @@ function drawThumbCell(doc: jsPDF, cell: { x: number; y: number; height: number 
     const w = img.w * ratio, h = img.h * ratio;
     try { doc.addImage(img.dataUrl, img.format, bx + (boxW - w) / 2, by + (boxH - h) / 2, w, h); } catch { /* non bloquant */ }
   }
+}
+
+// ============ COMPARATIF MODEL Y (Propulsion vs Premium Propulsion) ============
+// Pictogramme vectoriel (charte rose) dessiné dans une boîte centrée sur
+// (cx, cy), rayon ~8pt. Trait arrondi, couleur = col. Aucune dépendance image.
+function drawMyPicto(doc: jsPDF, key: ModelYComparePicto, cx: number, cy: number, col: [number, number, number]) {
+  doc.setDrawColor(...col);
+  doc.setFillColor(...col);
+  doc.setLineWidth(1.4);
+  try { (doc as any).setLineCap("round"); (doc as any).setLineJoin("round"); } catch { /* no-op */ }
+  const L2 = (x1: number, y1: number, x2: number, y2: number) => doc.line(x1, y1, x2, y2);
+  switch (key) {
+    case "range": // flèche de distance / autonomie
+      L2(cx - 8, cy, cx + 8, cy);
+      L2(cx + 4, cy - 3.2, cx + 8, cy); L2(cx + 4, cy + 3.2, cx + 8, cy);
+      break;
+    case "seat":
+      L2(cx - 4, cy - 6, cx - 4, cy + 1); L2(cx - 4, cy + 1, cx + 4, cy + 1);
+      L2(cx + 3, cy + 1, cx + 3, cy + 5); L2(cx - 3, cy + 1, cx - 3, cy + 5);
+      break;
+    case "audio":
+      doc.roundedRect(cx - 5, cy - 6, 10, 12, 1.6, 1.6, "S");
+      doc.circle(cx, cy + 1.5, 3, "S"); doc.circle(cx, cy - 3, 1.1, "S");
+      break;
+    case "screen":
+      doc.roundedRect(cx - 7, cy - 5.5, 14, 9, 1.6, 1.6, "S");
+      L2(cx, cy + 3.5, cx, cy + 6); L2(cx - 3, cy + 6, cx + 3, cy + 6);
+      break;
+    case "wheel":
+      doc.circle(cx, cy, 7, "S"); doc.circle(cx, cy, 2.4, "S");
+      L2(cx, cy - 7, cx, cy - 2.4); L2(cx, cy + 2.4, cx, cy + 7);
+      L2(cx - 7, cy, cx - 2.4, cy); L2(cx + 2.4, cy, cx + 7, cy);
+      break;
+    case "glass": // pare-brise / vitrage
+      L2(cx - 7, cy + 5, cx - 4, cy - 5); L2(cx - 4, cy - 5, cx + 4, cy - 5);
+      L2(cx + 4, cy - 5, cx + 7, cy + 5); L2(cx - 7, cy + 5, cx + 7, cy + 5);
+      break;
+    case "tailgate": // hayon ouvert
+      doc.roundedRect(cx - 6, cy - 1, 12, 7, 1, 1, "S");
+      L2(cx - 6, cy - 1, cx - 1, cy - 7); L2(cx - 1, cy - 7, cx + 7, cy - 3.5);
+      break;
+    case "light": // ampoule
+      doc.circle(cx, cy - 2, 5, "S");
+      L2(cx - 2.6, cy + 3.2, cx + 2.6, cy + 3.2); L2(cx - 2, cy + 5.2, cx + 2, cy + 5.2);
+      break;
+    case "climate": // flocon
+      L2(cx, cy - 7, cx, cy + 7);
+      L2(cx - 6, cy - 3.5, cx + 6, cy + 3.5); L2(cx - 6, cy + 3.5, cx + 6, cy - 3.5);
+      break;
+    case "connectivity": // barres de signal
+      doc.rect(cx - 6, cy + 1, 2.4, 5, "F");
+      doc.rect(cx - 1.2, cy - 1.5, 2.4, 7.5, "F");
+      doc.rect(cx + 3.6, cy - 4.5, 2.4, 10.5, "F");
+      break;
+    case "camera":
+      doc.roundedRect(cx - 7, cy - 3, 14, 9, 1.6, 1.6, "S");
+      doc.rect(cx - 3.5, cy - 5, 4, 2.2, "F");
+      doc.circle(cx, cy + 1.5, 2.6, "S");
+      break;
+    case "check":
+    default:
+      doc.circle(cx, cy, 7, "S");
+      L2(cx - 3, cy, cx - 0.5, cy + 3); L2(cx - 0.5, cy + 3, cx + 3.5, cy - 3);
+      break;
+  }
+  try { (doc as any).setLineCap("butt"); (doc as any).setLineJoin("miter"); } catch { /* no-op */ }
+}
+
+// Image véhicule « contenue » dans une boîte, sans carte blanche (pour poser la
+// photo directement sur le fond d'une carte teintée).
+function drawContainedImage(doc: jsPDF, img: LoadedImage | null, x: number, y: number, boxW: number, boxH: number) {
+  if (!img) return;
+  const ratio = Math.min(boxW / img.w, boxH / img.h);
+  const w = img.w * ratio, h = img.h * ratio;
+  try { doc.addImage(img.dataUrl, img.format, x + (boxW - w) / 2, y + (boxH - h) / 2, w, h); } catch { /* non bloquant */ }
+}
+
+// Page dédiée : met en regard, d'un coup d'œil, ce que la finition Premium
+// Propulsion ajoute par rapport à la finition Propulsion (Tesla Model Y).
+// Deux cartes en tête (photo + loyer + chips), une grille de différences
+// (picto + Propulsion → Premium), un bandeau verdict (surcoût mensuel + cumulé).
+async function drawModelYCompare(
+  doc: jsPDF,
+  propulsion: SelectedVehicle,
+  premium: SelectedVehicle,
+  rows: ModelYCompareRow[],
+  client: ClientInfo,
+) {
+  const ROSE: [number, number, number] = PRODUCT_ACCENT;         // #F4B8AA
+  const ROSE_SOFT: [number, number, number] = [253, 241, 238];   // #FDF1EE
+  const ROSE_DEEP: [number, number, number] = ACCENT_TEXT;       // #B5604F
+  const GREY: [number, number, number] = [138, 138, 138];
+  const contentW = PAGE_W - M * 2;
+
+  const loyerOf = (sv: SelectedVehicle) =>
+    (sv.negotiatedMonthly ?? 0) > 0 ? sv.negotiatedMonthly : (sv.vehicle.monthlyLld ?? 0);
+  const loyerP = loyerOf(propulsion);
+  const loyerPrem = loyerOf(premium);
+  const delta = loyerPrem - loyerP;
+  const duree = premium.durationMonths || propulsion.durationMonths || 49;
+  const cumule = delta * duree;
+  const autoDiff = (premium.vehicle.rangeWltp ?? 0) - (propulsion.vehicle.rangeWltp ?? 0);
+  const nbFeatures = rows.filter((r) => (r.premium ?? "").trim() && r.premium.trim() !== (r.propulsion ?? "").trim()).length;
+
+  const [imgP, imgPrem] = await preloadVehicleThumbs([propulsion, premium]);
+
+  let y = 130;
+  eyebrow(doc, "COMPARATIF · TESLA MODEL Y", y);
+  y += 30;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(24);
+  doc.setTextColor(...INK);
+  doc.text("Propulsion ou Premium ?", M, y);
+  y += 22;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...SUB);
+  const introLines = doc.splitTextToSize(
+    "En un coup d'œil, ce que change la finition Premium pour vos conducteurs. Même véhicule, deux niveaux d'équipement : voici précisément où va le supplément de loyer.",
+    contentW,
+  );
+  doc.text(introLines, M, y);
+  y += introLines.length * 13 + 12;
+
+  // ─── Deux cartes en tête ───────────────────────────────────────────────
+  const cardGap = 16;
+  const cardW = (contentW - cardGap) / 2;
+  const cardH = 156;
+  const cardY = y;
+  const drawHeadCard = (
+    x: number,
+    sv: SelectedVehicle,
+    img: LoadedImage | null,
+    loyer: number,
+    premiumCard: boolean,
+  ) => {
+    if (premiumCard) {
+      doc.setFillColor(...ROSE_SOFT);
+      doc.roundedRect(x, cardY, cardW, cardH, 12, 12, "F");
+      doc.setDrawColor(...ROSE);
+      doc.setLineWidth(1.6);
+      doc.roundedRect(x, cardY, cardW, cardH, 12, 12, "S");
+    } else {
+      doc.setDrawColor(...RULE);
+      doc.setLineWidth(1);
+      doc.roundedRect(x, cardY, cardW, cardH, 12, 12, "S");
+    }
+    // Badge coin haut-droit
+    const badge = premiumCard ? "PREMIUM" : "ENTRÉE DE GAMME";
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7.5);
+    const bw = doc.getTextWidth(badge) + 14;
+    doc.setFillColor(...(premiumCard ? ROSE : [237, 233, 224]));
+    doc.roundedRect(x + cardW - bw - 12, cardY + 12, bw, 15, 7.5, 7.5, "F");
+    doc.setTextColor(...(premiumCard ? [122, 53, 39] : [92, 92, 92]));
+    doc.text(badge, x + cardW - bw - 12 + 7, cardY + 22);
+    // Trim + nom
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...GREY);
+    doc.text("MODEL Y", x + 16, cardY + 22);
+    doc.setFontSize(16);
+    doc.setTextColor(...INK);
+    const versionLabel = premiumCard ? "Premium Propulsion" : "Propulsion";
+    doc.text(versionLabel, x + 16, cardY + 40);
+    // Photo
+    drawContainedImage(doc, img, x + 16, cardY + 48, cardW - 32, 56);
+    // Loyer
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(21);
+    doc.setTextColor(...(premiumCard ? ROSE_DEEP : INK));
+    const loyerStr = loyer > 0 ? eurLoyer(loyer) : "—";
+    doc.text(loyerStr, x + 16, cardY + 128);
+    const lw = doc.getTextWidth(loyerStr);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...GREY);
+    doc.text("/ mois TTC", x + 16 + lw + 6, cardY + 128);
+    // Badge delta (carte premium)
+    if (premiumCard && delta !== 0) {
+      const dStr = `${delta > 0 ? "+ " : "− "}${eur(Math.abs(delta))} / mois`;
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(9);
+      const dw = doc.getTextWidth(dStr) + 16;
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(...ROSE);
+      doc.setLineWidth(1);
+      doc.roundedRect(x + cardW - dw - 16, cardY + 116, dw, 17, 8.5, 8.5, "FD");
+      doc.setTextColor(...ROSE_DEEP);
+      doc.text(dStr, x + cardW - dw - 16 + 8, cardY + 127.5);
+    }
+    // Chips (autonomie / puissance / batterie)
+    const chips = [
+      `Autonomie ${sv.vehicle.rangeWltp ?? 0} km`,
+      `Puissance ${sv.vehicle.powerHp ?? 0} ch`,
+      `Batterie ${sv.vehicle.batteryKwh ?? 0} kWh`,
+    ];
+    let chx = x + 16;
+    const chy = cardY + 140;
+    doc.setFontSize(8);
+    for (const c of chips) {
+      doc.setFont(BRAND_FONT, "normal");
+      const cw = doc.getTextWidth(c) + 12;
+      if (chx + cw > x + cardW - 12) break;
+      doc.setFillColor(...(premiumCard ? [255, 255, 255] : [244, 241, 234]));
+      doc.roundedRect(chx, chy, cw, 12, 4, 4, "F");
+      doc.setTextColor(...INK);
+      doc.text(c, chx + 6, chy + 8.2);
+      chx += cw + 6;
+    }
+  };
+  drawHeadCard(M, propulsion, imgP, loyerP, false);
+  drawHeadCard(M + cardW + cardGap, premium, imgPrem, loyerPrem, true);
+  y = cardY + cardH + 26;
+
+  // ─── En-tête de la grille des différences ──────────────────────────────
+  doc.setFillColor(...ROSE);
+  doc.rect(M, y - 7, 18, 3, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(...INK);
+  doc.text("CE QUE LA FINITION PREMIUM AJOUTE", M + 26, y);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...GREY);
+  const hint = "Propulsion → Premium";
+  doc.text(hint, M + contentW - doc.getTextWidth(hint), y);
+  y += 16;
+
+  // ─── Grille 2 colonnes ─────────────────────────────────────────────────
+  const colGap = 16;
+  const rowW = (contentW - colGap) / 2;
+  const rowH = 44;
+  const rowGap = 10;
+  // On garde de la place pour le bandeau verdict (≈ 78pt) en bas de page.
+  const verdictH = 80;
+  const maxRowsVert = Math.floor((FOOTER_LIMIT - y - verdictH - 14) / (rowH + rowGap));
+  const maxRows = Math.max(1, maxRowsVert) * 2;
+  const visibleRows = rows.slice(0, maxRows);
+
+  visibleRows.forEach((r, i) => {
+    const colIdx = i % 2;
+    const rowIdx = Math.floor(i / 2);
+    const rx = M + colIdx * (rowW + colGap);
+    const ryRow = y + rowIdx * (rowH + rowGap);
+    doc.setDrawColor(...RULE);
+    doc.setLineWidth(1);
+    doc.roundedRect(rx, ryRow, rowW, rowH, 10, 10, "S");
+    // Boîte picto
+    doc.setFillColor(...ROSE_SOFT);
+    doc.roundedRect(rx + 11, ryRow + (rowH - 34) / 2, 34, 34, 9, 9, "F");
+    drawMyPicto(doc, r.picto, rx + 11 + 17, ryRow + rowH / 2, ROSE_DEEP);
+    // Libellé + valeurs
+    const tx = rx + 11 + 34 + 12;
+    const tw = rx + rowW - 12 - tx;
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...GREY);
+    doc.text((r.label || "").toUpperCase(), tx, ryRow + 16);
+    // Ligne valeurs : Propulsion (barré / gris) → Premium (gras)
+    const pVal = (r.propulsion ?? "").trim() || "—";
+    const isAbsent = pVal === "—" || pVal === "";
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(...GREY);
+    const pShown = doc.splitTextToSize(pVal, tw)[0];
+    doc.text(pShown, tx, ryRow + 30);
+    const pW = doc.getTextWidth(pShown);
+    if (!isAbsent) {
+      doc.setDrawColor(...GREY);
+      doc.setLineWidth(0.7);
+      doc.line(tx, ryRow + 27, tx + pW, ryRow + 27);
+    }
+    // flèche
+    doc.setTextColor(...ROSE);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.text("→", tx + pW + 5, ryRow + 30);
+    const aW = doc.getTextWidth("→");
+    // Premium
+    doc.setTextColor(...INK);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(10);
+    const premX = tx + pW + 5 + aW + 6;
+    const premShown = doc.splitTextToSize((r.premium ?? "").trim() || "—", (rx + rowW - 12) - premX)[0];
+    doc.text(premShown, premX, ryRow + 30);
+  });
+  const usedRows = Math.ceil(visibleRows.length / 2);
+  y = y + usedRows * (rowH + rowGap) + 6;
+
+  // ─── Bandeau verdict ───────────────────────────────────────────────────
+  const vY = Math.max(y, FOOTER_LIMIT - verdictH);
+  doc.setFillColor(...INK);
+  doc.roundedRect(M, vY, contentW, verdictH - 8, 12, 12, "F");
+  const bigStr = `${delta >= 0 ? "+ " : "− "}${eur(Math.abs(delta))}`;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(26);
+  doc.setTextColor(...ROSE);
+  doc.text(bigStr, M + 22, vY + 34);
+  const bigW = doc.getTextWidth(bigStr);
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(11);
+  doc.setTextColor(255, 255, 255);
+  doc.text("/mois", M + 22 + bigW + 6, vY + 34);
+  // Texte
+  const parts: string[] = [];
+  if (autoDiff > 0) parts.push(`+ ${autoDiff} km d'autonomie`);
+  if (nbFeatures > 0) parts.push(`${nbFeatures} équipement${nbFeatures > 1 ? "s" : ""} de confort`);
+  const lead = parts.length ? `La finition Premium apporte ${parts.join(" et ")}. ` : "";
+  const cumuleStr = duree > 0 && delta !== 0
+    ? `Sur ${duree} mois, l'écart de loyer représente ${eur(Math.abs(cumule))} TTC.`
+    : "";
+  const txtX = M + 22 + bigW + 70;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(9.5);
+  doc.setTextColor(237, 231, 222);
+  const vLines = doc.splitTextToSize(
+    `${lead}Pertinente pour les conducteurs à fort kilométrage et les trajets longue distance. ${cumuleStr}`,
+    contentW - (txtX - M) - 22,
+  );
+  doc.text(vLines.slice(0, 3), txtX, vY + 22);
 }
 
 // ============ COMPARATEUR VÉHICULES (vertical, véhicules en lignes) ============

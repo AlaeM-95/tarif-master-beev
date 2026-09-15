@@ -4,6 +4,52 @@
 import { useEffect, useState } from "react";
 import type { ProjectType } from "./catalog";
 
+// ===== Comparatif Model Y (Propulsion vs Premium Propulsion) =====
+// Page PDF dédiée (admin) qui met en regard, d'un coup d'œil, ce que la finition
+// Premium ajoute par rapport à la finition Propulsion. Chaque ligne est
+// matérialisée par un picto vectoriel (charte rose) + une valeur Propulsion et
+// une valeur Premium. Éditable dans le panneau de configuration PDF.
+export type ModelYComparePicto =
+  | "range" | "seat" | "audio" | "screen" | "wheel"
+  | "glass" | "tailgate" | "light" | "climate" | "connectivity"
+  | "camera" | "check";
+
+export type ModelYCompareRow = {
+  id: string;
+  picto: ModelYComparePicto;
+  label: string;       // ex : "Autonomie WLTP"
+  propulsion: string;  // ex : "500 km" (vide ou "—" = absent / non inclus)
+  premium: string;     // ex : "600 km"
+};
+
+// Libellés des pictos disponibles dans l'éditeur (dropdown).
+export const MODEL_Y_PICTOS: { key: ModelYComparePicto; label: string }[] = [
+  { key: "range", label: "Autonomie" },
+  { key: "seat", label: "Sièges" },
+  { key: "audio", label: "Audio" },
+  { key: "screen", label: "Écran" },
+  { key: "wheel", label: "Jantes" },
+  { key: "glass", label: "Vitrage" },
+  { key: "tailgate", label: "Hayon" },
+  { key: "light", label: "Éclairage" },
+  { key: "climate", label: "Climatisation" },
+  { key: "connectivity", label: "Connectivité" },
+  { key: "camera", label: "Caméra" },
+  { key: "check", label: "Équipement (générique)" },
+];
+
+// Lignes par défaut (valeurs indicatives, à valider / ajuster dans le panneau).
+export const DEFAULT_MODEL_Y_COMPARE_ROWS: ModelYCompareRow[] = [
+  { id: "my-range", picto: "range", label: "Autonomie WLTP", propulsion: "500 km", premium: "600 km" },
+  { id: "my-seat", picto: "seat", label: "Sièges avant", propulsion: "Chauffants", premium: "Chauffants + ventilés" },
+  { id: "my-audio", picto: "audio", label: "Système audio", propulsion: "7 haut-parleurs", premium: "15 HP + caisson" },
+  { id: "my-screen", picto: "screen", label: "Écran arrière", propulsion: "—", premium: "Écran tactile 8\"" },
+  { id: "my-wheel", picto: "wheel", label: "Jantes", propulsion: "19\"", premium: "20\" Induction" },
+  { id: "my-glass", picto: "glass", label: "Vitrage acoustique", propulsion: "Standard", premium: "Renforcé av. + ar." },
+  { id: "my-tailgate", picto: "tailgate", label: "Hayon", propulsion: "Manuel", premium: "Électrique mains libres" },
+  { id: "my-light", picto: "light", label: "Éclairage d'ambiance", propulsion: "—", premium: "Bandeau LED intérieur" },
+];
+
 export type PdfDisplayConfig = {
   // ===== Sections du PDF =====
   showWhyBeev: boolean;
@@ -18,6 +64,8 @@ export type PdfDisplayConfig = {
   showCurrentFleetVehicle: boolean; // afficher la fiche détaillée des véhicules « flotte actuelle » (masqués par défaut)
   showProposalVehicle: boolean; // afficher la fiche détaillée des propositions Beev (masquées par défaut)
   showCompetitorComparison: boolean; // page Mise en concurrence (offre client vs Beev sur même véhicule)
+  showModelYCompare: boolean; // page comparatif Model Y Propulsion vs Premium (admin ; auto si les 2 finitions sont au devis)
+  modelYCompareRows?: ModelYCompareRow[]; // lignes du comparatif (éditables) ; si absent → DEFAULT_MODEL_Y_COMPARE_ROWS
   showFinancialSummary: boolean; // page synthèse HT/TVA/TTC
   showFinancialSynthesis: boolean; // page synthèse financière enrichie (KPI cards, économies, CO2)
   showFiscalAdvantages: boolean; // page avantages fiscaux 2026 (TVS, TVA, malus, AEN)
@@ -93,6 +141,7 @@ export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
   showCurrentFleetVehicle: false, // masquée par défaut ; le commercial l'active dans la config PDF
   showProposalVehicle: false, // masquée par défaut ; le commercial l'active dans la config PDF
   showCompetitorComparison: true,
+  showModelYCompare: false, // opt-in : ne sort que si les 2 finitions Model Y sont au devis ET la case cochée
   showFinancialSummary: false, // retirée sur demande utilisateur (info déjà dans le récap site)
   showFinancialSynthesis: true, // nouvelle synthèse complète (KPI + économies + CO2)
   showFiscalAdvantages: true, // page avantages fiscaux 2026
@@ -197,6 +246,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
       { key: "showCurrentFleetVehicle", label: "Fiche détaillée flotte actuelle", description: "Afficher la fiche véhicule complète des véhicules marqués « flotte actuelle » (masqués par défaut, visibles uniquement dans le comparateur)", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showProposalVehicle", label: "Fiche détaillée proposition Beev", description: "Afficher la fiche véhicule complète des propositions Beev (masquées par défaut, visibles dans le comparateur)", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showCompetitorComparison", label: "Mise en concurrence", description: "Slide « Offre actuelle vs Offre Beev » pour les véhicules sur lesquels une offre concurrente est saisie", appliesTo: ["vehicles"] as unknown as string[] } as any,
+      { key: "showModelYCompare", label: "Comparatif Model Y (Propulsion vs Premium)", description: "Page dédiée qui montre d'un coup d'œil, avec des pictos, ce que la finition Premium ajoute (autonomie, sièges, audio, écran arrière…). N'apparaît que si les deux finitions Model Y sont au devis. Lignes éditables ci-dessous.", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showCarbonImpact", label: "Bilan carbone (RSE)", description: "Page CO2 évité + équivalences (avion, arbres, km)", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showFinancialSummary", label: "Synthèse HT / TVA / TTC", description: "Tableau récap financier" },
       { key: "showFinancialSynthesis", label: "Synthèse financière enrichie", description: "KPI cards (total contrat, économies cumulées vs concurrents, TVS évitée, CO2 évité)" },

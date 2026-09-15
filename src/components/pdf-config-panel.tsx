@@ -1,10 +1,16 @@
-import { useState } from "react";
-import { Settings2, RotateCcw, ChevronDown, ChevronUp, Eye, EyeOff } from "lucide-react";
+import { Fragment, useState } from "react";
+import { Settings2, RotateCcw, ChevronDown, ChevronUp, Eye, EyeOff, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import type { ProjectType } from "@/lib/catalog";
-import { CONFIG_GROUPS, type PdfDisplayConfig } from "@/lib/pdf-config";
+import {
+  CONFIG_GROUPS,
+  DEFAULT_MODEL_Y_COMPARE_ROWS,
+  MODEL_Y_PICTOS,
+  type ModelYCompareRow,
+  type PdfDisplayConfig,
+} from "@/lib/pdf-config";
 
 type Props = {
   config: PdfDisplayConfig;
@@ -16,7 +22,84 @@ type Props = {
   /** Compte admin : active la vue « ordre du document » (sections rangées dans
    *  l'ordre réel du PDF, avec un numéro de page indicatif à droite). */
   isAdmin?: boolean;
+  /** Les deux finitions Model Y (Propulsion + Premium Propulsion) sont-elles
+   *  présentes au devis ? Pilote l'affichage de l'éditeur du comparatif Model Y. */
+  hasModelYPair?: boolean;
 };
+
+// Éditeur des lignes du comparatif Model Y (Propulsion vs Premium). Chaque ligne :
+// picto (dropdown), libellé, valeur Propulsion, valeur Premium. Persisté dans la
+// config PDF via update({ modelYCompareRows }).
+function ModelYCompareEditor({
+  config,
+  update,
+  hasPair,
+}: {
+  config: PdfDisplayConfig;
+  update: (patch: Partial<PdfDisplayConfig>) => void;
+  hasPair?: boolean;
+}) {
+  const rows: ModelYCompareRow[] = config.modelYCompareRows ?? DEFAULT_MODEL_Y_COMPARE_ROWS;
+  const commit = (next: ModelYCompareRow[]) => update({ modelYCompareRows: next });
+  const setRow = (i: number, patch: Partial<ModelYCompareRow>) =>
+    commit(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const removeRow = (i: number) => commit(rows.filter((_, j) => j !== i));
+  const addRow = () =>
+    commit([
+      ...rows,
+      { id: `my-${Date.now()}`, picto: "check", label: "", propulsion: "—", premium: "" },
+    ]);
+  const inputCls =
+    "min-w-0 rounded border border-border/60 bg-background px-1.5 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-beev-rose";
+
+  return (
+    <div className="mt-2 rounded-md border border-beev-rose/40 bg-beev-rose-20/40 p-2 space-y-2">
+      {!hasPair && (
+        <p className="text-[10px] leading-tight text-beev-black/70">
+          Les deux finitions ne sont pas encore au devis. Ajoutez une Model Y{" "}
+          <b>Propulsion</b> et une Model Y <b>Premium Propulsion</b> pour que la page sorte dans le PDF.
+        </p>
+      )}
+      <div className="hidden sm:grid grid-cols-[70px_1fr_1fr_1fr_20px] gap-1.5 px-0.5 text-[8.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <span>Picto</span><span>Libellé</span><span>Propulsion</span><span>Premium</span><span />
+      </div>
+      {rows.map((r, i) => (
+        <div key={r.id} className="grid grid-cols-[70px_1fr_1fr_1fr_20px] gap-1.5 items-center">
+          <select
+            value={r.picto}
+            onChange={(e) => setRow(i, { picto: e.target.value as ModelYCompareRow["picto"] })}
+            className={inputCls}
+            title="Pictogramme"
+          >
+            {MODEL_Y_PICTOS.map((p) => (
+              <option key={p.key} value={p.key}>{p.label}</option>
+            ))}
+          </select>
+          <input className={inputCls} value={r.label} placeholder="Libellé"
+            onChange={(e) => setRow(i, { label: e.target.value })} />
+          <input className={inputCls} value={r.propulsion} placeholder="—"
+            onChange={(e) => setRow(i, { propulsion: e.target.value })} />
+          <input className={inputCls} value={r.premium} placeholder="Premium"
+            onChange={(e) => setRow(i, { premium: e.target.value })} />
+          <button type="button" title="Supprimer la ligne" onClick={() => removeRow(i)}
+            className="flex items-center justify-center text-muted-foreground hover:text-beev-rose-deep">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ))}
+      <div className="flex items-center gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={addRow} className="h-6 gap-1 text-[10px]">
+          <Plus className="w-3 h-3" /> Ajouter une ligne
+        </Button>
+        <Button type="button" variant="ghost" size="sm"
+          onClick={() => commit(DEFAULT_MODEL_Y_COMPARE_ROWS)}
+          className="h-6 gap-1 text-[10px]" title="Restaurer les lignes par défaut">
+          <RotateCcw className="w-3 h-3" /> Réinitialiser
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 // Ordre de lecture réel du document (ordre dans lequel les pages sortent du
 // générateur). Sert à ranger les sections et à calculer un numéro de page
@@ -25,7 +108,7 @@ const DOC_ORDER: string[] = [
   // Ouverture
   "showWhyBeev", "showSocialProof",
   // Offre véhicules
-  "showVehicleComparator", "showCurrentFleetVehicle", "showProposalVehicle", "showCompetitorComparison",
+  "showVehicleComparator", "showCurrentFleetVehicle", "showProposalVehicle", "showCompetitorComparison", "showModelYCompare",
   // Analyse TCO véhicules
   "showTcoComparison", "showTcoDetailedTable", "showTcoFiscalDetail", "showFleetSynthesis",
   "showCarbonImpact", "showFiscalAdvantages",
@@ -51,7 +134,7 @@ const ACCENT_BG: Record<PhaseAccent, string> = {
 };
 const PHASES: { name: string; accent: PhaseAccent; keys: string[] }[] = [
   { name: "Ouverture", accent: "rose", keys: ["showWhyBeev", "showSocialProof"] },
-  { name: "Offre véhicules", accent: "bleu", keys: ["showVehicleComparator", "showCurrentFleetVehicle", "showProposalVehicle", "showCompetitorComparison", "showFleetSynthesis"] },
+  { name: "Offre véhicules", accent: "bleu", keys: ["showVehicleComparator", "showCurrentFleetVehicle", "showProposalVehicle", "showCompetitorComparison", "showModelYCompare", "showFleetSynthesis"] },
   { name: "Analyse TCO", accent: "violet", keys: ["includeCurrentFleetInTco", "showTcoComparison", "showTcoDetailedTable", "tcoGroupByComparison", "showTcoFiscalDetail", "showCarbonImpact", "showFiscalAdvantages"] },
   { name: "Rapport site & bornes", accent: "ink", keys: ["showSiteOverview", "showSiteGuarantees", "showSiteProjectSynthesis", "showSiteInfrastructure", "showSiteEquipments", "showSiteProductSheet", "showSiteSupervision", "showSiteCompliance", "showSitePaymentOptions", "showChargerFeatures", "showChargerLineItems", "showChargerInclusionNote", "showSupervisionHome", "showSupervisionConnect"] },
   { name: "Synthèse & clôture", accent: "rose", keys: ["showFinancialSummary", "showFinancialSynthesis", "showGuarantees", "showJourney", "showExecutiveSummary", "showLegend", "showValidation"] },
@@ -66,7 +149,7 @@ const KIND_BY_KEY: Record<string, SectionKind> = {
   showFleetSynthesis: "tableau", showTcoComparison: "graphique",
   showTcoDetailedTable: "tableau", showTcoFiscalDetail: "tableau",
   showVehicleComparator: "tableau", showCurrentFleetVehicle: "fiche",
-  showProposalVehicle: "fiche", showCompetitorComparison: "cartes",
+  showProposalVehicle: "fiche", showCompetitorComparison: "cartes", showModelYCompare: "cartes",
   showCarbonImpact: "graphique", showFinancialSummary: "tableau",
   showFinancialSynthesis: "cartes", showFiscalAdvantages: "texte",
   showLegend: "texte", showGuarantees: "cartes", showJourney: "cartes",
@@ -113,7 +196,7 @@ function KindThumb({ kind }: { kind: SectionKind }) {
   );
 }
 
-export function PdfConfigPanel({ config, update, reset, projectType, onPreviewSection, isAdmin }: Props) {
+export function PdfConfigPanel({ config, update, reset, projectType, onPreviewSection, isAdmin, hasModelYPair }: Props) {
   const [open, setOpen] = useState(false);
   const [openPhases, setOpenPhases] = useState<Record<string, boolean>>({});
 
@@ -149,9 +232,10 @@ export function PdfConfigPanel({ config, update, reset, projectType, onPreviewSe
   const renderItem = (item: (typeof CONFIG_GROUPS)[number]["items"][number], pageNum?: number) => {
     const on = !!config[item.key];
     const kind = KIND_BY_KEY[item.key as string];
+    const showMyEditor = item.key === "showModelYCompare" && on;
     return (
+      <Fragment key={item.key}>
       <label
-        key={item.key}
         className={`flex items-start gap-2 cursor-pointer rounded-md border p-2 transition ${
           on ? "border-beev-rose/50 bg-beev-rose-20" : "border-border/60 bg-transparent opacity-70 hover:opacity-100"
         }`}
@@ -193,6 +277,8 @@ export function PdfConfigPanel({ config, update, reset, projectType, onPreviewSe
           )}
         </div>
       </label>
+      {showMyEditor && <ModelYCompareEditor config={config} update={update} hasPair={hasModelYPair} />}
+      </Fragment>
     );
   };
 

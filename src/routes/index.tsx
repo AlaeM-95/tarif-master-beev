@@ -1956,6 +1956,16 @@ function App() {
                 projectType={projectType}
                 onPreviewSection={(key) => previewSection(key)}
                 isAdmin={isAdmin}
+                hasModelYPair={(() => {
+                  const list = Object.values(selectedV);
+                  const isMY = (sv: SelectedVehicle) =>
+                    /TESLA/i.test(sv.vehicle.brand) && /MODEL\s*Y/i.test(sv.vehicle.model);
+                  const hasProp = list.some(
+                    (sv) => isMY(sv) && /PROPULSION/i.test(sv.vehicle.version) && !/PREMIUM/i.test(sv.vehicle.version),
+                  );
+                  const hasPrem = list.some((sv) => isMY(sv) && /PREMIUM/i.test(sv.vehicle.version));
+                  return hasProp && hasPrem;
+                })()}
               />
             );
             const selectionCard = (
