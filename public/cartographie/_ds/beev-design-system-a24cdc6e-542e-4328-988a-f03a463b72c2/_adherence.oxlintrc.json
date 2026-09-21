@@ -1,0 +1,232 @@
+{
+  "plugins": [
+    "react",
+    "import"
+  ],
+  "rules": {
+    "react/forbid-elements": [
+      "warn",
+      {
+        "forbid": []
+      }
+    ],
+    "no-restricted-imports": [
+      "warn",
+      {
+        "patterns": [
+          {
+            "group": [
+              "ottobock/**",
+              "thea/**",
+              "ui_kits/marketing-site/**"
+            ],
+            "message": "Import design-system components from 'index.js', not component internals."
+          }
+        ]
+      }
+    ],
+    "no-restricted-syntax": [
+      "warn",
+      {
+        "selector": "Literal[value=/#[0-9a-fA-F]{3,8}\\b/]",
+        "message": "Raw hex color — use a design-system color token via var()."
+      },
+      {
+        "selector": "Literal[value=/\\b\\d+px\\b/]",
+        "message": "Raw px value — use a design-system spacing token via var()."
+      },
+      {
+        "selector": "Literal[value=/font-family\\s*:\\s*(?!['\\\"]?(?:Roobert))/i]",
+        "message": "Font not provided by the design system. Available: Roobert."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/index.js"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ],
+  "x-omelette": {
+    "components": {},
+    "tokens": [
+      "--beev-beige",
+      "--beev-black",
+      "--beev-bleu",
+      "--beev-bleu-20",
+      "--beev-bleu-30",
+      "--beev-bleu-50",
+      "--beev-error",
+      "--beev-good",
+      "--beev-rose",
+      "--beev-rose-20",
+      "--beev-rose-30",
+      "--beev-rose-50",
+      "--beev-violet",
+      "--beev-violet-20",
+      "--beev-violet-30",
+      "--beev-violet-50",
+      "--beev-warning",
+      "--beev-white",
+      "--bg-1",
+      "--bg-2",
+      "--bg-bleu",
+      "--bg-dark",
+      "--bg-rose",
+      "--bg-violet",
+      "--border-strong",
+      "--border-subtle",
+      "--dur-base",
+      "--dur-fast",
+      "--dur-slow",
+      "--ease-out",
+      "--ease-standard",
+      "--fg-1",
+      "--fg-2",
+      "--fg-3",
+      "--fg-muted",
+      "--fg-on-accent",
+      "--fg-on-dark",
+      "--font-sans",
+      "--radius-button",
+      "--radius-lg",
+      "--radius-md",
+      "--radius-pill",
+      "--radius-sm",
+      "--radius-xl",
+      "--radius-xs",
+      "--shadow-lg",
+      "--shadow-md",
+      "--shadow-sm",
+      "--shadow-xs",
+      "--sp-1",
+      "--sp-10",
+      "--sp-2",
+      "--sp-3",
+      "--sp-4",
+      "--sp-5",
+      "--sp-6",
+      "--sp-7",
+      "--sp-8",
+      "--sp-9",
+      "--stroke-strong",
+      "--stroke-thin",
+      "--t-body-lh",
+      "--t-body-mobile-lh",
+      "--t-body-mobile-size",
+      "--t-body-size",
+      "--t-body-weight",
+      "--t-title-1-lh",
+      "--t-title-1-size",
+      "--t-title-1-weight",
+      "--t-title-2-lh",
+      "--t-title-2-size",
+      "--t-title-2-weight",
+      "--t-title-3-bold-lh",
+      "--t-title-3-bold-size",
+      "--t-title-3-bold-weight",
+      "--t-title-3-light-lh",
+      "--t-title-3-light-size",
+      "--t-title-3-light-weight",
+      "--t-title-mobile-lh",
+      "--t-title-mobile-size",
+      "--t-title-mobile-sm-lh",
+      "--t-title-mobile-sm-size",
+      "--t-title-mobile-sm-weight",
+      "--t-title-mobile-weight"
+    ],
+    "tokenKinds": {
+      "--beev-black": "color",
+      "--beev-beige": "color",
+      "--beev-white": "color",
+      "--beev-rose": "color",
+      "--beev-bleu": "color",
+      "--beev-violet": "color",
+      "--beev-rose-50": "color",
+      "--beev-rose-30": "color",
+      "--beev-rose-20": "color",
+      "--beev-bleu-50": "color",
+      "--beev-bleu-30": "color",
+      "--beev-bleu-20": "color",
+      "--beev-violet-50": "color",
+      "--beev-violet-30": "color",
+      "--beev-violet-20": "color",
+      "--beev-good": "color",
+      "--beev-warning": "color",
+      "--beev-error": "color",
+      "--fg-1": "color",
+      "--fg-2": "color",
+      "--fg-3": "color",
+      "--fg-muted": "color",
+      "--fg-on-dark": "color",
+      "--fg-on-accent": "color",
+      "--bg-1": "color",
+      "--bg-2": "color",
+      "--bg-dark": "color",
+      "--bg-rose": "color",
+      "--bg-bleu": "color",
+      "--bg-violet": "color",
+      "--border-subtle": "color",
+      "--border-strong": "color",
+      "--font-sans": "font",
+      "--t-title-1-size": "spacing",
+      "--t-title-1-lh": "spacing",
+      "--t-title-1-weight": "font",
+      "--t-title-2-size": "spacing",
+      "--t-title-2-lh": "spacing",
+      "--t-title-2-weight": "font",
+      "--t-title-3-bold-size": "spacing",
+      "--t-title-3-bold-lh": "spacing",
+      "--t-title-3-bold-weight": "font",
+      "--t-title-3-light-size": "spacing",
+      "--t-title-3-light-lh": "spacing",
+      "--t-title-3-light-weight": "font",
+      "--t-body-size": "spacing",
+      "--t-body-lh": "spacing",
+      "--t-body-weight": "font",
+      "--t-title-mobile-size": "spacing",
+      "--t-title-mobile-lh": "spacing",
+      "--t-title-mobile-weight": "font",
+      "--t-title-mobile-sm-size": "spacing",
+      "--t-title-mobile-sm-lh": "spacing",
+      "--t-title-mobile-sm-weight": "font",
+      "--t-body-mobile-size": "spacing",
+      "--t-body-mobile-lh": "spacing",
+      "--radius-button": "radius",
+      "--radius-xs": "radius",
+      "--radius-sm": "radius",
+      "--radius-md": "radius",
+      "--radius-lg": "radius",
+      "--radius-xl": "radius",
+      "--radius-pill": "radius",
+      "--sp-1": "spacing",
+      "--sp-2": "spacing",
+      "--sp-3": "spacing",
+      "--sp-4": "spacing",
+      "--sp-5": "spacing",
+      "--sp-6": "spacing",
+      "--sp-7": "spacing",
+      "--sp-8": "spacing",
+      "--sp-9": "spacing",
+      "--sp-10": "spacing",
+      "--stroke-thin": "color",
+      "--stroke-strong": "color",
+      "--shadow-xs": "shadow",
+      "--shadow-sm": "shadow",
+      "--shadow-md": "shadow",
+      "--shadow-lg": "shadow",
+      "--ease-standard": "other",
+      "--ease-out": "other",
+      "--dur-fast": "other",
+      "--dur-base": "other",
+      "--dur-slow": "other"
+    },
+    "fontFamilies": [
+      "Roobert"
+    ]
+  }
+}

@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cartographie des partenaires distributeurs · Beev</title>
+<link rel="stylesheet" href="_ds/beev-design-system-a24cdc6e-542e-4328-988a-f03a463b72c2/colors_and_type.css">
+<link rel="stylesheet" href="_ds/beev-design-system-a24cdc6e-542e-4328-988a-f03a463b72c2/styles.css">
+<script src="_ds/beev-design-system-a24cdc6e-542e-4328-988a-f03a463b72c2/_ds_bundle.js"></script>
+<script src="https://unpkg.com/d3@7.9.0/dist/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/topojson-client@3.1.0/dist/topojson-client.min.js" integrity="sha384-Ukv1p/xTma6P4/2bY5KzWBw+ydSpXmhCMtyciIQVDJ1RmOxtCYNMF1uXT9T63H67" crossorigin="anonymous"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  a { color: var(--beev-black); text-decoration: underline; text-underline-offset: 3px; }
+  a:hover { color: var(--fg-2); }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 0 24px 80px; }
+  header.cover { background: var(--beev-black); color: var(--beev-beige); padding: 56px 0 48px; }
+  header.cover .wrap { padding-bottom: 0; }
+  .eyebrow { font-size: 13px; letter-spacing: 0.04em; text-transform: none; color: var(--beev-bleu); margin: 0 0 16px; }
+  h1 { font-size: 48px; line-height: 52px; letter-spacing: -0.02em; font-weight: 600; margin: 0 0 20px; max-width: 24ch; }
+  header.cover p { max-width: 62ch; margin: 0; color: rgba(252,249,242,0.78); }
+  .stats { display: flex; flex-wrap: wrap; gap: 48px; margin-top: 36px; }
+  .stat b { display: block; font-size: 32px; line-height: 36px; font-weight: 600; }
+  .stat span { font-size: 13px; color: rgba(252,249,242,0.6); }
+
+  section { padding-top: 56px; }
+  h2.sec { font-size: 30px; line-height: 34px; letter-spacing: -0.015em; font-weight: 600; margin: 0 0 8px; }
+  .lede { color: var(--fg-2); margin: 0 0 24px; max-width: 70ch; }
+
+  .toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 16px; background: var(--beev-white); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+  .toolbar .label { font-size: 13px; color: var(--fg-3); }
+  select, input.q { font-family: var(--font-sans); font-size: 14px; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--beev-beige); color: var(--beev-black); }
+  .chip { font-family: var(--font-sans); font-size: 13px; font-weight: 500; padding: 8px 14px; border-radius: var(--radius-pill); border: 1px solid var(--border-subtle); background: var(--beev-white); cursor: pointer; transition: background var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard); }
+  .chip:hover { transform: translateY(-1px); }
+  .chip[aria-pressed="true"] { border-color: var(--beev-black); }
+  .spacer { flex: 1; }
+
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; margin-top: 24px; align-items: start; }
+  .card { background: var(--beev-white); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 20px; }
+  .map-card { background: var(--beev-beige); padding: 8px 8px 0; position: relative; overflow: hidden; }
+  .map-hint { position: absolute; left: 24px; top: 20px; font-size: 13px; color: var(--fg-3); max-width: 20ch; }
+  #map { width: 100%; height: auto; display: block; }
+  .region-dot { cursor: pointer; transition: opacity var(--dur-base) var(--ease-standard); }
+  .region-label { font-family: var(--font-sans); font-size: 22px; font-weight: 500; fill: var(--beev-black); pointer-events: none; paint-order: stroke; stroke: #FCF9F2; stroke-width: 5px; stroke-linejoin: round; }
+  .region-count { font-family: var(--font-sans); font-size: 19px; font-weight: 600; pointer-events: none; }
+
+  .panel h3 { font-size: 22px; line-height: 26px; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.005em; }
+  .panel .meta { font-size: 13px; color: var(--fg-3); margin: 0 0 20px; }
+  .pgroup { padding: 14px 0; border-top: 1px solid var(--border-subtle); }
+  .pgroup:first-of-type { border-top: 0; }
+  .pname { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; margin-bottom: 8px; }
+  .swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--beev-black); flex: none; }
+  .brands { display: flex; flex-wrap: wrap; gap: 6px; }
+  .brand { font-size: 12px; padding: 4px 9px; border-radius: var(--radius-pill); background: var(--beev-bleu-30); border: 1px solid var(--border-subtle); }
+  .brand.hit { background: var(--beev-bleu); border-color: var(--beev-black); font-weight: 500; }
+  .villes { font-size: 12px; color: var(--fg-3); margin-top: 8px; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th { text-align: left; font-size: 12px; font-weight: 500; color: var(--fg-3); padding: 10px 12px; border-bottom: 1px solid var(--beev-black); white-space: nowrap; }
+  td { font-size: 14px; vertical-align: top; padding: 12px; border-bottom: 1px solid var(--border-subtle); }
+  tbody tr:hover { background: var(--beev-rose-20); }
+  td.partner { font-weight: 600; }
+  td.brands-cell { font-size: 12px; line-height: 17px; color: var(--fg-2); }
+  td.brand-cell { font-weight: 500; }
+  table { table-layout: fixed; }
+  th { white-space: normal; }
+  tr.grp td { background: var(--beev-black); color: var(--beev-beige); font-weight: 600; font-size: 14px; padding: 12px; border-bottom: 0; }
+  tr.grp td span { font-weight: 400; color: rgba(252,249,242,0.62); font-size: 12px; margin-left: 10px; }
+  tr.grp:hover td { background: var(--beev-black); }
+  .table-wrap { max-height: 76vh; overflow: auto; }
+  .table-wrap thead th { position: sticky; top: 0; background: var(--beev-white); z-index: 2; }
+  [contenteditable] { display: block; min-height: 22px; border-radius: var(--radius-xs); padding: 4px 6px; margin: -4px -6px; outline: none; transition: background var(--dur-fast) var(--ease-standard); }
+  [contenteditable]:empty::before { content: attr(data-ph); color: var(--fg-muted); }
+  [contenteditable]:hover { background: var(--beev-violet-30); }
+  [contenteditable]:focus { background: var(--beev-bleu-30); box-shadow: inset 0 0 0 1px var(--beev-black); }
+  tr.dim { display: none; }
+  .foot { margin-top: 40px; padding: 24px; background: var(--beev-violet-20); border-radius: var(--radius-md); font-size: 13px; color: var(--fg-2); }
+  .foot b { color: var(--beev-black); }
+  @media print {
+    header.cover { background: #fff; color: #000; }
+    .toolbar, .chip { display: none; }
+    body { background: #fff; }
+  }
+</style>
+</head>
+<body>
+
+<header class="cover">
+  <div class="wrap">
+    <p class="eyebrow">Partenariats distributeurs · septembre 2026</p>
+    <h1>Nos partenaires distributeurs, par région et par marque</h1>
+    <p>Cartographie de travail : où chaque groupe est implanté, quelles marques il distribue, et où renseigner le contact et la PCOM envisagée. Les colonnes Contact, Coordonnées, PCOM et Notes sont éditables directement dans la page et conservées localement.</p>
+    <div class="stats">
+      <div class="stat"><b id="s-partners">7</b><span>groupes partenaires</span></div>
+      <div class="stat"><b id="s-regions">0</b><span>régions couvertes</span></div>
+      <div class="stat"><b id="s-brands">0</b><span>marques distribuées</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section>
+    <h2 class="sec">Couverture territoriale</h2>
+    <p class="lede">Chaque point représente une région : sa taille indique le nombre de partenaires présents. Cliquez une région pour filtrer le détail et le tableau ci-dessous.</p>
+
+    <div class="toolbar">
+      <span class="label">Marque</span>
+      <select id="f-brand"><option value="">Toutes les marques</option></select>
+      <span class="label">Partenaire</span>
+      <select id="f-partner"><option value="">Tous les partenaires</option></select>
+      <span class="label">Région</span>
+      <select id="f-region"><option value="">Toutes les régions</option></select>
+      <span class="spacer"></span>
+      <button class="chip" id="reset" type="button">Réinitialiser les filtres</button>
+      <button class="chip" id="csv" type="button">Exporter en CSV</button>
+    </div>
+
+    <div class="grid">
+      <div class="card map-card"><p class="map-hint">Nombre de partenaires présents. Cliquez une région pour filtrer.</p><svg id="map" viewBox="0 0 760 720" role="img" aria-label="Carte de France des partenaires distributeurs"></svg></div>
+      <div class="card panel" id="panel"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="sec">Détail par partenaire et par marque</h2>
+    <p class="lede">Une ligne par marque et par distributeur : le contact, ses coordonnées et la PCOM se renseignent marque par marque, puisque l'interlocuteur change d'un panneau à l'autre.</p>
+    <div class="card table-wrap" style="padding: 0 12px;">
+      <table>
+        <colgroup>
+          <col style="width:96px"><col style="width:120px"><col style="width:18%">
+          <col style="width:16%"><col style="width:16%"><col style="width:14%"><col style="width:16%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Partenaire</th>
+            <th>Marque</th>
+            <th>Régions</th>
+            <th>Qui contacter</th>
+            <th>Coordonnées</th>
+            <th>PCOM envisagée</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="foot">
+      <b>Sources et fiabilité.</b> Marques et implantations reconstituées à partir des sites des groupes et de la presse spécialisée (L'argus, Journal de l'Automobile, Auto Infos), consultés en septembre 2026. Les portefeuilles de marques évoluent vite au gré des rachats : à valider auprès de chaque groupe avant envoi commercial. Autosphere est restreint ici à Volkswagen et Ford en Île-de-France, conformément au périmètre transmis.
+    </div>
+  </section>
+
+</div>
+
+<script>
+const REGIONS = {
+  idf:  { name: "Île-de-France",              c: [2.35, 48.86], lab: { dx: 0,   dy: -44, a: "middle" } },
+  hdf:  { name: "Hauts-de-France",            c: [3.00, 50.40], lab: { dx: 16,  dy: -4,  a: "start" } },
+  nor:  { name: "Normandie",                  c: [-0.30, 49.10], lab: { dx: -16, dy: -4,  a: "end" } },
+  bre:  { name: "Bretagne",                   c: [-2.70, 48.20], lab: { dx: -16, dy: 0,   a: "end" } },
+  pdl:  { name: "Pays de la Loire",           c: [-0.90, 47.45], lab: { dx: -16, dy: 4,   a: "end" } },
+  cvl:  { name: "Centre-Val de Loire",        c: [1.80, 47.55],  lab: { dx: 0,   dy: 28,  a: "middle" } },
+  ge:   { name: "Grand Est",                  c: [6.10, 48.70],  lab: { dx: 0,   dy: 26,  a: "middle" } },
+  bfc:  { name: "Bourgogne-Franche-Comté", short: "Bourgogne-F.-Comté", c: [5.00, 47.20], lab: { dx: 14, dy: 4, a: "start" } },
+  ara:  { name: "Auvergne-Rhône-Alpes", short: "Auvergne-R.-Alpes", c: [4.60, 45.50], lab: { dx: 14, dy: 4, a: "start" } },
+  na:   { name: "Nouvelle-Aquitaine",         c: [-0.40, 44.90], lab: { dx: -18, dy: 0,   a: "end" } },
+  occ:  { name: "Occitanie",                  c: [1.70, 43.60],  lab: { dx: -18, dy: 14,  a: "end" } },
+  paca: { name: "Provence-Alpes-Côte d'Azur", short: "PACA", c: [6.05, 43.90], lab: { dx: 0, dy: 34, a: "middle" } },
+  cor:  { name: "Corse",                      c: [9.10, 42.20],  lab: { dx: -14, dy: 4,   a: "end" } }
+};
+
+const PARTNERS = {
+  bymycar:    { name: "ByMyCar",    color: "#1D1D1D",   note: "≈100 concessions, 26 marques (groupe Cosmobilis)" },
+  bpm:        { name: "BPM",        color: "var(--beev-rose)",    note: "Siège Orléans, 30+ marques, Centre / Grand Ouest / IDF / Monaco" },
+  neubauer:   { name: "Neubauer",   color: "#A5D2FF",    note: "26 marques auto et moto, Paris et Île-de-France uniquement" },
+  bauer:      { name: "Bauer",      color: "var(--beev-violet)",  note: "Groupe Bauer Paris, distributeur exclusif Audi (75/92/93/95)" },
+  sellens:    { name: "Sellens",    color: "var(--beev-rose-50)", note: "Groupe Aubéry (ex-JPV, Riviera Car Center, Station 7), Sud-Est" },
+  edenauto:   { name: "Edenauto",   color: "var(--beev-bleu-50)", note: "≈170 points de vente, 5e distributeur français, Grand Sud-Ouest" },
+  autosphere: { name: "Autosphere", color: "var(--beev-violet-50)", note: "Périmètre retenu : Volkswagen et Ford, Île-de-France uniquement" }
+};
+
+const DATA = [
+  { p: "bymycar", r: "ara",  villes: "Lyon, Grenoble, Annecy, Chambéry, Bourg-en-Bresse", brands: ["Volkswagen","Audi","Škoda","SEAT","Cupra","BMW","MINI","Mercedes-Benz","Renault","Dacia","Nissan","Peugeot","Opel","Ford","Fiat","Abarth","Alfa Romeo"] },
+  { p: "bymycar", r: "bfc",  villes: "Dijon, Besançon (ex-Lombardot)", brands: ["Volkswagen","Audi","Škoda","BMW","MINI","Renault"] },
+  { p: "bymycar", r: "ge",   villes: "Nancy, Metz (Lorraine)", brands: ["Volkswagen","Audi","Škoda","BMW","MINI"] },
+  { p: "bymycar", r: "cvl",  villes: "Orléans, Fleury-les-Aubrais", brands: ["Volkswagen","Audi","Škoda"] },
+  { p: "bymycar", r: "paca", villes: "Nice, Villeneuve-Loubet, Toulon-La Garde, Roquebrune-sur-Argens, Vaucluse", brands: ["Mercedes-Benz","Smart","Volkswagen","BYD","Fuso"] },
+  { p: "bymycar", r: "idf",  villes: "Paris, Noisy-le-Sec, Marne-la-Vallée", brands: ["BMW","MINI","BYD"] },
+
+  { p: "bpm", r: "cvl",  villes: "Orléans (siège), Bourges, Montargis, Chartres, Dreux", brands: ["Mercedes-Benz","AMG","Smart","Fiat","Fiat Professional","Abarth","Alfa Romeo","Jeep","Suzuki","Hyundai","Jaguar","Land Rover","Volvo","Maserati"] },
+  { p: "bpm", r: "pdl",  villes: "Nantes, Saint-Nazaire, Le Mans, Laval", brands: ["Mercedes-Benz","Fiat","Fiat Professional","Alfa Romeo","Jeep","Hyundai"] },
+  { p: "bpm", r: "bre",  villes: "Redon, Rennes", brands: ["Fiat","Fiat Professional","Dodge"] },
+  { p: "bpm", r: "nor",  villes: "Alençon", brands: ["Fiat","Alfa Romeo","Jeep"] },
+  { p: "bpm", r: "na",   villes: "Bordeaux", brands: ["Mercedes-Benz","Maserati","BYD","XPeng"] },
+  { p: "bpm", r: "occ",  villes: "Toulouse (Marcassus Sport)", brands: ["Aston Martin","McLaren","Ferrari","Morgan"] },
+  { p: "bpm", r: "idf",  villes: "Les Ulis, Montrouge", brands: ["Jaguar","Land Rover","Volvo"] },
+
+  { p: "neubauer", r: "idf", villes: "Paris 15e/16e/17e, Boulogne, Levallois, Nanterre, Chambourcy, Le Chesnay, Le Port-Marly, Orgeval, Buchelay, Plaisir, Saint-Denis, Saint-Ouen-l'Aumône", brands: ["Peugeot","Citroën","Volkswagen","BMW","MINI","Nissan","Jaguar","Land Rover","Fiat","Alfa Romeo","Abarth","Lancia","Infiniti","Rolls-Royce","McLaren","BMW Motorrad","Yamaha","Piaggio","Vespa","Aprilia","Moto Guzzi"] },
+
+  { p: "bauer", r: "idf", villes: "Paris Wagram, Saint-Ouen, Nanterre, Roissy-en-France, Saint-Witz", brands: ["Audi","Microlino (Dock B)"] },
+
+  { p: "sellens", r: "paca", villes: "Marseille, Toulon, Fréjus, Nice, Gap, Sisteron, Manosque", brands: ["Toyota","Lexus","BMW","MINI","Kia","Hyundai","Mitsubishi","BMW Motorrad","Honda Moto","Maxxess"] },
+  { p: "sellens", r: "occ",  villes: "Montpellier, Sète, Béziers (ex-Sodac)", brands: ["Kia"] },
+
+  { p: "edenauto", r: "na",  villes: "Bordeaux, Pau, Bayonne, Biarritz, Périgueux, Limoges, Niort, Angoulême", brands: ["Renault","Dacia","Alpine","Peugeot","Opel","Nissan","BMW","MINI","Toyota","Lexus","Kia","MG","Mitsubishi","Suzuki","XPeng","Leapmotor"] },
+  { p: "edenauto", r: "occ", villes: "Toulouse, Tarbes, Lourdes, Béziers, Narbonne, Carcassonne", brands: ["Renault","Dacia","Alpine","Peugeot","BMW","MINI","Toyota","Lexus","Kia","MG","Nissan","Opel","Suzuki"] },
+
+  { p: "autosphere", r: "idf", villes: "Île-de-France (périmètre transmis)", brands: ["Volkswagen","Ford"] }
+];
+
+DATA.forEach((d, i) => { d.id = d.p + "-" + d.r; d.i = i; });
+
+const STORE_KEY = "beev-partners-distrib-v1";
+let store = {};
+try { store = JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); } catch (e) { store = {}; }
+const save = () => { try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch (e) {} };
+
+const allBrands = [...new Set(DATA.flatMap(d => d.brands))].sort((a, b) => a.localeCompare(b, "fr"));
+const usedRegions = [...new Set(DATA.map(d => d.r))];
+document.getElementById("s-regions").textContent = usedRegions.length;
+document.getElementById("s-brands").textContent = allBrands.length;
+document.getElementById("s-partners").textContent = Object.keys(PARTNERS).length;
+
+const fBrand = document.getElementById("f-brand");
+const fPartner = document.getElementById("f-partner");
+const fRegion = document.getElementById("f-region");
+allBrands.forEach(b => fBrand.add(new Option(b, b)));
+Object.entries(PARTNERS).forEach(([k, v]) => fPartner.add(new Option(v.name, k)));
+usedRegions
+  .map(k => [k, REGIONS[k].name])
+  .sort((a, b) => a[1].localeCompare(b[1], "fr"))
+  .forEach(([k, n]) => fRegion.add(new Option(n, k)));
+
+const state = { brand: "", partner: "", region: "" };
+const match = d =>
+  (!state.brand || d.brands.includes(state.brand)) &&
+  (!state.partner || d.p === state.partner) &&
+  (!state.region || d.r === state.region);
+
+/* ── Table · une ligne par marque et par distributeur ──── */
+const FIELDS = [
+  { k: "contact", ph: "Nom, fonction" },
+  { k: "coord",   ph: "Email, téléphone" },
+  { k: "pcom",    ph: "% ou montant" },
+  { k: "notes",   ph: "Statut, prochaine étape" }
+];
+const ROWS = [];
+Object.keys(PARTNERS).forEach(p => {
+  const byBrand = {};
+  DATA.filter(d => d.p === p).forEach(d => d.brands.forEach(b => {
+    (byBrand[b] = byBrand[b] || []).push(d.r);
+  }));
+  Object.keys(byBrand).sort((a, b) => a.localeCompare(b, "fr")).forEach(b => {
+    ROWS.push({ p, brand: b, regs: [...new Set(byBrand[b])], id: p + "::" + b });
+  });
+});
+const matchRow = r =>
+  (!state.brand || r.brand === state.brand) &&
+  (!state.partner || r.p === state.partner) &&
+  (!state.region || r.regs.includes(state.region));
+
+const tbody = document.getElementById("tbody");
+Object.keys(PARTNERS).forEach(p => {
+  const rows = ROWS.filter(r => r.p === p);
+  if (!rows.length) return;
+  const grp = document.createElement("tr");
+  grp.className = "grp";
+  grp.dataset.grp = p;
+  grp.innerHTML = '<td colspan="7">' + PARTNERS[p].name +
+    "<span>" + rows.length + " marques · " + PARTNERS[p].note + "</span></td>";
+  tbody.appendChild(grp);
+  rows.forEach(r => {
+    const tr = document.createElement("tr");
+    tr.dataset.id = r.id;
+    tr.dataset.p = p;
+    tr.innerHTML =
+      '<td class="partner">' + PARTNERS[p].name + "</td>" +
+      '<td class="brand-cell">' + r.brand + "</td>" +
+      '<td class="brands-cell">' + r.regs.map(k => REGIONS[k].short || REGIONS[k].name).join(" · ") + "</td>" +
+      FIELDS.map(f =>
+        '<td><div contenteditable="true" data-ph="' + f.ph + '" data-key="' + r.id + ":" + f.k + '">' +
+        (store[r.id + ":" + f.k] || "") + "</div></td>"
+      ).join("");
+    tbody.appendChild(tr);
+  });
+});
+tbody.addEventListener("input", e => {
+  const el = e.target.closest("[contenteditable]");
+  if (!el) return;
+  store[el.dataset.key] = el.textContent.trim();
+  save();
+});
+
+/* ── Side panel ────────────────────────────────────────── */
+const panel = document.getElementById("panel");
+function renderPanel() {
+  const rows = DATA.filter(match);
+  const title = state.region ? REGIONS[state.region].name : "Toutes les régions";
+  const byPartner = {};
+  rows.forEach(d => { (byPartner[d.p] = byPartner[d.p] || []).push(d); });
+  let html = "<h3>" + title + "</h3><p class=\"meta\">" +
+    (rows.length ? Object.keys(byPartner).length + " partenaire(s) · " +
+      new Set(rows.flatMap(d => d.brands)).size + " marque(s)" : "Aucun partenaire pour ce filtre") + "</p>";
+  Object.entries(byPartner).forEach(([p, ds]) => {
+    html += '<div class="pgroup"><div class="pname"><span class="swatch" style="background:' + PARTNERS[p].color + '"></span>' +
+      PARTNERS[p].name + "</div>";
+    if (!state.region) html += '<div class="villes" style="margin:-4px 0 8px">' + PARTNERS[p].note + "</div>";
+    const brands = [...new Set(ds.flatMap(d => d.brands))].sort((a, b) => a.localeCompare(b, "fr"));
+    html += '<div class="brands">' + brands.map(b =>
+      '<span class="brand' + (state.brand === b ? " hit" : "") + '">' + b + "</span>").join("") + "</div>";
+    html += '<div class="villes">' + ds.map(d =>
+      (state.region ? "" : REGIONS[d.r].name + " · ") + d.villes).join(" / ") + "</div></div>";
+  });
+  panel.innerHTML = html;
+}
+
+/* ── Map ───────────────────────────────────────────────── */
+const svg = d3.select("#map");
+const W = 760, H = 720;
+const frame = { type: "Polygon", coordinates: [[[-5.4, 51.3], [9.9, 51.3], [9.9, 41.2], [-5.4, 41.2], [-5.4, 51.3]]] };
+const projection = d3.geoConicConformal().parallels([44, 49]).rotate([-2.5, 0])
+  .fitExtent([[24, 24], [W - 24, H - 24]], frame);
+const path = d3.geoPath(projection);
+const gGeo = svg.append("g"), gDots = svg.append("g");
+
+async function loadTopo() {
+  for (const url of ["https://unpkg.com/world-atlas@2.0.2/countries-50m.json",
+                     "https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-110m.json"]) {
+    try { return await d3.json(url); } catch (e) { /* try next */ }
+  }
+  return null;
+}
+
+loadTopo().then(topo => {
+  if (topo) {
+    const countries = topojson.feature(topo, topo.objects.countries).features;
+    const inFrame = f => {
+      const b = d3.geoBounds(f);
+      return b[1][0] > -12 && b[0][0] < 17 && b[1][1] > 36 && b[0][1] < 56;
+    };
+    gGeo.selectAll("path.other").data(countries.filter(f => f.properties.name !== "France" && inFrame(f)))
+      .join("path").attr("class", "other").attr("d", path)
+      .attr("fill", "#F2F0F3").attr("stroke", "#FCF9F2").attr("stroke-width", 1.5);
+    gGeo.selectAll("path.fr").data(countries.filter(f => f.properties.name === "France"))
+      .join("path").attr("class", "fr").attr("d", path)
+      .attr("fill", "#E4F2FF").attr("stroke", "#1D1D1D").attr("stroke-width", 1.4)
+      .attr("stroke-linejoin", "round");
+  }
+  drawDots();
+});
+
+function drawDots() {
+  const nodes = usedRegions.map(k => {
+    const [x, y] = projection(REGIONS[k].c);
+    return { k, x, y, entries: DATA.filter(d => d.r === k) };
+  });
+  const g = gDots.selectAll("g.node").data(nodes).join("g").attr("class", "node")
+    .attr("transform", d => "translate(" + d.x + "," + d.y + ")")
+    .style("cursor", "pointer")
+    .on("click", (e, d) => { state.region = state.region === d.k ? "" : d.k; fRegion.value = state.region; apply(); })
+    .on("mouseenter", function () { d3.select(this).select("circle.ring").attr("opacity", 1); })
+    .on("mouseleave", function () { d3.select(this).select("circle.ring").attr("opacity", 0); });
+
+  g.append("circle").attr("class", "ring").attr("fill", "none")
+    .attr("stroke", "#1D1D1D").attr("stroke-width", 1.2).attr("opacity", 0)
+    .attr("r", d => 24 + d.entries.length * 5);
+  g.append("circle").attr("class", "halo")
+    .attr("r", d => 20 + d.entries.length * 5).attr("fill", "#FCF9F2");
+  g.append("circle").attr("class", "hit")
+    .attr("r", d => 17 + d.entries.length * 5)
+    .attr("fill", "#1D1D1D").attr("stroke", "none");
+  g.append("text").attr("class", "region-count").attr("text-anchor", "middle").attr("dy", "0.35em")
+    .attr("fill", "#FCF9F2")
+    .text(d => new Set(d.entries.map(e => e.p)).size);
+  g.append("text").attr("class", "region-label")
+    .attr("text-anchor", d => REGIONS[d.k].lab.a)
+    .attr("x", d => REGIONS[d.k].lab.dx * 1.6 + (REGIONS[d.k].lab.a === "end" ? -(d.entries.length * 5) : REGIONS[d.k].lab.a === "start" ? d.entries.length * 5 : 0))
+    .attr("y", d => {
+      const L = REGIONS[d.k].lab, R = 24 + d.entries.length * 5;
+      if (L.a === "middle") return L.dy < 0 ? -(R + 18) : R + 30;
+      return L.dy * 1.6;
+    })
+    .text(d => REGIONS[d.k].short || REGIONS[d.k].name);
+  const legend = svg.append("g").attr("transform", "translate(96," + (H - 96) + ")");
+  [1, 3].forEach((n, i) => {
+    const cx = i * 150;
+    legend.append("circle").attr("cx", cx).attr("cy", 0).attr("r", 17 + n * 5)
+      .attr("fill", "#1D1D1D");
+    legend.append("text").attr("x", cx).attr("y", 0).attr("dy", "0.35em")
+      .attr("text-anchor", "middle").attr("class", "region-count").attr("fill", "#FCF9F2").text(n);
+    legend.append("text").attr("x", cx).attr("y", 24 + n * 5 + 22)
+      .attr("text-anchor", "middle").attr("class", "region-label")
+      .attr("font-size", 17).text(n === 1 ? "1 partenaire" : n + " partenaires");
+  });
+  apply();
+}
+
+/* ── Apply filters ─────────────────────────────────────── */
+function apply() {
+  const shown = new Set(DATA.filter(match).map(d => d.id));
+  const shownRows = new Set(ROWS.filter(matchRow).map(r => r.id));
+  tbody.querySelectorAll("tr[data-id]").forEach(tr => tr.classList.toggle("dim", !shownRows.has(tr.dataset.id)));
+  tbody.querySelectorAll("tr.grp").forEach(tr => tr.classList.toggle("dim",
+    !ROWS.some(r => r.p === tr.dataset.grp && shownRows.has(r.id))));
+
+  gDots.selectAll("g.node").each(function (d) {
+    const active = d.entries.some(e => shown.has(e.id));
+    const sel = state.region === d.k;
+    const sub = new Set(d.entries.filter(e => shown.has(e.id)).map(e => e.p)).size;
+    const node = d3.select(this);
+    const n = Math.max(sub, active ? 1 : d.entries.length);
+    node.attr("opacity", active ? 1 : 0.32);
+    node.select("circle.hit")
+      .attr("fill", sel ? "#F4B8AA" : active ? "#1D1D1D" : "#FFFFFF")
+      .attr("stroke", active && !sel ? "none" : "#1D1D1D")
+      .attr("stroke-width", 1.2)
+      .attr("r", 17 + n * 5);
+    node.select("circle.halo").attr("r", 20 + n * 5);
+    node.select("circle.ring").attr("r", 24 + n * 5);
+    node.select("text.region-count")
+      .attr("fill", sel || !active ? "#1D1D1D" : "#FCF9F2")
+      .text(active ? sub : new Set(d.entries.map(e => e.p)).size);
+    node.select("text.region-label").attr("font-weight", sel ? 600 : 500);
+  });
+  renderPanel();
+}
+
+fBrand.onchange = () => { state.brand = fBrand.value; apply(); };
+fPartner.onchange = () => { state.partner = fPartner.value; apply(); };
+fRegion.onchange = () => { state.region = fRegion.value; apply(); };
+document.getElementById("reset").onclick = () => {
+  state.brand = state.partner = state.region = "";
+  fBrand.value = fPartner.value = fRegion.value = "";
+  apply();
+};
+
+document.getElementById("csv").onclick = () => {
+  const head = ["Partenaire", "Marque", "Régions", "Qui contacter", "Coordonnées", "PCOM envisagée", "Notes"];
+  const esc = v => '"' + String(v).replace(/"/g, '""') + '"';
+  const lines = [head.map(esc).join(";")];
+  ROWS.filter(matchRow).forEach(r => {
+    lines.push([PARTNERS[r.p].name, r.brand, r.regs.map(k => REGIONS[k].name).join(" | "),
+      store[r.id + ":contact"] || "", store[r.id + ":coord"] || "",
+      store[r.id + ":pcom"] || "", store[r.id + ":notes"] || ""].map(esc).join(";"));
+  });
+  const url = URL.createObjectURL(new Blob(["\ufeff" + lines.join("\n")], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = "beev-partenaires-distributeurs.csv"; a.click();
+  URL.revokeObjectURL(url);
+};
+
+renderPanel();
+</script>
+</body>
+</html>

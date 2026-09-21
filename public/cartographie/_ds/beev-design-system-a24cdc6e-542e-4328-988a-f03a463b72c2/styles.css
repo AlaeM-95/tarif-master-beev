@@ -1,0 +1,6 @@
+/* Beev Design System · root stylesheet
+   Canonical entry point for consumers. Imports the token + type layer.
+   Component decks (ottobock/deck.css, thea/deck.css) import this layer
+   themselves and are not part of the global closure. */
+
+@import url('colors_and_type.css');
