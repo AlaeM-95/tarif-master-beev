@@ -22,6 +22,13 @@ export type TcoContractParams = {
    *  Si fournie, remplace v.remise du véhicule (qui peut être la remise
    *  catalogue par défaut alors qu'ici on veut la remise négociée). */
   remisePctOverride?: number;
+  /** Apport / 1er loyer majoré TTC (VP) : ajouté UNE FOIS au loyer total.
+   *  0 / absent = pas d'apport. */
+  apport?: number;
+  /** Coût mensuel TTC de l'assurance tous risques, si souscrite : s'ajoute au
+   *  loyer mensuel dans le calcul du loyer total (× durée). N'entre pas dans la
+   *  base AEN (qui reste assise sur le seul loyer). 0 / absent = pas d'assurance. */
+  assuranceMensuelle?: number;
 };
 
 // ---- Résultat enrichi du calcul TCO ----
@@ -237,7 +244,13 @@ function calculateCoutEnergie(
 export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthlyOverride?: number): TcoFullResult {
   const dureeMois = contract.dureeAnnees * 12;
   const monthly = monthlyOverride !== undefined && monthlyOverride > 0 ? monthlyOverride : v.monthlyLld;
-  const loyerTotal = monthly * dureeMois;
+  // Loyer total = (loyer mensuel + assurance mensuelle) × durée + apport (1er
+  // loyer majoré, versé une seule fois). L'assurance et l'apport n'entrent que
+  // dans le loyer total (donc le TCO) ; la base AEN reste assise sur le seul
+  // loyer (monthly × 12) plus bas.
+  const assuranceMensuelle = Math.max(0, contract.assuranceMensuelle ?? 0);
+  const apport = Math.max(0, contract.apport ?? 0);
+  const loyerTotal = (monthly + assuranceMensuelle) * dureeMois + apport;
   const prixEssence = contract.prixEssenceLitre ?? DEFAULT_COUT_ESSENCE_LITRE;
   const prixKwhDom = contract.prixKwhDomicile ?? DEFAULT_COUT_KWH_DOMICILE;
   const prixKwhPub = contract.prixKwhPublic ?? DEFAULT_COUT_KWH_PUBLIC;

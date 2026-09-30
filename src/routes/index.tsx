@@ -3085,7 +3085,7 @@ function TcoCalculator({
       // sv.options sont saisies en TTC dans le panneau droit (la convention
       // d'affichage utilisateur — le nom du champ "unitHt" est historique).
       const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
-      const r = calculateTcoFull(sv.vehicle, { ...contractParams, optionsTotalTtc, remisePctOverride: sv.discountPct }, sv.negotiatedMonthly);
+      const r = calculateTcoFull(sv.vehicle, { ...contractParams, optionsTotalTtc, remisePctOverride: sv.discountPct, apport: Math.max(0, sv.apport ?? 0), assuranceMensuelle: sv.assuranceTousRisques ? Math.max(0, sv.assuranceMonthly ?? 0) : 0 }, sv.negotiatedMonthly);
       const tco100 = r.tcoParKm * 100;
       const lease100 = (r.loyerTotal / contractParams.kmContrat) * 100;
       const energy100 = (r.coutEnergie / contractParams.kmContrat) * 100;
@@ -4495,6 +4495,32 @@ function SelectedVehicleRow({ sv, energy, onChange, onApplyAll, onRemove, onDupl
         </div>
       )}
       <TxtField label="N° de devis loueur" value={sv.leaserQuoteRef ?? ""} onChange={(s) => onChange({ leaserQuoteRef: s })} />
+
+      {/* Apport (1er loyer majoré) + assurance tous risques — offres véhicule
+          en location. L'apport s'affiche dans la carte prix de la fiche et
+          s'ajoute une fois au « Loyer total » du TCO ; l'assurance (si cochée)
+          s'affiche dans « Compris dans le loyer » et son coût mensuel s'ajoute
+          au loyer dans le TCO. Masqués pour les véhicules « flotte actuelle ». */}
+      {!sv.vehicle.isCurrentFleet && (
+        <div className="rounded-md border border-beev-rose/30 bg-beev-rose-20/30 p-2 space-y-2">
+          <NumField label="Apport / 1er loyer majoré (€ TTC)" value={sv.apport ?? 0} onChange={(n) => onChange({ apport: n })} step={10} />
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={sv.assuranceTousRisques ?? false}
+              onChange={(e) => onChange({ assuranceTousRisques: e.target.checked })}
+              className="h-4 w-4 accent-beev-rose"
+            />
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-beev-rose">Assurance tous risques incluse</span>
+          </label>
+          {sv.assuranceTousRisques && (
+            <NumField label="Coût assurance (€/mois TTC)" value={sv.assuranceMonthly ?? 0} onChange={(n) => onChange({ assuranceMonthly: n })} step={1} />
+          )}
+          <p className="text-[10px] text-muted-foreground leading-snug">
+            L'apport apparaît dans la carte prix de la fiche et s'ajoute une fois au « Loyer total » du TCO. L'assurance (si cochée) s'affiche dans « Compris dans le loyer » ; son coût mensuel s'ajoute au loyer dans le TCO.
+          </p>
+        </div>
+      )}
       {tripartiteUrl && (
         <TripartiteViewerButton url={tripartiteUrl} vehicleLabel={`${sv.vehicle.brand} ${sv.vehicle.model}`} />
       )}
@@ -5917,6 +5943,8 @@ function TcoSlide({ vehicles, energy }: { vehicles: SelectedVehicle[]; energy: E
       prixKwhPublic: energy.kWhPublic,
       optionsTotalTtc,
       remisePctOverride: sv.discountPct,
+      apport: Math.max(0, sv.apport ?? 0),
+      assuranceMensuelle: sv.assuranceTousRisques ? Math.max(0, sv.assuranceMonthly ?? 0) : 0,
     }, sv.negotiatedMonthly);
     return { sv, r, tco100: r.tcoParKm * 100 };
   }).sort((a, b) => a.tco100 - b.tco100);

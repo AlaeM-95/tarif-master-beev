@@ -87,6 +87,17 @@ export type SelectedVehicle = {
    *  certificat d'économie d'énergie sous 2 à 3 mois. Si > 0, un encart
    *  explicatif est affiché sur la fiche véhicule du PDF (cf. drawVehiclePage). */
   primeCeeAmount?: number;
+  /** Apport / premier loyer majoré TTC versé à la mise en service (VP en LLD/LOA),
+   *  saisi par le commercial. Affiché en ligne dédiée dans la carte prix de la
+   *  fiche véhicule (« Apport (1er loyer majoré) ») et ajouté UNE FOIS au
+   *  « Loyer total » du TCO. 0 / absent = pas d'apport. */
+  apport?: number;
+  /** Assurance tous risques : le commercial coche l'inclusion et saisit son coût
+   *  mensuel TTC. Si coché, « Assurance tous risques » s'affiche dans « Compris
+   *  dans le loyer » et le coût mensuel s'ajoute au loyer dans le « Loyer total »
+   *  du TCO. */
+  assuranceTousRisques?: boolean;
+  assuranceMonthly?: number;
 };
 
 /** Une ligne de caractéristique technique de la fiche véhicule. */
@@ -428,6 +439,13 @@ const FOOTER_LIMIT = PAGE_H - 78; // footer enrichi (2 lignes) prend ~22pt + fil
 // marge basse par défaut d'autoTable (40) laisse les lignes du tableau
 // chevaucher le footer. 72pt garantit un espace propre au-dessus du footer.
 const TABLE_BOTTOM_MARGIN = 72;
+
+// Apport (1er loyer majoré) et coût mensuel d'assurance tous risques d'un
+// véhicule sélectionné, normalisés (≥ 0). Passés aux paramètres de contrat TCO
+// (calculateTcoFull) pour être intégrés au « Loyer total ».
+const svApport = (sv: SelectedVehicle) => Math.max(0, sv.apport ?? 0);
+const svAssuranceMensuelle = (sv: SelectedVehicle) =>
+  sv.assuranceTousRisques ? Math.max(0, sv.assuranceMonthly ?? 0) : 0;
 
 // Garantit qu'un bloc de hauteur `needed` (pt) tient avant le footer. Sinon,
 // nouvelle page (avec header si `client` fourni) et retourne le y de départ en
@@ -3182,7 +3200,10 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   // utilitaire : l'encart n'est de toute façon pas dessiné (voir plus haut).
   const hasFiscalAlert = !isUtilitaireCategory(v.category) && (malusTotal > 0 || tvsAnnuelle > 0);
   const mainY = hasFiscalAlert ? 200 : 175;
-  const mainH = 190;
+  // Carte un peu plus haute quand un apport est saisi : la décomposition gagne
+  // une ligne (apport) au-dessus du bloc loyer.
+  const hasApport = (sv.apport ?? 0) > 0;
+  const mainH = hasApport ? 214 : 190;
   const photoW = (PAGE_W - M * 2 - 16) * 0.54;
   const cardX = M + photoW + 16;
   const cardW = PAGE_W - M - cardX;
@@ -3279,6 +3300,22 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     doc.setTextColor(...BEIGE);
     doc.text(eur(discounted), innerR, py, { align: "right" });
     py += 16;
+  }
+
+  // Row apport (1er loyer majoré) — VP en LLD/LOA, si saisi. Accent rose pour
+  // le distinguer des lignes catalogue/options.
+  if (hasApport) {
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...GREY_LABEL_DARK);
+    doc.text(L("APPORT (1er loyer majoré)", "DOWN PAYMENT (first increased rent)"), innerX, py);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...(ADMIN_MODE ? PRODUCT_ACCENT : ([244, 184, 170] as [number, number, number])));
+    doc.text(eurLoyer(sv.apport ?? 0), innerR, py, { align: "right" });
+    py += 9;
+    doc.line(innerX, py, innerR, py);
+    py += 12;
   }
 
   // Séparateur épais avant le bloc loyer
@@ -3477,7 +3514,11 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     doc.setTextColor(...GREY_TXT);
     doc.text(L("COMPRIS DANS LE LOYER", "INCLUDED IN THE LEASE"), rightX + 30, top + 4);
     let ry = top + 22;
-    const svcs = [...MANDATORY_SERVICES, ...sv.services].slice(0, 5);
+    // Assurance tous risques : ajoutée en tête des inclusions si le commercial
+    // l'a cochée (elle prime sur les prestations facultatives pour l'affichage).
+    const assurLabel = L("Assurance tous risques", "Comprehensive insurance");
+    const baseSvcs = [...MANDATORY_SERVICES, ...sv.services];
+    const svcs = (sv.assuranceTousRisques ? [assurLabel, ...baseSvcs] : baseSvcs).slice(0, 5);
     const svcTextX = rightX + 30;
     const svcTextW = M + contentW - svcTextX; // largeur restante jusqu'à la marge droite
     for (const svc of svcs) {
@@ -3643,6 +3684,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
         prixKwhPublic: e.kWhPublic ?? 0.6,
         optionsTotalTtc,
         remisePctOverride: sv.discountPct,
+        apport: svApport(sv), assuranceMensuelle: svAssuranceMensuelle(sv),
       }, sv.negotiatedMonthly);
       const tvsTotal = tcoFull.tvsTotal;
       const andAnnuel = tcoFull.andAnnuel;
@@ -3745,6 +3787,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   const body: any[] = [];
   if (PDF_CFG.showVehicleServices) {
     const allServices = [...MANDATORY_SERVICES, ...sv.services.filter((s) => !MANDATORY_SERVICES.includes(s as any))];
+    if (sv.assuranceTousRisques) allServices.push(L("Assurance tous risques", "Comprehensive insurance"));
     const servicesText = allServices.map((s) => `· ${s}`).join("\n");
     body.push([{ content: L("Prestations & services compris dans le loyer", "Services included in the lease"), colSpan: 4, styles: { fillColor: BG, fontStyle: "bold", textColor: INK } }]);
     body.push([{ content: servicesText, colSpan: 4, styles: { fontSize: 9.5, textColor: INK } }]);
@@ -4234,6 +4277,7 @@ function drawFleetSynthesis(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPa
       dureeAnnees: duree, kmContrat: sv.kmPerYear * duree,
       prixEssenceLitre: e.fuelPriceL, prixKwhDomicile: e.kWhHome, prixKwhPublic: e.kWhPublic,
       optionsTotalTtc: opt, remisePctOverride: sv.discountPct,
+      apport: svApport(sv), assuranceMensuelle: svAssuranceMensuelle(sv),
     }, loyerOverride !== undefined && loyerOverride > 0 ? loyerOverride : sv.negotiatedMonthly);
     return r.tcoAnnuel;
   };
@@ -4413,6 +4457,7 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
       prixKwhPublic: e.kWhPublic,
       optionsTotalTtc,
       remisePctOverride: sv.discountPct,
+      apport: svApport(sv), assuranceMensuelle: svAssuranceMensuelle(sv),
     };
     const r = calculateTcoFull(sv.vehicle, contract, sv.negotiatedMonthly);
     return {
@@ -4817,7 +4862,7 @@ async function drawTcoImpact(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: Energ
   const compute = (sv: SelectedVehicle) => {
     const duree = sv.durationMonths / 12;
     const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
-    const r = calculateTcoFull(sv.vehicle, { dureeAnnees: duree, kmContrat: sv.kmPerYear * duree, prixEssenceLitre: e.fuelPriceL, prixKwhDomicile: e.kWhHome, prixKwhPublic: e.kWhPublic, optionsTotalTtc, remisePctOverride: sv.discountPct }, sv.negotiatedMonthly);
+    const r = calculateTcoFull(sv.vehicle, { dureeAnnees: duree, kmContrat: sv.kmPerYear * duree, prixEssenceLitre: e.fuelPriceL, prixKwhDomicile: e.kWhHome, prixKwhPublic: e.kWhPublic, optionsTotalTtc, remisePctOverride: sv.discountPct, apport: svApport(sv), assuranceMensuelle: svAssuranceMensuelle(sv) }, sv.negotiatedMonthly);
     const fisc = r.tvsTotal + r.malusCO2 + r.malusPoids;
     // Coût fiscal réel de l'AND (IS sur le montant réintégré), pas l'AND
     // brut — sinon ce segment + les autres dépasserait `total`.
@@ -5026,6 +5071,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
       prixKwhPublic: e.kWhPublic,
       optionsTotalTtc,
       remisePctOverride: sv.discountPct,
+      apport: svApport(sv), assuranceMensuelle: svAssuranceMensuelle(sv),
     }, sv.negotiatedMonthly);
     return { sv, r, duree };
   });
@@ -7415,6 +7461,7 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
       prixKwhPublic: e.kWhPublic,
       optionsTotalTtc,
       remisePctOverride: sv.discountPct,
+      apport: svApport(sv), assuranceMensuelle: svAssuranceMensuelle(sv),
     }, sv.negotiatedMonthly);
     const tco100 = r.tcoParKm * 100;
     const lease100 = (r.loyerTotal / kmContrat) * 100;
@@ -8418,6 +8465,7 @@ function drawFiscalAdvantages(doc: jsPDF, vehicles: SelectedVehicle[], energy: E
         prixKwhDomicile: energy.kWhHome,
         prixKwhPublic: energy.kWhPublic,
         remisePctOverride: sv.discountPct,
+        apport: svApport(sv), assuranceMensuelle: svAssuranceMensuelle(sv),
       }, sv.negotiatedMonthly);
       tvsEvitee += r.tvsTotal * sv.quantity;
     } catch { /* skip */ }
