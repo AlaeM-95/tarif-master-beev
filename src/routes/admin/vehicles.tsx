@@ -589,18 +589,30 @@ function VehicleEditForm({ vehicle, offers, onSave, onClose, onDelete }: {
           </FieldRow>
         </FormSection>
 
-        <FormSection title="Catalogue — page Design">
+        <FormSection title="Visuels (catalogue & PDF)">
           <div className="space-y-3">
             <div>
-              <p className="text-[11px] font-semibold text-muted-foreground mb-1">Image design (pleine page)</p>
+              <p className="text-[11px] font-semibold text-muted-foreground mb-1">Image principale (produit)</p>
+              <ImageUpload
+                currentUrl={current.image}
+                onChange={(url) => { set("image", url); onSave({ image: url }); }}
+                folder="vehicles"
+                label="Photo produit (fiche, carte catalogue, PDF)"
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Photo détourée du véhicule (fond clair). Utilisée sur la carte catalogue, la fiche offre et le devis PDF.
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-muted-foreground mb-1">Image design (pleine page — page DESIGN du catalogue)</p>
               <ImageUpload
                 currentUrl={current.designImageUrl}
                 onChange={(url) => { set("designImageUrl", url); onSave({ designImageUrl: url }); }}
-                folder="vehicle-images"
+                folder="vehicles"
                 label="Visuel lifestyle (brochure constructeur)"
               />
               <p className="text-[11px] text-muted-foreground mt-1">
-                Idéalement une photo paysage haute résolution. Sans visuel dédié, la page design reprend la galerie, sinon un fond charte + silhouette.
+                Photo paysage haute résolution issue de la brochure. Sert la 2e page « DESIGN » du catalogue et la couverture véhicule. Sans visuel dédié : repli galerie, sinon fond charte.
               </p>
             </div>
             <div>
