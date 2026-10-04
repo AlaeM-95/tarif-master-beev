@@ -132,6 +132,12 @@ function baseCss(fonts: { regular?: string; medium?: string; semibold?: string }
   .pad{padding:16mm 18mm}
   .logo{font-weight:700;font-size:22px;font-style:italic;letter-spacing:-.5px}
   .logo .dot{font-style:normal}
+  .logo-img{height:26px;width:auto;display:block}
+  .foot .logo-img,.dfoot .logo-img{height:17px}
+  /* cover : photo pleine page (véhicule) + héro flottant (mixte) */
+  .cover-photo{position:absolute;inset:0;background-size:cover;background-position:center;z-index:0}
+  .cover-photo-scrim{position:absolute;inset:0;z-index:1;background:linear-gradient(90deg,rgba(20,17,15,.92) 0%,rgba(20,17,15,.62) 42%,rgba(20,17,15,.2) 100%),linear-gradient(0deg,rgba(20,17,15,.85),transparent 45%)}
+  .mixte-hero{position:absolute;right:30px;bottom:70px;width:560px;max-width:52%;z-index:2;filter:drop-shadow(0 24px 40px rgba(0,0,0,.45))}
   .eyebrow{font-size:11px;font-weight:700;letter-spacing:2px}
   .foot{position:absolute;left:18mm;right:18mm;bottom:9mm;display:flex;justify-content:space-between;font-size:11px;color:var(--grey);border-top:1px solid var(--rule);padding-top:10px}
   .shead{display:flex;align-items:flex-end;justify-content:space-between;border-bottom:2px solid var(--ink);padding-bottom:12px}
@@ -280,8 +286,21 @@ function baseCss(fonts: { regular?: string; medium?: string; semibold?: string }
   `;
 }
 
-const logoMark = (light: boolean) =>
-  `<span class="logo">Beev<span class="dot" style="color:${light ? "#F4B8AA" : "#F4B8AA"}"> ●</span></span>`;
+// Ressources de marque (data-url), positionnées par buildHtml pour être
+// accessibles à tous les builders sans threading. Logo blanc (fonds sombres),
+// logo noir (fonds clairs), héro mixte (cover véhicules + bornes), image de
+// cover véhicule (visuel lifestyle du véhicule phare).
+let LOGO_WHITE = "";
+let LOGO_DARK = "";
+let HERO_MIXTE = "";
+let COVER_VEH_IMG = "";
+
+// Logo Beev : vraie image si disponible, sinon repli texte « Beev ● ».
+const logoMark = (light: boolean) => {
+  const src = light ? LOGO_WHITE : LOGO_DARK;
+  if (src) return `<img class="logo-img" src="${src}" alt="Beev">`;
+  return `<span class="logo" style="color:${light ? "#FCF9F2" : "#1D1D1D"}">Beev<span class="dot" style="color:#F4B8AA"> ●</span></span>`;
+};
 
 // ---- Pages véhicules ----
 function vehSpecRows(v: Vehicle): [string, string][] {
@@ -397,13 +416,13 @@ function designPage(row: VehRow, client: CatalogueClient, pageNo: number, design
     <div class="dscrim-top"></div><div class="dscrim-bot"></div>
     <div class="dlabel"><div class="bar"></div><div class="t">DESIGN</div></div>
     <div class="dcallouts" style="grid-template-columns:repeat(${n},1fr)">${coHtml}</div>
-    <div class="dfoot"><span class="logo">Beev<span class="dot" style="color:#F4B8AA"> ●</span></span><span class="mdl">${esc(v.brand)} ${esc(v.model)}${v.version ? " · " + esc(v.version) : ""}</span><span class="pg">${String(pageNo).padStart(2, "0")} · ${co}</span></div>
+    <div class="dfoot">${logoMark(true)}<span class="mdl">${esc(v.brand)} ${esc(v.model)}${v.version ? " · " + esc(v.version) : ""}</span><span class="pg">${String(pageNo).padStart(2, "0")} · ${co}</span></div>
   </div>`;
 }
 
 function footer(label: string, pageNo: number, client: CatalogueClient): string {
   const co = client.company ? esc(client.company) : "Beev";
-  return `<div class="foot"><span>Beev · ${esc(label)}</span><span>${String(pageNo).padStart(2, "0")} · ${co}</span></div>`;
+  return `<div class="foot"><span style="display:flex;align-items:center;gap:8px">${logoMark(false)}<span>${esc(label)}</span></span><span>${String(pageNo).padStart(2, "0")} · ${co}</span></div>`;
 }
 
 function selectionPage(rows: VehRow[], client: CatalogueClient, pageNo: number): string {
@@ -513,11 +532,15 @@ function fiscalPage(client: CatalogueClient, pageNo: number): string {
 }
 
 function vehicleCover(client: CatalogueClient, count: number): string {
+  const hasPhoto = !!COVER_VEH_IMG;
+  const bgStyle = hasPhoto ? "background:#14110f" : "background:linear-gradient(120deg,#1D1D1D 0%,#262422 55%,#3a3330 100%)";
+  const back = hasPhoto
+    ? `<div class="cover-photo" style="background-image:url('${COVER_VEH_IMG}')"></div><div class="cover-photo-scrim"></div>`
+    : `<div class="glow" style="background:radial-gradient(circle,rgba(244,184,170,.42),transparent 62%)"></div>`;
   return `
-  <div class="page cover" style="background:linear-gradient(120deg,#1D1D1D 0%,#262422 55%,#3a3330 100%)">
-    <div class="glow" style="background:radial-gradient(circle,rgba(244,184,170,.42),transparent 62%)"></div>
+  <div class="page cover" style="${bgStyle}">
+    ${back}
     <div class="pad top">${logoMark(true)}<span class="eyebrow" style="color:#F4B8AA">CATALOGUE VÉHICULES ÉLECTRIQUES</span></div>
-    <svg class="art" style="right:40px;top:250px;width:620px" viewBox="0 0 700 300"><g fill="none" stroke="rgba(252,249,242,.9)" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"><path d="M60 215 Q70 150 150 142 L250 134 Q310 92 430 92 Q560 92 606 142 L650 152 Q672 160 672 200 L672 215"/><path d="M60 215 L672 215"/><circle cx="195" cy="218" r="46" fill="#1D1D1D"/><circle cx="545" cy="218" r="46" fill="#1D1D1D"/></g><g fill="rgba(244,184,170,.9)"><circle cx="195" cy="218" r="18"/><circle cx="545" cy="218" r="18"/></g></svg>
     <h1>Votre flotte électrique, clé en main.</h1>
     <div class="cvsub">Sélection véhicules · Tarification LLD · Analyse du coût total de possession</div>
     <div class="pill-row"><span class="pill">${count} modèle${count > 1 ? "s" : ""}</span><span class="pill">TCO inclus</span><span class="pill">Prestations tout compris</span></div>
@@ -530,16 +553,14 @@ function borneCover(client: CatalogueClient): string {
   return `
   <div class="page cover" style="background:linear-gradient(120deg,#1D1D1D 0%,#2a2630 55%,#3a3340 100%)">
     <div class="glow" style="background:radial-gradient(circle,rgba(211,204,216,.42),transparent 62%)"></div>
+    <div class="glow" style="right:140px;top:180px;width:420px;height:420px;background:radial-gradient(circle,rgba(165,210,255,.26),transparent 62%)"></div>
     <div class="pad top">${logoMark(true)}<span class="eyebrow" style="color:#D3CCD8">CATALOGUE INFRASTRUCTURE DE RECHARGE</span></div>
-    <div class="art" style="right:120px;top:150px">${chargerBig()}</div>
     <h1>Une recharge pilotée, à l'échelle de votre site.</h1>
     <div class="cvsub">Bornes · Installation clé en main · Supervision et refacturation</div>
     <div class="pill-row"><span class="pill">Étude technique</span><span class="pill">Pose certifiée IRVE</span><span class="pill">Supervision Beev Connect</span></div>
     <div class="cvfoot"><span>Préparé pour ${esc(client.company || "votre entreprise")}</span><span>Tarifs au ${todayFr()}</span></div>
   </div>`;
 }
-const chargerBig = () =>
-  `<svg width="320" height="400" viewBox="0 0 320 400"><rect x="110" y="50" width="110" height="280" rx="18" fill="none" stroke="rgba(252,249,242,.85)" stroke-width="4"/><rect x="132" y="82" width="66" height="84" rx="8" fill="rgba(211,204,216,.35)"/><path d="M144 195 h40 M144 218 h40 M144 241 h24" stroke="rgba(252,249,242,.7)" stroke-width="5" stroke-linecap="round"/><path d="M220 140 q46 10 46 56 v64 q0 24 24 24" fill="none" stroke="rgba(252,249,242,.55)" stroke-width="4"/><path d="M160 282 l-13 32 h20 l-13 32" fill="none" stroke="rgba(211,204,216,.95)" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
 
 function borneFichePage(sc: SelectedCharger, idx: number, total: number, client: CatalogueClient, pageNo: number, img?: string): string {
   const c = sc.charger;
@@ -604,6 +625,7 @@ function mixteCover(client: CatalogueClient): string {
   <div class="page cover" style="background:linear-gradient(120deg,#1D1D1D 0%,#2a2724 50%,#352e33 100%)">
     <div class="glow" style="background:radial-gradient(circle,rgba(244,184,170,.4),transparent 62%)"></div>
     <div class="glow" style="right:160px;top:160px;width:460px;height:460px;background:radial-gradient(circle,rgba(211,204,216,.34),transparent 62%)"></div>
+    ${HERO_MIXTE ? `<img class="mixte-hero" src="${HERO_MIXTE}" alt="">` : ""}
     <div class="pad top">${logoMark(true)}<span class="eyebrow" style="color:#F4B8AA">CATALOGUE ÉLECTRIFICATION COMPLÈTE</span></div>
     <h1>Votre électrification, de bout en bout.</h1>
     <div class="cvsub">Véhicules électriques · Infrastructure de recharge · Pilotage unifié</div>
@@ -652,12 +674,19 @@ function coutGlobalPage(rows: VehRow[], chargers: SelectedCharger[], client: Cat
 }
 
 // ---- Assemblage HTML ----
-function buildHtml(opts: CatalogueOpts, assets: { fonts: any; vehImgs: Map<string, string>; chgImgs: Map<string, string>; designImgs: Map<string, string> }): string {
+function buildHtml(opts: CatalogueOpts, assets: { fonts: any; vehImgs: Map<string, string>; chgImgs: Map<string, string>; designImgs: Map<string, string>; logoWhite?: string; logoDark?: string; heroMixte?: string }): string {
   const { client, vehicles, chargers, energy } = opts;
+  // Ressources de marque accessibles aux builders (logo, héro mixte).
+  LOGO_WHITE = assets.logoWhite || "";
+  LOGO_DARK = assets.logoDark || "";
+  HERO_MIXTE = assets.heroMixte || "";
   const rows = vehicles
     .filter((sv) => !sv.vehicle.isCurrentFleet)
     .map((sv) => buildVehRow(sv, energy, assets.vehImgs.get(sv.vehicle.image || "")))
     .sort((a, b) => a.loyer - b.loyer);
+  // Cover véhicule : visuel lifestyle du 1er véhicule qui en possède un (design
+  // image / galerie préchargée). Sinon, cover dégradé (pas de silhouette).
+  COVER_VEH_IMG = rows.map((r) => assets.designImgs.get(r.sv.vehicle.id)).find((d): d is string => !!d) || "";
   const hasVeh = rows.length > 0;
   const hasChg = chargers.length > 0;
   let p = 1;
@@ -726,10 +755,13 @@ export async function generateCataloguePdf(opts: CatalogueOpts): Promise<void> {
   }
   win.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Catalogue…</title></head><body style="font-family:system-ui;padding:48px;color:#5F5F64">Préparation du catalogue…</body></html>');
 
-  const [regular, medium, semibold] = await Promise.all([
+  const [regular, medium, semibold, logoWhite, logoDark, heroMixte] = await Promise.all([
     toDataUrl("/fonts/Roobert-Regular.ttf"),
     toDataUrl("/fonts/Roobert-Medium.ttf"),
     toDataUrl("/fonts/Roobert-SemiBold.ttf"),
+    toDataUrl("/images/logo-beev-white.png"),
+    toDataUrl("/images/logo-beev-noir.png"),
+    toDataUrl("/images/design/catalogue-hero-mixte.webp"),
   ]);
   // Précharge les photos (véhicules + bornes + visuels design) en data-url pour
   // une impression fiable. La photo design privilégie designImageUrl, puis la
@@ -759,7 +791,7 @@ export async function generateCataloguePdf(opts: CatalogueOpts): Promise<void> {
     }),
   ]);
 
-  const html = buildHtml(opts, { fonts: { regular, medium, semibold }, vehImgs, chgImgs, designImgs });
+  const html = buildHtml(opts, { fonts: { regular, medium, semibold }, vehImgs, chgImgs, designImgs, logoWhite, logoDark, heroMixte });
   win.document.open();
   win.document.write(html);
   win.document.close();
