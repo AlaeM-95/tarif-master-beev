@@ -344,10 +344,34 @@ function vehSpreadPage(row: VehRow, idx: number, total: number, client: Catalogu
   </div></div>`;
 }
 
+// Registre « design curaté » par modèle (pré-rempli à partir des brochures
+// constructeur). Permet d'avoir une belle page design immédiatement, sans saisie
+// admin ni migration. Les valeurs saisies en back-office (vehicle.designImageUrl /
+// designHighlights) restent PRIORITAIRES ; ce registre n'est qu'un repli curaté,
+// lui-même avant le repli générique (galerie / specs). Clé = `${marque} ${modèle}`
+// normalisée (minuscules, espaces compactés).
+const CURATED_DESIGN: Record<string, { image?: string; highlights?: string[] }> = {
+  "volvo ex40": {
+    image: "/images/design/volvo-ex40.webp",
+    highlights: [
+      "Phares LED Pixel Technology",
+      "Toit panoramique contrasté",
+      "Lignes scandinaves épurées",
+      "Jantes aérodynamiques",
+    ],
+  },
+};
+const curatedKey = (v: Vehicle) => `${v.brand} ${v.model}`.toLowerCase().replace(/\s+/g, " ").trim();
+const curatedDesign = (v: Vehicle) => CURATED_DESIGN[curatedKey(v)];
+
 // Accents design : curatés (vehicle.designHighlights) sinon dérivés des specs.
 function designCallouts(v: Vehicle): { top?: string; btm: string }[] {
   if (v.designHighlights && v.designHighlights.length) {
     return v.designHighlights.slice(0, 4).map((h) => ({ btm: h }));
+  }
+  const cur = curatedDesign(v);
+  if (cur?.highlights && cur.highlights.length) {
+    return cur.highlights.slice(0, 4).map((h) => ({ btm: h }));
   }
   const out: { top?: string; btm: string }[] = [];
   if ((v.rangeWltp ?? 0) > 0) out.push({ top: "Autonomie WLTP", btm: `${fmt(v.rangeWltp)} km` });
@@ -725,6 +749,7 @@ export async function generateCataloguePdf(opts: CatalogueOpts): Promise<void> {
       // (rendu médiocre). Sans visuel dédié, la page design utilise un fond
       // dégradé charte + silhouette (repli propre).
       const src = (v.designImageUrl && v.designImageUrl.trim())
+        || (curatedDesign(v)?.image ?? "")
         || (v.gallery && v.gallery.length ? v.gallery[0] : "");
       if (!src) return;
       const d = await toDataUrl(src); if (d) designImgs.set(v.id, d);
