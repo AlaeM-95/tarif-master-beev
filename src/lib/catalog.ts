@@ -215,6 +215,15 @@ export type Vehicle = {
    *  Utilisée par l'encart "Véhicule du moment" et le comparateur. La photo
    *  principale `image` reste séparée pour la card catalogue / le PDF. */
   gallery?: string[];
+  /** Image « lifestyle » pleine page pour la page DESIGN du catalogue (visuel
+   *  premium issu de la brochure constructeur). Si absente : repli sur gallery[0]
+   *  puis sur `image` (sur fond dégradé). Éditable dans /admin/vehicles. */
+  designImageUrl?: string;
+  /** Accents design mis en avant sur la page DESIGN du catalogue (3 à 4 punchlines,
+   *  ex. « Vitres sans contours »). Si vide : repli automatique sur des accents
+   *  dérivés des caractéristiques (autonomie, recharge, puissance…). Éditable
+   *  dans /admin/vehicles. */
+  designHighlights?: string[];
   /** Si true, ce véhicule est mis en avant dans l'encart "Véhicule du moment"
    *  sur la home commerciale. Un seul véhicule peut être featured à la fois
    *  côté UI — si plusieurs, le premier de la liste gagne. */

@@ -588,6 +588,39 @@ function VehicleEditForm({ vehicle, offers, onSave, onClose, onDelete }: {
             <NumField label="Prix batterie HT" value={current.prixBatterie ?? 0} onChange={(v) => set("prixBatterie", v)} onBlur={() => commitField("prixBatterie")} suffix="€" />
           </FieldRow>
         </FormSection>
+
+        <FormSection title="Catalogue — page Design">
+          <div className="space-y-3">
+            <div>
+              <p className="text-[11px] font-semibold text-muted-foreground mb-1">Image design (pleine page)</p>
+              <ImageUpload
+                currentUrl={current.designImageUrl}
+                onChange={(url) => { set("designImageUrl", url); onSave({ designImageUrl: url }); }}
+                folder="vehicle-images"
+                label="Visuel lifestyle (brochure constructeur)"
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Idéalement une photo paysage haute résolution. Sans visuel dédié, la page design reprend la galerie, sinon un fond charte + silhouette.
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-muted-foreground mb-1">Accents design (un par ligne, 3 à 4)</p>
+              <textarea
+                className="w-full text-sm border rounded-md p-2 min-h-[88px] bg-background"
+                placeholder={"Projecteur LED Matrix\nVitres sans contours\nDesign scandinave aérodynamique"}
+                defaultValue={(current.designHighlights ?? []).join("\n")}
+                onBlur={(e) => {
+                  const arr = e.target.value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 4);
+                  set("designHighlights", arr);
+                  onSave({ designHighlights: arr });
+                }}
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Laissé vide : la page design reprend automatiquement les caractéristiques (autonomie, recharge, puissance, batterie).
+              </p>
+            </div>
+          </div>
+        </FormSection>
       </div>
 
       <DialogFooter className="gap-2">

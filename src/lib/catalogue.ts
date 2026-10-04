@@ -257,6 +257,24 @@ function baseCss(fonts: { regular?: string; medium?: string; semibold?: string }
   .scard .rows{margin-top:10px;font-size:12.5px}
   .scard .rows div{display:flex;justify-content:space-between;padding:5px 0;color:var(--sub)}
   .note{margin-top:16px;font-size:11px;color:var(--grey);line-height:1.5}
+  /* page DESIGN (pleine image) */
+  .dpage{background:#1D1D1D}
+  .dphoto{position:absolute;inset:0;background-size:cover;background-position:center;background-repeat:no-repeat}
+  .dphoto.fallback{background:radial-gradient(120% 90% at 70% 35%,rgba(214,188,150,.5),rgba(40,34,30,.92) 70%),linear-gradient(180deg,#2b2621,#1b1714)}
+  .dphoto .car{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);width:62%;opacity:.95}
+  .dscrim-top{position:absolute;left:0;right:0;top:0;height:150px;background:linear-gradient(180deg,rgba(0,0,0,.45),transparent)}
+  .dscrim-bot{position:absolute;left:0;right:0;bottom:0;height:300px;background:linear-gradient(0deg,rgba(0,0,0,.78),rgba(0,0,0,.2) 55%,transparent)}
+  .dlabel{position:absolute;left:18mm;top:14mm;z-index:3;color:#FCF9F2}
+  .dlabel .bar{width:34px;height:4px;background:var(--rose);border-radius:2px;margin-bottom:11px}
+  .dlabel .t{font-size:28px;font-weight:700;letter-spacing:4px}
+  .dcallouts{position:absolute;left:18mm;right:18mm;bottom:24mm;z-index:3;display:grid;gap:0}
+  .dco{padding:0 24px;color:#FCF9F2;position:relative}
+  .dco:not(:first-child)::before{content:"";position:absolute;left:0;top:5px;bottom:5px;width:1px;background:rgba(252,249,242,.35)}
+  .dco:first-child{padding-left:0}
+  .dco .top{font-size:14px;color:rgba(252,249,242,.75)}
+  .dco .btm{font-size:19px;font-weight:700;line-height:1.15;margin-top:2px}
+  .dfoot{position:absolute;left:18mm;right:18mm;bottom:9mm;z-index:3;display:flex;align-items:center;justify-content:space-between;color:#FCF9F2;border-top:1px solid rgba(252,249,242,.18);padding-top:11px}
+  .dfoot .logo{color:#FCF9F2} .dfoot .mdl{font-size:13px;font-weight:500;color:rgba(252,249,242,.85)} .dfoot .pg{font-size:13px;font-weight:700}
   @media print{ .toolbar{display:none} .sheets{padding:0} .page{margin:0;box-shadow:none} }
   @page{ size:A4 landscape; margin:0 }
   `;
@@ -324,6 +342,39 @@ function vehSpreadPage(row: VehRow, idx: number, total: number, client: Catalogu
     </div>
     ${footer("Catalogue véhicules électriques", pageNo, client)}
   </div></div>`;
+}
+
+// Accents design : curatés (vehicle.designHighlights) sinon dérivés des specs.
+function designCallouts(v: Vehicle): { top?: string; btm: string }[] {
+  if (v.designHighlights && v.designHighlights.length) {
+    return v.designHighlights.slice(0, 4).map((h) => ({ btm: h }));
+  }
+  const out: { top?: string; btm: string }[] = [];
+  if ((v.rangeWltp ?? 0) > 0) out.push({ top: "Autonomie WLTP", btm: `${fmt(v.rangeWltp)} km` });
+  if (v.chargeTime2080Dc) out.push({ top: "Recharge 20-80 %", btm: v.chargeTime2080Dc });
+  if ((v.powerHp ?? 0) > 0) out.push({ top: "Puissance", btm: `${fmt(v.powerHp)} ch` });
+  if ((v.batteryKwh ?? 0) > 0) out.push({ top: "Batterie", btm: `${fmt(v.batteryKwh)} kWh` });
+  return out.slice(0, 4);
+}
+
+// Page DESIGN : grande image lifestyle pleine page + label + accents design.
+function designPage(row: VehRow, client: CatalogueClient, pageNo: number, designImg?: string): string {
+  const v = row.sv.vehicle;
+  const callouts = designCallouts(v);
+  const n = Math.max(1, callouts.length);
+  const coHtml = callouts.map((c) => `<div class="dco">${c.top ? `<div class="top">${esc(c.top)}</div>` : ""}<div class="btm">${esc(c.btm)}</div></div>`).join("");
+  const photo = designImg
+    ? `<div class="dphoto" style="background-image:url('${esc(designImg)}')"></div>`
+    : `<div class="dphoto fallback">${carSilhouette("rgba(252,249,242,.9)")}</div>`;
+  const co = client.company ? esc(client.company) : "Beev";
+  return `
+  <div class="page dpage">
+    ${photo}
+    <div class="dscrim-top"></div><div class="dscrim-bot"></div>
+    <div class="dlabel"><div class="bar"></div><div class="t">DESIGN</div></div>
+    <div class="dcallouts" style="grid-template-columns:repeat(${n},1fr)">${coHtml}</div>
+    <div class="dfoot"><span class="logo">Beev<span class="dot" style="color:#F4B8AA"> ●</span></span><span class="mdl">${esc(v.brand)} ${esc(v.model)}${v.version ? " · " + esc(v.version) : ""}</span><span class="pg">${String(pageNo).padStart(2, "0")} · ${co}</span></div>
+  </div>`;
 }
 
 function footer(label: string, pageNo: number, client: CatalogueClient): string {
@@ -577,7 +628,7 @@ function coutGlobalPage(rows: VehRow[], chargers: SelectedCharger[], client: Cat
 }
 
 // ---- Assemblage HTML ----
-function buildHtml(opts: CatalogueOpts, assets: { fonts: any; vehImgs: Map<string, string>; chgImgs: Map<string, string> }): string {
+function buildHtml(opts: CatalogueOpts, assets: { fonts: any; vehImgs: Map<string, string>; chgImgs: Map<string, string>; designImgs: Map<string, string> }): string {
   const { client, vehicles, chargers, energy } = opts;
   const rows = vehicles
     .filter((sv) => !sv.vehicle.isCurrentFleet)
@@ -594,14 +645,20 @@ function buildHtml(opts: CatalogueOpts, assets: { fonts: any; vehImgs: Map<strin
     pages.push(coutGlobalPage(rows, chargers, client, p)); p++;
     // suivi des fiches véhicule puis bornes
     pages.push(selectionPage(rows, client, p)); p++;
-    rows.forEach((r, i) => { pages.push(vehSpreadPage(r, i + 1, rows.length, client, p)); p++; });
+    rows.forEach((r, i) => {
+      pages.push(vehSpreadPage(r, i + 1, rows.length, client, p)); p++;
+      pages.push(designPage(r, client, p, assets.designImgs.get(r.sv.vehicle.id))); p++;
+    });
     if (rows.length >= 2) { pages.push(tcoSynthesePage(rows, client, p)); p++; }
     chargers.forEach((sc, i) => { pages.push(borneFichePage(sc, i + 1, chargers.length, client, p, assets.chgImgs.get(sc.charger.image || ""))); p++; });
     pages.push(installationPage(chargers, client, p)); p++;
   } else if (hasVeh) {
     pages.push(vehicleCover(client, rows.length)); p++;
     pages.push(selectionPage(rows, client, p)); p++;
-    rows.forEach((r, i) => { pages.push(vehSpreadPage(r, i + 1, rows.length, client, p)); p++; });
+    rows.forEach((r, i) => {
+      pages.push(vehSpreadPage(r, i + 1, rows.length, client, p)); p++;
+      pages.push(designPage(r, client, p, assets.designImgs.get(r.sv.vehicle.id))); p++;
+    });
     if (rows.length >= 2) { pages.push(comparateurPage(rows, client, p)); p++; }
     if (rows.length >= 2) { pages.push(tcoSynthesePage(rows, client, p)); p++; }
     pages.push(carbonePage(rows, client, p)); p++;
@@ -650,19 +707,34 @@ export async function generateCataloguePdf(opts: CatalogueOpts): Promise<void> {
     toDataUrl("/fonts/Roobert-Medium.ttf"),
     toDataUrl("/fonts/Roobert-SemiBold.ttf"),
   ]);
-  // Précharge les photos (véhicules + bornes) en data-url pour une impression fiable.
+  // Précharge les photos (véhicules + bornes + visuels design) en data-url pour
+  // une impression fiable. La photo design privilégie designImageUrl, puis la
+  // galerie, puis la photo produit.
   const vehImgs = new Map<string, string>();
   const chgImgs = new Map<string, string>();
+  const designImgs = new Map<string, string>();
+  const propVehicles = opts.vehicles.filter((sv) => !sv.vehicle.isCurrentFleet);
   await Promise.all([
-    ...opts.vehicles.filter((sv) => !sv.vehicle.isCurrentFleet && sv.vehicle.image).map(async (sv) => {
+    ...propVehicles.filter((sv) => sv.vehicle.image).map(async (sv) => {
       const u = sv.vehicle.image; const d = await toDataUrl(u); if (d) vehImgs.set(u, d);
+    }),
+    ...propVehicles.map(async (sv) => {
+      const v = sv.vehicle;
+      // Pleine image uniquement depuis un visuel dédié (designImageUrl) ou la
+      // galerie : on évite d'étirer la photo produit détourée en plein cadre
+      // (rendu médiocre). Sans visuel dédié, la page design utilise un fond
+      // dégradé charte + silhouette (repli propre).
+      const src = (v.designImageUrl && v.designImageUrl.trim())
+        || (v.gallery && v.gallery.length ? v.gallery[0] : "");
+      if (!src) return;
+      const d = await toDataUrl(src); if (d) designImgs.set(v.id, d);
     }),
     ...opts.chargers.filter((sc) => sc.charger.image).map(async (sc) => {
       const u = sc.charger.image; const d = await toDataUrl(u); if (d) chgImgs.set(u, d);
     }),
   ]);
 
-  const html = buildHtml(opts, { fonts: { regular, medium, semibold }, vehImgs, chgImgs });
+  const html = buildHtml(opts, { fonts: { regular, medium, semibold }, vehImgs, chgImgs, designImgs });
   win.document.open();
   win.document.write(html);
   win.document.close();

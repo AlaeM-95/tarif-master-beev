@@ -49,6 +49,8 @@ function dbToVehicle(row: VehicleRow): Vehicle {
     lastSyncAt: (row as any).last_sync_at ?? undefined,
     image: row.image ?? "",
     gallery: Array.isArray((row as any).gallery) ? ((row as any).gallery as string[]) : undefined,
+    designImageUrl: (row as any).design_image_url ?? undefined,
+    designHighlights: Array.isArray((row as any).design_highlights) ? ((row as any).design_highlights as string[]) : undefined,
     featured: (row as any).featured ?? false,
     trunkLitres: (row as any).trunk_litres ?? undefined,
     cargoVolumeM3: (row as any).cargo_volume_m3 ?? undefined,
@@ -109,6 +111,9 @@ function vehicleToDb(v: Vehicle): VehicleInsert {
   // encore en DB, on les évite simplement.
   if (v.gallery !== undefined) (row as any).gallery = v.gallery;
   if (v.featured !== undefined) (row as any).featured = v.featured;
+  // Page DESIGN du catalogue (migration 051) : image lifestyle + accents design.
+  if (v.designImageUrl !== undefined) (row as any).design_image_url = v.designImageUrl;
+  if (v.designHighlights !== undefined) (row as any).design_highlights = v.designHighlights;
   // Specs étendues (migration 039)
   if (v.trunkLitres !== undefined) (row as any).trunk_litres = v.trunkLitres;
   if (v.cargoVolumeM3 !== undefined) (row as any).cargo_volume_m3 = v.cargoVolumeM3;
