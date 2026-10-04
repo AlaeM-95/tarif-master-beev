@@ -378,6 +378,29 @@ function AdminVehiclesPage() {
                   toast.error(`Échec : ${e instanceof Error ? e.message : "erreur"}`);
                 }
               }}
+              designSiblingCount={vehicles.filter(
+                (v) => v.id !== editingVehicle.id
+                  && v.brand.trim().toLowerCase() === editingVehicle.brand.trim().toLowerCase()
+                  && v.model.trim().toLowerCase() === editingVehicle.model.trim().toLowerCase(),
+              ).length}
+              onDuplicateDesign={async (design) => {
+                // Même marque + modèle, toutes versions confondues (normalisé).
+                const siblings = vehicles.filter(
+                  (v) => v.id !== editingVehicle.id
+                    && v.brand.trim().toLowerCase() === editingVehicle.brand.trim().toLowerCase()
+                    && v.model.trim().toLowerCase() === editingVehicle.model.trim().toLowerCase(),
+                );
+                if (!siblings.length) { toast.info("Aucune autre version pour ce modèle."); return; }
+                try {
+                  await Promise.all(siblings.map((v) => updateVehicle(v.id, {
+                    designImageUrl: design.designImageUrl,
+                    designHighlights: design.designHighlights,
+                  })));
+                  toast.success(`Page design dupliquée sur ${siblings.length} autre${siblings.length > 1 ? "s" : ""} version${siblings.length > 1 ? "s" : ""} ${editingVehicle.brand} ${editingVehicle.model}`);
+                } catch (e) {
+                  toast.error(`Échec de la duplication : ${e instanceof Error ? e.message : "erreur"}`);
+                }
+              }}
               onClose={() => setEditingId(null)}
               onDelete={async () => {
                 if (!confirm(`Supprimer ${editingVehicle.brand} ${editingVehicle.model} définitivement ?`)) return;
@@ -411,13 +434,19 @@ function KpiCard({ label, value, sub, icon, accent }: { label: string; value: st
 }
 
 // Formulaire d'édition complète d'un véhicule, ouvert en Dialog
-function VehicleEditForm({ vehicle, offers, onSave, onClose, onDelete }: {
+function VehicleEditForm({ vehicle, offers, onSave, onClose, onDelete, onDuplicateDesign, designSiblingCount = 0 }: {
   vehicle: Vehicle;
   offers: LeaserOffer[];
   onSave: (patch: Partial<Vehicle>) => Promise<void>;
   onClose: () => void;
   onDelete: () => Promise<void>;
+  /** Duplique la page design (image + accents) sur les autres versions du même
+   *  modèle (même marque + modèle). Déclenché manuellement par le bouton. */
+  onDuplicateDesign?: (d: { designImageUrl?: string; designHighlights?: string[] }) => Promise<void>;
+  /** Nombre d'autres versions (même marque + modèle) sur lesquelles dupliquer. */
+  designSiblingCount?: number;
 }) {
+  const [duplicatingDesign, setDuplicatingDesign] = useState(false);
   const [draft, setDraft] = useState<Partial<Vehicle>>({});
   const { create: createOffer, update: updateOffer, remove: removeOffer } = useLeaserOffers();
 
@@ -631,6 +660,36 @@ function VehicleEditForm({ vehicle, offers, onSave, onClose, onDelete }: {
                 Laissé vide : la page design reprend automatiquement les caractéristiques (autonomie, recharge, puissance, batterie).
               </p>
             </div>
+
+            {/* Duplication manuelle de la page design sur les autres versions du
+                MÊME modèle (même marque + modèle, versions différentes). Rien
+                n'est propagé tant que ce bouton n'est pas cliqué : une édition
+                sur une version précise reste isolée. */}
+            {onDuplicateDesign && designSiblingCount > 0 && (
+              <div className="rounded-md border border-beev-rose/30 bg-beev-rose-20/30 p-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={duplicatingDesign}
+                  className="gap-2"
+                  onClick={async () => {
+                    setDuplicatingDesign(true);
+                    try {
+                      await onDuplicateDesign({ designImageUrl: current.designImageUrl, designHighlights: current.designHighlights });
+                    } finally {
+                      setDuplicatingDesign(false);
+                    }
+                  }}
+                >
+                  <Copy className="w-4 h-4" />
+                  {duplicatingDesign ? "Duplication…" : `Dupliquer cette page design sur les ${designSiblingCount} autre${designSiblingCount > 1 ? "s" : ""} version${designSiblingCount > 1 ? "s" : ""}`}
+                </Button>
+                <p className="text-[11px] text-muted-foreground mt-2">
+                  Copie l'image design et les accents sur toutes les versions {current.brand} {current.model} (toutes versions confondues). Les autres champs ne sont pas touchés. Tant que vous ne cliquez pas, vos modifications restent propres à cette version.
+                </p>
+              </div>
+            )}
           </div>
         </FormSection>
       </div>
