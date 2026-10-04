@@ -11,10 +11,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles, Copy, BarChart3, Receipt, Map as MapIcon } from "lucide-react";
+import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles, Copy, BarChart3, Receipt, Map as MapIcon, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, fmtEur2, type EnergyParams } from "@/lib/store";
 import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, computeChargerLease, chargerQtyMultiplier, getVehicleSpecRows, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
+import { generateCataloguePdf } from "@/lib/catalogue";
 import { BEEV_JOURNEYS, MANDATORY_SERVICES, catalogTypeOf, createBlankCharger, createBlankVehicle, isUtilitaireCategory, categoryGroupOf, CATEGORY_GROUP_LABEL, type CategoryGroupKey, type CatalogType, type Charger, type LineItem, type ProjectType, type Vehicle } from "@/lib/catalog";
 import { AdminBadge } from "@/components/admin-badge";
 import { ImageUpload } from "@/components/image-upload";
@@ -916,6 +917,31 @@ function App() {
     toast.success("Nouveau devis — session vidée");
   };
 
+  // Export « catalogue » : rendu éditorial paysage (HTML → impression PDF),
+  // distinct du devis portrait. Le type (véhicule / borne / mixte) est déduit
+  // du contenu du devis. Rafraîchit les données catalogue comme exportPdf.
+  const exportCatalogue = () => {
+    if (!client.company) { alert("Renseignez au moins le nom de la société client."); return; }
+    const freshVehicles = Object.values(selectedV).map((sv) => {
+      const fresh = vehicles.find((v) => v.id === sv.vehicle.id);
+      return fresh ? { ...sv, vehicle: { ...fresh, isCurrentFleet: sv.vehicle.isCurrentFleet } } : sv;
+    });
+    const freshChargers = Object.values(selectedC).map((sc) => {
+      const fresh = chargers.find((c) => c.id === sc.charger.id);
+      return fresh ? { ...sc, charger: fresh } : sc;
+    });
+    if (freshVehicles.filter((sv) => !sv.vehicle.isCurrentFleet).length === 0 && freshChargers.length === 0) {
+      toast.error("Ajoutez au moins un véhicule ou une borne au devis pour générer un catalogue.");
+      return;
+    }
+    generateCataloguePdf({
+      client: { company: client.company, contact: client.contact, email: client.email },
+      vehicles: freshVehicles,
+      chargers: freshChargers,
+      energy,
+    });
+  };
+
   const exportPdf = async (preview = false) => {
     if (!client.company) { alert("Renseignez au moins le nom de la société client."); return; }
     // Validation : chaque véhicule du devis doit avoir une énergie ET une
@@ -1396,6 +1422,18 @@ function App() {
               title="Aperçu du PDF dans un nouvel onglet (sans téléchargement)"
             >
               <FileText className="w-3.5 h-3.5" /> Aperçu
+            </Button>
+
+            {/* Export catalogue : rendu éditorial paysage (HTML → impression). */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportCatalogue}
+              disabled={visibleCount === 0}
+              className="gap-1.5"
+              title="Exporter l'offre en catalogue (format paysage éditorial) — véhicule, borne ou mixte selon le contenu du devis"
+            >
+              <BookOpen className="w-3.5 h-3.5" /> Catalogue
             </Button>
 
             {/* CTA primaire : génération du PDF de proposition (jsPDF). */}
