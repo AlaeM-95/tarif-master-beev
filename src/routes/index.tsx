@@ -4551,11 +4551,8 @@ function SelectedVehicleRow({ sv, energy, onChange, onApplyAll, onRemove, onDupl
             />
             <span className="text-[11px] font-semibold uppercase tracking-wide text-beev-rose">Assurance tous risques incluse</span>
           </label>
-          {sv.assuranceTousRisques && (
-            <NumField label="Coût assurance (€/mois TTC)" value={sv.assuranceMonthly ?? 0} onChange={(n) => onChange({ assuranceMonthly: n })} step={1} />
-          )}
           <p className="text-[10px] text-muted-foreground leading-snug">
-            L'apport apparaît dans la carte prix de la fiche et s'ajoute une fois au « Loyer total » du TCO. L'assurance (si cochée) s'affiche dans « Compris dans le loyer » ; son coût mensuel s'ajoute au loyer dans le TCO.
+            L'apport (1er loyer majoré) apparaît dans la carte prix de la fiche et s'ajoute une seule fois au « Loyer total » du TCO (jamais multiplié par la durée). L'assurance tous risques, si cochée, s'affiche dans « Compris dans le loyer » : son coût est déjà inclus dans le loyer, il n'est donc pas rajouté au TCO.
           </p>
         </div>
       )}

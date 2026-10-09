@@ -25,9 +25,10 @@ export type TcoContractParams = {
   /** Apport / 1er loyer majoré TTC (VP) : ajouté UNE FOIS au loyer total.
    *  0 / absent = pas d'apport. */
   apport?: number;
-  /** Coût mensuel TTC de l'assurance tous risques, si souscrite : s'ajoute au
-   *  loyer mensuel dans le calcul du loyer total (× durée). N'entre pas dans la
-   *  base AEN (qui reste assise sur le seul loyer). 0 / absent = pas d'assurance. */
+  /** @deprecated Le loyer mensuel négocié inclut déjà le coût de l'assurance
+   *  tous risques : ce montant n'est donc PLUS ajouté au loyer total (il l'était
+   *  auparavant, ce qui provoquait un double comptage dans le TCO). Conservé pour
+   *  rétro-compatibilité des appels ; sans effet sur le calcul. */
   assuranceMensuelle?: number;
 };
 
@@ -244,13 +245,15 @@ function calculateCoutEnergie(
 export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthlyOverride?: number): TcoFullResult {
   const dureeMois = contract.dureeAnnees * 12;
   const monthly = monthlyOverride !== undefined && monthlyOverride > 0 ? monthlyOverride : v.monthlyLld;
-  // Loyer total = (loyer mensuel + assurance mensuelle) × durée + apport (1er
-  // loyer majoré, versé une seule fois). L'assurance et l'apport n'entrent que
-  // dans le loyer total (donc le TCO) ; la base AEN reste assise sur le seul
-  // loyer (monthly × 12) plus bas.
-  const assuranceMensuelle = Math.max(0, contract.assuranceMensuelle ?? 0);
+  // Loyer total = loyer mensuel × durée + apport.
+  // - Le loyer mensuel négocié INCLUT DÉJÀ le coût de l'assurance tous risques :
+  //   on ne la rajoute donc pas (sinon double comptage). contract.assuranceMensuelle
+  //   reste accepté pour rétro-compat mais n'entre plus dans le loyer total.
+  // - L'apport (1er loyer majoré, PLM) est ajouté UNE SEULE FOIS, versé à la mise
+  //   en service — surtout PAS multiplié par la durée.
+  // La base AEN reste assise sur le seul loyer (monthly × 12) plus bas.
   const apport = Math.max(0, contract.apport ?? 0);
-  const loyerTotal = (monthly + assuranceMensuelle) * dureeMois + apport;
+  const loyerTotal = monthly * dureeMois + apport;
   const prixEssence = contract.prixEssenceLitre ?? DEFAULT_COUT_ESSENCE_LITRE;
   const prixKwhDom = contract.prixKwhDomicile ?? DEFAULT_COUT_KWH_DOMICILE;
   const prixKwhPub = contract.prixKwhPublic ?? DEFAULT_COUT_KWH_PUBLIC;
