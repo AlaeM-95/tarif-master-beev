@@ -228,8 +228,17 @@ function calculateCoutEnergie(
   const consoMinElec = v.consoMinElec && v.consoMinElec > 0 ? v.consoMinElec : baseConso;
   const consoMaxElec = v.consoMaxElec && v.consoMaxElec > 0 ? v.consoMaxElec : baseConso;
 
-  const consoMoyTh = (consoMinThermique + consoMaxThermique) / 2;
-  const consoMoyEl = (consoMinElec + consoMaxElec) / 2;
+  // La consommation affichée aux clients (fiche, comparateur, PDF) est
+  // `consumptionElec ?? consumption` / `consumptionThermal ?? consumption`.
+  // Elle fait foi pour le calcul : les bornes min/max, copiées une seule fois
+  // par la migration 016, peuvent être périmées et faisaient diverger l'énergie
+  // du TCO de la consommation annoncée. Les bornes ne servent plus que de repli.
+  const consoAffEl = v.consumptionElec && v.consumptionElec > 0
+    ? v.consumptionElec
+    : v.energy === "Électrique" && baseConso > 0 ? baseConso : 0;
+  const consoAffTh = v.consumptionThermal && v.consumptionThermal > 0 ? v.consumptionThermal : 0;
+  const consoMoyTh = consoAffTh > 0 ? consoAffTh : (consoMinThermique + consoMaxThermique) / 2;
+  const consoMoyEl = consoAffEl > 0 ? consoAffEl : (consoMinElec + consoMaxElec) / 2;
   const coutThermique = (consoMoyTh / 100) * kmContrat * prixEssence;
   const prixKwhMoyen = prixKwhDomicile * 0.85 + prixKwhPublic * 0.15;
   const coutElec = (consoMoyEl / 100) * kmContrat * prixKwhMoyen;
