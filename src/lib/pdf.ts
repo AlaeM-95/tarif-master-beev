@@ -3556,23 +3556,34 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
     // l'a cochée (elle prime sur les prestations facultatives pour l'affichage).
     const assurLabel = L("Assurance tous risques", "Comprehensive insurance");
     const baseSvcs = [...MANDATORY_SERVICES, ...sv.services];
-    const svcs = (sv.assuranceTousRisques ? [assurLabel, ...baseSvcs] : baseSvcs).slice(0, 5);
+    // TOUTES les prestations sont listées (plus de coupe à 5 : une prestation
+    // cochée mais absente de la fiche contredisait le contrat). Si la liste est
+    // longue, on passe en mode compact (interligne et pastilles réduits) pour
+    // rester sur la page.
+    const svcs = sv.assuranceTousRisques ? [assurLabel, ...baseSvcs] : baseSvcs;
     const svcTextX = rightX + 30;
     const svcTextW = M + contentW - svcTextX; // largeur restante jusqu'à la marge droite
-    for (const svc of svcs) {
-      doc.setFillColor(...accSoft);
-      doc.roundedRect(rightX, ry, 22, 22, 7, 7, "F");
-      doc.setDrawColor(...accDeep);
-      doc.setLineWidth(1.4);
-      doc.line(rightX + 6, ry + 11.5, rightX + 9.5, ry + 15);
-      doc.line(rightX + 9.5, ry + 15, rightX + 16, ry + 7.5);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(10.5);
+    const svcLinesAll = svcs.map((svc) => doc.splitTextToSize(svc, svcTextW) as string[]);
+    const fullH = svcLinesAll.reduce((a, l) => a + Math.max(30, l.length * 13 + 8), 0);
+    const compact = ry + fullH > FOOTER_LIMIT - 24;
+    svcs.forEach((svc, si) => {
       doc.setFont(BRAND_FONT, "normal");
-      doc.setFontSize(10.5);
+      doc.setFontSize(compact ? 9 : 10.5);
+      const svcLines: string[] = compact ? (doc.splitTextToSize(svc, svcTextW) as string[]) : svcLinesAll[si];
+      const ic = compact ? 18 : 22;
+      doc.setFillColor(...accSoft);
+      doc.roundedRect(rightX, ry, ic, ic, compact ? 5 : 7, compact ? 5 : 7, "F");
+      doc.setDrawColor(...accDeep);
+      doc.setLineWidth(compact ? 1.2 : 1.4);
+      const k = ic / 22;
+      doc.line(rightX + 6 * k, ry + 11.5 * k, rightX + 9.5 * k, ry + 15 * k);
+      doc.line(rightX + 9.5 * k, ry + 15 * k, rightX + 16 * k, ry + 7.5 * k);
       doc.setTextColor(...INK);
-      const svcLines: string[] = doc.splitTextToSize(svc, svcTextW);
-      doc.text(svcLines, svcTextX, ry + 15);
-      ry += Math.max(30, svcLines.length * 13 + 8);
-    }
+      doc.text(svcLines, svcTextX, ry + (compact ? 12.5 : 15));
+      ry += compact ? Math.max(22, svcLines.length * 11 + 6) : Math.max(30, svcLines.length * 13 + 8);
+    });
     // Fin des deux colonnes : on repart sous la plus profonde.
     y = Math.max(ly, ry) + 18;
 
@@ -7437,11 +7448,22 @@ async function drawGroupComparison(
   const insights = [...nonFiscal.slice(0, 2), fiscal.join(" ")].filter((t) => t.trim().length > 0).slice(0, 3);
 
   // ── Bandeau « identique pour tous » ──
+  // Même liste et même ordre que la rubrique « Compris dans le loyer » des
+  // fiches : l'assurance tous risques d'abord si elle est cochée, puis les
+  // prestations obligatoires et celles saisies pour le véhicule. Aucune coupe.
   const svcOf = (sv: SelectedVehicle): string[] => {
     const mand = MANDATORY_SERVICES as readonly string[];
-    return [...mand, ...(sv.services ?? []).filter((s) => !mand.includes(s))];
+    return [
+      ...(sv.assuranceTousRisques ? [L("Assurance tous risques", "Comprehensive insurance")] : []),
+      ...mand,
+      ...(sv.services ?? []).filter((s) => !mand.includes(s)),
+    ];
   };
   const commonSvc = svcOf(items[0].sv).filter((s) => items.every((it) => svcOf(it.sv).includes(s)));
+  // Prestations propres à certains véhicules (non communes) : une ligne dédiée
+  // dans le tableau, pour que rien de ce qui est inclus au loyer ne disparaisse.
+  const extrasOf = (it: GcItem): string[] => svcOf(it.sv).filter((x) => !commonSvc.includes(x));
+  const hasExtras = items.some((it) => extrasOf(it).length > 0);
   const commonParts: string[] = [];
   const sameEnergy = items.every((it) => it.sv.vehicle.energy === items[0].sv.vehicle.energy);
   if (sameEnergy) {
@@ -7570,11 +7592,18 @@ async function drawGroupComparison(
     const maxPm = Math.max(...pmLines.map((l) => l.length));
     const totH = 46 + maxPm * 8 + 4;
 
-    const plainH = 19;
+    const plainH = 18;
     const showRange = items.some((it) => (it.sv.vehicle.rangeWltp ?? 0) > 0);
     const showConso = items.some((it) => consoOf(it) !== null);
     const plainCount = 2 + (sameBase ? 0 : 1) + (showRange ? 1 : 0) + (showConso ? 1 : 0);
-    const tableH = headH + secH + costH.reduce((a, b) => a + b, 0) + totH + secH + plainCount * plainH;
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(6.6);
+    const extraLines = chunk.map((it) => {
+      const ex = extrasOf(it);
+      return ex.length ? (doc.splitTextToSize(ex.join(" · "), iw - 6) as string[]).slice(0, 5) : [];
+    });
+    const extraRowH = hasExtras ? Math.max(plainH, 10 + Math.max(1, ...extraLines.map((l) => l.length)) * 8) : 0;
+    const tableH = headH + secH + costH.reduce((a, b) => a + b, 0) + totH + secH + plainCount * plainH + extraRowH;
     const top = y;
 
     // fond de la colonne de référence (toujours la 1re)
@@ -7826,6 +7855,23 @@ async function drawGroupComparison(
         comparable ? bestIdx(cs.map((c) => (c as { v: number }).v), "min") : undefined,
       );
     }
+    if (hasExtras) {
+      rowLabel(L("Inclus en plus au loyer", "Also included in the lease"), ty, extraRowH);
+      chunk.forEach((it, i) => {
+        const cx = colX(i) + pad + 6;
+        doc.setFont(BRAND_FONT, "normal");
+        doc.setFontSize(6.6);
+        if (!extraLines[i].length) {
+          doc.setTextColor(140, 137, 128);
+          doc.text("—", cx, ty + 12.5);
+        } else {
+          doc.setTextColor(...INK);
+          extraLines[i].forEach((ln, li) => doc.text(ln, cx, ty + 11 + li * 8));
+        }
+      });
+      hair(ty, extraRowH);
+      ty += extraRowH;
+    }
     y = ty + 10;
 
     // Bandeau « identique pour tous »
@@ -7849,10 +7895,12 @@ async function drawGroupComparison(
       y += bh + 8;
     }
 
-    // À retenir + note de méthode. Hauteurs mesurées AVANT de dessiner : les deux
+    // « À retenir » (analyse du groupe) n'est affiché qu'une fois : sur la 1re page,
+    // pas sur les pages de suite. À retenir + note de méthode. Hauteurs mesurées AVANT de dessiner : les deux
     // blocs restent ensemble sur la page (jamais une note seule sur une page
     // vide) et « À retenir » passe en liste pleine largeur si 3 colonnes ne
     // tiennent pas.
+    const pageInsights = isCont ? [] : insights;
     const noteTxt = L(
       "Coût employeur complet = loyers (apport inclus) + énergie + TVS + malus + surcoût fiscal AND (25 % de l'AND) + avantage en nature employeur (AEN), sur la durée du contrat. Les écarts par ligne se lisent contre le véhicule de référence. L'avantage en nature du collaborateur, indiqué à titre d'information, et la méthode détaillée figurent en annexe.",
       "Full employer cost = lease payments (deposit included) + energy + company car tax + penalty + AND tax cost (25% of the AND) + employer benefit-in-kind (AEN), over the contract duration. Row gaps are read against the reference vehicle. The employee's benefit-in-kind, shown for information, and the detailed method are in the appendix.",
@@ -7865,20 +7913,20 @@ async function drawGroupComparison(
     let insMode: "cols" | "stack" = "cols";
     let insH = 0;
     const insGap = 12;
-    const insColW = insights.length ? (CW - insGap * (insights.length - 1)) / insights.length : CW;
+    const insColW = pageInsights.length ? (CW - insGap * (pageInsights.length - 1)) / pageInsights.length : CW;
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(7.4);
-    const insCols = insights.map((t) => doc.splitTextToSize(t, insColW) as string[]);
-    const insStack = insights.map((t) => doc.splitTextToSize(t, CW - 12) as string[]);
-    if (insights.length) {
+    const insCols = pageInsights.map((t) => doc.splitTextToSize(t, insColW) as string[]);
+    const insStack = pageInsights.map((t) => doc.splitTextToSize(t, CW - 12) as string[]);
+    if (pageInsights.length) {
       const colsH = 22 + Math.max(...insCols.map((w) => w.length)) * 9.2;
-      const stackH = 14 + insStack.reduce((a, w) => a + w.length * 9.2 + 3, 0);
+      const stackH = 12 + insStack.reduce((a, w) => a + w.length * 9 + 2, 0);
       const room = FOOTER_LIMIT - y - noteH - 8;
       insMode = colsH <= room || colsH <= stackH ? "cols" : "stack";
       insH = insMode === "cols" ? colsH : stackH;
     }
     y = ensureSpace(doc, y, insH + noteH + 8, client, "vehicles");
-    if (insights.length) {
+    if (pageInsights.length) {
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(6.2);
       doc.setTextColor(140, 137, 128);
@@ -7896,15 +7944,15 @@ async function drawGroupComparison(
           doc.text(w, x, y + 23);
         });
       } else {
-        let by = y + 18;
+        let by = y + 17;
         insStack.forEach((w) => {
           doc.setFillColor(...PINK);
           doc.circle(M + 2, by - 2.4, 1.6, "F");
           doc.setFont(BRAND_FONT, "normal");
           doc.setFontSize(7.4);
           doc.setTextColor(...INK);
-          doc.text(w, M + 10, by);
-          by += w.length * 9.2 + 3;
+          doc.text(w, M + 10, by, { lineHeightFactor: 1.2 });
+          by += w.length * 9 + 2;
         });
       }
       y += insH + 8;
