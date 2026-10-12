@@ -61,6 +61,7 @@ export type PdfDisplayConfig = {
   tcoGroupByComparison: boolean; // détail TCO : groupé par groupe de comparaison (true) ou global trié par TCO (false)
   showTcoFiscalDetail: boolean; // page « Détail charges fiscales annexes » (off par défaut)
   showVehicleComparator: boolean; // page comparateur multi-véhicules (specs côte à côte)
+  showGroupComparison: boolean; // comparateur par groupe, nouveau format : 1 page/groupe (coût complet + écarts + reco), remplace le comparateur et le détail TCO quand tous les véhicules du groupe sont des propositions
   showCurrentFleetVehicle: boolean; // afficher la fiche détaillée des véhicules « flotte actuelle » (masqués par défaut)
   showProposalVehicle: boolean; // afficher la fiche détaillée des propositions Beev (masquées par défaut)
   showCompetitorComparison: boolean; // page Mise en concurrence (offre client vs Beev sur même véhicule)
@@ -138,6 +139,7 @@ export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
   tcoGroupByComparison: true, // par défaut, on groupe le détail TCO par groupe de comparaison
   showTcoFiscalDetail: false, // page détail charges fiscales annexes : désactivée par défaut
   showVehicleComparator: true,
+  showGroupComparison: true, // nouveau format par défaut (le comparateur classique reste en repli pour les groupes non éligibles)
   showCurrentFleetVehicle: false, // masquée par défaut ; le commercial l'active dans la config PDF
   showProposalVehicle: false, // masquée par défaut ; le commercial l'active dans la config PDF
   showCompetitorComparison: true,
@@ -242,6 +244,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
       { key: "showTcoDetailedTable", label: "Analyse TCO · détail des composantes", description: "Page tableau : 1 ligne par véhicule avec toutes les composantes (loyer, énergie, TVS, malus, AND, AEN, TCO total). Nécessite 2+ véhicules.", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "tcoGroupByComparison", label: "Détail TCO groupé par segment", description: "Coché : le détail TCO est regroupé par groupe de comparaison (un intertitre par segment). Décoché : un seul tableau global trié du TCO le plus bas au plus haut.", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showTcoFiscalDetail", label: "Détail charges fiscales annexes", description: "Page « Détail charges fiscales annexes par véhicule » (Malus / TVS / AND / AEN). Désactivée par défaut.", appliesTo: ["vehicles"] as unknown as string[] } as any,
+      { key: "showGroupComparison", label: "Comparateur par groupe (coût complet)", description: "1 page par groupe de comparaison : recommandation en titre, coût employeur complet par véhicule, écarts expliqués ligne par ligne. Remplace le comparateur et le détail TCO quand tous les véhicules du groupe sont des propositions avec un loyer négocié ; le comparateur classique reste en repli sinon.", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showVehicleComparator", label: "Comparateur véhicules", description: "Tableau comparatif specs côte à côte (prix, autonomie, conso, fiscalité) si 2+ véhicules", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showCurrentFleetVehicle", label: "Fiche détaillée flotte actuelle", description: "Afficher la fiche véhicule complète des véhicules marqués « flotte actuelle » (masqués par défaut, visibles uniquement dans le comparateur)", appliesTo: ["vehicles"] as unknown as string[] } as any,
       { key: "showProposalVehicle", label: "Fiche détaillée proposition Beev", description: "Afficher la fiche véhicule complète des propositions Beev (masquées par défaut, visibles dans le comparateur)", appliesTo: ["vehicles"] as unknown as string[] } as any,

@@ -108,7 +108,7 @@ const DOC_ORDER: string[] = [
   // Ouverture
   "showWhyBeev", "showSocialProof",
   // Offre véhicules
-  "showVehicleComparator", "showCurrentFleetVehicle", "showProposalVehicle", "showCompetitorComparison", "showModelYCompare",
+  "showGroupComparison", "showVehicleComparator", "showCurrentFleetVehicle", "showProposalVehicle", "showCompetitorComparison", "showModelYCompare",
   // Analyse TCO véhicules
   "showTcoComparison", "showTcoDetailedTable", "showTcoFiscalDetail", "showFleetSynthesis",
   "showCarbonImpact", "showFiscalAdvantages",
@@ -134,7 +134,7 @@ const ACCENT_BG: Record<PhaseAccent, string> = {
 };
 const PHASES: { name: string; accent: PhaseAccent; keys: string[] }[] = [
   { name: "Ouverture", accent: "rose", keys: ["showWhyBeev", "showSocialProof"] },
-  { name: "Offre véhicules", accent: "bleu", keys: ["showVehicleComparator", "showCurrentFleetVehicle", "showProposalVehicle", "showCompetitorComparison", "showModelYCompare", "showFleetSynthesis"] },
+  { name: "Offre véhicules", accent: "bleu", keys: ["showGroupComparison", "showVehicleComparator", "showCurrentFleetVehicle", "showProposalVehicle", "showCompetitorComparison", "showModelYCompare", "showFleetSynthesis"] },
   { name: "Analyse TCO", accent: "violet", keys: ["includeCurrentFleetInTco", "showTcoComparison", "showTcoDetailedTable", "tcoGroupByComparison", "showTcoFiscalDetail", "showCarbonImpact", "showFiscalAdvantages"] },
   { name: "Rapport site & bornes", accent: "ink", keys: ["showSiteOverview", "showSiteGuarantees", "showSiteProjectSynthesis", "showSiteInfrastructure", "showSiteEquipments", "showSiteProductSheet", "showSiteSupervision", "showSiteCompliance", "showSitePaymentOptions", "showChargerFeatures", "showChargerLineItems", "showChargerInclusionNote", "showSupervisionHome", "showSupervisionConnect"] },
   { name: "Synthèse & clôture", accent: "rose", keys: ["showFinancialSummary", "showFinancialSynthesis", "showGuarantees", "showJourney", "showExecutiveSummary", "showLegend", "showValidation"] },
@@ -148,7 +148,7 @@ const KIND_BY_KEY: Record<string, SectionKind> = {
   showWhyBeev: "texte", showSocialProof: "cartes",
   showFleetSynthesis: "tableau", showTcoComparison: "graphique",
   showTcoDetailedTable: "tableau", showTcoFiscalDetail: "tableau",
-  showVehicleComparator: "tableau", showCurrentFleetVehicle: "fiche",
+  showVehicleComparator: "tableau", showGroupComparison: "tableau", showCurrentFleetVehicle: "fiche",
   showProposalVehicle: "fiche", showCompetitorComparison: "cartes", showModelYCompare: "cartes",
   showCarbonImpact: "graphique", showFinancialSummary: "tableau",
   showFinancialSynthesis: "cartes", showFiscalAdvantages: "texte",
