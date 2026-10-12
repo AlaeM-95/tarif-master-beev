@@ -156,10 +156,10 @@ function baseCss(fonts: { regular?: string; medium?: string; semibold?: string }
   .cvfoot{position:absolute;left:18mm;right:18mm;bottom:14mm;display:flex;justify-content:space-between;font-size:12px;color:rgba(252,249,242,.6);border-top:1px solid rgba(252,249,242,.18);padding-top:12px;z-index:3}
   .cover .art{position:absolute;z-index:1}
   /* grille sélection */
-  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:22px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px;margin-top:16px}
   .vc{border:1px solid var(--rule);border-radius:16px;overflow:hidden}
-  .vc .ph{height:120px;background:var(--bleu-soft);display:flex;align-items:center;justify-content:center}
-  .vc .ph img{max-height:108px;max-width:88%;object-fit:contain}
+  .vc .ph{height:104px;background:var(--bleu-soft);display:flex;align-items:center;justify-content:center}
+  .vc .ph img{max-height:94px;max-width:88%;object-fit:contain;mix-blend-mode:multiply}
   .vc .ph svg{width:70%}
   .vc .bd{padding:12px 15px 15px}
   .vc .nm{font-size:16px;font-weight:700}
@@ -172,7 +172,7 @@ function baseCss(fonts: { regular?: string; medium?: string; semibold?: string }
   /* spread fiche */
   .spread{display:grid;grid-template-columns:1.05fr 1fr;gap:34px;margin-top:22px;align-items:start}
   .hero{background:linear-gradient(135deg,var(--bleu-soft),var(--rose-soft));border-radius:18px;height:360px;display:flex;align-items:center;justify-content:center;position:relative}
-  .hero img{max-height:320px;max-width:90%;object-fit:contain}
+  .hero img{max-height:320px;max-width:90%;object-fit:contain;mix-blend-mode:multiply}
   .hero svg{width:86%}
   .hero .tag{position:absolute;top:16px;left:16px;font-size:11px;font-weight:700;background:var(--rose);color:#7a3527;padding:6px 13px;border-radius:20px}
   .hero .cap{position:absolute;bottom:12px;right:16px;font-size:11px;color:var(--grey)}
@@ -425,7 +425,17 @@ function footer(label: string, pageNo: number, client: CatalogueClient): string 
   return `<div class="foot"><span style="display:flex;align-items:center;gap:8px">${logoMark(false)}<span>${esc(label)}</span></span><span>${String(pageNo).padStart(2, "0")} · ${co}</span></div>`;
 }
 
-function selectionPage(rows: VehRow[], client: CatalogueClient, pageNo: number): string {
+// 6 cartes par page (2 rangées de 3) : au-delà, la grille débordait sur le pied de page.
+const SELECTION_PER_PAGE = 6;
+function selectionPages(rows: VehRow[], client: CatalogueClient, startPage: number): string[] {
+  const pages: string[] = [];
+  for (let i = 0; i < rows.length; i += SELECTION_PER_PAGE) {
+    pages.push(selectionPage(rows.slice(i, i + SELECTION_PER_PAGE), rows.length, i > 0, client, startPage + pages.length));
+  }
+  return pages;
+}
+
+function selectionPage(rows: VehRow[], totalRows: number, isCont: boolean, client: CatalogueClient, pageNo: number): string {
   const cards = rows.map((r) => {
     const v = r.sv.vehicle;
     const ph = r.img ? `<img src="${esc(r.img)}" alt="">` : carSilhouette("#1E5A99");
@@ -438,8 +448,8 @@ function selectionPage(rows: VehRow[], client: CatalogueClient, pageNo: number):
   }).join("");
   return `
   <div class="page"><div class="pad">
-    <div class="shead"><h2>La sélection Beev</h2><div class="rt">${rows.length} véhicule${rows.length > 1 ? "s" : ""} · classés par loyer croissant</div></div>
-    <p class="lede">Une sélection de véhicules 100 % électriques adaptés à vos usages, avec un loyer tout compris (maintenance, assistance, assurance, pneumatiques). Chaque fiche détaille les caractéristiques, le prix et le coût total de possession.</p>
+    <div class="shead"><h2>La sélection Beev${isCont ? " (suite)" : ""}</h2><div class="rt">${totalRows} véhicule${totalRows > 1 ? "s" : ""} · classés par loyer croissant</div></div>
+    ${isCont ? "" : `<p class="lede">Une sélection de véhicules 100 % électriques adaptés à vos usages, avec un loyer tout compris (maintenance, assistance, assurance, pneumatiques). Chaque fiche détaille les caractéristiques, le prix et le coût total de possession.</p>`}
     <div class="grid">${cards}</div>
     ${footer("Catalogue véhicules électriques", pageNo, client)}
   </div></div>`;
@@ -697,7 +707,7 @@ function buildHtml(opts: CatalogueOpts, assets: { fonts: any; vehImgs: Map<strin
     pages.push(projetPage(rows, chargers, client, p)); p++;
     pages.push(coutGlobalPage(rows, chargers, client, p)); p++;
     // suivi des fiches véhicule puis bornes
-    pages.push(selectionPage(rows, client, p)); p++;
+    { const sp = selectionPages(rows, client, p); pages.push(...sp); p += sp.length; }
     rows.forEach((r, i) => {
       pages.push(vehSpreadPage(r, i + 1, rows.length, client, p)); p++;
       pages.push(designPage(r, client, p, assets.designImgs.get(r.sv.vehicle.id))); p++;
@@ -707,7 +717,7 @@ function buildHtml(opts: CatalogueOpts, assets: { fonts: any; vehImgs: Map<strin
     pages.push(installationPage(chargers, client, p)); p++;
   } else if (hasVeh) {
     pages.push(vehicleCover(client, rows.length)); p++;
-    pages.push(selectionPage(rows, client, p)); p++;
+    { const sp = selectionPages(rows, client, p); pages.push(...sp); p += sp.length; }
     rows.forEach((r, i) => {
       pages.push(vehSpreadPage(r, i + 1, rows.length, client, p)); p++;
       pages.push(designPage(r, client, p, assets.designImgs.get(r.sv.vehicle.id))); p++;

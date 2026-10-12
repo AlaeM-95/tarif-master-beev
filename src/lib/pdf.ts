@@ -6611,11 +6611,64 @@ async function preloadVehicleThumbs(vehicles: SelectedVehicle[]): Promise<(Loade
     if (!li) return null;
     try {
       const flat = await flattenPngToJpeg(li.dataUrl, li.w, li.h, [255, 255, 255]);
-      return { dataUrl: flat, w: li.w, h: li.h, format: "JPEG" as const };
+      return await trimImageMargins({ dataUrl: flat, w: li.w, h: li.h, format: "JPEG" as const });
     } catch {
       return li;
     }
   }));
+}
+
+// Recadre les marges uniformes autour du véhicule (fond blanc ou gris du
+// visuel constructeur) : une voiture petite au centre d'un grand cadre vide
+// devient illisible en vignette. Le fond est lu dans les 4 coins ; si les
+// coins diffèrent ou si le gain est négligeable, l'image est conservée.
+async function trimImageMargins(img: LoadedImage): Promise<LoadedImage> {
+  return new Promise((resolve) => {
+    const el = new Image();
+    el.onerror = () => resolve(img);
+    el.onload = () => {
+      try {
+        const W = el.naturalWidth, H = el.naturalHeight;
+        if (W < 40 || H < 40) return resolve(img);
+        const c = document.createElement("canvas");
+        c.width = W; c.height = H;
+        const ctx = c.getContext("2d", { willReadFrequently: true } as any);
+        if (!ctx) return resolve(img);
+        ctx.drawImage(el, 0, 0);
+        const d = ctx.getImageData(0, 0, W, H).data;
+        const px = (x: number, y: number) => { const i = (y * W + x) * 4; return [d[i], d[i + 1], d[i + 2]]; };
+        const corners = [px(1, 1), px(W - 2, 1), px(1, H - 2), px(W - 2, H - 2)];
+        const bg = corners[0];
+        const TOL = 14;
+        const near = (a: number[], b: number[]) => Math.abs(a[0] - b[0]) <= TOL && Math.abs(a[1] - b[1]) <= TOL && Math.abs(a[2] - b[2]) <= TOL;
+        if (!corners.every((k) => near(k, bg))) return resolve(img);
+        let x0 = W, x1 = -1, y0 = H, y1 = -1;
+        for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+            const i = (y * W + x) * 4;
+            if (Math.abs(d[i] - bg[0]) > TOL || Math.abs(d[i + 1] - bg[1]) > TOL || Math.abs(d[i + 2] - bg[2]) > TOL) {
+              if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+            }
+          }
+        }
+        if (x1 < x0 || y1 < y0) return resolve(img);
+        const mx = Math.round((x1 - x0) * 0.04) + 2, my = Math.round((y1 - y0) * 0.06) + 2;
+        x0 = Math.max(0, x0 - mx); y0 = Math.max(0, y0 - my);
+        x1 = Math.min(W - 1, x1 + mx); y1 = Math.min(H - 1, y1 + my);
+        const cw = x1 - x0 + 1, ch = y1 - y0 + 1;
+        if (cw * ch > W * H * 0.88) return resolve(img);
+        const out = document.createElement("canvas");
+        out.width = cw; out.height = ch;
+        const octx = out.getContext("2d");
+        if (!octx) return resolve(img);
+        octx.fillStyle = `rgb(${bg[0]}, ${bg[1]}, ${bg[2]})`;
+        octx.fillRect(0, 0, cw, ch);
+        octx.drawImage(c, x0, y0, cw, ch, 0, 0, cw, ch);
+        resolve({ dataUrl: out.toDataURL("image/jpeg", 0.92), w: cw, h: ch, format: "JPEG" });
+      } catch { resolve(img); }
+    };
+    el.src = img.dataUrl;
+  });
 }
 
 // Dessine une vignette véhicule (carte blanche + image contenue) à gauche d'une
@@ -7548,7 +7601,7 @@ async function drawGroupComparison(
     const hasEco = chunk.some((it) => it.sv.vehicle.ecoScoreBool || it.sv.vehicle.ecoScoreUpcoming);
     const maxName = Math.max(...nameLines.map((l) => l.length));
     const maxVer = Math.max(...verLines.map((l) => l.length));
-    const photoH = 28;
+    const photoH = chunk.length <= 3 ? 40 : 30;
     const headH = photoH + 6 + 10 + (hasEco ? 12 : 0) + 4 + maxName * 11 + maxVer * 8.5 + 8;
 
     // lignes de coût : retour à la ligne de l'écart si la place manque
@@ -7616,7 +7669,7 @@ async function drawGroupComparison(
       doc.setFillColor(255, 255, 255);
       doc.roundedRect(ix, top, iw, photoH, 5, 5, "F");
       if (it.img) {
-        const ratio = Math.min((iw - 8) / it.img.w, (photoH - 6) / it.img.h);
+        const ratio = Math.min((iw - 10) / it.img.w, (photoH - 6) / it.img.h);
         const w = it.img.w * ratio, h = it.img.h * ratio;
         try { doc.addImage(it.img.dataUrl, it.img.format, ix + (iw - w) / 2, top + (photoH - h) / 2, w, h); } catch { /* non bloquant */ }
       }
