@@ -57,14 +57,11 @@ export type TcoFullResult = {
    *  andAnnuel × TAUX_IS_ENTREPRISE (25%). C'est ce champ, et non
    *  andAnnuel, qui doit entrer dans tcoEmployeurComplet. */
   coutFiscalANDAnnuel: number;
-  /** andAnnuel × nombre d'ANNÉES FISCALES ENTIÈRES du contrat (et non
-   *  durationMonths / 12, une fraction sans réalité fiscale — une taxe
-   *  annuelle se compte en exercices pleins). Source unique : ne pas
-   *  recalculer andAnnuel × duree côté appelant, cf. anomalie relevée sur
-   *  le devis Renault Captur où ce recalcul dupliqué en TVS avait dérivé. */
+  /** andAnnuel × durée réelle du contrat (prorata temporis, BOFiP §300).
+   *  Source unique : ne pas recalculer andAnnuel × duree côté appelant. */
   andTotal: number;
-  /** coutFiscalANDAnnuel × années fiscales entières — le montant à utiliser
-   *  dans tcoEmployeurComplet. */
+  /** coutFiscalANDAnnuel × durée réelle — le montant à utiliser dans
+   *  tcoEmployeurComplet (et le seul AND à afficher aux clients). */
   coutFiscalANDTotal: number;
   aenBrut: number;
   aenAbattement: number;
@@ -74,7 +71,7 @@ export type TcoFullResult = {
   partEmployeurAnnuelle: number;
   partSalarialeMensuelle: number;
   partEmployeurMensuelle: number;
-  /** partEmployeurAnnuelle × années fiscales entières du contrat. */
+  /** partEmployeurAnnuelle × durée réelle du contrat. */
   aenEmployeurTotal: number;
   tcoMensuel: number;
   tcoAnnuel: number;
@@ -95,6 +92,12 @@ const DEFAULT_COUT_KWH_PUBLIC = 0.6;
 // (taux normal 2026). Utilisé uniquement pour chiffrer l'impact réel de
 // l'AND sur le coût employeur — voir note plus bas.
 export const TAUX_IS_ENTREPRISE = 0.25;
+
+// Avantage en nature véhicule loué, éco-scoré (barème 2026, BPCE Car Lease /
+// BOSS) : plafond de l'AEN à 15 % du prix d'achat TTC, abattement électrique
+// de 70 % limité à 4 641,60 € par an.
+const AEN_PLAFOND_PCT_PRIX = 0.15;
+const AEN_ABATTEMENT_MAX_AN = 4641.6;
 
 // Plafond AND (Avantage Non Déductible) — dépend du CO₂
 function getPlafondAND(co2: number): number {
@@ -312,23 +315,31 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
   // montant. Le vrai surcoût est l'IS supplémentaire généré par cette
   // réintégration : andAnnuel × 25%.
   const coutFiscalANDAnnuel = andAnnuel * TAUX_IS_ENTREPRISE;
-  const andTotal = andAnnuel * dureeAnneesFiscales;
-  const coutFiscalANDTotal = coutFiscalANDAnnuel * dureeAnneesFiscales;
+  // AND et AEN suivent la durée réelle du contrat, au prorata (49 mois =
+  // 4,08 an) : le BOFiP (BOI-BIC-AMT-20-40-50 §300) réintègre « prorata
+  // temporis ». Seules les taxes annuelles (TVS) restent en années entières.
+  const andTotal = andAnnuel * contract.dureeAnnees;
+  const coutFiscalANDTotal = coutFiscalANDAnnuel * contract.dureeAnnees;
 
   // AEN — Avantage en Nature (méthode forfaitaire basée sur le loyer)
   // Taux forfaitaire 50% ; abattement 70% si EL avec éco-score, sinon 0%.
   const baseAEN = monthly * 12;
   const tauxForfaitaire = 0.5;
-  const aenBrut = baseAEN * tauxForfaitaire;
+  // Plafond : l'AEN forfaitaire d'un véhicule loué ne peut pas dépasser 15 %
+  // du prix d'achat TTC (hors carburant, véhicules attribués depuis le
+  // 01/02/2025). Appliqué seulement si le prix d'achat est connu.
+  const aenForfait = baseAEN * tauxForfaitaire;
+  const aenBrut = prixFinal > 0 ? Math.min(aenForfait, prixFinal * AEN_PLAFOND_PCT_PRIX) : aenForfait;
   const tauxAbattement = v.energy === "Électrique" && v.ecoScoreBool ? 0.7 : 0;
-  const aenAbattement = aenBrut * tauxAbattement;
+  // Abattement de 70 % limité à 4 641,60 € par an (barème au 01/01/2026).
+  const aenAbattement = Math.min(aenBrut * tauxAbattement, AEN_ABATTEMENT_MAX_AN);
   const aenAnnuel = aenBrut - aenAbattement;
   const aenMensuel = aenAnnuel / 12;
   const partSalarialeAnnuelle = aenAnnuel * 0.25;
   const partEmployeurAnnuelle = aenAnnuel * 0.42;
   const partSalarialeMensuelle = partSalarialeAnnuelle / 12;
   const partEmployeurMensuelle = partEmployeurAnnuelle / 12;
-  const aenEmployeurTotal = partEmployeurAnnuelle * dureeAnneesFiscales;
+  const aenEmployeurTotal = partEmployeurAnnuelle * contract.dureeAnnees;
 
   const emissionsContrat = ((v.co2 ?? 0) * contract.kmContrat) / 1_000_000;
   const tcoTotal = loyerTotal + coutEnergie + tvsTotal + malusCO2 + malusPoids;

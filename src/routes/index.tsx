@@ -3285,7 +3285,7 @@ function TcoCalculator({
                     <th className="py-2 px-2 text-right">TVS / an</th>
                     <th className="py-2 px-2 text-right">Malus CO₂</th>
                     <th className="py-2 px-2 text-right">Malus poids</th>
-                    <th className="py-2 px-2 text-right">AND / an</th>
+                    <th className="py-2 px-2 text-right">Surcoût AND (25 %) / an</th>
                     <th className="py-2 px-2 text-right">AEN / mois</th>
                     <th className="py-2 px-2 text-right">Part salariale</th>
                     <th className="py-2 px-2 text-right">Part employeur</th>
@@ -3301,7 +3301,7 @@ function TcoCalculator({
                       <td className="py-2 px-2 text-right">{fmtEur(r.full.taxeCO2 + r.full.taxePollution)}</td>
                       <td className="py-2 px-2 text-right">{fmtEur(r.full.malusCO2)}</td>
                       <td className="py-2 px-2 text-right">{fmtEur(r.full.malusPoids)}</td>
-                      <td className="py-2 px-2 text-right">{fmtEur(r.full.andAnnuel)}</td>
+                      <td className="py-2 px-2 text-right">{fmtEur(r.full.coutFiscalANDAnnuel)}</td>
                       <td className="py-2 px-2 text-right">{fmtEur(r.full.aenMensuel)}</td>
                       <td className="py-2 px-2 text-right">{fmtEur(r.full.partSalarialeMensuelle)} <span className="text-muted-foreground">/mois</span></td>
                       <td className="py-2 px-2 text-right">{fmtEur(r.full.partEmployeurMensuelle)} <span className="text-muted-foreground">/mois</span></td>
@@ -3315,10 +3315,9 @@ function TcoCalculator({
               vide, éco-score et remise sur chaque fiche véhicule dans l'admin.
             </p>
             <p className="text-[10px] text-muted-foreground mt-1">
-              L'AND (Avantage Non Déductible) affiché ci-dessus n'est pas un décaissement : c'est un
-              montant que l'entreprise ne peut pas déduire de son résultat imposable. Le « Coût
-              employeur complet » (PDF) n'intègre donc pas l'AND brut mais l'IS supplémentaire qu'il
-              génère (AND × 25%).
+              Surcoût AND : au-dessus du plafond fiscal, l'entreprise ne peut pas déduire une partie
+              du véhicule de son résultat. Elle paie 25 % de cette partie en impôt supplémentaire :
+              c'est ce montant, et lui seul, qui entre dans le « Coût employeur complet » (PDF).
             </p>
           </CardContent>
         </Card>

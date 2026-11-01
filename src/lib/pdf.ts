@@ -3736,7 +3736,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
         apport: svApport(sv), assuranceMensuelle: svAssuranceMensuelle(sv),
       }, sv.negotiatedMonthly);
       const tvsTotal = tcoFull.tvsTotal;
-      const andAnnuel = tcoFull.andAnnuel;
+      const andAnnuel = tcoFull.coutFiscalANDAnnuel; // surcoût réel (25 % de l'AND), pas l'AND brut
       const aenAnnuel = tcoFull.aenAnnuel;
       const partEmpAnnuelle = tcoFull.partEmployeurAnnuelle;
       // Coût employeur complet : reconstruit à partir du `tcoTotal` OFFICIEL
@@ -3779,7 +3779,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
       // Ligne 2 : 3 colonnes (AND annuel, AEN annuel, Part employeur AEN)
       const row2Y = row1Y + 32;
       const row2 = [
-        { label: L("AND / AN (NON DÉCAISSÉ)", "AND / YEAR (NOT DISBURSED)"), value: eur(andAnnuel) },
+        { label: L("SURCOÛT FISCAL AND / AN (25 %)", "AND TAX COST / YEAR (25%)"), value: eur(andAnnuel) },
         { label: L("AEN ANNUEL", "ANNUAL AEN"), value: eur(aenAnnuel) },
         { label: L("PART EMPLOYEUR AEN / AN", "AEN EMPLOYER SHARE / YEAR"), value: eur(partEmpAnnuelle) },
       ];
@@ -4485,8 +4485,8 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
   const intro = L(
-    "Classement par TCO d'usage : loyer LLD, coût énergie, fiscalité (TVS) et malus à l'achat. Le véhicule en haut a le TCO d'usage le plus bas. Ce TCO d'usage n'inclut pas l'AND ni l'AEN employeur : le coût employeur complet (qui les ajoute) est détaillé dans la page « Détail des composantes ».",
-    "Ranked by usage TCO: lease, energy cost, tax (TVS) and purchase penalty. The vehicle at the top has the lowest usage TCO. This usage TCO does not include the AND or the employer's AEN share: the full employer cost (which adds them) is detailed on the \"Component detail\" page.",
+    "Classement par TCO d'usage : loyer LLD, coût énergie, fiscalité (TVS) et malus à l'achat. Le véhicule en haut a le TCO d'usage le plus bas. Ce TCO d'usage n'inclut pas le surcoût fiscal de l'AND ni l'AEN employeur : le coût employeur complet (qui les ajoute) est détaillé dans la page « Détail des composantes ».",
+    "Ranked by usage TCO: lease, energy cost, tax (TVS) and purchase penalty. The vehicle at the top has the lowest usage TCO. This usage TCO does not include the AND tax cost or the employer's AEN share: the full employer cost (which adds them) is detailed on the \"Component detail\" page.",
   );
   const introL = doc.splitTextToSize(intro, PAGE_W - M * 2);
   doc.text(introL, M, y);
@@ -4516,7 +4516,7 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
       energie: r.coutEnergie,
       tvs: r.tvsTotal,
       malus: r.malusCO2 + r.malusPoids,
-      andTotal: r.andTotal,
+      andTotal: r.coutFiscalANDTotal, // surcoût AND (25 %), pas l'AND brut
       aenTotal: r.aenEmployeurTotal,
       coutEmployeur: r.tcoEmployeurComplet,
       annuel: r.tcoAnnuel,
@@ -4854,7 +4854,7 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
   autoTable(doc, {
     startY: y,
     theme: "plain",
-    head: [[L("Véhicule", "Vehicle"), L("Malus (achat)", "Penalty (purchase)"), L("TVS (×durée)", "TVS (×duration)"), L("AND (×durée)", "AND (×duration)"), L("AEN empl. (×durée)", "AEN employer (×duration)"), L("Coût empl. complet", "Full employer cost")]],
+    head: [[L("Véhicule", "Vehicle"), L("Malus (achat)", "Penalty (purchase)"), L("TVS (×durée)", "TVS (×duration)"), L("Surcoût AND 25 % (×durée)", "AND tax cost 25% (×duration)"), L("AEN empl. (×durée)", "AEN employer (×duration)"), L("Coût empl. complet", "Full employer cost")]],
     body: fiscalBody,
     headStyles: { fillColor: ADMIN_MODE ? INK : LAVENDER, textColor: 255, fontSize: 7, fontStyle: "bold", font: BRAND_FONT, cellPadding: 4, halign: "center" as any },
     bodyStyles: { fontSize: 8, cellPadding: 4, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
@@ -5048,7 +5048,7 @@ async function drawTcoImpact(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: Energ
   const detRow = (it: IItem) => [
     `${it.sv.vehicle.brand} ${it.sv.vehicle.model}${it.sv.vehicle.isCurrentFleet ? L(" (actuel)", " (current)") : ""}`,
     eur(it.r.loyerTotal), eur(it.r.coutEnergie), eur(it.r.tvsTotal), eur(it.r.malusCO2 + it.r.malusPoids),
-    eur(it.r.andTotal), eur(it.r.aenEmployeurTotal), eur(it.total),
+    eur(it.r.coutFiscalANDTotal), eur(it.r.aenEmployeurTotal), eur(it.total),
   ];
   const detBody: any[] = [];
   for (const g of order) {
@@ -5062,7 +5062,7 @@ async function drawTcoImpact(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: Energ
   autoTable(doc, {
     startY: y,
     theme: "plain",
-    head: [[L("VÉHICULE", "VEHICLE"), L("LOYER", "LEASE"), L("ÉNERGIE", "ENERGY"), "TVS", L("MALUS", "PENALTY"), "AND", L("AEN EMPL.", "AEN EMPLOYER"), L("COÛT EMPL.", "EMPLOYER COST")]],
+    head: [[L("VÉHICULE", "VEHICLE"), L("LOYER", "LEASE"), L("ÉNERGIE", "ENERGY"), "TVS", L("MALUS", "PENALTY"), L("AND 25 %", "AND 25%"), L("AEN EMPL.", "AEN EMPLOYER"), L("COÛT EMPL.", "EMPLOYER COST")]],
     body: detBody,
     headStyles: { fillColor: INK, textColor: 255, fontSize: 7.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 5, halign: "right" as any },
     bodyStyles: { fontSize: 8, cellPadding: 5, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, halign: "right" as any },
@@ -5235,7 +5235,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   // Construit une ligne de données pour un véhicule.
   const buildRow = ({ sv, r, duree }: (typeof computed)[number]) => {
     const malusTotal = r.malusCO2 + r.malusPoids;
-    const andTotal = r.andTotal;
+    const andTotal = r.coutFiscalANDTotal; // surcoût AND (25 %), pas l'AND brut
     const aenTotal = r.aenEmployeurTotal;
     // Affichage hiérarchisé : Marque + Modèle sur la 1re ligne, Version sur la
     // 2e (ou plusieurs si longue), durée/km sur la dernière. Sépare clairement
@@ -5354,7 +5354,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
       L("ÉNERGIE", "ENERGY"),
       L("TVS\n(×durée)", "TVS\n(×duration)"),
       L("MALUS\n(achat)", "PENALTY\n(purchase)"),
-      L("AND\n(×durée)", "AND\n(×duration)"),
+      L("SURCOÛT AND\n25 % (×durée)", "AND TAX COST\n25% (×duration)"),
       L("AEN EMPL.\n(×durée)", "AEN EMPLOYER\n(×duration)"),
       L("AEN SAL.\n/mois (info)", "AEN EMPLOYEE\n/month (info)"),
       L("COÛT EMPL.\nCOMPLET", "FULL EMPL.\nCOST"),
@@ -5426,8 +5426,8 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   // lire la colonne AND comme un coût direct.
   {
     const noteText = L(
-      "La colonne AND n'est pas un montant payé directement par l'entreprise : c'est la base sur laquelle elle perd le droit de déduire de l'impôt sur les sociétés. Le surcoût réel, égal à 25 % de ce montant, est déjà intégré dans la colonne « Coût employeur complet ».",
-      "The AND column is not an amount paid directly by the company: it is the base on which it loses the right to deduct from corporate tax (AND stands for Avantage Non Déductible, a French tax rule). The real extra cost, equal to 25% of this amount, is already included in the \"Full employer cost\" column.",
+      "Colonne « Surcoût AND 25 % » : si le prix du véhicule dépasse le plafond fiscal, l'entreprise ne peut pas déduire une partie du coût de ses impôts. Elle paie alors 25 % de cette partie en impôt supplémentaire : c'est ce montant, et lui seul, qui est compté dans le « Coût employeur complet ».",
+      "\"AND tax cost 25%\" column: if the vehicle's price is above the tax ceiling, the company cannot deduct part of the cost from its taxes. It then pays 25% of that part as extra tax: this amount, and only this one, is counted in the \"Full employer cost\".",
     );
     const noteLines = doc.splitTextToSize(noteText, PAGE_W - M * 2 - 24) as string[];
     const noteH = noteLines.length * 11 + 16;
@@ -5451,7 +5451,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
     "Cells in pink signal an additional tax charge at purchase (CO2 penalty, weight penalty) or a non-zero annual company car tax.",
     "The full employer cost adds the lease, energy, company car tax, penalties, the AND tax impact and the employer's share of the benefit-in-kind, over the contract duration.",
     "The AND (Avantage Non Déductible, non-deductible depreciation, a French tax rule) is the portion of the purchase price above the tax ceiling set according to the vehicle's CO2 emissions, after deducting the battery price, amortized over 5 years.",
-    "The AND is not a disbursement for the company: it is an amount it cannot deduct from its taxable income. The real cost borne is the additional corporate tax generated by this amount, i.e. 25% of the AND. It is this amount, not the raw AND, that enters the full employer cost.",
+    "Only 25% of the AND is counted (AND tax cost): it is the extra corporate tax the company pays because it cannot deduct that part from its profit.",
     "The employer's share of the benefit-in-kind (AEN) is 42% of the calculated benefit-in-kind, with a 70% reduction for electric vehicles benefiting from the environmental score.",
     "The employee's benefit-in-kind, calculated on 50% of the monthly lease with the same electric reduction, is taxable for the employee. It is shown for information only and is not included in the full employer cost or the TCO.",
     "The total lease equals the negotiated monthly lease multiplied by the contract duration, recoverable VAT included for long-term leasing.",
@@ -5460,7 +5460,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
     "Les cellules en rose signalent une charge fiscale supplémentaire à l'achat (malus CO2, malus au poids) ou une taxe annuelle sur les véhicules de société non nulle.",
     "Le coût employeur complet additionne le loyer, l'énergie, la taxe sur les véhicules de société, les malus, l'impact fiscal de l'AND et la part employeur de l'avantage en nature, sur la durée du contrat.",
     "L'AND (avantage non déductible) correspond à la part du prix d'achat qui dépasse le plafond fiscal fixé selon les émissions de CO2 du véhicule, après déduction du prix de la batterie, amortie sur 5 ans.",
-    "L'AND n'est pas un décaissement pour l'entreprise : c'est un montant qu'elle ne peut pas déduire de son résultat imposable. Le coût réel supporté est l'impôt sur les sociétés supplémentaire généré par ce montant, soit 25 % de l'AND. C'est ce montant, et non l'AND brut, qui entre dans le coût employeur complet.",
+    "Seuls 25 % de l'AND sont comptés (surcoût fiscal AND) : c'est l'impôt supplémentaire que l'entreprise paie parce qu'elle ne peut pas déduire cette part de son résultat.",
     "La part employeur de l'avantage en nature correspond à 42 % de l'avantage en nature calculé, avec un abattement de 70 % pour les véhicules électriques bénéficiant du score environnemental.",
     "L'avantage en nature du salarié, calculé sur 50 % du loyer mensuel avec le même abattement électrique, est imposable pour le collaborateur. Il est indiqué à titre d'information et n'entre pas dans le coût employeur complet ni dans le TCO.",
     "Le loyer total correspond au loyer mensuel négocié multiplié par la durée du contrat, TVA récupérable incluse en location longue durée.",
@@ -8045,46 +8045,150 @@ function drawTcoMethodAnnex(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPa
   doc.text(tl, M, y);
   y += (tl.length - 1) * 23 + 22;
 
-  const lines = PDF_LANG === "en" ? [
-    "The full employer cost adds lease payments, energy, the company car tax (TVS), the penalty (CO2 and weight), the AND tax impact and the employer's share of the benefit-in-kind (AEN), over the contract duration.",
-    "Lease payments equal the negotiated monthly lease multiplied by the contract duration, plus the deposit (increased first rent) when there is one. Comprehensive insurance is included in the lease. Recoverable VAT included for long-term leasing.",
-    "The energy cost equals the vehicle's consumption multiplied by the contract mileage and the fuel or electricity price, based on 85% home charging and 15% public charging.",
-    "The AND (Avantage Non Déductible, non-deductible depreciation, a French tax rule) is the portion of the purchase price above the tax ceiling set according to the vehicle's CO2 emissions, after deducting the battery price, amortized over 5 years.",
-    "The AND is not a disbursement for the company: it is an amount it cannot deduct from its taxable income. The real cost borne is the additional corporate tax generated by this amount, i.e. 25% of the AND. It is this amount, not the raw AND, that enters the full employer cost.",
-    "The employer's share of the benefit-in-kind (AEN) is 42% of the calculated benefit-in-kind, with a 70% reduction for electric vehicles benefiting from the environmental score.",
-    "The penalty (CO2 and weight) is re-invoiced by the lessor including VAT. The TVS is counted per whole fiscal year of the contract.",
-    "On the comparison pages, each row's gap is read against the reference vehicle, the one with the lowest full employer cost in the group.",
+  const PINK_TINT: [number, number, number] = [250, 237, 228];
+  const PINK: [number, number, number] = [244, 184, 170];
+  // « Recette » en 5 étapes, chiffrée sur le 1er véhicule du devis : chaque étape
+  // = une formule courte + le résultat, lisible sans connaissance fiscale.
+  const nf = (n: number, d = 0) => cleanSpaces(n.toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d }));
+  const exSv = vehicles[0];
+  const exDuree = exSv.durationMonths / 12;
+  const exKm = exSv.kmPerYear * exDuree;
+  const exR = calculateTcoFull(exSv.vehicle, {
+    dureeAnnees: exDuree,
+    kmContrat: exKm,
+    prixEssenceLitre: e.fuelPriceL,
+    prixKwhDomicile: e.kWhHome,
+    prixKwhPublic: e.kWhPublic,
+    optionsTotalTtc: exSv.options.reduce((s, o) => s + o.qty * o.unitHt, 0),
+    remisePctOverride: exSv.discountPct,
+    apport: svApport(exSv),
+    assuranceMensuelle: svAssuranceMensuelle(exSv),
+  }, exSv.negotiatedMonthly);
+  const exApport = svApport(exSv);
+  const exElec = exSv.vehicle.energy === "Électrique";
+  const exConso = (exSv.vehicle.consumptionElec ?? exSv.vehicle.consumption) || 0;
+  const exKwh = (exConso * exKm) / 100;
+  const exYears = nf(exDuree, exDuree % 1 === 0 ? 0 : 2);
+  const exMalus = exR.malusCO2 + exR.malusPoids;
+  const exName = prettyVehicleName(exSv.vehicle) + ((exSv.vehicle.version ?? "").trim() ? ` · ${(exSv.vehicle.version ?? "").trim()}` : "");
+  const fx = L(" × ", " × ");
+  type Step = { title: string; formula: string[]; text: string };
+  const steps: Step[] = PDF_LANG === "en" ? [
+    {
+      title: "Lease payments",
+      formula: [`Monthly lease${fx}number of months${exApport > 0 ? " + deposit" : ""}`, `${eurLoyer(exSv.negotiatedMonthly)}${fx}${exSv.durationMonths} months${exApport > 0 ? ` + ${eur(exApport)}` : ""} = ${eur(exR.loyerTotal)}`],
+      text: "Insurance, maintenance and assistance are already inside the monthly lease.",
+    },
+    {
+      title: "Energy",
+      formula: exElec
+        ? [`Consumption${fx}kilometres ÷ 100 = kWh used, then kWh${fx}price per kWh`, `${nf(exConso, 1)} kWh/100 km${fx}${nf(exKm)} km ÷ 100 = ${nf(exKwh)} kWh, which costs ${eur(exR.coutEnergie)}`]
+        : [`Consumption${fx}kilometres ÷ 100${fx}fuel price`, `= ${eur(exR.coutEnergie)}`],
+      text: "Price per kWh: 85% charged at home, 15% on public chargers.",
+    },
+    {
+      title: "Taxes",
+      formula: [`Company car tax + CO2 and weight penalties`, `${eur(exR.tvsTotal)} + ${eur(exMalus)} = ${eur(exR.tvsTotal + exMalus)}`],
+      text: "A 100% electric car pays €0 of company car tax and no penalty.",
+    },
+    {
+      title: "Extra tax cost of the AND",
+      formula: [`AND per year = (price − tax ceiling) ÷ 5 years. Extra tax = 25% of the AND${fx}number of years`, exR.coutFiscalANDTotal > 0 ? `${eur(exR.coutFiscalANDAnnuel)} per year${fx}${exYears} years = ${eur(exR.coutFiscalANDTotal)}` : "Price under the tax ceiling: €0"],
+      text: "Above a price set by the State, the company cannot deduct part of the car from its profit. It pays 25% of that part as extra tax. Only this 25% is counted.",
+    },
+    {
+      title: "Employer share of the benefit-in-kind",
+      formula: [`Yearly lease × 50%${exR.aenAbattement > 0 ? " × (100% − 70%)" : ""} × 42% × number of years`, `${eur(exR.partEmployeurAnnuelle)} per year${fx}${exYears} years = ${eur(exR.aenEmployeurTotal)}`],
+      text: "The employee uses the car privately, so the company pays social charges on that benefit.",
+    },
   ] : [
-    "Le coût employeur complet additionne les loyers, l'énergie, la taxe sur les véhicules de société (TVS), le malus (CO2 et poids), l'impact fiscal de l'AND et la part employeur de l'avantage en nature (AEN), sur la durée du contrat.",
-    "Les loyers correspondent au loyer mensuel négocié multiplié par la durée du contrat, auquel s'ajoute l'apport (premier loyer majoré) lorsqu'il existe. L'assurance tous risques est incluse dans le loyer. TVA récupérable incluse en location longue durée.",
-    "Le coût énergie correspond à la consommation du véhicule multipliée par le kilométrage du contrat et le prix du carburant ou de l'électricité, sur la base d'une recharge à 85 % à domicile et 15 % en public.",
-    "L'AND (avantage non déductible) correspond à la part du prix d'achat qui dépasse le plafond fiscal fixé selon les émissions de CO2 du véhicule, après déduction du prix de la batterie, amortie sur 5 ans.",
-    "L'AND n'est pas un décaissement pour l'entreprise : c'est un montant qu'elle ne peut pas déduire de son résultat imposable. Le coût réel supporté est l'impôt sur les sociétés supplémentaire généré par ce montant, soit 25 % de l'AND. C'est ce montant, et non l'AND brut, qui entre dans le coût employeur complet.",
-    "La part employeur de l'avantage en nature correspond à 42 % de l'avantage en nature calculé, avec un abattement de 70 % pour les véhicules électriques bénéficiant du score environnemental.",
-    "Le malus (CO2 et poids) est refacturé par le loueur, TVA incluse. La TVS est comptée par année fiscale entière du contrat.",
-    "Dans les pages de comparaison, l'écart de chaque ligne se lit contre le véhicule de référence, celui dont le coût employeur complet est le plus bas du groupe.",
+    {
+      title: "Les loyers",
+      formula: [`Loyer mensuel${fx}nombre de mois${exApport > 0 ? " + apport" : ""}`, `${eurLoyer(exSv.negotiatedMonthly)}${fx}${exSv.durationMonths} mois${exApport > 0 ? ` + ${eur(exApport)}` : ""} = ${eur(exR.loyerTotal)}`],
+      text: "L'assurance, l'entretien et l'assistance sont déjà dans le loyer mensuel.",
+    },
+    {
+      title: "L'énergie",
+      formula: exElec
+        ? [`Consommation${fx}kilomètres ÷ 100 = kWh utilisés, puis kWh${fx}prix du kWh`, `${nf(exConso, 1)} kWh/100 km${fx}${nf(exKm)} km ÷ 100 = ${nf(exKwh)} kWh, soit ${eur(exR.coutEnergie)}`]
+        : [`Consommation${fx}kilomètres ÷ 100${fx}prix du carburant`, `= ${eur(exR.coutEnergie)}`],
+      text: "Prix du kWh : 85 % de recharge à domicile, 15 % sur borne publique.",
+    },
+    {
+      title: "Les taxes",
+      formula: [`Taxe sur les véhicules de société + malus CO2 et poids`, `${eur(exR.tvsTotal)} + ${eur(exMalus)} = ${eur(exR.tvsTotal + exMalus)}`],
+      text: "Une voiture 100 % électrique ne paie ni taxe annuelle ni malus : 0 €.",
+    },
+    {
+      title: "Le surcoût fiscal de l'AND",
+      formula: [`AND par an = (prix − plafond fiscal) ÷ 5 ans. Surcoût = 25 % de l'AND${fx}nombre d'années`, exR.coutFiscalANDTotal > 0 ? `${eur(exR.coutFiscalANDAnnuel)} par an${fx}${exYears} ans = ${eur(exR.coutFiscalANDTotal)}` : "Prix sous le plafond fiscal : 0 €"],
+      text: "Au-dessus d'un prix fixé par l'État, l'entreprise ne peut pas déduire une partie de la voiture de son résultat. Elle paie 25 % de cette partie en impôt en plus. Seuls ces 25 % sont comptés.",
+    },
+    {
+      title: "La part employeur de l'avantage en nature",
+      formula: [`Loyer annuel × 50 %${exR.aenAbattement > 0 ? " × (100 % − 70 %)" : ""} × 42 % × nombre d'années`, `${eur(exR.partEmployeurAnnuelle)} par an${fx}${exYears} ans = ${eur(exR.aenEmployeurTotal)}`],
+      text: "Le collaborateur utilise la voiture à titre privé : l'entreprise paie des charges sociales sur cet avantage.",
+    },
   ];
+
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...INK);
-  doc.text(L("MÉTHODE DE CALCUL", "CALCULATION METHOD"), M, y);
+  doc.text(L(`LE CALCUL EN 5 ÉTAPES · EXEMPLE : ${exName.toUpperCase()}`, `THE CALCULATION IN 5 STEPS · EXAMPLE: ${exName.toUpperCase()}`), M, y, { maxWidth: PAGE_W - M * 2 });
   doc.setDrawColor(...RULE);
   doc.line(M, y + 4, PAGE_W - M, y + 4);
-  y += 18;
-  doc.setFont(BRAND_FONT, "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(...SUB);
-  lines.forEach((ln) => {
-    const w = doc.splitTextToSize(ln, PAGE_W - M * 2 - 11) as string[];
-    y = ensureSpace(doc, y, w.length * 11 + 4, client, "vehicles");
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(...SUB);
-    doc.setFillColor(...RULE);
-    doc.circle(M + 2, y - 3, 1.3, "F");
-    doc.text(w, M + 11, y);
-    y += w.length * 11 + 4;
+  y += 20;
+  const textW = PAGE_W - M * 2 - 30;
+  steps.forEach((st, i) => {
+    const fLines = st.formula.flatMap((f) => doc.splitTextToSize(f, textW - 12) as string[]);
+    doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(7.5);
+    const tLines = doc.splitTextToSize(st.text, textW) as string[];
+    const h = 12 + fLines.length * 10.5 + 6 + tLines.length * 9.5 + 10;
+    y = ensureSpace(doc, y, h, client, "vehicles");
+    doc.setFillColor(...PINK_TINT);
+    doc.roundedRect(M, y - 9, 20, 20, 10, 10, "F");
+    doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(10); doc.setTextColor(...INK);
+    doc.text(String(i + 1), M + 10, y + 4.5, { align: "center" });
+    doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(9.5); doc.setTextColor(...INK);
+    doc.text(st.title, M + 30, y + 3);
+    let fy = y + 17;
+    st.formula.forEach((f, fi) => {
+      const wl = doc.splitTextToSize(f, textW - 12) as string[];
+      doc.setFont(BRAND_FONT, fi === st.formula.length - 1 ? "bold" : "normal");
+      doc.setFontSize(8.5);
+      doc.setTextColor(...(fi === st.formula.length - 1 ? INK : SUB));
+      doc.text(wl, M + 30 + 6, fy);
+      fy += wl.length * 10.5;
+    });
+    doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(7.5); doc.setTextColor(...SUB);
+    doc.text(tLines, M + 30, fy + 3);
+    y = fy + 3 + tLines.length * 9.5 + 10;
   });
+  // Total
+  {
+    const totalTxt = `${eur(exR.loyerTotal)} + ${eur(exR.coutEnergie)} + ${eur(exR.tvsTotal + exMalus)} + ${eur(exR.coutFiscalANDTotal)} + ${eur(exR.aenEmployeurTotal)}`;
+    y = ensureSpace(doc, y, 56, client, "vehicles");
+    doc.setFillColor(...INK);
+    doc.roundedRect(M, y - 4, PAGE_W - M * 2, 46, 8, 8, "F");
+    doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(8); doc.setTextColor(...PINK);
+    doc.text(L("COÛT EMPLOYEUR COMPLET = ÉTAPE 1 + 2 + 3 + 4 + 5", "FULL EMPLOYER COST = STEP 1 + 2 + 3 + 4 + 5"), M + 14, y + 11);
+    doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(8); doc.setTextColor(255, 255, 255);
+    doc.text(totalTxt, M + 14, y + 27, { maxWidth: PAGE_W - M * 2 - 150 });
+    doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(15);
+    doc.text(eur(exR.tcoEmployeurComplet), PAGE_W - M - 14, y + 30, { align: "right" });
+    y += 60;
+  }
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...SUB);
+  const readNote = doc.splitTextToSize(L(
+    "Dans les pages de comparaison, l'écart de chaque ligne se lit contre le véhicule de référence, celui dont le coût employeur complet est le plus bas du groupe. Estimations Beev sur les barèmes fiscaux 2026, à confirmer auprès de votre expert-comptable.",
+    "On the comparison pages, each row's gap is read against the reference vehicle, the one with the lowest full employer cost in the group. Beev estimates based on 2026 tax scales, to be confirmed with your accountant.",
+  ), PAGE_W - M * 2) as string[];
+  y = ensureSpace(doc, y, readNote.length * 10 + 4, client, "vehicles");
+  doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(7.5); doc.setTextColor(...SUB);
+  doc.text(readNote, M, y);
+  y += readNote.length * 10;
   y += 14;
 
   // Avantage en nature du collaborateur (information)
@@ -8626,16 +8730,16 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
       `· TVS: 2026 scale (CO2 tax by bracket + pollution tax €130 petrol / €650 diesel / €0 electric) × contract duration`,
       `· CO2 penalty, incl. VAT: 2026 scale (€0 below 108 g, capped at €80,000 above 192 g), plus VAT on lease refinancing`,
       `· Weight penalty, incl. VAT: from 1500 kg (100 kg reduction for hybrid, 200 kg capped at 15% of weight for PHEV with ≥50 km electric range, electric exempt), plus VAT on lease refinancing`,
-      `· AND (Avantage Non Déductible, non-deductible depreciation): (catalog price + options incl. VAT) − discount − battery − ceiling, amortized over 5 years`,
-      `· AEN (Avantage en Nature, benefit-in-kind): 50% of the annual lease, 70% reduction for eco-scored electric vehicles`,
+      `· AND (Avantage Non Déductible, non-deductible depreciation): (catalog price + options incl. VAT) − discount − battery − ceiling, amortized over 5 years; only the 25% tax cost is counted`,
+      `· AEN (Avantage en Nature, benefit-in-kind): 50% of the annual lease (capped at 15% of the purchase price), 70% reduction for eco-scored electric vehicles (capped at €4,641.60/year)`,
     ] : [
       `· Carburant SP95 / Diesel : ${fuelL.toFixed(2)} €/L`,
       `· Électricité : ${kwhDom.toFixed(2)} €/kWh domicile (85 %) + ${kwhPub.toFixed(2)} €/kWh public (15 %)`,
       `· TVS : barème 2026 (taxe CO2 par tranche + taxe pollution 130 € essence / 650 € diesel / 0 € électrique) × durée contrat`,
       `· Malus CO2 TTC : barème 2026 (0 € < 108 g, plafonné à 80 000 € au-delà de 192 g), majoré de la TVA sur la refacturation en LLD`,
       `· Malus poids TTC : à partir de 1500 kg (abattement 100 kg hybride, 200 kg plafonné à 15 % du poids pour PHEV ≥ 50 km d'autonomie électrique, exonération électrique), majoré de la TVA sur la refacturation en LLD`,
-      `· AND (Avantage Non Déductible) : (prix catalogue + options TTC) − remise − batterie − plafond, amorti sur 5 ans`,
-      `· AEN (Avantage en Nature) : 50 % du loyer annuel, abattement 70 % si véhicule électrique éco-scoré`,
+      `· AND (Avantage Non Déductible) : (prix catalogue + options TTC) − remise − batterie − plafond, amorti sur 5 ans ; seul le surcoût de 25 % est compté`,
+      `· AEN (Avantage en Nature) : 50 % du loyer annuel (plafonné à 15 % du prix d'achat), abattement 70 % si véhicule électrique éco-scoré (limité à 4 641,60 € par an)`,
     ];
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(7.5);
