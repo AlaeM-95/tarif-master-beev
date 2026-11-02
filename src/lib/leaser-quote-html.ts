@@ -8,6 +8,7 @@ import {
   RENT_CAT_LABEL,
   SCOPE_LABELS,
   aenMonthly,
+  groupRentLines,
   kmPerYear,
   netDownPayment,
   priceTotal,
@@ -145,11 +146,12 @@ export function renderLeaserQuoteHtml(q: LeaserQuote, o: QuoteRenderOpts): strin
   const client = q.client || o.clientName || "";
   const net = netDownPayment(q);
 
-  const bar = L.lines.map((l) => `<i style="flex:${Math.max(l.amount, 0.01)};background:${CAT_COLOR[l.cat]}" title="${esc(l.label)}"></i>`).join("");
-  const lines = L.lines
+  const rentLines = groupRentLines(L.lines);
+  const bar = rentLines.map((l) => `<i style="flex:${Math.max(l.amount, 0.01)};background:${CAT_COLOR[l.cat]}" title="${esc(l.label)}"></i>`).join("");
+  const lines = rentLines
     .map((l) => `<div class="lq-line"><span class="lq-dot" style="background:${CAT_COLOR[l.cat]}"></span><span class="t">${esc(l.label)}${l.detail ? `<small>${esc(l.detail)}</small>` : ""}</span><span class="a">${eur2(l.amount)}</span></div>`)
     .join("");
-  const legend = Array.from(new Set(L.lines.map((l) => l.cat))).map((c) => RENT_CAT_LABEL[c]).join(" · ");
+  const legend = Array.from(new Set(rentLines.map((l) => l.cat))).map((c) => RENT_CAT_LABEL[c]).join(" · ");
 
   const scope = SCOPE_LABELS.map(([k, label]) => {
     const s = q.scope[k];

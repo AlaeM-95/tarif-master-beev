@@ -18,6 +18,7 @@ import {
   SCOPE_LABELS,
   AUTO_FLAGS,
   assuranceMonthly,
+  groupRentLines,
   blankQuote,
   blockingFlags,
   effectiveEcoOk,
@@ -339,7 +340,7 @@ export function LeaserQuoteTool({ vehicles, client, canSaveOffer, onAddToDevis }
                 </div>
                 {q.rent.lines.length > 0 && (
                   <div className="rounded-lg bg-muted/50 p-3 text-xs space-y-1" aria-label="Décomposition du loyer lue sur le devis">
-                    {q.rent.lines.map((l, i) => (
+                    {groupRentLines(q.rent.lines).map((l, i) => (
                       <div key={i} className="flex justify-between gap-3"><span>{l.label}{l.derived ? " (déduit)" : ""}</span><span className="tabular-nums font-medium">{eur2(l.amount)}</span></div>
                     ))}
                     <div className={`flex justify-between gap-3 border-t pt-1 ${Math.abs(rentLinesSum(q) - q.rent.totalTtc) > 0.05 ? "text-amber-700 font-semibold" : "text-muted-foreground"}`}>

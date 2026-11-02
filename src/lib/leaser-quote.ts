@@ -189,8 +189,35 @@ export function priceTotal(q: LeaserQuote): number {
   return (q.price.catalogueTtc ?? 0) + (q.price.optionsTtc ?? 0);
 }
 
+/** Ligne d'assurance du véhicule (dommages, RC, garanties, honoraires de gestion
+ *  de l'assurance) ; la perte financière reste une ligne à part. */
+function isInsuranceLine(l: RentLine): boolean {
+  return l.cat === "ass" && !/perte/i.test(l.label);
+}
+
 export function assuranceMonthly(q: LeaserQuote): number {
-  return q.rent.lines.filter((l) => l.cat === "ass" && !/perte/i.test(l.label)).reduce((s, l) => s + l.amount, 0);
+  return q.rent.lines.filter(isInsuranceLine).reduce((s, l) => s + l.amount, 0);
+}
+
+/** Lignes du loyer pour l'affichage : toutes les lignes d'assurance sont regroupées
+ *  dans un seul bloc « Assurance tous risques » (à la place de la 1re d'entre elles). */
+export function groupRentLines(lines: RentLine[]): RentLine[] {
+  const ins = lines.filter(isInsuranceLine);
+  if (ins.length === 0) return lines;
+  const grouped: RentLine = {
+    cat: "ass",
+    label: "Assurance tous risques",
+    detail: ins.length > 1 ? ins.map((l) => l.label).join(" · ") : ins[0].detail ?? ins[0].label,
+    amount: Math.round(ins.reduce((s, l) => s + l.amount, 0) * 100) / 100,
+    derived: ins.some((l) => l.derived) || undefined,
+  };
+  const out: RentLine[] = [];
+  let done = false;
+  for (const l of lines) {
+    if (!isInsuranceLine(l)) out.push(l);
+    else if (!done) { out.push(grouped); done = true; }
+  }
+  return out;
 }
 
 export function rentLinesSum(q: LeaserQuote): number {
@@ -377,7 +404,7 @@ function parseAyvens(text: string, fileName: string): LeaserQuote {
   const rcTtc = (a1 ?? 0) + (a2 ?? 0);
   if (rcTtc > 0) q.rent.lines.push({ cat: "ass", label: "Responsabilité civile et garanties", detail: "RC, garantie conducteur, effets personnels, pertes", amount: Math.round(rcTtc * 100) / 100 });
   const hon = toNum(rx(text, new RegExp(`Honoraires de gestion assurance\\s+${M}\\s+[\\d.,]+\\s+${M}`, "i"))?.[2]);
-  if (hon != null) q.rent.lines.push({ cat: "ges", label: "Honoraires de gestion assurance", amount: hon });
+  if (hon != null) q.rent.lines.push({ cat: "ass", label: "Honoraires de gestion assurance", amount: hon });
   if (domTtc != null || a1 != null || a2 != null || hon != null) flag(q, "loyer-assurance", "check", "Assurance additionnée par Beev à partir de 4 lignes (dommages, RC, garanties hors TVA, honoraires)");
 
   const pm = toNum(rx(text, new RegExp(`1er loyer majoré TTC\\s*${M}`, "i"))?.[1]) ?? toNum(rx(text, new RegExp(`Montant du premier loyer\\s*:\\s*${M}`, "i"))?.[1]);
