@@ -96,8 +96,8 @@ export const TAUX_IS_ENTREPRISE = 0.25;
 // Avantage en nature véhicule loué, éco-scoré (barème 2026, BPCE Car Lease /
 // BOSS) : plafond de l'AEN à 15 % du prix d'achat TTC, abattement électrique
 // de 70 % limité à 4 641,60 € par an.
-const AEN_PLAFOND_PCT_PRIX = 0.15;
-const AEN_ABATTEMENT_MAX_AN = 4641.6;
+export const AEN_PLAFOND_PCT_PRIX = 0.15;
+export const AEN_ABATTEMENT_MAX_AN = 4641.6;
 
 // Plafond AND (Avantage Non Déductible) — dépend du CO₂
 function getPlafondAND(co2: number): number {

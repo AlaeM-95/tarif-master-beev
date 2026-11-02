@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles, Copy, BarChart3, Receipt, Map as MapIcon, BookOpen } from "lucide-react";
+import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles, Copy, BarChart3, Receipt, Map as MapIcon, BookOpen, FileSearch } from "lucide-react";
 import { toast } from "sonner";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, fmtEur2, type EnergyParams } from "@/lib/store";
 import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, computeChargerLease, chargerQtyMultiplier, getVehicleSpecRows, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
@@ -28,6 +28,8 @@ import { PdfTextEditor, usePdfTextOverrides } from "@/components/pdf-text-editor
 import { BpuB2B2EEditor } from "@/components/bpu-b2b2e-editor";
 import { AuditConseilEditor } from "@/components/audit-conseil-editor";
 import { CarPolicyImporter } from "@/components/car-policy-importer";
+import { LeaserQuoteTool, type LeaserQuoteDraft } from "@/components/leaser-quote-tool";
+import { assuranceMonthly as leaserAssurance, kmPerYear as leaserKmPerYear, netDownPayment as leaserNetApport } from "@/lib/leaser-quote";
 import { FleetBuilder, type FleetSelection } from "@/components/fleet-builder";
 import { LiveIndicator } from "@/components/live-indicator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -128,11 +130,14 @@ function App() {
   // Mode TCO : 4e onglet du sélecteur. UI uniquement, projectType en DB
   // reste 'vehicles' (la 4e valeur 'tco' n'est jamais persistée côté Supabase).
   const [tcoView, setTcoView] = useState(false);
+  // Outil « Devis loueur » : 5e entrée du menu (import d'un devis Ayvens, Arval,
+  // BPCE ou Alphabet → devis Beev). UI uniquement, comme tcoView.
+  const [leaserView, setLeaserView] = useState(false);
   // Mode de travail du catalogue véhicules : "select" (sélection unitaire,
   // petites flottes) ou "fleet" (Constructeur de flotte à partir d'une car
   // policy, 50/80/100+ véhicules). Réversible, mémorisé par session.
   const [fleetMode, setFleetMode] = useState(false);
-  const activeTab: "vehicles" | "home" | "site" | "tco" = tcoView ? "tco" : projectType;
+  const activeTab: "vehicles" | "home" | "site" | "tco" | "leaser" = leaserView ? "leaser" : tcoView ? "tco" : projectType;
 
   // Auto-save : restaure les sélections depuis localStorage au montage.
   // Le commercial peut ainsi recharger la page sans perdre son travail.
@@ -1000,16 +1005,59 @@ function App() {
   // Permet de passer d'un type de projet à l'autre SANS réinitialiser les sélections.
   // Le commercial peut donc construire une offre combinée (véhicules + bornes domicile
   // + bornes site dans le même PDF).
-  const switchProject = (t: "vehicles" | "home" | "site" | "tco") => {
-    if (t === "tco") {
+  const switchProject = (t: "vehicles" | "home" | "site" | "tco" | "leaser") => {
+    if (t === "leaser") {
+      setLeaserView(true);
+      setTcoView(false);
+      // L'outil ajoute des véhicules : le type de projet sous-jacent reste 'vehicles'.
+      if (projectType !== "vehicles") setProjectType("vehicles");
+    } else if (t === "tco") {
+      setLeaserView(false);
       setTcoView(true);
       // En mode TCO on travaille sur des véhicules, on bascule le projectType
       // sous-jacent à 'vehicles' pour que les sélections soient cohérentes.
       if (projectType !== "vehicles") setProjectType("vehicles");
     } else {
+      setLeaserView(false);
       setTcoView(false);
       setProjectType(t);
     }
+  };
+
+  // Ajoute au devis en cours le véhicule d'un devis loueur importé : loyer, durée,
+  // km/an, apport net de la prime CEE, assurance et options viennent du devis du
+  // loueur ; le véhicule est celui du catalogue Beev choisi dans l'outil.
+  const addLeaserQuoteToDevis = ({ quote, vehicle }: LeaserQuoteDraft) => {
+    const instanceId = newInstanceId();
+    const assurance = leaserAssurance(quote);
+    const apport = leaserNetApport(quote);
+    const optionLines: LineItem[] = quote.price.options
+      .filter((o) => (o.priceTtc ?? 0) > 0)
+      .map((o) => ({ label: o.name, qty: 1, unitHt: o.priceTtc as number }));
+    setSelectedV((s) => ({
+      ...s,
+      [instanceId]: {
+        instanceId,
+        vehicle,
+        quantity: 1,
+        discountPct: vehicle.remise ?? 0,
+        negotiatedMonthly: quote.rent.totalTtc,
+        durationMonths: quote.contract.months,
+        kmPerYear: leaserKmPerYear(quote),
+        includeTco: true,
+        services: [],
+        options: optionLines,
+        leaserQuoteRef: quote.offerNumber || undefined,
+        apport: apport > 0 ? apport : undefined,
+        assuranceTousRisques: assurance > 0 ? true : undefined,
+        assuranceMonthly: assurance > 0 ? assurance : undefined,
+      },
+    }));
+    if (!client.company && quote.client && !/beev/i.test(quote.client)) setClient({ ...client, company: quote.client });
+    setLeaserView(false);
+    setTcoView(false);
+    if (projectType !== "vehicles") setProjectType("vehicles");
+    toast.success(`${vehicle.brand} ${vehicle.model} ajouté au devis · loyer ${quote.rent.totalTtc.toLocaleString("fr-FR", { style: "currency", currency: "EUR" })} (${quote.leaserLabel})`);
   };
 
   if (presenting) {
@@ -1266,6 +1314,9 @@ function App() {
                 <DropdownMenuItem asChild>
                   <a href="/proposals" className="cursor-pointer"><FolderOpen className="w-4 h-4 mr-2" /> Propositions</a>
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => switchProject("leaser")} className="cursor-pointer">
+                  <FileSearch className="w-4 h-4 mr-2" /> Devis loueur
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setPickTplDialog(true)} className="cursor-pointer">
                   <FileText className="w-4 h-4 mr-2" /> Templates
                 </DropdownMenuItem>
@@ -1455,11 +1506,15 @@ function App() {
         projectType={projectType}
       />
 
-      <main className="container mx-auto px-6 pt-20 pb-8 grid gap-8 lg:grid-cols-[1fr_380px]">
+      <main className={`container mx-auto px-6 pt-20 pb-8 grid gap-8 ${leaserView ? "" : "lg:grid-cols-[1fr_380px]"}`}>
         <div className="space-y-8">
-          <ProjectTypeSelector value={activeTab} onChange={switchProject} isAdmin={isAdmin} />
+          <ProjectTypeSelector value={activeTab} onChange={switchProject} />
           <ClientCard client={client} setClient={setClient} isAdmin={isAdmin} />
 
+          {leaserView ? (
+            <LeaserQuoteTool vehicles={vehicles} client={client} canSaveOffer={isOps} onAddToDevis={addLeaserQuoteToDevis} />
+          ) : (
+          <>
           {tcoView && (
             <TcoCalculator
               vehicles={vehicles}
@@ -1988,8 +2043,11 @@ function App() {
               </div>
             </CatalogSection>
           )}
+          </>
+          )}
         </div>
 
+        {!leaserView && (
         <aside className={`lg:sticky lg:top-24 self-start max-h-[calc(100vh-7rem)] overflow-auto${isAdmin ? "" : " space-y-4"}`}>
           {(() => {
             const pdfPanel = (
@@ -2165,66 +2223,70 @@ function App() {
             );
           })()}
         </aside>
+        )}
       </main>
     </div>
   );
 }
 
-type ProjectTab = ProjectType | "tco";
+type ProjectTab = ProjectType | "tco" | "leaser";
 
-function ProjectTypeSelector({ value, onChange, isAdmin }: { value: ProjectTab; onChange: (t: ProjectTab) => void; isAdmin?: boolean }) {
-  const opts: { id: ProjectTab; icon: React.ReactNode; title: string; desc: string }[] = [
-    { id: "vehicles", icon: <Car className={isAdmin ? "w-4 h-4" : "w-6 h-6"} />, title: "Projet Véhicules", desc: "Flotte LLD, prestations véhicule." },
-    { id: "home", icon: <Home className={isAdmin ? "w-4 h-4" : "w-6 h-6"} />, title: "Bornes domicile", desc: "Kit B2B2E par collaborateur." },
-    { id: "site", icon: <Building2 className={isAdmin ? "w-4 h-4" : "w-6 h-6"} />, title: "Bornes site entreprise", desc: "Déploiement IRVE site par site." },
-    { id: "tco", icon: <Gauge className={isAdmin ? "w-4 h-4" : "w-6 h-6"} />, title: "Analyse TCO", desc: "Comparatif coût total de possession." },
+// Navigation principale : deux familles. « Construire le devis » = ce que le
+// client reçoit (véhicules, bornes domicile, bornes site) ; « Outils » = analyser
+// ou importer (analyse TCO, devis loueur). Même présentation pour tous les
+// profils ; la description de chaque entrée s'affiche au survol.
+function ProjectTypeSelector({ value, onChange }: { value: ProjectTab; onChange: (t: ProjectTab) => void; isAdmin?: boolean }) {
+  const ic = "w-4 h-4";
+  type Opt = { id: ProjectTab; icon: React.ReactNode; title: string; desc: string };
+  const groups: { label: string; opts: Opt[] }[] = [
+    {
+      label: "Construire le devis",
+      opts: [
+        { id: "vehicles", icon: <Car className={ic} />, title: "Véhicules", desc: "Flotte LLD, prestations véhicule." },
+        { id: "home", icon: <Home className={ic} />, title: "Bornes domicile", desc: "Kit B2B2E par collaborateur." },
+        { id: "site", icon: <Building2 className={ic} />, title: "Bornes site", desc: "Déploiement IRVE site par site." },
+      ],
+    },
+    {
+      label: "Outils",
+      opts: [
+        { id: "tco", icon: <Gauge className={ic} />, title: "Analyse TCO", desc: "Comparatif coût total de possession." },
+        { id: "leaser", icon: <FileSearch className={ic} />, title: "Devis loueur", desc: "Importer un devis Ayvens, Arval, BPCE ou Alphabet et le présenter au format Beev." },
+      ],
+    },
   ];
 
-  // Interface historique (non-admin) : grandes cartes avec description.
-  if (!isAdmin) {
-    return (
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {opts.map((o) => {
-          const active = value === o.id;
-          return (
-            <button
-              key={o.id}
-              type="button"
-              onClick={() => onChange(o.id)}
-              className={`text-left rounded-xl border p-5 transition-all duration-300 ${active ? "border-primary bg-muted ring-1 ring-primary/20" : "border-border/50 bg-card hover:border-border hover:bg-card"}`}
-            >
-              <div className={`w-10 h-10 rounded-lg grid place-content-center mb-4 ${active ? "bg-white text-black" : "bg-muted text-foreground/70"}`}>{o.icon}</div>
-              <p className="font-semibold text-sm leading-tight text-foreground">{o.title}</p>
-              <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{o.desc}</p>
-            </button>
-          );
-        })}
-      </div>
-    );
-  }
-
-  // Nouvelle interface (admin) : repères compacts, sans sous-titre.
   return (
-    <div className="flex gap-2 overflow-x-auto pb-1">
-      {opts.map((o) => {
-        const active = value === o.id;
-        return (
-          <button
-            key={o.id}
-            type="button"
-            onClick={() => onChange(o.id)}
-            className={`flex-none flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
-              active
-                ? "border-primary bg-primary text-primary-foreground shadow-sm"
-                : "border-border/60 bg-card text-foreground/70 hover:border-border hover:text-foreground"
-            }`}
-          >
-            <span className={`grid place-content-center w-6 h-6 rounded-full ${active ? "bg-beev-rose text-beev-black" : "bg-muted"}`}>{o.icon}</span>
-            {o.title}
-          </button>
-        );
-      })}
-    </div>
+    <nav aria-label="Navigation principale" className="flex flex-wrap items-end gap-x-8 gap-y-4">
+      {groups.map((g) => (
+        <div key={g.label} className="space-y-1.5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground px-1">{g.label}</p>
+          <div role="tablist" aria-label={g.label} className="flex flex-wrap gap-2">
+            {g.opts.map((o) => {
+              const active = value === o.id;
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  title={o.desc}
+                  onClick={() => onChange(o.id)}
+                  className={`flex-none flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
+                    active
+                      ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                      : "border-border/60 bg-card text-foreground/70 hover:border-border hover:text-foreground"
+                  }`}
+                >
+                  <span className={`grid place-content-center w-6 h-6 rounded-full ${active ? "bg-beev-rose text-beev-black" : "bg-muted"}`}>{o.icon}</span>
+                  {o.title}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </nav>
   );
 }
 
