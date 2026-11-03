@@ -443,7 +443,7 @@ function parseAyvens(text: string, fileName: string): LeaserQuote {
   const cg = rx(text, new RegExp(`Certificat d['’]immatriculation inclus\\s*:\\s*${M}\\s*E?\\s*\\(dépt\\.\\s*(\\w+)\\)`, "i"));
   if (cg) q.extras.push(`Carte grise incluse : ${cg[1].trim()} € (dépt. ${cg[2]})`);
   const en = num1(text, /Energie à la livraison\s*:\s*([\d,]+)/i);
-  if (en != null) q.extras.push(`Énergie à la livraison : ${en} € TTC, facturée à part`);
+  if (en != null) q.extras.push(`Énergie à la livraison : ${en} € TTC`);
   const and = g1(text, /Amortissements Non Déductibles\s*\(\*\)\s*([\d.,]+)/i);
   if (and) flag(q, "fiscal", "check", `AND annoncé par le loueur : ${and} € (périodicité non indiquée, information seulement)`);
   return q;
@@ -692,7 +692,7 @@ function parseAlphabet(text: string, fileName: string): LeaserQuote {
   const cg = rx(text, new RegExp(`Certificat d['’]immatriculation\\*?\\s+${M}\\s*€\\s*\\(inclus dans le loyer\\)`, "i"));
   if (cg) q.extras.push(`Carte grise incluse : ${cg[1].replace(/\s/g, " ")} €`);
   const en = toNum(rx(text, new RegExp(`Charge électrique à la livraison TTC\\s+${M}`, "i"))?.[1]);
-  if (en != null) q.extras.push(`Énergie à la livraison : ${Math.round(en)} € TTC, facturée à part`);
+  if (en != null) q.extras.push(`Énergie à la livraison : ${Math.round(en)} € TTC`);
   q.extras.push("Assurance dommages non proposée sur ce devis");
   flag(q, "ecoscore", "absent", "Éco-score absent du devis : repris du catalogue Beev");
   return q;
