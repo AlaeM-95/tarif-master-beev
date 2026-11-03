@@ -386,6 +386,10 @@ function parseAyvens(text: string, fileName: string): LeaserQuote {
   let optSlice = optStart < 0 ? "" : text.slice(optStart);
   const optEnd = optSlice.search(/^Accessoires compris dans le loyer\s+HT/im);
   if (optEnd > 0) optSlice = optSlice.slice(0, optEnd);
+  // Sur certains devis, le prix TTC d'une option tombe sur une ligne à part (lignes de
+  // base décalées de < 1 pt) : « NOM  HT » puis « 20,00  TTC ». On les recolle.
+  optSlice = optSlice.replace(new RegExp(`^(.+?\\s+${M})[ \\t]*\\n[ \\t]*((?:5,50|10,00|20,00)\\s+${M})[ \\t]*$`, "gm"), "$1 $3")
+    .replace(new RegExp(`^((?:5,50|10,00|20,00)\\s+${M})[ \\t]*\\n[ \\t]*(.+?\\s+${M})[ \\t]*$`, "gm"), "$3 $1");
   const seenOpt = new Set<string>();
   for (const l of optSlice.split("\n")) {
     const m = l.trim().match(new RegExp(`^(.+?)\\s+${M}\\s+(?:5,50|10,00|20,00)\\s+${M}$`));
