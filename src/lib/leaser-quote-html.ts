@@ -155,9 +155,9 @@ export function renderLeaserQuoteHtml(q: LeaserQuote, o: QuoteRenderOpts): strin
 
   const scope = SCOPE_LABELS.map(([k, label]) => {
     const s = q.scope[k];
-    // Pneumatiques : absent du devis = on n'en parle pas (ni « à confirmer »).
-    if (k === "pneus" && s == null) return "";
-    return s === 1 ? `<span class="lq-pill"><b>✓</b> ${label}</span>` : s === 0 ? `<span class="lq-pill no">${label}</span>` : `<span class="lq-pill na">${label} : à confirmer</span>`;
+    // Prestation exclue : on ne l'affiche pas. Pneumatiques absents du devis : idem.
+    if (s === 0 || (k === "pneus" && s == null)) return "";
+    return s === 1 ? `<span class="lq-pill"><b>✓</b> ${label}</span>` : `<span class="lq-pill na">${label} : à confirmer</span>`;
   }).join("");
 
   const opts = q.price.options
