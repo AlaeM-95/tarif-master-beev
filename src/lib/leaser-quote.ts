@@ -379,10 +379,25 @@ function parseAyvens(text: string, fileName: string): LeaserQuote {
 
   q.price.catalogueTtc = toNum(rx(text, new RegExp(`Prix catalogue du véhicule\\s*:\\s*${M}\\s+[\\d.,]+\\s+${M}`, "i"))?.[2]);
   q.price.optionsTtc = toNum(rx(text, new RegExp(`Montant total des options\\s*:\\s*${M}\\s+[\\d.,]+\\s+${M}`, "i"))?.[2]);
-  const optBlock = rx(text, /Options comprises dans le loyer[^\n]*\n([\s\S]*?)Total Options/i)?.[1] ?? "";
-  for (const l of optBlock.split("\n")) {
-    const m = l.trim().match(new RegExp(`^(.+?)\\s+${M}\\s+[\\d.,]+\\s+${M}$`));
-    if (m) q.price.options.push({ name: prettyOption(m[1]), priceTtc: toNum(m[3]) });
+  // Les options peuvent courir sur deux pages (l'en-tête « Options comprises dans le
+  // loyer » est répété) : on lit de la 1re mention jusqu'au dernier « Total Options »,
+  // en ne gardant que les lignes « NOM  HT  TVA %  TTC ».
+  const optStart = text.search(/Options comprises dans le loyer/i);
+  let optSlice = optStart < 0 ? "" : text.slice(optStart);
+  const optEnd = optSlice.search(/^Accessoires compris dans le loyer\s+HT/im);
+  if (optEnd > 0) optSlice = optSlice.slice(0, optEnd);
+  const seenOpt = new Set<string>();
+  for (const l of optSlice.split("\n")) {
+    const m = l.trim().match(new RegExp(`^(.+?)\\s+${M}\\s+(?:5,50|10,00|20,00)\\s+${M}$`));
+    if (!m || /^(total|montant|prix|loyer|ech[eé]ance)\b/i.test(m[1].trim())) continue;
+    const key = `${m[1]}|${m[3]}`;
+    if (seenOpt.has(key)) continue;
+    seenOpt.add(key);
+    q.price.options.push({ name: prettyOption(m[1]), priceTtc: toNum(m[3]) });
+  }
+  const optSum = Math.round(q.price.options.reduce((a, o) => a + (o.priceTtc ?? 0), 0) * 100) / 100;
+  if ((q.price.optionsTtc ?? 0) > 0 && Math.abs(optSum - (q.price.optionsTtc ?? 0)) > 0.05) {
+    flag(q, "options", "check", `Options lues : ${optSum.toLocaleString("fr-FR")} € pour un total de ${(q.price.optionsTtc ?? 0).toLocaleString("fr-FR")} € sur le devis : liste à vérifier`);
   }
 
   q.contract.months = num1(text, /Durée\s+(\d+)\s*mois/i) ?? 0;
@@ -425,8 +440,6 @@ function parseAyvens(text: string, fileName: string): LeaserQuote {
   if (cg) q.extras.push(`Carte grise incluse : ${cg[1].trim()} € (dépt. ${cg[2]})`);
   const en = num1(text, /Energie à la livraison\s*:\s*([\d,]+)/i);
   if (en != null) q.extras.push(`Énergie à la livraison : ${en} € TTC, facturée à part`);
-  const fr = g1(text, /Franchise\s+([\d.,]+)\s*E\s*HT/i);
-  if (fr) q.extras.push(`Franchise : ${fr} € HT`);
   const and = g1(text, /Amortissements Non Déductibles\s*\(\*\)\s*([\d.,]+)/i);
   if (and) flag(q, "fiscal", "check", `AND annoncé par le loueur : ${and} € (périodicité non indiquée, information seulement)`);
   return q;
