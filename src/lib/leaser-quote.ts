@@ -479,12 +479,23 @@ function parseArval(text: string, fileName: string): LeaserQuote {
 
   const optTot = toNum(rx(text, new RegExp(`Options\\s*\\n?\\s*${M}\\s*€\\s*TTC`, "i"))?.[1]);
   q.price.optionsTtc = optTot;
-  const re = new RegExp(`•\\s*(?:\\S*\\$\\S+\\s+)?(.+?)\\s+${M}\\s*€\\s*TTC`, "g");
-  let om: RegExpExecArray | null;
-  while ((om = re.exec(text)) !== null) {
+  // Bloc « Options » (jusqu'à « Accessoires »). La puce « • » est lue avant OU après la ligne
+  // de l'option selon le PDF : on l'ignore et on lit « [code JATO] NOM  prix € TTC ».
+  const optPos = text.search(/^Options\b/m);
+  let optRegion = optPos < 0 ? "" : text.slice(optPos);
+  const optEnd = optRegion.search(/^Accessoires\b/m);
+  if (optEnd > 0) optRegion = optRegion.slice(0, optEnd);
+  optRegion = optRegion.replace(new RegExp(`^Options\\s*\\n?\\s*${M}\\s*€\\s*TTC`, "i"), "").replace(/•/g, " ");
+  for (const l of optRegion.split("\n")) {
+    const om = l.trim().match(new RegExp(`^(?:\\S*\\$\\S+\\s+)?(.+?)\\s+${M}\\s*€\\s*TTC$`));
+    if (!om) continue;
     const name = om[1].trim();
     if (/loyer|accessoire/i.test(name)) continue;
     q.price.options.push({ name: prettyOption(name), priceTtc: toNum(om[2]) });
+  }
+  const optSum = Math.round(q.price.options.reduce((a, o) => a + (o.priceTtc ?? 0), 0) * 100) / 100;
+  if ((optTot ?? 0) > 0 && Math.abs(optSum - (optTot ?? 0)) > 0.05) {
+    flag(q, "options", "check", `Options lues : ${optSum.toLocaleString("fr-FR")} € pour un total de ${(optTot ?? 0).toLocaleString("fr-FR")} € sur le devis : liste à vérifier`);
   }
 
   const dk = rx(text, /(\d+)\s*mois\s*\/\s*([\d\s]+?)\s*km/i);
