@@ -407,6 +407,10 @@ let PDF_CFG: PdfDisplayConfig = DEFAULT_PDF_CONFIG;
 // (chiffrage des postes affiché même en location, BPA / conditions propres à
 // chaque type de projet). Positionné par generateProposalPdf (adminMode).
 let ADMIN_MODE = false;
+// Nouveau design des pages TCO (page fusionnée « impact + synthèse & détail », couleurs
+// et titres v2, classement par coût employeur complet). Ouvert à tous les utilisateurs ;
+// repasser à `ADMIN_MODE` pour le réserver de nouveau aux comptes admin.
+const TCO_V2 = true;
 
 // Langue du PDF généré. Défaut "fr" : comportement inchangé si le paramètre
 // n'est pas fourni. Positionné par generateProposalPdf (lang). Les nombres,
@@ -1105,8 +1109,8 @@ export async function generateProposalPdf(opts: {
   // 1 véhicule avec includeTco suffit : la synthèse/détail garde son sens
   // (récap des composantes du coût) même sans comparaison à un second modèle.
   const tcoEligible = v.some((sv) => sv.includeTco);
-  if (ADMIN_MODE) {
-    // Page TCO FUSIONNÉE (admin) : bandeau d'impact + KPI + détail des
+  if (TCO_V2) {
+    // Page TCO FUSIONNÉE (nouveau design, pour tous) : bandeau d'impact + KPI + détail des
     // composantes sur une seule page (remplace le tableau de bord à barres).
     if ((cfg.showTcoComparison || cfg.showTcoDetailedTable) && tcoEligible) {
       doc.addPage();
@@ -4502,11 +4506,11 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
   // Couleurs cohérentes avec les graphiques recharts dans l'app
   // Couleurs des composantes. Admin = palette charte Beev (noir/bleu/violet/rose),
   // sinon palette historique. COLOR_BEST sert au rang « meilleur TCO » (lisible).
-  const COLOR_LOYER: [number, number, number] = ADMIN_MODE ? [29, 29, 29] : [56, 9, 234];
-  const COLOR_ENERGIE: [number, number, number] = ADMIN_MODE ? [165, 210, 255] : [53, 218, 118];
-  const COLOR_TVS: [number, number, number] = ADMIN_MODE ? [211, 204, 216] : [245, 166, 35];
-  const COLOR_MALUS: [number, number, number] = ADMIN_MODE ? [244, 184, 170] : [229, 75, 75];
-  const COLOR_BEST: [number, number, number] = ADMIN_MODE ? [29, 29, 29] : [53, 218, 118];
+  const COLOR_LOYER: [number, number, number] = TCO_V2 ? [29, 29, 29] : [56, 9, 234];
+  const COLOR_ENERGIE: [number, number, number] = TCO_V2 ? [165, 210, 255] : [53, 218, 118];
+  const COLOR_TVS: [number, number, number] = TCO_V2 ? [211, 204, 216] : [245, 166, 35];
+  const COLOR_MALUS: [number, number, number] = TCO_V2 ? [244, 184, 170] : [229, 75, 75];
+  const COLOR_BEST: [number, number, number] = TCO_V2 ? [29, 29, 29] : [53, 218, 118];
 
   let y = 116;
   eyebrow(doc, L("ANALYSE TCO · TABLEAU DE BORD", "TCO ANALYSIS · DASHBOARD"), y);
@@ -4889,7 +4893,7 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
     theme: "plain",
     head: [[L("Véhicule", "Vehicle"), L("Malus (achat)", "Penalty (purchase)"), L("TVS (×durée)", "TVS (×duration)"), L("Surcoût AND 25 % (×durée)", "AND tax cost 25% (×duration)"), L("AEN empl. (×durée)", "AEN employer (×duration)"), L("Coût empl. complet", "Full employer cost")]],
     body: fiscalBody,
-    headStyles: { fillColor: ADMIN_MODE ? INK : LAVENDER, textColor: 255, fontSize: 7, fontStyle: "bold", font: BRAND_FONT, cellPadding: 4, halign: "center" as any },
+    headStyles: { fillColor: TCO_V2 ? INK : LAVENDER, textColor: 255, fontSize: 7, fontStyle: "bold", font: BRAND_FONT, cellPadding: 4, halign: "center" as any },
     bodyStyles: { fontSize: 8, cellPadding: 4, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any },
     alternateRowStyles: { fillColor: BG },
     columnStyles: { 0: { cellWidth: 150, cellPadding: { left: 56, right: 4, top: 6, bottom: 6 }, minCellHeight: 48, valign: "middle" as any } },
@@ -5117,18 +5121,18 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(...SUB);
-  doc.text(ADMIN_MODE ? L("ANALYSE TCO · SYNTHÈSE & DÉTAIL", "TCO ANALYSIS · SUMMARY & DETAIL") : L("ANALYSE TCO · DÉTAIL DES COMPOSANTES", "TCO ANALYSIS · COMPONENT DETAIL"), M + 30, y - 4);
+  doc.text(TCO_V2 ? L("ANALYSE TCO · SYNTHÈSE & DÉTAIL", "TCO ANALYSIS · SUMMARY & DETAIL") : L("ANALYSE TCO · DÉTAIL DES COMPOSANTES", "TCO ANALYSIS · COMPONENT DETAIL"), M + 30, y - 4);
   y += 14;
   doc.setFont(BRAND_FONT, "bold");
-  doc.setFontSize(ADMIN_MODE ? 30 : 26);
+  doc.setFontSize(TCO_V2 ? 30 : 26);
   doc.setTextColor(...INK);
-  doc.text(ADMIN_MODE ? L("Coût total de possession.", "Total cost of ownership.") : L("Tableau de décomposition du TCO", "TCO breakdown table"), M, y + 18);
+  doc.text(TCO_V2 ? L("Coût total de possession.", "Total cost of ownership.") : L("Tableau de décomposition du TCO", "TCO breakdown table"), M, y + 18);
   y += 50;
 
   doc.setFont(BRAND_FONT, "normal");
   doc.setFontSize(10);
   doc.setTextColor(...SUB);
-  const intro = ADMIN_MODE
+  const intro = TCO_V2
     ? L(
         "Classement par COÛT EMPLOYEUR COMPLET croissant = loyer + énergie + TVS + malus + AND + AEN employeur (sur la durée du contrat, options et remise incluses). L'AEN salarié est indiqué à titre informatif, non compté dans le coût employeur.",
         "Ranked by increasing FULL EMPLOYER COST = lease + energy + TVS + penalty + AND + employer AEN (over the contract duration, options and discount included). The employee AEN is shown for information only, not counted in the employer cost.",
@@ -5159,7 +5163,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   });
 
   // === Admin (page fusionnée) : bandeau d'impact + KPI en tête ===
-  if (ADMIN_MODE) {
+  if (TCO_V2) {
     // Métrique de reco = COÛT EMPLOYEUR COMPLET (loyer + énergie + TVS + malus
     // + AND + AEN employeur), et non le seul TCO d'usage.
     const impactRows = computed.map((c) => {
@@ -5249,7 +5253,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   }
   groupOrder.sort((a, b) => (a === "__none__" ? 1 : 0) - (b === "__none__" ? 1 : 0));
   // Admin : tri par coût employeur complet (métrique de reco) ; sinon TCO usage.
-  for (const g of groupOrder) buckets.get(g)!.sort((a, b) => (ADMIN_MODE ? a.r.tcoEmployeurComplet - b.r.tcoEmployeurComplet : a.r.tcoTotal - b.r.tcoTotal));
+  for (const g of groupOrder) buckets.get(g)!.sort((a, b) => (TCO_V2 ? a.r.tcoEmployeurComplet - b.r.tcoEmployeurComplet : a.r.tcoTotal - b.r.tcoTotal));
   // Liste à plat triée (pour la légende / fallback)
   const rows = groupOrder.flatMap((g) => buckets.get(g)!);
 
@@ -5298,7 +5302,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
         // 50 % du loyer mensuel SANS CARBURANT (abattement 70 % si EV éco-score).
         // Affiché à titre INFORMATIF — n'entre PAS dans le coût employeur complet.
         { content: eur(r.aenMensuel), styles: { halign: "center" as any, textColor: SUB, fontStyle: "italic" as any } },
-        { content: eur(r.tcoEmployeurComplet), styles: { halign: "center" as any, fontStyle: "bold" as any, textColor: ADMIN_MODE ? ACCENT_TEXT : LAVENDER, fontSize: 10 } },
+        { content: eur(r.tcoEmployeurComplet), styles: { halign: "center" as any, fontStyle: "bold" as any, textColor: TCO_V2 ? ACCENT_TEXT : LAVENDER, fontSize: 10 } },
       ];
   };
 
@@ -5364,7 +5368,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
   const SEG_ENERGIE: [number, number, number] = [165, 210, 255];
   const SEG_FISC: [number, number, number] = [150, 122, 168]; // violet plus soutenu (lisible sur barre)
   const SEG_EMPL: [number, number, number] = [244, 184, 170]; // rose (charges employeur AND + AEN)
-  if (ADMIN_MODE) {
+  if (TCO_V2) {
     doc.setFont(BRAND_FONT, "bold"); doc.setFontSize(7); doc.setTextColor(...SUB);
     const decompLabel2 = L("DÉCOMPOSITION", "BREAKDOWN");
     doc.text(decompLabel2, M, y + 4);
@@ -5393,13 +5397,13 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
       L("COÛT EMPL.\nCOMPLET", "FULL EMPL.\nCOST"),
     ]],
     body: tcoBody,
-    headStyles: { fillColor: ADMIN_MODE ? INK : LAVENDER, textColor: 255, fontSize: 7.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 5, halign: "center" as any, valign: "middle" as any },
+    headStyles: { fillColor: TCO_V2 ? INK : LAVENDER, textColor: 255, fontSize: 7.5, fontStyle: "bold", font: BRAND_FONT, cellPadding: 5, halign: "center" as any, valign: "middle" as any },
     // Police réduite + padding serré sur les colonnes chiffrées pour que les
     // gros montants (« 53 305 € », « 99 777 € ») tiennent sur UNE ligne.
     bodyStyles: { fontSize: 7.5, cellPadding: 4, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, valign: "middle" as any, overflow: "visible" as any },
     alternateRowStyles: { fillColor: BG },
     columnStyles: {
-      0: { cellWidth: 130, halign: "left" as any, cellPadding: { left: 54, right: 4, top: 6, bottom: ADMIN_MODE ? 16 : 6 }, minCellHeight: ADMIN_MODE ? 58 : 48, valign: "middle" as any, overflow: "linebreak" as any },
+      0: { cellWidth: 130, halign: "left" as any, cellPadding: { left: 54, right: 4, top: 6, bottom: TCO_V2 ? 16 : 6 }, minCellHeight: TCO_V2 ? 58 : 48, valign: "middle" as any, overflow: "linebreak" as any },
       1: { cellWidth: 46 },
       2: { cellWidth: 44 },
       3: { cellWidth: 40 },
@@ -5432,7 +5436,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
       if (!sv) return; // ligne d'intertitre de groupe
       drawThumbCell(doc, data.cell, thumbMap.get(sv) ?? null);
       // Mini-barre empilée (admin) en bas de la cellule véhicule.
-      if (ADMIN_MODE) {
+      if (TCO_V2) {
         const cmp = compMap.get(sv);
         if (cmp && cmp.total > 0) {
           const cell = data.cell;
