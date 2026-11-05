@@ -376,7 +376,6 @@ function IssueList({ issues, members, onOpenVehicle, onPatchVehicle, onEnablePag
             <span>{it.text}</span>
             {it.kind === "disabled" && <FixButton onClick={onEnablePage}>Activer</FixButton>}
             {it.kind === "loyer" && it.vehicle && <FixButton onClick={() => onOpenVehicle(it.vehicle!)}>Saisir</FixButton>}
-            {it.kind === "current" && it.vehicle && <FixButton onClick={() => onPatchVehicle(it.vehicle!, { vehicle: { ...it.vehicle!.vehicle, isCurrentFleet: false } })}>Retirer ce statut</FixButton>}
             {it.kind === "tco" && <FixButton onClick={() => members.forEach((sv) => onPatchVehicle(sv, { includeTco: true }))}>Activer</FixButton>}
           </li>
         ))}

@@ -53,11 +53,12 @@ export function groupNamesOf(list: SelectedVehicle[]): string[] {
 }
 
 // ── Ce qu'il faut pour que la page « Comparateur par groupe » apparaisse dans le PDF ──
-// Miroir de `groupComparisonEligible` (pdf.ts) : au moins 2 véhicules, tous des
-// PROPOSITIONS (pas la flotte actuelle) avec un loyer négocié > 0, dont au moins un a
-// « Inclure le TCO » ; et la page doit être activée dans la configuration PDF.
+// Miroir de `groupComparisonEligible` (pdf.ts) : au moins 2 véhicules dont au moins une
+// PROPOSITION ; chaque proposition a un loyer négocié > 0 ; au moins un véhicule a « Inclure
+// le TCO » ; et la page est activée dans la configuration PDF. La flotte actuelle peut figurer
+// dans le groupe : elle est comparée à la meilleure proposition.
 export type GroupIssue = {
-  kind: "disabled" | "few" | "current" | "loyer" | "tco";
+  kind: "disabled" | "few" | "onlycurrent" | "loyer" | "tco";
   text: string;
   /** Véhicule concerné (absent pour les points qui concernent tout le groupe). */
   vehicle?: SelectedVehicle;
@@ -71,11 +72,13 @@ export function groupIssues(members: SelectedVehicle[], pageEnabled: boolean): G
   if (members.length < 2) {
     out.push({ kind: "few", text: members.length === 0 ? "Groupe vide : ajoutez au moins 2 véhicules." : "Un seul véhicule : ajoutez-en au moins un autre." });
   }
+  // La flotte actuelle peut figurer dans le groupe (elle est comparée à la meilleure proposition),
+  // mais il faut au moins une proposition ; chaque proposition doit avoir un loyer négocié.
+  if (members.length >= 2 && members.every((sv) => sv.vehicle.isCurrentFleet)) {
+    out.push({ kind: "onlycurrent", text: "Ce groupe ne contient que de la flotte actuelle : ajoutez au moins une proposition Beev." });
+  }
   for (const sv of members) {
-    if (sv.vehicle.isCurrentFleet) {
-      out.push({ kind: "current", vehicle: sv, text: `${vName(sv)} est marqué « flotte actuelle » : le comparateur par groupe ne compare que des propositions.` });
-    }
-    if (!((sv.negotiatedMonthly ?? 0) > 0)) {
+    if (!sv.vehicle.isCurrentFleet && !((sv.negotiatedMonthly ?? 0) > 0)) {
       out.push({ kind: "loyer", vehicle: sv, text: `${vName(sv)} : loyer négocié à saisir.` });
     }
   }

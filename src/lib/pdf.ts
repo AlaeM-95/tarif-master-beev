@@ -1124,6 +1124,13 @@ export async function generateProposalPdf(opts: {
       if (hasPairs) await drawTcoImpact(doc, vTco, energy, client, "vehicles");
       else if (groupCmpCoversAll) drawTcoMethodAnnex(doc, v, energy, client);
       else await drawTcoDetailedTable(doc, vTco, energy, client);
+      // Les pages « Comparateur par groupe » renvoient à l'annexe de méthode : elle doit exister
+      // même quand la page « impact » a pris la place du détail TCO.
+      if (hasPairs && groupCmpCovered.size > 0) {
+        doc.addPage();
+        drawHeader(doc, client, "vehicles");
+        drawTcoMethodAnnex(doc, v, energy, client);
+      }
     }
   } else {
     if (cfg.showTcoComparison && tcoEligible) {
@@ -7367,8 +7374,13 @@ function prettyVehicleName(v: { brand: string; model: string }): string {
  *  propositions (pas de flotte actuelle) avec un loyer négocié, et si au moins
  *  un d'eux est inclus dans l'analyse TCO. */
 function groupComparisonEligible(list: SelectedVehicle[]): boolean {
+  // La flotte actuelle peut figurer dans le groupe (colonne comparée à la recommandation) :
+  // son loyer peut être 0. Il faut au moins une PROPOSITION avec un loyer négocié, et tous
+  // les véhicules proposés doivent en avoir un.
+  const proposals = list.filter((sv) => !sv.vehicle.isCurrentFleet);
   return list.length >= 2
-    && list.every((sv) => !sv.vehicle.isCurrentFleet && (sv.negotiatedMonthly ?? 0) > 0)
+    && proposals.length >= 1
+    && proposals.every((sv) => (sv.negotiatedMonthly ?? 0) > 0)
     && list.some((sv) => sv.includeTco);
 }
 
@@ -7448,10 +7460,19 @@ async function drawGroupComparison(
   items.forEach((it, i) => { it.img = imgs[i]; });
 
   const n = items.length;
+  const isCur = (it: GcItem) => !!it.sv.vehicle.isCurrentFleet;
+  // La recommandation est toujours une PROPOSITION Beev : la moins chère du groupe. Elle passe
+  // en 1re colonne ; la flotte actuelle éventuelle est comparée à elle, sans jamais être recommandée.
+  const refItem = items.find((it) => !isCur(it)) ?? items[0];
+  if (items[0] !== refItem) { items.splice(items.indexOf(refItem), 1); items.unshift(refItem); }
   const ref = items[0];
-  const worst = items[n - 1];
+  const cur = items.filter(isCur).reduce<GcItem | null>((a, b) => (!a || b.tco > a.tco ? b : a), null);
+  // Véhicule auquel on compare la recommandation : la flotte actuelle si elle est dans le
+  // groupe, sinon le plus cher.
+  const worst = cur ?? items[n - 1];
   const spread = worst.tco - ref.tco;
-  const maxTco = Math.max(worst.tco, 1);
+  const maxTco = Math.max(...items.map((it) => it.tco), 1);
+  const proposalRank = new Map<GcItem, number>(items.filter((it) => !isCur(it)).sort((a, b) => a.tco - b.tco).map((it, i) => [it, i + 1]));
   const sameBase = items.every((it) => it.mois === ref.mois && Math.abs(it.km - ref.km) < 1);
   const per100 = (it: GcItem) => (it.km > 0 ? (it.tco / it.km) * 100 : 0);
   const anyApport = items.some((it) => svApport(it.sv) > 0);
@@ -7463,15 +7484,24 @@ async function drawGroupComparison(
 
   // ── Textes (titre, sous-titre, bandeau) ──
   const gName = (groupName ?? "").trim();
-  const flat = spread < 1;
+  const flat = Math.abs(spread) < 1;
+  const curBetter = !!cur && spread <= -1; // la flotte actuelle coûte moins cher que la meilleure proposition
   const title = flat
     ? L("Coûts complets équivalents sur ce groupe", "Equivalent full costs across this group")
+    : curBetter
+      ? L("Comparatif des coûts complets du groupe", "Full cost comparison across the group")
+    : cur
+      ? L(`${ref.short} : ${eur(spread)} de moins que la flotte actuelle`, `${ref.short}: ${eur(spread)} less than the current fleet`)
     : n === 2
       ? L(`${ref.short} : ${eur(spread)} de moins que ${worst.short}`, `${ref.short}: ${eur(spread)} less than ${worst.short}`)
       : L(`${ref.short} : le coût complet le plus bas du groupe`, `${ref.short}: the lowest full cost in the group`);
   const pctOver = ref.tco > 0 ? (spread / ref.tco) * 100 : 0;
   const sub = flat
     ? L(`Les ${n} véhicules coûtent la même chose sur ${baseTxt}.`, `The ${n} vehicles cost the same over ${baseTxt}.`)
+    : curBetter
+      ? L(`Coût complet de chaque véhicule sur ${baseTxt}, à usage identique.`, `Full cost of each vehicle over ${baseTxt}, for identical usage.`)
+    : cur
+      ? L(`La flotte actuelle (${cur.short}) coûte ${fr(pctOver, 1)} % de plus sur ${baseTxt}, à usage identique.`, `The current fleet (${cur.short}) costs ${fr(pctOver, 1)}% more over ${baseTxt}, for identical usage.`)
     : n === 2
       ? L(`${worst.short} coûte ${fr(pctOver, 1)} % de plus sur ${baseTxt}, à usage identique.`, `${worst.short} costs ${fr(pctOver, 1)}% more over ${baseTxt}, for identical usage.`)
       : L(`Écart maximal du groupe : ${eur(spread)} (+${fr(pctOver, 1)} %) entre ${ref.short} et ${worst.short}, sur ${baseTxt}.`, `Maximum gap in the group: ${eur(spread)} (+${fr(pctOver, 1)}%) between ${ref.short} and ${worst.short}, over ${baseTxt}.`);
@@ -7485,7 +7515,7 @@ async function drawGroupComparison(
     return c && c > 0 ? { v: c, unit: elec ? "kWh" : "L" } : null;
   };
   const ins: string[] = [];
-  if (!flat) {
+  if (!flat && spread > 0) {
     const dL = worst.loyer - ref.loyer;
     const dE = worst.energie - ref.energie;
     const share = Math.round((dL / spread) * 100);
@@ -7495,23 +7525,23 @@ async function drawGroupComparison(
         `The lease explains ${share}% of the gap between ${ref.short} and ${worst.short}. Energy ${dE < 0 ? "works the other way" : "weighs little"} (${sgn(dE)}).`,
       ));
     }
-    const sec = items[1];
+    const sec = items.find((it) => it !== ref && !isCur(it)) ?? ref;
     const gap = sec.tco - ref.tco;
     const gp = ref.tco > 0 ? (gap / ref.tco) * 100 : 0;
     const advFr: string[] = [];
     const advEn: string[] = [];
     const ranges = items.map((it) => it.sv.vehicle.rangeWltp ?? 0);
-    if ((sec.sv.vehicle.rangeWltp ?? 0) > 0 && (sec.sv.vehicle.rangeWltp ?? 0) === Math.max(...ranges) && new Set(ranges).size > 1) {
+    if (sec !== ref && (sec.sv.vehicle.rangeWltp ?? 0) > 0 && (sec.sv.vehicle.rangeWltp ?? 0) === Math.max(...ranges) && new Set(ranges).size > 1) {
       advFr.push(`l'autonomie (${fr(sec.sv.vehicle.rangeWltp)} km)`);
       advEn.push(`range (${fr(sec.sv.vehicle.rangeWltp)} km)`);
     }
     const cs = items.map(consoOf);
     const secC = consoOf(sec);
-    if (secC && cs.every((c) => c && c.unit === secC.unit) && secC.v === Math.min(...cs.map((c) => (c as { v: number }).v)) && new Set(cs.map((c) => (c as { v: number }).v)).size > 1) {
+    if (sec !== ref && secC && cs.every((c) => c && c.unit === secC.unit) && secC.v === Math.min(...cs.map((c) => (c as { v: number }).v)) && new Set(cs.map((c) => (c as { v: number }).v)).size > 1) {
       advFr.push(`la consommation (${fr(secC.v, 1)} ${secC.unit}/100 km)`);
       advEn.push(`consumption (${fr(secC.v, 1)} ${secC.unit}/100 km)`);
     }
-    if (advFr.length) {
+    if (sec !== ref && advFr.length) {
       ins.push(gp < 5
         ? L(`${sec.short} n'est qu'à ${sgn(gap)} (+${fr(gp, 1)} %) : écart faible, à départager sur l'usage. Meilleur sur ${advFr.join(" et ")}.`, `${sec.short} is only ${sgn(gap)} away (+${fr(gp, 1)}%): a small gap, to settle on usage. Best on ${advEn.join(" and ")}.`)
         : L(`${sec.short} : ${sgn(gap)} (+${fr(gp, 1)} %) pour ${advFr.join(" et ")}.`, `${sec.short}: ${sgn(gap)} (+${fr(gp, 1)}%) for ${advEn.join(" and ")}.`));
@@ -7577,7 +7607,7 @@ async function drawGroupComparison(
     const cw = (CW - labW) / k;
     const iw = cw - pad * 2;
     const colX = (i: number) => M + labW + i * cw;
-    const rankOf = (it: GcItem) => items.indexOf(it) + 1;
+    const rankOf = (it: GcItem) => proposalRank.get(it) ?? 0;
 
     let y = 124;
     eyebrow(
@@ -7615,16 +7645,19 @@ async function drawGroupComparison(
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(7);
     doc.setTextColor(189, 184, 171);
-    doc.text((doc.splitTextToSize(L(`Coût employeur complet le plus bas du groupe · ${fr(per100(ref), 2)} €/100 km`, `Lowest full employer cost in the group · €${fr(per100(ref), 2)}/100 km`), CW * 0.5) as string[])[0], M + 14, y + 43);
+    doc.text((doc.splitTextToSize(cur
+      ? L(`Proposition Beev au coût employeur complet le plus bas · ${fr(per100(ref), 2)} €/100 km`, `Beev proposal with the lowest full employer cost · €${fr(per100(ref), 2)}/100 km`)
+      : L(`Coût employeur complet le plus bas du groupe · ${fr(per100(ref), 2)} €/100 km`, `Lowest full employer cost in the group · €${fr(per100(ref), 2)}/100 km`), CW * 0.5) as string[])[0], M + 14, y + 43);
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(17);
     doc.setTextColor(255, 255, 255);
     doc.text(eur(ref.tco), M + CW - 14, y + 28, { align: "right" });
-    if (!flat) {
+    if (!flat && !curBetter) {
       doc.setFont(BRAND_FONT, "normal");
       doc.setFontSize(7.5);
       doc.setTextColor(...PINK);
-      doc.text((doc.splitTextToSize(L(`${sgn(-spread)} (−${savePct} %) face à ${worst.short}`, `${sgn(-spread)} (−${savePct}%) vs ${worst.short}`), CW * 0.42) as string[])[0], M + CW - 14, y + 42, { align: "right" });
+      const vsTxt = cur ? L("la flotte actuelle", "the current fleet") : worst.short;
+      doc.text((doc.splitTextToSize(L(`${sgn(-spread)} (−${savePct} %) face à ${vsTxt}`, `${sgn(-spread)} (−${savePct}%) vs ${vsTxt}`), CW * 0.42) as string[])[0], M + CW - 14, y + 42, { align: "right" });
     }
     y += vh + 10;
 
@@ -7723,9 +7756,13 @@ async function drawGroupComparison(
       const rk = rankOf(it);
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(5.8);
-      const rankCandidates = rk === 1 ? [L("N°1 · COÛT LE PLUS BAS", "NO. 1 · LOWEST COST"), L("N°1 · MEILLEUR", "NO. 1 · BEST"), "N°1"] : [`N°${rk}`];
+      const rankCandidates = isCur(it)
+        ? [L("FLOTTE ACTUELLE", "CURRENT FLEET"), L("ACTUELLE", "CURRENT")]
+        : rk === 1
+          ? [curBetter ? L("N°1 · MEILLEURE OFFRE", "NO. 1 · BEST OFFER") : L("N°1 · COÛT LE PLUS BAS", "NO. 1 · LOWEST COST"), L("N°1 · MEILLEUR", "NO. 1 · BEST"), "N°1"]
+          : [`N°${rk}`];
       const rankTxt = rankCandidates.find((t) => doc.getTextWidth(t) + 10 <= iw) ?? rankCandidates[rankCandidates.length - 1];
-      chip(rankTxt, rk === 1 ? PINK : CHIP_NEUTRAL, rk === 1 ? INK : CHIP_TEXT, ix, cy);
+      chip(rankTxt, isCur(it) ? ORANGE_LIGHT : rk === 1 ? PINK : CHIP_NEUTRAL, isCur(it) ? ORANGE_TEXT : rk === 1 ? INK : CHIP_TEXT, ix, cy);
       cy += 10;
       if (hasEco) {
         cy += 2;
