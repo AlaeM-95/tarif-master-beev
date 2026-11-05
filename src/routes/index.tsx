@@ -30,7 +30,7 @@ import { AuditConseilEditor } from "@/components/audit-conseil-editor";
 import { CarPolicyImporter } from "@/components/car-policy-importer";
 import { LeaserQuoteTool, type LeaserQuoteDraft } from "@/components/leaser-quote-tool";
 import { ComparisonGroupsBoard, GroupChips, VehicleGroupsStatus } from "@/components/comparison-groups-board";
-import { groupNamesOf, groupsPatch, vehicleGroups } from "@/lib/comparison-groups";
+import { comparatorNotes, groupNamesOf, groupsPatch, vehicleGroups } from "@/lib/comparison-groups";
 import { assuranceMonthly as leaserAssurance, kmPerYear as leaserKmPerYear, netDownPayment as leaserNetApport } from "@/lib/leaser-quote";
 import { FleetBuilder, type FleetSelection } from "@/components/fleet-builder";
 import { LiveIndicator } from "@/components/live-indicator";
@@ -940,6 +940,12 @@ function App() {
       const energyCustomized = (["fuelPriceL", "kWhHome", "kWhPublic", "mixHomePct"] as const).some(
         (k) => Math.abs((energy[k] ?? 0) - DEFAULT_ENERGY[k]) > 1e-9,
       );
+      // Dit tout de suite pourquoi un comparateur par groupe ne sortira pas dans ce PDF
+      // (flotte actuelle dans le groupe, loyer manquant, TCO non activé, page désactivée…).
+      const cmpNotes = comparatorNotes(vehiclesForPdf, tcoFocusedConfig.showGroupComparison !== false);
+      if (cmpNotes.length > 0) {
+        toast.warning(`Comparateur par groupe non généré pour : ${cmpNotes.join(" · ")}`, { duration: 15000 });
+      }
       await Promise.race([
         generateProposalPdf({
           projectType, client, energy,

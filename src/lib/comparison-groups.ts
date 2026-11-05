@@ -84,3 +84,26 @@ export function groupIssues(members: SelectedVehicle[], pageEnabled: boolean): G
   }
   return out;
 }
+
+/** Pourquoi la page « Comparateur par groupe » ne sera pas générée, groupe par groupe (une
+ *  phrase par groupe concerné). Ne signale que les groupes d'au moins 2 véhicules, c'est-à-dire
+ *  ceux que le commercial veut visiblement comparer. Liste vide = tout est en ordre. */
+export function comparatorNotes(vehicles: SelectedVehicle[], pageEnabled: boolean): string[] {
+  if (vehicles.length < 2) return [];
+  const buckets = new Map<string, SelectedVehicle[]>();
+  const free: SelectedVehicle[] = [];
+  for (const sv of vehicles) {
+    const gs = vehicleGroups(sv);
+    if (gs.length === 0) free.push(sv);
+    for (const g of gs) buckets.set(g, [...(buckets.get(g) ?? []), sv]);
+  }
+  const notes: string[] = [];
+  const check = (label: string, list: SelectedVehicle[]) => {
+    if (list.length < 2) return;
+    const issues = groupIssues(list, pageEnabled);
+    if (issues.length) notes.push(`${label} : ${issues.map((i) => i.text).join(" ")}`);
+  };
+  for (const [g, list] of buckets) check(`« ${g} »`, list);
+  check("Véhicules sans groupe", free);
+  return notes;
+}
