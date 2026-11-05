@@ -962,6 +962,25 @@ export async function generateProposalPdf(opts: {
     // (cf. bloc plus bas dans cette fonction).
   }
 
+  // Édition DAF : groupes de comparaison exploitables (au moins une proposition avec loyer
+  // négocié ; la flotte actuelle peut y figurer). Ils remplacent le comparateur classique, les pages
+  // TCO (impact, détail, annexe), la synthèse flotte et la page « avantages fiscaux » par :
+  // synthèse → une page par segment → méthode et fiscalité.
+  const dafJobs: Array<{ name?: string; list: SelectedVehicle[] }> = [];
+  if (cfg.showGroupComparison !== false && v.length >= 2) {
+    const gmap = new Map<string, SelectedVehicle[]>();
+    const noGroup: SelectedVehicle[] = [];
+    for (const sv of vg) {
+      const g = (sv.comparisonGroup ?? "").trim();
+      if (!g) { noGroup.push(sv); continue; }
+      gmap.set(g, [...(gmap.get(g) ?? []), sv]);
+    }
+    const jobs: Array<{ name?: string; list: SelectedVehicle[] }> = [...gmap.entries()].map(([name, list]) => ({ name, list }));
+    if (noGroup.length) jobs.push({ list: noGroup });
+    for (const job of jobs) if (groupComparisonEligible(job.list)) dafJobs.push(job);
+  }
+  const dafActive = dafJobs.length > 0;
+
   if (cfg.showWhyBeev) {
     doc.addPage();
     drawHeader(doc, client, effectiveType);
@@ -972,7 +991,7 @@ export async function generateProposalPdf(opts: {
   // Auto : dès ~10 véhicules au devis (somme des quantités) et toggle actif.
   // Placée en tête de la section véhicules (résumé exécutif), avant le détail.
   const fleetQty = v.reduce((s, sv) => s + Math.max(1, sv.quantity || 1), 0);
-  if (cfg.showFleetSynthesis !== false && fleetQty >= 10 && v.length >= 2) {
+  if (cfg.showFleetSynthesis !== false && fleetQty >= 10 && v.length >= 2 && !dafActive) {
     try {
       doc.addPage();
       drawHeader(doc, client, "vehicles");
@@ -989,18 +1008,22 @@ export async function generateProposalPdf(opts: {
   // remplace alors le comparateur « specs » ET le détail TCO pour ces
   // véhicules (le détail TCO devient une annexe de méthode, cf. plus bas).
   const groupCmpCovered = new Set<SelectedVehicle>();
-  if (cfg.showGroupComparison !== false && v.length >= 2) {
-    const gmap = new Map<string, SelectedVehicle[]>();
-    const noGroup: SelectedVehicle[] = [];
-    for (const sv of vg) {
-      const g = (sv.comparisonGroup ?? "").trim();
-      if (!g) { noGroup.push(sv); continue; }
-      gmap.set(g, [...(gmap.get(g) ?? []), sv]);
+  if (dafActive) {
+    // 1. Synthèse DAF (si au moins un segment a une flotte actuelle à remplacer).
+    const dafGroups: DafGroup[] = dafJobs.map((job) => ({ name: job.name ?? "", prep: gcPrepare(job.list, energy) }));
+    if (dafGroups.some((g) => g.prep.cur)) {
+      const pagesBefore = doc.getNumberOfPages();
+      try {
+        doc.addPage();
+        drawHeader(doc, client, "vehicles");
+        drawDafSynthesis(doc, dafGroups, client);
+      } catch (err) {
+        console.error("[pdf] synthèse DAF :", err);
+        while (doc.getNumberOfPages() > pagesBefore) doc.deletePage(doc.getNumberOfPages());
+      }
     }
-    const jobs: Array<{ name?: string; list: SelectedVehicle[] }> = [...gmap.entries()].map(([name, list]) => ({ name, list }));
-    if (noGroup.length) jobs.push({ list: noGroup });
-    for (const job of jobs) {
-      if (!groupComparisonEligible(job.list)) continue;
+    // 2. Une page par segment.
+    for (const job of dafJobs) {
       const pagesBefore = doc.getNumberOfPages();
       try {
         doc.addPage();
@@ -1008,9 +1031,21 @@ export async function generateProposalPdf(opts: {
         await drawGroupComparison(doc, job.list, energy, job.name, client);
         job.list.forEach((sv) => groupCmpCovered.add(origOf(sv)));
       } catch (err) {
-        // Une erreur de rendu ne doit pas faire échouer le PDF : on retire les
-        // pages partielles et le comparateur classique prend le relais.
-        console.error("[pdf] comparateur par groupe :", err);
+        // Une erreur de rendu ne doit pas faire échouer le PDF : on retire les pages
+        // partielles et le comparateur classique prend le relais.
+        console.error("[pdf] page segment :", err);
+        while (doc.getNumberOfPages() > pagesBefore) doc.deletePage(doc.getNumberOfPages());
+      }
+    }
+    // 3. Méthode et fiscalité.
+    if (groupCmpCovered.size > 0) {
+      const pagesBefore = doc.getNumberOfPages();
+      try {
+        doc.addPage();
+        drawHeader(doc, client, "vehicles");
+        drawDafMethod(doc, v, energy, client);
+      } catch (err) {
+        console.error("[pdf] méthode DAF :", err);
         while (doc.getNumberOfPages() > pagesBefore) doc.deletePage(doc.getNumberOfPages());
       }
     }
@@ -1108,7 +1143,7 @@ export async function generateProposalPdf(opts: {
   // Pages d'analyse TCO multi-véhicules, chacune activable indépendamment.
   // 1 véhicule avec includeTco suffit : la synthèse/détail garde son sens
   // (récap des composantes du coût) même sans comparaison à un second modèle.
-  const tcoEligible = v.some((sv) => sv.includeTco);
+  const tcoEligible = v.some((sv) => sv.includeTco) && !dafActive;
   if (TCO_V2) {
     // Page TCO FUSIONNÉE (nouveau design, pour tous) : bandeau d'impact + KPI + détail des
     // composantes sur une seule page (remplace le tableau de bord à barres).
@@ -1258,14 +1293,14 @@ export async function generateProposalPdf(opts: {
 
   // Page synthèse financière enrichie (KPI cards, économies vs concurrents,
   // TVS évitée, CO2 évité) — réservée aux projets véhicules
-  if (cfg.showFinancialSynthesis && v.length > 0) {
+  if (cfg.showFinancialSynthesis && v.length > 0 && !dafActive) {
     doc.addPage();
     drawHeader(doc, client, effectiveType);
     drawFinancialSynthesis(doc, v, energy);
   }
 
   // Page avantages fiscaux 2026 (réservée aux projets véhicules)
-  if (cfg.showFiscalAdvantages && v.length > 0) {
+  if (cfg.showFiscalAdvantages && v.length > 0 && !dafActive) {
     doc.addPage();
     drawHeader(doc, client, effectiveType);
     drawFiscalAdvantages(doc, v, energy);
@@ -2840,6 +2875,7 @@ function drawSitePaymentOptions(doc: jsPDF, chargers: SelectedCharger[], client?
 }
 
 function drawWhyBeev(doc: jsPDF, type: ProjectType) {
+  if (type === "vehicles") { drawWhyBeevDaf(doc); return; }
   let y = 130;
   eyebrow(doc, lookupText(TEXTS, "common", "why_beev_eyebrow", L("NOTRE APPROCHE", "OUR APPROACH")), y);
   y += 32;
@@ -2910,6 +2946,152 @@ function drawWhyBeev(doc: jsPDF, type: ProjectType) {
     y += t.length * 14 + 6;
   });
 
+  drawWhyBeevProof(doc, type, y);
+}
+
+// Page « Pourquoi Beev » orientée direction financière : ce que le DAF obtient, puis la pertinence
+// de Beev sur un marché éclaté (constructeurs, loueurs, bornes, suivi de flotte). Aucun chiffre de
+// marché inventé : seuls les faits du dossier (loueurs partenaires, périmètre Beev) sont cités.
+function drawWhyBeevDaf(doc: jsPDF) {
+  type RGB = [number, number, number];
+  const CREAM: RGB = [245, 240, 225];
+  const HAIR: RGB = [234, 227, 208];
+  const PINK: RGB = [244, 184, 170];
+  const CW = PAGE_W - M * 2;
+  let y = 130;
+  eyebrow(doc, L("NOTRE APPROCHE · DIRECTION FINANCIÈRE", "OUR APPROACH · FINANCE DIRECTION"), y);
+  y += 32;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(21);
+  doc.setTextColor(...INK);
+  const tl = doc.splitTextToSize(L("Pourquoi Beev est le bon partenaire de votre direction financière.", "Why Beev is the right partner for your finance team."), CW) as string[];
+  doc.text(tl, M, y);
+  y += (tl.length - 1) * 25 + 22;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...INK);
+  const intro = doc.splitTextToSize(L(
+    "Électrifier une flotte se décide sur son coût complet (loyers, énergie, fiscalité), pas sur un loyer. Beev vous donne ce coût complet véhicule par véhicule, et un interlocuteur unique pour l'exécuter.",
+    "Electrifying a fleet is decided on its full cost (lease, energy, taxes), not on a lease alone. Beev gives you that full cost vehicle by vehicle, and a single point of contact to deliver it.",
+  ), CW) as string[];
+  doc.text(intro, M, y);
+  y += intro.length * 13.5 + 14;
+
+  // ── Ce que votre direction financière obtient ──
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8);
+  doc.text(L("CE QUE VOTRE DIRECTION FINANCIÈRE OBTIENT", "WHAT YOUR FINANCE TEAM GETS"), M, y);
+  y += 8;
+  const tiles: { h: string; t: string }[] = [
+    { h: L("Un coût complet, pas un loyer", "A full cost, not a lease"), t: L("Loyers, énergie, TVS, malus, AND et charges sur l'avantage en nature, comparés à votre flotte actuelle, véhicule par véhicule.", "Lease, energy, company car tax, penalty, AND and charges on benefit-in-kind, compared with your current fleet, vehicle by vehicle.") },
+    { h: L("Un loyer qui inclut l'essentiel", "A lease that includes the essentials"), t: L("Maintenance, assistance 24/24 et gestion des pertes totales sont comprises dans le loyer mensuel.", "Maintenance, 24/7 assistance and total loss management are included in the monthly lease.") },
+    { h: L("Une fiscalité chiffrée", "Taxes quantified"), t: L("TVS, malus, AND et avantage en nature calculés sur les barèmes 2026, avec la méthode détaillée pour validation par votre expert-comptable.", "Company car tax, penalty, AND and benefit-in-kind calculated on 2026 scales, with the detailed method for your accountant to validate.") },
+    { h: L("Des loyers mis en concurrence", "Leases put in competition"), t: L("Offres de plusieurs loueurs (Ayvens, Arval, BPCE, Alphabet, Agilauto, VW Bank…) et tarifs négociés grand compte sur tous les constructeurs.", "Offers from several lessors (Ayvens, Arval, BPCE, Alphabet, Agilauto, VW Bank…) and key-account rates negotiated across all manufacturers.") },
+  ];
+  const gx = 12;
+  const tw = (CW - gx) / 2;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8.3);
+  const tLines = tiles.map((t) => doc.splitTextToSize(t.t, tw - 24) as string[]);
+  const rowH = [0, 1].map((r) => 36 + Math.max(...tLines.slice(r * 2, r * 2 + 2).map((l) => l.length)) * 11);
+  tiles.forEach((t, i) => {
+    const col = i % 2;
+    const row = Math.floor(i / 2);
+    const x = M + col * (tw + gx);
+    const ty = y + (row === 0 ? 0 : rowH[0] + 10);
+    doc.setFillColor(...CREAM);
+    doc.roundedRect(x, ty, tw, rowH[row], 8, 8, "F");
+    doc.setFillColor(...PINK);
+    doc.rect(x + 12, ty + 12, 22, 2.5, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...INK);
+    doc.text(t.h, x + 12, ty + 29, { maxWidth: tw - 24 });
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(8.3);
+    doc.setTextColor(...SUB);
+    doc.text(tLines[i], x + 12, ty + 44);
+  });
+  y += rowH[0] + 10 + rowH[1] + 24;
+
+  // ── Pourquoi Beev sur ce marché ──
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...INK);
+  doc.text(L("POURQUOI BEEV SUR CE MARCHÉ", "WHY BEEV IN THIS MARKET"), M, y);
+  y += 12;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8.6);
+  doc.setTextColor(...SUB);
+  const mk = doc.splitTextToSize(L(
+    "Électrifier une flotte mobilise quatre familles d'acteurs qui ne se parlent pas : constructeurs, loueurs, installateurs de bornes et éditeurs de logiciels de suivi. Vous coordonnez les quatre, ou Beev le fait pour vous.",
+    "Electrifying a fleet involves four families of players who do not talk to each other: manufacturers, lessors, charging-point installers and fleet software vendors. You coordinate all four, or Beev does it for you.",
+  ), CW) as string[];
+  doc.text(mk, M, y);
+  y += mk.length * 11.5 + 10;
+
+  // Schéma : 4 interlocuteurs → Beev
+  const boxes = [L("Constructeurs", "Manufacturers"), L("Loueurs", "Lessors"), L("Installateurs de bornes", "Charger installers"), L("Suivi de flotte", "Fleet software")];
+  const bg = 8;
+  const bw = (CW - bg * (boxes.length - 1)) / boxes.length;
+  boxes.forEach((b, i) => {
+    const x = M + i * (bw + bg);
+    doc.setDrawColor(...HAIR);
+    doc.setLineWidth(1);
+    doc.roundedRect(x, y, bw, 26, 6, 6, "S");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...INK);
+    doc.text(b, x + bw / 2, y + 16, { align: "center", maxWidth: bw - 8 });
+    doc.setDrawColor(...SUB);
+    doc.setLineWidth(0.6);
+    doc.line(x + bw / 2, y + 26, x + bw / 2, y + 40);
+  });
+  doc.setLineWidth(0.4);
+  y += 40;
+  doc.setFillColor(...INK);
+  doc.roundedRect(M, y, CW, 92, 10, 10, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(6.4);
+  doc.setTextColor(...PINK);
+  doc.text(L("AVEC BEEV : UN SEUL INTERLOCUTEUR", "WITH BEEV: A SINGLE POINT OF CONTACT"), M + 16, y + 18);
+  const pillars = [
+    { h: L("Véhicules électriques", "Electric vehicles"), t: L("Multi-marques, financement LLD négocié", "Multi-brand, negotiated long-term lease") },
+    { h: L("Bornes de recharge", "Charging points"), t: L("Sur site et au domicile des collaborateurs", "On site and at employees' homes") },
+    { h: L("Fleet Manager", "Fleet Manager"), t: L("Le logiciel de suivi de votre flotte", "The software to monitor your fleet") },
+  ];
+  const pw = (CW - 32 - 16) / 3;
+  pillars.forEach((pl, i) => {
+    const x = M + 16 + i * (pw + 8);
+    doc.setFillColor(55, 55, 58);
+    doc.roundedRect(x, y + 28, pw, 54, 6, 6, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(255, 255, 255);
+    doc.text(pl.h, x + 10, y + 46, { maxWidth: pw - 20 });
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(7.4);
+    doc.setTextColor(189, 184, 171);
+    doc.text(doc.splitTextToSize(pl.t, pw - 20) as string[], x + 10, y + 59);
+  });
+  y += 92 + 14;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8.6);
+  doc.setTextColor(...INK);
+  const fit = doc.splitTextToSize(L(
+    "Pensé pour les entreprises de 3 à 200 véhicules, avec ou sans gestionnaire de flotte dédié : un pilotage fluide, pas un projet de gestion de plus.",
+    "Built for companies with 3 to 200 vehicles, with or without a dedicated fleet manager: smooth management, not one more project to run.",
+  ), CW) as string[];
+  doc.text(fit, M, y);
+  y += fit.length * 11.5 + 6;
+
+  drawWhyBeevProof(doc, "vehicles", y);
+}
+
+// Bloc « Beev en chiffres » et citation client (conditionnés par showSocialProof), à la suite du
+// texte de la page « Pourquoi Beev ».
+function drawWhyBeevProof(doc: jsPDF, type: ProjectType, yStart: number) {
+  let y = yStart;
   // ===== Section "Beev en chiffres" (preuve sociale, conditionnée) =====
   if (PDF_CFG.showSocialProof && y < FOOTER_LIMIT - 130) {
     y += 14;
@@ -7400,6 +7582,58 @@ type GcItem = {
   img: LoadedImage | null;
 };
 
+type GcPrep = { items: GcItem[]; ref: GcItem; cur: GcItem | null; qty: number };
+
+/** Coût complet de chaque véhicule d'un groupe, et ordre d'affichage : flotte actuelle (la plus
+ *  chère si plusieurs), puis la recommandation (la proposition Beev la moins chère), puis les
+ *  autres véhicules par coût croissant. `qty` = nombre de véhicules remplacés par le segment. */
+function gcPrepare(vehicles: SelectedVehicle[], e: EnergyParams): GcPrep {
+  const calc: GcItem[] = vehicles.map((sv) => {
+    const duree = sv.durationMonths / 12;
+    const optionsTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
+    const r = calculateTcoFull(sv.vehicle, {
+      dureeAnnees: duree,
+      kmContrat: sv.kmPerYear * duree,
+      prixEssenceLitre: e.fuelPriceL,
+      prixKwhDomicile: e.kWhHome,
+      prixKwhPublic: e.kWhPublic, mixDomicilePct: e.mixHomePct,
+      optionsTotalTtc: optionsTtc,
+      remisePctOverride: sv.discountPct,
+      apport: svApport(sv),
+      assuranceMensuelle: svAssuranceMensuelle(sv),
+    }, sv.negotiatedMonthly);
+    const tco = r.tcoEmployeurComplet;
+    const name = prettyVehicleName(sv.vehicle);
+    return {
+      sv, r, name,
+      short: name.length > 30 ? name.slice(0, 29).trimEnd() + "…" : name,
+      tco,
+      loyer: r.loyerTotal,
+      energie: r.coutEnergie,
+      fisc: tco - r.loyerTotal - r.coutEnergie,
+      mois: sv.durationMonths,
+      km: sv.kmPerYear * duree,
+      optionsTtc,
+      img: null,
+    };
+  }).sort((a, b) => a.tco - b.tco);
+  const isCurFleet = (it: GcItem) => !!it.sv.vehicle.isCurrentFleet;
+  const ref = calc.find((it) => !isCurFleet(it)) ?? calc[0];
+  const curRaw = calc.filter(isCurFleet).reduce<GcItem | null>((a, b) => (!a || b.tco > a.tco ? b : a), null);
+  const cur = curRaw && curRaw !== ref ? curRaw : null;
+  const rest = calc.filter((it) => it !== ref && it !== cur);
+  return {
+    items: [...(cur ? [cur] : []), ref, ...rest],
+    ref,
+    cur,
+    qty: Math.max(1, Math.round((cur ?? ref).sv.quantity || 1)),
+  };
+}
+
+// Page « segment » de l'édition DAF : une page par groupe de comparaison. La flotte actuelle (si
+// elle est dans le groupe) ouvre le tableau, la recommandation Beev est en surbrillance, puis les
+// alternatives. Chaque chiffre n'apparaît qu'une fois ; la page est composée pour tenir sur UNE
+// seule page (aucune suite : au-delà de 5 véhicules, une page de suite reprend actuel + reco).
 async function drawGroupComparison(
   doc: jsPDF,
   vehicles: SelectedVehicle[],
@@ -7410,7 +7644,6 @@ async function drawGroupComparison(
   type RGB = [number, number, number];
   const PINK: RGB = [244, 184, 170];
   const PINK_TINT: RGB = [250, 237, 228];
-  const DEEP: RGB = [194, 80, 58];
   const BAR_ENERGY: RGB = [168, 163, 152];
   const BAR_FISC: RGB = [217, 105, 79];
   const BAR_TRACK: RGB = [234, 227, 208];
@@ -7426,195 +7659,154 @@ async function drawGroupComparison(
   const fr = (n: number, d = 0) => cleanSpaces(n.toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d }));
   const sgn = (n: number) => `${n >= 0 ? "+" : "−"}${eur(Math.abs(n))}`;
 
-  // ── Calcul par véhicule (mêmes paramètres que le détail TCO) ──
-  const items: GcItem[] = vehicles.map((sv) => {
-    const duree = sv.durationMonths / 12;
-    const optionsTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
-    const r = calculateTcoFull(sv.vehicle, {
-      dureeAnnees: duree,
-      kmContrat: sv.kmPerYear * duree,
-      prixEssenceLitre: e.fuelPriceL,
-      prixKwhDomicile: e.kWhHome,
-      prixKwhPublic: e.kWhPublic, mixDomicilePct: e.mixHomePct,
-      optionsTotalTtc: optionsTtc,
-      remisePctOverride: sv.discountPct,
-      apport: svApport(sv),
-      assuranceMensuelle: svAssuranceMensuelle(sv),
-    }, sv.negotiatedMonthly);
-    const tco = r.tcoEmployeurComplet;
-    return {
-      sv, r,
-      name: prettyVehicleName(sv.vehicle),
-      short: ((n) => (n.length > 30 ? n.slice(0, 29).trimEnd() + "…" : n))(prettyVehicleName(sv.vehicle)),
-      tco,
-      loyer: r.loyerTotal,
-      energie: r.coutEnergie,
-      fisc: tco - r.loyerTotal - r.coutEnergie,
-      mois: sv.durationMonths,
-      km: sv.kmPerYear * duree,
-      optionsTtc,
-      img: null,
-    };
-  }).sort((a, b) => a.tco - b.tco);
+  const { items, ref, cur, qty } = gcPrepare(vehicles, e);
   const imgs = await preloadVehicleThumbs(items.map((it) => it.sv));
   items.forEach((it, i) => { it.img = imgs[i]; });
 
   const n = items.length;
-  const isCur = (it: GcItem) => !!it.sv.vehicle.isCurrentFleet;
-  // La recommandation est toujours une PROPOSITION Beev : la moins chère du groupe. Elle passe
-  // en 1re colonne ; la flotte actuelle éventuelle est comparée à elle, sans jamais être recommandée.
-  const refItem = items.find((it) => !isCur(it)) ?? items[0];
-  if (items[0] !== refItem) { items.splice(items.indexOf(refItem), 1); items.unshift(refItem); }
-  const ref = items[0];
-  const cur = items.filter(isCur).reduce<GcItem | null>((a, b) => (!a || b.tco > a.tco ? b : a), null);
-  // Véhicule auquel on compare la recommandation : la flotte actuelle si elle est dans le
-  // groupe, sinon le plus cher.
-  const worst = cur ?? items[n - 1];
-  const spread = worst.tco - ref.tco;
+  const worst = cur ?? items[items.length - 1];
+  const gap = worst.tco - ref.tco;            // écart entre la recommandation et la flotte actuelle (ou le plus cher)
+  const flat = Math.abs(gap) < 1;
+  const curBetter = !!cur && gap <= -1;       // la flotte actuelle coûte moins cher que la meilleure proposition
   const maxTco = Math.max(...items.map((it) => it.tco), 1);
-  const proposalRank = new Map<GcItem, number>(items.filter((it) => !isCur(it)).sort((a, b) => a.tco - b.tco).map((it, i) => [it, i + 1]));
   const sameBase = items.every((it) => it.mois === ref.mois && Math.abs(it.km - ref.km) < 1);
   const per100 = (it: GcItem) => (it.km > 0 ? (it.tco / it.km) * 100 : 0);
   const anyApport = items.some((it) => svApport(it.sv) > 0);
-  const allUtil = items.every((it) => isUtilitaireCategory(it.sv.vehicle.category));
-  const vat = allUtil ? L("HT", "excl. VAT") : L("TTC", "incl. VAT");
   const baseTxt = sameBase
     ? L(`${ref.mois} mois et ${fr(ref.km)} km`, `${ref.mois} months and ${fr(ref.km)} km`)
     : L("la durée de chaque contrat", "each contract's duration");
-
-  // ── Textes (titre, sous-titre, bandeau) ──
   const gName = (groupName ?? "").trim();
-  const flat = Math.abs(spread) < 1;
-  const curBetter = !!cur && spread <= -1; // la flotte actuelle coûte moins cher que la meilleure proposition
+  const pctSave = cur && cur.tco > 0 ? Math.round((gap / cur.tco) * 100) : 0;
+  const pctOver = ref.tco > 0 ? (gap / ref.tco) * 100 : 0;
+
+  // ── Titre et sous-titre ──
   const title = flat
     ? L("Coûts complets équivalents sur ce groupe", "Equivalent full costs across this group")
     : curBetter
       ? L("Comparatif des coûts complets du groupe", "Full cost comparison across the group")
     : cur
-      ? L(`${ref.short} : ${eur(spread)} de moins que la flotte actuelle`, `${ref.short}: ${eur(spread)} less than the current fleet`)
+      ? L(`${ref.short} : ${eur(gap)} de moins par véhicule que la flotte actuelle`, `${ref.short}: ${eur(gap)} less per vehicle than the current fleet`)
     : n === 2
-      ? L(`${ref.short} : ${eur(spread)} de moins que ${worst.short}`, `${ref.short}: ${eur(spread)} less than ${worst.short}`)
+      ? L(`${ref.short} : ${eur(gap)} de moins que ${worst.short}`, `${ref.short}: ${eur(gap)} less than ${worst.short}`)
       : L(`${ref.short} : le coût complet le plus bas du groupe`, `${ref.short}: the lowest full cost in the group`);
-  const pctOver = ref.tco > 0 ? (spread / ref.tco) * 100 : 0;
   const sub = flat
     ? L(`Les ${n} véhicules coûtent la même chose sur ${baseTxt}.`, `The ${n} vehicles cost the same over ${baseTxt}.`)
     : curBetter
       ? L(`Coût complet de chaque véhicule sur ${baseTxt}, à usage identique.`, `Full cost of each vehicle over ${baseTxt}, for identical usage.`)
     : cur
-      ? L(`La flotte actuelle (${cur.short}) coûte ${fr(pctOver, 1)} % de plus sur ${baseTxt}, à usage identique.`, `The current fleet (${cur.short}) costs ${fr(pctOver, 1)}% more over ${baseTxt}, for identical usage.`)
+      ? (qty > 1
+        ? L(`Soit ${eur(gap * qty)} d'économie sur ${qty} véhicules (−${pctSave} %), sur ${baseTxt}.`, `That is ${eur(gap * qty)} saved across ${qty} vehicles (−${pctSave}%), over ${baseTxt}.`)
+        : L(`Soit −${pctSave} % sur ${baseTxt}, à usage identique.`, `That is −${pctSave}% over ${baseTxt}, for identical usage.`))
     : n === 2
       ? L(`${worst.short} coûte ${fr(pctOver, 1)} % de plus sur ${baseTxt}, à usage identique.`, `${worst.short} costs ${fr(pctOver, 1)}% more over ${baseTxt}, for identical usage.`)
-      : L(`Écart maximal du groupe : ${eur(spread)} (+${fr(pctOver, 1)} %) entre ${ref.short} et ${worst.short}, sur ${baseTxt}.`, `Maximum gap in the group: ${eur(spread)} (+${fr(pctOver, 1)}%) between ${ref.short} and ${worst.short}, over ${baseTxt}.`);
-  const savePct = worst.tco > 0 ? Math.round((spread / worst.tco) * 100) : 0;
+      : L(`Écart maximal du groupe : ${eur(gap)} (+${fr(pctOver, 1)} %) entre ${ref.short} et ${worst.short}, sur ${baseTxt}.`, `Maximum gap in the group: ${eur(gap)} (+${fr(pctOver, 1)}%) between ${ref.short} and ${worst.short}, over ${baseTxt}.`);
 
-  // ── Insights « À retenir » ──
+  // ── « À retenir » : trois points, un par thème ──
   const consoOf = (it: GcItem): { v: number; unit: "kWh" | "L" } | null => {
     const v = it.sv.vehicle;
     const elec = v.energy === "Électrique";
     const c = elec ? (v.consumptionElec ?? v.consumption) : (v.consumptionThermal ?? v.consumption);
     return c && c > 0 ? { v: c, unit: elec ? "kWh" : "L" } : null;
   };
-  const ins: string[] = [];
-  if (!flat && spread > 0) {
+  const take: { h: string; t: string }[] = [];
+  if (cur && gap > 0) {
+    take.push({
+      h: L("Où se joue l'écart", "Where the gap comes from"),
+      t: L(
+        `${ref.short} face à ${cur.short} : loyers ${sgn(ref.loyer - cur.loyer)}, énergie ${sgn(ref.energie - cur.energie)}, fiscalité et charges ${sgn(ref.fisc - cur.fisc)}.`,
+        `${ref.short} vs ${cur.short}: lease ${sgn(ref.loyer - cur.loyer)}, energy ${sgn(ref.energie - cur.energie)}, taxes and charges ${sgn(ref.fisc - cur.fisc)}.`,
+      ),
+    });
+  } else if (!cur && !flat && gap > 0) {
     const dL = worst.loyer - ref.loyer;
     const dE = worst.energie - ref.energie;
-    const share = Math.round((dL / spread) * 100);
+    const share = Math.round((dL / gap) * 100);
     if (dL > 0 && share <= 100) {
-      ins.push(L(
-        `Le loyer explique ${share} % de l'écart entre ${ref.short} et ${worst.short}. L'énergie ${dE < 0 ? "joue en sens inverse" : "pèse peu"} (${sgn(dE)}).`,
-        `The lease explains ${share}% of the gap between ${ref.short} and ${worst.short}. Energy ${dE < 0 ? "works the other way" : "weighs little"} (${sgn(dE)}).`,
-      ));
+      take.push({
+        h: L("Où se joue l'écart", "Where the gap comes from"),
+        t: L(
+          `Le loyer explique ${share} % de l'écart entre ${ref.short} et ${worst.short}. L'énergie ${dE < 0 ? "joue en sens inverse" : "pèse peu"} (${sgn(dE)}).`,
+          `The lease explains ${share}% of the gap between ${ref.short} and ${worst.short}. Energy ${dE < 0 ? "works the other way" : "weighs little"} (${sgn(dE)}).`,
+        ),
+      });
     }
-    const sec = items.find((it) => it !== ref && !isCur(it)) ?? ref;
-    const gap = sec.tco - ref.tco;
-    const gp = ref.tco > 0 ? (gap / ref.tco) * 100 : 0;
+  }
+  const sec = items.find((it) => it !== ref && it !== cur && !it.sv.vehicle.isCurrentFleet);
+  if (sec) {
+    const g2 = sec.tco - ref.tco;
+    const gp = ref.tco > 0 ? (g2 / ref.tco) * 100 : 0;
     const advFr: string[] = [];
     const advEn: string[] = [];
     const ranges = items.map((it) => it.sv.vehicle.rangeWltp ?? 0);
-    if (sec !== ref && (sec.sv.vehicle.rangeWltp ?? 0) > 0 && (sec.sv.vehicle.rangeWltp ?? 0) === Math.max(...ranges) && new Set(ranges).size > 1) {
+    if ((sec.sv.vehicle.rangeWltp ?? 0) > 0 && (sec.sv.vehicle.rangeWltp ?? 0) === Math.max(...ranges) && new Set(ranges).size > 1) {
       advFr.push(`l'autonomie (${fr(sec.sv.vehicle.rangeWltp)} km)`);
       advEn.push(`range (${fr(sec.sv.vehicle.rangeWltp)} km)`);
     }
     const cs = items.map(consoOf);
     const secC = consoOf(sec);
-    if (sec !== ref && secC && cs.every((c) => c && c.unit === secC.unit) && secC.v === Math.min(...cs.map((c) => (c as { v: number }).v)) && new Set(cs.map((c) => (c as { v: number }).v)).size > 1) {
+    if (secC && cs.every((c) => c && c.unit === secC.unit) && secC.v === Math.min(...cs.map((c) => (c as { v: number }).v)) && new Set(cs.map((c) => (c as { v: number }).v)).size > 1) {
       advFr.push(`la consommation (${fr(secC.v, 1)} ${secC.unit}/100 km)`);
       advEn.push(`consumption (${fr(secC.v, 1)} ${secC.unit}/100 km)`);
     }
-    if (sec !== ref && advFr.length) {
-      ins.push(gp < 5
-        ? L(`${sec.short} n'est qu'à ${sgn(gap)} (+${fr(gp, 1)} %) : écart faible, à départager sur l'usage. Meilleur sur ${advFr.join(" et ")}.`, `${sec.short} is only ${sgn(gap)} away (+${fr(gp, 1)}%): a small gap, to settle on usage. Best on ${advEn.join(" and ")}.`)
-        : L(`${sec.short} : ${sgn(gap)} (+${fr(gp, 1)} %) pour ${advFr.join(" et ")}.`, `${sec.short}: ${sgn(gap)} (+${fr(gp, 1)}%) for ${advEn.join(" and ")}.`));
-    }
+    take.push({
+      h: gp < 5 ? L("Des offres très proches", "Very close offers") : L("L'alternative", "The alternative"),
+      t: advFr.length
+        ? (gp < 5
+          ? L(`${sec.short} n'est qu'à ${sgn(g2)} (+${fr(gp, 1)} %) : à départager sur l'usage. Meilleur sur ${advFr.join(" et ")}.`, `${sec.short} is only ${sgn(g2)} away (+${fr(gp, 1)}%): settle it on usage. Best on ${advEn.join(" and ")}.`)
+          : L(`${sec.short} : ${sgn(g2)} (+${fr(gp, 1)} %) pour ${advFr.join(" et ")}.`, `${sec.short}: ${sgn(g2)} (+${fr(gp, 1)}%) for ${advEn.join(" and ")}.`))
+        : L(`${sec.short} : ${sgn(g2)} (${g2 >= 0 ? "+" : "−"}${fr(Math.abs(gp), 1)} %) face à ${ref.short}.`, `${sec.short}: ${sgn(g2)} (${g2 >= 0 ? "+" : "−"}${fr(Math.abs(gp), 1)}%) vs ${ref.short}.`),
+    });
   }
   const andV = items.filter((it) => it.r.coutFiscalANDTotal > 0.5);
   const taxV = items.filter((it) => it.r.tvsTotal + it.r.malusCO2 + it.r.malusPoids > 0.5);
+  const fiscalParts: string[] = [];
   if (andV.length === 1) {
-    ins.push(L(`${andV[0].short} est le seul véhicule du groupe soumis à l'AND (prix au-dessus du plafond fiscal), soit ${sgn(andV[0].r.coutFiscalANDTotal)}.`, `${andV[0].short} is the only vehicle in the group subject to the AND (price above the tax ceiling), i.e. ${sgn(andV[0].r.coutFiscalANDTotal)}.`));
+    fiscalParts.push(L(`${andV[0].short} est soumis à l'AND (prix au-dessus du plafond fiscal) : ${sgn(andV[0].r.coutFiscalANDTotal)}.`, `${andV[0].short} is subject to the AND (price above the tax ceiling): ${sgn(andV[0].r.coutFiscalANDTotal)}.`));
   } else if (andV.length > 1) {
-    ins.push(L(`${andV.map((it) => it.short).join(", ")} sont soumis à l'AND (prix au-dessus du plafond fiscal) : jusqu'à ${sgn(Math.max(...andV.map((it) => it.r.coutFiscalANDTotal)))} de surcoût.`, `${andV.map((it) => it.short).join(", ")} are subject to the AND (price above the tax ceiling): up to ${sgn(Math.max(...andV.map((it) => it.r.coutFiscalANDTotal)))} extra cost.`));
+    fiscalParts.push(L(`${andV.map((it) => it.short).join(", ")} sont soumis à l'AND : jusqu'à ${sgn(Math.max(...andV.map((it) => it.r.coutFiscalANDTotal)))}.`, `${andV.map((it) => it.short).join(", ")} are subject to the AND: up to ${sgn(Math.max(...andV.map((it) => it.r.coutFiscalANDTotal)))}.`));
   }
   if (taxV.length) {
     const maxTax = Math.max(...taxV.map((it) => it.r.tvsTotal + it.r.malusCO2 + it.r.malusPoids));
-    ins.push(L(`${taxV.map((it) => it.short).join(", ")} : malus et TVS inclus dans le coût complet (jusqu'à ${eur(maxTax)}).`, `${taxV.map((it) => it.short).join(", ")}: penalty and company car tax included in the full cost (up to ${eur(maxTax)}).`));
+    fiscalParts.push(L(`${taxV.map((it) => it.short).join(", ")} : TVS et malus jusqu'à ${eur(maxTax)}.`, `${taxV.map((it) => it.short).join(", ")}: company car tax and penalty up to ${eur(maxTax)}.`));
   }
-  if (andV.length === 0 && taxV.length === 0) {
-    ins.push(L("Aucun véhicule du groupe n'est soumis à l'AND, au malus ou à la TVS.", "No vehicle in the group is subject to the AND, penalty or company car tax."));
-  }
-  // Les messages fiscaux (AND, malus/TVS) tiennent dans UNE seule colonne : on
-  // fusionne pour ne jamais perdre l'un des deux quand il y a déjà 2 messages avant.
-  const nonFiscal = ins.slice(0, ins.length - (andV.length > 0 ? 1 : 0) - (taxV.length > 0 ? 1 : 0) - (andV.length === 0 && taxV.length === 0 ? 1 : 0));
-  const fiscal = ins.slice(nonFiscal.length);
-  const insights = [...nonFiscal.slice(0, 2), fiscal.join(" ")].filter((t) => t.trim().length > 0).slice(0, 3);
+  if (!fiscalParts.length) fiscalParts.push(L("Aucun véhicule du groupe n'est soumis à l'AND, au malus ou à la TVS.", "No vehicle in the group is subject to the AND, penalty or company car tax."));
+  take.push({ h: L("Fiscalité", "Taxes"), t: fiscalParts.join(" ") });
+  const takeaways = take.slice(0, 3);
 
-  // ── Bandeau « identique pour tous » ──
-  // Même liste et même ordre que la rubrique « Compris dans le loyer » des
-  // fiches : l'assurance tous risques d'abord si elle est cochée, puis les
-  // prestations obligatoires et celles saisies pour le véhicule. Aucune coupe.
+  // ── Prestations communes à tous les loyers ──
   const svcOf = (sv: SelectedVehicle): string[] => {
     const mand = MANDATORY_SERVICES as readonly string[];
     return [
       ...(sv.assuranceTousRisques ? [L("Assurance tous risques", "Comprehensive insurance")] : []),
       ...mand,
-      ...(sv.services ?? []).filter((s) => !mand.includes(s)),
+      ...(sv.services ?? []).filter((x) => !mand.includes(x)),
     ];
   };
-  const commonSvc = svcOf(items[0].sv).filter((s) => items.every((it) => svcOf(it.sv).includes(s)));
-  // Prestations propres à certains véhicules (non communes) : une ligne dédiée
-  // dans le tableau, pour que rien de ce qui est inclus au loyer ne disparaisse.
+  const commonSvc = svcOf(items[0].sv).filter((x) => items.every((it) => svcOf(it.sv).includes(x)));
   const extrasOf = (it: GcItem): string[] => svcOf(it.sv).filter((x) => !commonSvc.includes(x));
   const hasExtras = items.some((it) => extrasOf(it).length > 0);
-  const commonParts: string[] = [];
-  const sameEnergy = items.every((it) => it.sv.vehicle.energy === items[0].sv.vehicle.energy);
-  if (sameEnergy) {
-    const en = items[0].sv.vehicle.energy;
-    commonParts.push(en === "Électrique" ? L("Énergie électrique", "Electric energy") : L(`Énergie ${en.toLowerCase()}`, en));
-  }
-  if (items.every((it) => it.r.tvsTotal === 0 && it.r.malusCO2 + it.r.malusPoids === 0)) commonParts.push(L("TVS 0 € · malus 0 €", "Company car tax €0 · penalty €0"));
-  if (items.every((it) => it.sv.vehicle.energy === "Électrique")) commonParts.push(L("CO2 0 g/km", "CO2 0 g/km"));
-  if (commonSvc.length) {
-    commonParts.push(L("inclus au loyer : ", "included in the lease: ") + commonSvc.map((s) => s.charAt(0).toLowerCase() + s.slice(1)).join(", "));
-  }
 
   // ── Mise en page ──
   const CW = PAGE_W - M * 2;
-  const labW = 112;
-  const pad = 7;
+  const labW = 96;
+  const pad = 6;
   const secH = 19;
+  const MAX_COLS = 5;
+  const fleetBadge = (it: GcItem) => !!it.sv.vehicle.isCurrentFleet;
 
   const drawPage = (chunk: GcItem[], isCont: boolean) => {
     const k = chunk.length;
     const cw = (CW - labW) / k;
     const iw = cw - pad * 2;
     const colX = (i: number) => M + labW + i * cw;
-    const rankOf = (it: GcItem) => proposalRank.get(it) ?? 0;
 
     let y = 124;
+    const seg = gName ? gName.toUpperCase() : "";
     eyebrow(
       doc,
-      (gName
-        ? L(`COMPARATEUR · ${gName.toUpperCase()} · ${n} VÉHICULES`, `COMPARISON · ${gName.toUpperCase()} · ${n} VEHICLES`)
-        : L(`COMPARATEUR · ${n} VÉHICULES`, `COMPARISON · ${n} VEHICLES`)) + (isCont ? L(" (SUITE)", " (CONT.)") : ""),
+      (cur
+        ? L(`SEGMENT${seg ? " · " + seg : ""} · ${qty} VÉHICULE${qty > 1 ? "S" : ""}`, `SEGMENT${seg ? " · " + seg : ""} · ${qty} VEHICLE${qty > 1 ? "S" : ""}`)
+        : L(`COMPARATEUR${seg ? " · " + seg : ""} · ${n} VÉHICULES`, `COMPARISON${seg ? " · " + seg : ""} · ${n} VEHICLES`)) + (isCont ? L(" (SUITE)", " (CONT.)") : ""),
       y,
     );
     y += 28;
@@ -7623,45 +7815,15 @@ async function drawGroupComparison(
     doc.setTextColor(...INK);
     const titleL = doc.splitTextToSize(title, CW) as string[];
     doc.text(titleL, M, y);
-    y += (titleL.length - 1) * 23 + 18;
+    y += (titleL.length - 1) * 23 + 17;
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(8.5);
     doc.setTextColor(...SUB);
     const subL = doc.splitTextToSize(sub, CW) as string[];
     doc.text(subL, M, y);
-    y += subL.length * 11 + 6;
+    y += subL.length * 11 + 8;
 
-    // Bandeau recommandation (noir)
-    const vh = 52;
-    doc.setFillColor(...INK);
-    doc.roundedRect(M, y, CW, vh, 8, 8, "F");
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(6.2);
-    doc.setTextColor(...PINK);
-    doc.text(L("RECOMMANDATION BEEV", "BEEV RECOMMENDATION"), M + 14, y + 16);
-    doc.setFontSize(12.5);
-    doc.setTextColor(252, 249, 242);
-    doc.text((doc.splitTextToSize(ref.short, CW * 0.5) as string[])[0], M + 14, y + 31);
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(7);
-    doc.setTextColor(189, 184, 171);
-    doc.text((doc.splitTextToSize(cur
-      ? L(`Proposition Beev au coût employeur complet le plus bas · ${fr(per100(ref), 2)} €/100 km`, `Beev proposal with the lowest full employer cost · €${fr(per100(ref), 2)}/100 km`)
-      : L(`Coût employeur complet le plus bas du groupe · ${fr(per100(ref), 2)} €/100 km`, `Lowest full employer cost in the group · €${fr(per100(ref), 2)}/100 km`), CW * 0.5) as string[])[0], M + 14, y + 43);
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(17);
-    doc.setTextColor(255, 255, 255);
-    doc.text(eur(ref.tco), M + CW - 14, y + 28, { align: "right" });
-    if (!flat && !curBetter) {
-      doc.setFont(BRAND_FONT, "normal");
-      doc.setFontSize(7.5);
-      doc.setTextColor(...PINK);
-      const vsTxt = cur ? L("la flotte actuelle", "the current fleet") : worst.short;
-      doc.text((doc.splitTextToSize(L(`${sgn(-spread)} (−${savePct} %) face à ${vsTxt}`, `${sgn(-spread)} (−${savePct}%) vs ${vsTxt}`), CW * 0.42) as string[])[0], M + CW - 14, y + 42, { align: "right" });
-    }
-    y += vh + 10;
-
-    // ── Dimensions du tableau (calculées avant de dessiner le fond de la colonne de référence) ──
+    // ── Dimensions du tableau (calculées avant le fond de la colonne recommandée) ──
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(9.5);
     const nameLines = chunk.map((it) => (doc.splitTextToSize(it.name, iw) as string[]).slice(0, 2));
@@ -7671,13 +7833,17 @@ async function drawGroupComparison(
     const hasEco = chunk.some((it) => it.sv.vehicle.ecoScoreBool || it.sv.vehicle.ecoScoreUpcoming);
     const maxName = Math.max(...nameLines.map((l) => l.length));
     const maxVer = Math.max(...verLines.map((l) => l.length));
-    const photoH = chunk.length <= 3 ? 40 : 30;
+    const photoH = k <= 3 ? 52 : k === 4 ? 44 : 36;
     const headH = photoH + 6 + 10 + (hasEco ? 12 : 0) + 4 + maxName * 11 + maxVer * 8.5 + 8;
 
-    // lignes de coût : retour à la ligne de l'écart si la place manque
-    const costDefs: { label: string; get: (it: GcItem) => number; sub?: (it: GcItem) => string | null }[] = [
-      { label: anyApport ? L("Loyers, apport inclus", "Lease payments, deposit included") : L("Loyers", "Lease payments"), get: (it) => it.loyer },
-      { label: L(`Énergie · ${sameBase ? fr(ref.km) + " km" : "km du contrat"}`, `Energy · ${sameBase ? fr(ref.km) + " km" : "contract km"}`), get: (it) => it.energie },
+    const eurMois = (it: GcItem) => `${eurLoyer(it.sv.negotiatedMonthly)}${L("/mois", "/mo")} · ${it.mois} ${L("mois", "mo")}`;
+    const costDefs: { label: string; get: (it: GcItem) => number; sub: (it: GcItem) => string | null }[] = [
+      { label: anyApport ? L("Loyers, apport inclus", "Lease payments, deposit included") : L("Loyers", "Lease payments"), get: (it) => it.loyer, sub: eurMois },
+      {
+        label: L("Énergie", "Energy"),
+        get: (it) => it.energie,
+        sub: (it) => { const c = consoOf(it); return c ? `${fr(c.v, 1)} ${c.unit}/100 km` : null; },
+      },
       {
         label: L("Fiscalité et avantage en nature employeur", "Taxes and employer benefit-in-kind"),
         get: (it) => it.fisc,
@@ -7686,52 +7852,44 @@ async function drawGroupComparison(
           if (it.r.tvsTotal > 0.5) parts.push(`TVS ${eur(it.r.tvsTotal)}`);
           const malus = it.r.malusCO2 + it.r.malusPoids;
           if (malus > 0.5) parts.push(L(`malus ${eur(malus)}`, `penalty ${eur(malus)}`));
-          if (it.r.coutFiscalANDTotal > 0.5) parts.push(L(`surcoût AND ${eur(it.r.coutFiscalANDTotal)}`, `AND extra cost ${eur(it.r.coutFiscalANDTotal)}`));
-          return parts.length ? L("dont ", "incl. ") + parts.join(" · ") : null;
+          if (it.r.coutFiscalANDTotal > 0.5) parts.push(L(`AND ${eur(it.r.coutFiscalANDTotal)}`, `AND ${eur(it.r.coutFiscalANDTotal)}`));
+          if (it.r.aenEmployeurTotal > 0.5) parts.push(L(`avantage en nature ${eur(it.r.aenEmployeurTotal)}`, `benefit-in-kind ${eur(it.r.aenEmployeurTotal)}`));
+          return parts.length ? parts.join(" · ") : null;
         },
       },
     ];
     doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(6.4);
+    doc.setFontSize(6.8);
     const costSubs = costDefs.map((def) => chunk.map((it) => {
-      const t = def.sub?.(it);
-      return t ? (doc.splitTextToSize(t, iw - 6) as string[]).slice(0, 2) : [];
+      const t = def.sub(it);
+      return t ? (doc.splitTextToSize(t, iw - 4) as string[]).slice(0, 3) : [];
     }));
-    doc.setFont(BRAND_FONT, "bold");
-    doc.setFontSize(9);
-    const costWrap = costDefs.map((def) => chunk.some((it) => {
-      const vw = doc.getTextWidth(eur(def.get(it)));
-      doc.setFontSize(6.8);
-      const dw = doc.getTextWidth(it === ref ? L("réf.", "ref.") : sgn(def.get(it) - def.get(ref)));
-      doc.setFontSize(9);
-      return 6 + vw + 4 + dw > iw;
-    }));
-    const costH = costDefs.map((def, di) => 20 + (costWrap[di] ? 8 : 0) + Math.max(0, ...costSubs[di].map((l) => l.length)) * 7.5);
+    const costH = costDefs.map((_, di) => 26 + Math.max(0, Math.max(1, ...costSubs[di].map((l) => l.length)) - 1) * 8.2);
 
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(6.6);
     const pmTxt = (it: GcItem) => L(`${eur(it.tco / Math.max(1, it.mois))}/mois · ${fr(per100(it), 2)} €/100 km`, `${eur(it.tco / Math.max(1, it.mois))}/month · €${fr(per100(it), 2)}/100 km`);
-    const pmLines = chunk.map((it) => doc.splitTextToSize(pmTxt(it), iw) as string[]);
-    const maxPm = Math.max(...pmLines.map((l) => l.length));
-    const totH = 46 + maxPm * 8 + 4;
-
-    const plainH = 18;
-    const showRange = items.some((it) => (it.sv.vehicle.rangeWltp ?? 0) > 0);
-    const showConso = items.some((it) => consoOf(it) !== null);
-    const plainCount = 2 + (sameBase ? 0 : 1) + (showRange ? 1 : 0) + (showConso ? 1 : 0);
     doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(6.6);
+    doc.setFontSize(6.4);
+    const pmLines = chunk.map((it) => doc.splitTextToSize(pmTxt(it), iw) as string[]);
+    const totH = 46 + Math.max(1, ...pmLines.map((l) => l.length)) * 8.4 + 4;
+    const gapH = 26;
+    const showRange = chunk.some((it) => (it.sv.vehicle.rangeWltp ?? 0) > 0);
+    const rangeH = showRange ? 22 : 0;
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(6.4);
     const extraLines = chunk.map((it) => {
       const ex = extrasOf(it);
-      return ex.length ? (doc.splitTextToSize(ex.join(" · "), iw - 6) as string[]).slice(0, 5) : [];
+      return ex.length ? (doc.splitTextToSize(ex.join(" · "), iw - 4) as string[]).slice(0, 4) : [];
     });
-    const extraRowH = hasExtras ? Math.max(plainH, 10 + Math.max(1, ...extraLines.map((l) => l.length)) * 8) : 0;
-    const tableH = headH + secH + costH.reduce((a, b) => a + b, 0) + totH + secH + plainCount * plainH + extraRowH;
+    const extraRowH = hasExtras ? Math.max(19, 8 + Math.max(1, ...extraLines.map((l) => l.length)) * 7.6) : 0;
+    const tableH = headH + secH + costH.reduce((a, b) => a + b, 0) + totH + gapH + rangeH + extraRowH;
     const top = y;
 
-    // fond de la colonne de référence (toujours la 1re)
-    doc.setFillColor(...PINK_TINT);
-    doc.rect(colX(0), top, cw, tableH, "F");
+    // fond de la colonne recommandée
+    const refCol = chunk.indexOf(ref);
+    if (refCol >= 0) {
+      doc.setFillColor(...PINK_TINT);
+      doc.rect(colX(refCol), top, cw, tableH, "F");
+    }
 
     // ── En-têtes véhicules ──
     chunk.forEach((it, i) => {
@@ -7753,16 +7911,15 @@ async function drawGroupComparison(
         doc.setTextColor(...color);
         doc.text(txt, x + 5, yy + 7);
       };
-      const rk = rankOf(it);
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(5.8);
-      const rankCandidates = isCur(it)
-        ? [L("FLOTTE ACTUELLE", "CURRENT FLEET"), L("ACTUELLE", "CURRENT")]
-        : rk === 1
-          ? [curBetter ? L("N°1 · MEILLEURE OFFRE", "NO. 1 · BEST OFFER") : L("N°1 · COÛT LE PLUS BAS", "NO. 1 · LOWEST COST"), L("N°1 · MEILLEUR", "NO. 1 · BEST"), "N°1"]
-          : [`N°${rk}`];
-      const rankTxt = rankCandidates.find((t) => doc.getTextWidth(t) + 10 <= iw) ?? rankCandidates[rankCandidates.length - 1];
-      chip(rankTxt, isCur(it) ? ORANGE_LIGHT : rk === 1 ? PINK : CHIP_NEUTRAL, isCur(it) ? ORANGE_TEXT : rk === 1 ? INK : CHIP_TEXT, ix, cy);
+      const badge = fleetBadge(it)
+        ? { c: [L("AUJOURD'HUI", "TODAY"), L("ACTUEL", "NOW")], fill: ORANGE_LIGHT, col: ORANGE_TEXT }
+        : it === ref
+          ? { c: [L("RECOMMANDÉ", "RECOMMENDED"), L("RECOMM.", "REC.")], fill: PINK, col: INK }
+          : { c: [L("ALTERNATIVE", "ALTERNATIVE"), L("ALTERN.", "ALT.")], fill: CHIP_NEUTRAL, col: CHIP_TEXT };
+      const badgeTxt = badge.c.find((t) => doc.getTextWidth(t) + 10 <= iw) ?? badge.c[badge.c.length - 1];
+      chip(badgeTxt, badge.fill, badge.col, ix, cy);
       cy += 10;
       if (hasEco) {
         cy += 2;
@@ -7781,23 +7938,8 @@ async function drawGroupComparison(
       doc.setTextColor(...SUB);
       verLines[i].forEach((ln, li) => doc.text(ln, ix, cy + 7 + li * 8.5));
     });
-    // Légende de la colonne de labels
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(6.4);
-    doc.setTextColor(140, 137, 128);
-    const baseLines = [
-      L("Base du calcul", "Calculation basis"),
-      sameBase ? L(`${ref.mois} mois · ${fr(ref.km)} km`, `${ref.mois} months · ${fr(ref.km)} km`) : L("variable (voir « Contrat »)", "varies (see \"Contract\")"),
-    ];
-    const lgY = top + headH - 8 - (baseLines.length + 1) * 8.5;
-    baseLines.forEach((t, li) => doc.text(t, M, lgY + li * 8.5 + 8));
-    doc.setFillColor(...DEEP);
-    doc.circle(M + 1.8, lgY + baseLines.length * 8.5 + 5.6, 1.5, "F");
-    doc.text(L("meilleure valeur de la ligne", "best value on the row"), M + 6, lgY + baseLines.length * 8.5 + 8);
 
     let ty = top + headH;
-
-    // Titre de section (avec légende de la barre sur la 1re)
     const section = (label: string, withLegend: boolean) => {
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(6.2);
@@ -7833,7 +7975,7 @@ async function drawGroupComparison(
       doc.setFont(BRAND_FONT, bold ? "bold" : "normal");
       doc.setFontSize(bold ? 7.6 : 6.8);
       doc.setTextColor(...(bold ? INK : SUB));
-      const ls = (doc.splitTextToSize(label, labW - 8) as string[]).slice(0, 2);
+      const ls = (doc.splitTextToSize(label, labW - 8) as string[]).slice(0, 3);
       const total = ls.length * 8;
       ls.forEach((ln, li) => doc.text(ln, M, ry + (rh - total) / 2 + 6.2 + li * 8));
     };
@@ -7842,72 +7984,41 @@ async function drawGroupComparison(
       doc.setLineWidth(0.4);
       doc.line(M, ry + rh, M + CW, ry + rh);
     };
-    const bestIdx = (vals: number[], mode: "min" | "max"): Set<number> => {
-      const s = new Set<number>();
-      if (vals.every((v) => Math.abs(v - vals[0]) < 1e-9)) return s;
-      const t = mode === "min" ? Math.min(...vals) : Math.max(...vals);
-      vals.forEach((v, i) => { if (Math.abs(v - t) < 1e-9) s.add(i); });
-      return s;
-    };
-    const dot = (x: number, base: number) => { doc.setFillColor(...DEEP); doc.circle(x + 1.6, base - 2.7, 1.5, "F"); };
 
     section(L(sameBase ? `Coût complet sur ${ref.mois} mois` : "Coût complet sur la durée du contrat", sameBase ? `Full cost over ${ref.mois} months` : "Full cost over the contract duration"), true);
 
-    // Lignes de coût
     costDefs.forEach((def, di) => {
       const rh = costH[di];
-      const vals = chunk.map((it) => def.get(it));
-      const bs = bestIdx(items.map((it) => def.get(it)), "min");
       rowLabel(def.label, ty, rh);
       chunk.forEach((it, i) => {
         const cx = colX(i) + pad;
-        const base = ty + 12;
-        const isBest = bs.has(items.indexOf(it));
-        if (isBest) dot(cx, base);
+        const base = ty + 14;
         doc.setFont(BRAND_FONT, "bold");
-        doc.setFontSize(9);
+        doc.setFontSize(10.5);
         doc.setTextColor(...INK);
-        const vTxt = eur(vals[i]);
-        doc.text(vTxt, cx + 6, base);
-        const vw = doc.getTextWidth(vTxt);
-        doc.setFont(BRAND_FONT, "bold");
-        doc.setFontSize(6.8);
-        doc.setTextColor(140, 137, 128);
-        const dTxt = it === ref ? L("réf.", "ref.") : sgn(def.get(it) - def.get(ref));
-        if (costWrap[di]) doc.text(dTxt, cx + 6, base + 8);
-        else doc.text(dTxt, cx + 6 + vw + 4, base);
+        doc.text(eur(def.get(it)), cx, base);
         const subLines = costSubs[di][i];
         if (subLines.length) {
           doc.setFont(BRAND_FONT, "normal");
-          doc.setFontSize(6.4);
+          doc.setFontSize(6.8);
           doc.setTextColor(...SUB);
-          subLines.forEach((ln, li) => doc.text(ln, cx + 6, base + (costWrap[di] ? 16 : 8) + li * 7.5));
+          subLines.forEach((ln, li) => doc.text(ln, cx, base + 9 + li * 8.2));
         }
       });
       hair(ty, rh);
       ty += rh;
     });
 
-    // Total
+    // Total + barre de décomposition (même échelle pour tout le groupe)
     {
-      rowLabel(L("Coût employeur complet", "Full employer cost"), ty, totH, true);
+      rowLabel(L("Coût complet", "Full cost"), ty, totH, true);
       chunk.forEach((it, i) => {
         const cx = colX(i) + pad;
         doc.setFont(BRAND_FONT, "bold");
-        doc.setFontSize(12.5);
+        doc.setFontSize(14);
         doc.setTextColor(...INK);
-        doc.text(eur(it.tco), cx, ty + 14);
-        // pastille d'écart
-        const isRef = it === ref;
-        const chipTxt = isRef ? L("RÉFÉRENCE", "REFERENCE") : `${sgn(it.tco - ref.tco)} · +${fr(ref.tco > 0 ? ((it.tco - ref.tco) / ref.tco) * 100 : 0, 1)} %`;
-        doc.setFontSize(6);
-        const cwid = doc.getTextWidth(chipTxt) + 10;
-        doc.setFillColor(...(isRef ? INK : CHIP_NEUTRAL));
-        doc.roundedRect(cx, ty + 20, cwid, 10, 5, 5, "F");
-        doc.setTextColor(...(isRef ? ([252, 249, 242] as RGB) : CHIP_TEXT));
-        doc.text(chipTxt, cx + 5, ty + 27);
-        // barre empilée, même échelle pour tout le groupe
-        const by = ty + 35;
+        doc.text(eur(it.tco), cx, ty + 17);
+        const by = ty + 25;
         doc.setFillColor(...BAR_TRACK);
         doc.roundedRect(cx, by, iw, 4.5, 2.2, 2.2, "F");
         const fullW = Math.max(1, (it.tco / maxTco) * iw);
@@ -7918,9 +8029,9 @@ async function drawGroupComparison(
           if (w > 0.3) { doc.setFillColor(...col); doc.rect(sx, by, w, 4.5, "F"); sx += w; }
         });
         doc.setFont(BRAND_FONT, "normal");
-        doc.setFontSize(6.6);
+        doc.setFontSize(6.4);
         doc.setTextColor(...SUB);
-        pmLines[i].forEach((ln, li) => doc.text(ln, cx, by + 13 + li * 8));
+        pmLines[i].forEach((ln, li) => doc.text(ln, cx, by + 14 + li * 8.4));
       });
       doc.setDrawColor(...INK);
       doc.setLineWidth(1.1);
@@ -7929,71 +8040,57 @@ async function drawGroupComparison(
       ty += totH;
     }
 
-    section(L("Offre et usage", "Offer and usage"), false);
-
-    const plainRow = (label: string, cell: (it: GcItem) => { main: string; extra?: string }, best?: Set<number>) => {
-      rowLabel(label, ty, plainH);
+    // Écart avec la flotte actuelle (ou avec la recommandation s'il n'y a pas de flotte actuelle)
+    {
+      const baseline = cur ?? ref;
+      rowLabel(cur ? L("Écart avec aujourd'hui", "Gap vs today") : L("Écart avec la recommandation", "Gap vs recommendation"), ty, gapH);
       chunk.forEach((it, i) => {
         const cx = colX(i) + pad;
-        const base = ty + 12.5;
-        if (best && best.has(items.indexOf(it))) dot(cx, base);
-        const c = cell(it);
+        doc.setFont(BRAND_FONT, "bold");
+        doc.setFontSize(6.4);
+        if (it === baseline) {
+          doc.setTextColor(140, 137, 128);
+          doc.text(cur ? "—" : L("RÉFÉRENCE", "REFERENCE"), cx, ty + 15);
+          return;
+        }
+        const d = it.tco - baseline.tco;
+        const pc = baseline.tco > 0 ? Math.round((d / baseline.tco) * 100) : 0;
+        const txt = `${sgn(d)} · ${pc >= 0 ? "+" : "−"}${Math.abs(pc)} %`;
+        const w = doc.getTextWidth(txt) + 10;
+        const good = d < 0;
+        doc.setFillColor(...(good ? GREEN_LIGHT : CHIP_NEUTRAL));
+        doc.roundedRect(cx, ty + 7, w, 11, 5.5, 5.5, "F");
+        doc.setTextColor(...(good ? GREEN_TEXT : CHIP_TEXT));
+        doc.text(txt, cx + 5, ty + 14.6);
+      });
+      hair(ty, gapH);
+      ty += gapH;
+    }
+
+    if (showRange) {
+      rowLabel(L("Autonomie WLTP", "WLTP range"), ty, rangeH);
+      chunk.forEach((it, i) => {
+        const cx = colX(i) + pad;
         doc.setFont(BRAND_FONT, "bold");
         doc.setFontSize(8.5);
         doc.setTextColor(...INK);
-        doc.text(c.main, cx + 6, base);
-        if (c.extra) {
-          const mw = doc.getTextWidth(c.main);
-          doc.setFontSize(6.8);
-          doc.setTextColor(140, 137, 128);
-          doc.text(c.extra, cx + 6 + mw + 4, base);
-        }
+        doc.text((it.sv.vehicle.rangeWltp ?? 0) > 0 ? `${fr(it.sv.vehicle.rangeWltp)} km` : "—", cx, ty + 14.5);
       });
-      hair(ty, plainH);
-      ty += plainH;
-    };
-
-    plainRow(
-      L(`Prix catalogue ${vat}, options en plus`, `List price ${vat}, options extra`),
-      (it) => ({ main: it.sv.vehicle.priceTtc > 0 ? eur(it.sv.vehicle.priceTtc) : "—", extra: it.optionsTtc > 0 ? sgn(it.optionsTtc) : L("sans option", "no option") }),
-      bestIdx(items.map((it) => (it.sv.vehicle.priceTtc > 0 ? it.sv.vehicle.priceTtc : 1e12)), "min"),
-    );
-    plainRow(
-      L(`Loyer mensuel ${vat}`, `Monthly lease ${vat}`),
-      (it) => ({ main: eurLoyer(it.sv.negotiatedMonthly) }),
-      bestIdx(items.map((it) => it.sv.negotiatedMonthly), "min"),
-    );
-    if (!sameBase) {
-      plainRow(L("Contrat", "Contract"), (it) => ({ main: L(`${it.mois} mois · ${fr(it.km)} km`, `${it.mois} mo · ${fr(it.km)} km`) }));
-    }
-    if (showRange) {
-      plainRow(
-        L("Autonomie WLTP", "WLTP range"),
-        (it) => ({ main: (it.sv.vehicle.rangeWltp ?? 0) > 0 ? `${fr(it.sv.vehicle.rangeWltp)} km` : "—" }),
-        bestIdx(items.map((it) => it.sv.vehicle.rangeWltp ?? 0), "max"),
-      );
-    }
-    if (showConso) {
-      const cs = items.map(consoOf);
-      const comparable = cs.every((c) => c && c.unit === (cs[0] as { unit: string }).unit);
-      plainRow(
-        L("Consommation", "Consumption"),
-        (it) => { const c = consoOf(it); return { main: c ? `${fr(c.v, 1)} ${c.unit}/100 km` : "—" }; },
-        comparable ? bestIdx(cs.map((c) => (c as { v: number }).v), "min") : undefined,
-      );
+      hair(ty, rangeH);
+      ty += rangeH;
     }
     if (hasExtras) {
       rowLabel(L("Inclus en plus au loyer", "Also included in the lease"), ty, extraRowH);
       chunk.forEach((it, i) => {
-        const cx = colX(i) + pad + 6;
+        const cx = colX(i) + pad;
         doc.setFont(BRAND_FONT, "normal");
-        doc.setFontSize(6.6);
+        doc.setFontSize(6.4);
         if (!extraLines[i].length) {
           doc.setTextColor(140, 137, 128);
           doc.text("—", cx, ty + 12.5);
         } else {
           doc.setTextColor(...INK);
-          extraLines[i].forEach((ln, li) => doc.text(ln, cx, ty + 11 + li * 8));
+          extraLines[i].forEach((ln, li) => doc.text(ln, cx, ty + 11 + li * 7.6));
         }
       });
       hair(ty, extraRowH);
@@ -8001,107 +8098,584 @@ async function drawGroupComparison(
     }
     y = ty + 10;
 
-    // Bandeau « identique pour tous »
-    if (commonParts.length) {
+    // Prestations comprises dans tous les loyers (une seule ligne)
+    if (commonSvc.length && !isCont) {
       doc.setFont(BRAND_FONT, "normal");
       doc.setFontSize(6.8);
-      const txt = commonParts.join(" · ");
-      const lines = (doc.splitTextToSize(txt, CW - 24) as string[]).slice(0, 3);
-      const bh = 14 + lines.length * 8.6 + 6;
-      y = ensureSpace(doc, y, bh + 6, client, "vehicles");
-      doc.setFillColor(...STRIP_BG);
-      doc.roundedRect(M, y, CW, bh, 5, 5, "F");
-      doc.setFont(BRAND_FONT, "bold");
-      doc.setFontSize(5.8);
-      doc.setTextColor(140, 137, 128);
-      doc.text(L(`IDENTIQUE POUR LES ${n} VÉHICULES`, `IDENTICAL FOR ALL ${n} VEHICLES`), M + 12, y + 11);
-      doc.setFont(BRAND_FONT, "normal");
-      doc.setFontSize(6.8);
-      doc.setTextColor(...CHIP_TEXT);
-      doc.text(lines, M + 12, y + 21);
-      y += bh + 8;
+      const txt = commonSvc.map((x) => x.charAt(0).toLowerCase() + x.slice(1)).join(" · ");
+      const lines = (doc.splitTextToSize(txt, CW - 24) as string[]).slice(0, 2);
+      const bh = 22 + lines.length * 8.6;
+      if (y + bh < FOOTER_LIMIT) {
+        doc.setFillColor(...STRIP_BG);
+        doc.roundedRect(M, y, CW, bh, 5, 5, "F");
+        doc.setFont(BRAND_FONT, "bold");
+        doc.setFontSize(5.8);
+        doc.setTextColor(140, 137, 128);
+        doc.text(L("COMPRIS DANS TOUS LES LOYERS", "INCLUDED IN EVERY LEASE"), M + 12, y + 11);
+        doc.setFont(BRAND_FONT, "normal");
+        doc.setFontSize(6.8);
+        doc.setTextColor(...CHIP_TEXT);
+        doc.text(lines, M + 12, y + 21);
+        y += bh + 10;
+      }
     }
 
-    // « À retenir » (analyse du groupe) n'est affiché qu'une fois : sur la 1re page,
-    // pas sur les pages de suite. À retenir + note de méthode. Hauteurs mesurées AVANT de dessiner : les deux
-    // blocs restent ensemble sur la page (jamais une note seule sur une page
-    // vide) et « À retenir » passe en liste pleine largeur si 3 colonnes ne
-    // tiennent pas.
-    const pageInsights = isCont ? [] : insights;
+    // « À retenir » + note de méthode : jamais sur une page à part. Si la place manque, on
+    // supprime d'abord la note, puis les points, plutôt que de déborder.
     const noteTxt = L(
-      "Coût employeur complet = loyers (apport inclus) + énergie + TVS + malus + surcoût fiscal AND (25 % de l'AND) + avantage en nature employeur (AEN), sur la durée du contrat. Les écarts par ligne se lisent contre le véhicule de référence. L'avantage en nature du collaborateur, indiqué à titre d'information, et la méthode détaillée figurent en annexe.",
-      "Full employer cost = lease payments (deposit included) + energy + company car tax + penalty + AND tax cost (25% of the AND) + employer benefit-in-kind (AEN), over the contract duration. Row gaps are read against the reference vehicle. The employee's benefit-in-kind, shown for information, and the detailed method are in the appendix.",
+      "Coût complet = loyers (apport inclus) + énergie + TVS + malus + surcoût fiscal AND (25 % de l'AND) + avantage en nature employeur (AEN), sur la durée du contrat. Méthode détaillée en fin de document. Estimations sur les barèmes 2026.",
+      "Full cost = lease payments (deposit included) + energy + company car tax + penalty + AND tax cost (25% of the AND) + employer benefit-in-kind (AEN), over the contract duration. Detailed method at the end of the document. Estimates based on 2026 scales.",
     );
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(6.2);
     const noteLines = doc.splitTextToSize(noteTxt, CW) as string[];
-    const noteH = noteLines.length * 8 + 6;
-
-    let insMode: "cols" | "stack" = "cols";
-    let insH = 0;
-    const insGap = 12;
-    const insColW = pageInsights.length ? (CW - insGap * (pageInsights.length - 1)) / pageInsights.length : CW;
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(7.4);
-    const insCols = pageInsights.map((t) => doc.splitTextToSize(t, insColW) as string[]);
-    const insStack = pageInsights.map((t) => doc.splitTextToSize(t, CW - 12) as string[]);
-    if (pageInsights.length) {
-      const colsH = 22 + Math.max(...insCols.map((w) => w.length)) * 9.2;
-      const stackH = 12 + insStack.reduce((a, w) => a + w.length * 9 + 2, 0);
-      const room = FOOTER_LIMIT - y - noteH - 8;
-      insMode = colsH <= room || colsH <= stackH ? "cols" : "stack";
-      insH = insMode === "cols" ? colsH : stackH;
-    }
-    y = ensureSpace(doc, y, insH + noteH + 8, client, "vehicles");
-    if (pageInsights.length) {
+    const noteH = noteLines.length * 8 + 4;
+    const pageTake = isCont ? [] : takeaways;
+    const insGap = 14;
+    const insColW = pageTake.length ? (CW - insGap * (pageTake.length - 1)) / pageTake.length : CW;
+    doc.setFontSize(8);
+    const insCols = pageTake.map((tk) => doc.splitTextToSize(tk.t, insColW) as string[]);
+    const insH = pageTake.length ? 28 + Math.max(...insCols.map((w) => w.length)) * 9.8 : 0;
+    if (pageTake.length && y + insH + noteH + 6 <= FOOTER_LIMIT) {
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(6.2);
       doc.setTextColor(140, 137, 128);
       doc.text(L("À RETENIR", "KEY TAKEAWAYS"), M, y + 7);
-      if (insMode === "cols") {
-        insCols.forEach((w, i) => {
-          const x = M + i * (insColW + insGap);
-          doc.setDrawColor(...PINK);
-          doc.setLineWidth(1.1);
-          doc.line(x, y + 13, x + insColW, y + 13);
-          doc.setLineWidth(0.4);
-          doc.setFont(BRAND_FONT, "normal");
-          doc.setFontSize(7.4);
-          doc.setTextColor(...INK);
-          doc.text(w, x, y + 23);
-        });
-      } else {
-        let by = y + 17;
-        insStack.forEach((w) => {
-          doc.setFillColor(...PINK);
-          doc.circle(M + 2, by - 2.4, 1.6, "F");
-          doc.setFont(BRAND_FONT, "normal");
-          doc.setFontSize(7.4);
-          doc.setTextColor(...INK);
-          doc.text(w, M + 10, by, { lineHeightFactor: 1.2 });
-          by += w.length * 9 + 2;
-        });
-      }
-      y += insH + 8;
+      pageTake.forEach((tk, i) => {
+        const x = M + i * (insColW + insGap);
+        doc.setDrawColor(...PINK);
+        doc.setLineWidth(1.1);
+        doc.line(x, y + 13, x + insColW, y + 13);
+        doc.setLineWidth(0.4);
+        doc.setFont(BRAND_FONT, "bold");
+        doc.setFontSize(8.4);
+        doc.setTextColor(...INK);
+        doc.text(tk.h, x, y + 25);
+        doc.setFont(BRAND_FONT, "normal");
+        doc.setFontSize(8);
+        doc.text(insCols[i], x, y + 37);
+      });
+      y += insH + 14;
     }
-    doc.setFont(BRAND_FONT, "normal");
-    doc.setFontSize(6.2);
-    doc.setTextColor(140, 137, 128);
-    doc.text(noteLines, M, y + 6);
+    if (y + noteH <= FOOTER_LIMIT) {
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(6.2);
+      doc.setTextColor(140, 137, 128);
+      doc.text(noteLines, M, y + 6);
+    }
   };
 
-  // Pagination : 4 véhicules max par page ; au-delà, la référence est répétée
-  // en 1re colonne des pages suivantes.
+  // Pagination : 5 véhicules par page ; au-delà, la flotte actuelle et la recommandation sont
+  // reprises en tête des pages de suite.
+  const fixed = items.filter((it) => it === ref || it === cur);
+  const others = items.filter((it) => !fixed.includes(it));
+  const perPage = Math.max(1, MAX_COLS - fixed.length);
   const chunks: GcItem[][] = [];
-  if (n <= 4) chunks.push(items);
-  else {
-    chunks.push(items.slice(0, 4));
-    for (let i = 4; i < n; i += 3) chunks.push([ref, ...items.slice(i, i + 3)]);
-  }
+  for (let i = 0; i < Math.max(1, others.length); i += perPage) chunks.push([...fixed, ...others.slice(i, i + perPage)]);
   chunks.forEach((chunk, ci) => {
     if (ci > 0) { doc.addPage(); drawHeader(doc, client, "vehicles"); }
     drawPage(chunk, ci > 0);
   });
+}
+
+// ============ ÉDITION DAF : synthèse, méthode et fiscalité ============
+
+type DafGroup = { name: string; prep: GcPrep };
+
+// Page « Synthèse » de l'édition DAF : la décision en une page. Économie totale (quantités
+// comprises), économie par segment, puis répartition de l'économie entre trésorerie (loyers,
+// énergie) et fiscalité. Seuls les segments qui ont une flotte actuelle à remplacer entrent
+// dans les totaux ; les autres sont listés sans économie.
+function drawDafSynthesis(doc: jsPDF, groups: DafGroup[], client: ClientInfo) {
+  type RGB = [number, number, number];
+  const PINK: RGB = [244, 184, 170];
+  const GOOD: RGB = [20, 107, 57];
+  const GOOD_LT: RGB = [127, 211, 172];
+  const HAIR: RGB = [234, 227, 208];
+  const CREAM: RGB = [245, 240, 225];
+  const BAR_ENERGY: RGB = [168, 163, 152];
+  const BAR_FISC: RGB = [217, 105, 79];
+  const VIOLET_LT: RGB = [230, 226, 248];
+  const VIOLET_TXT: RGB = [42, 11, 166];
+  const AMBER_LT: RGB = [255, 236, 204];
+  const AMBER_TXT: RGB = [138, 82, 0];
+  const CW = PAGE_W - M * 2;
+  const sgn = (n: number) => `${n >= 0 ? "+" : "−"}${eur(Math.abs(n))}`;
+  const pct = (a: number, b: number) => (a > 0 ? Math.round((100 * (a - b)) / a) : 0);
+
+  const rows = groups.map((g) => ({ name: g.name, q: g.prep.qty, cur: g.prep.cur, ref: g.prep.ref }));
+  const withCur = rows.filter((r) => r.cur !== null);
+  const sumCur = (f: (it: GcItem) => number) => withCur.reduce((a, r) => a + f(r.cur as GcItem) * r.q, 0);
+  const sumRef = (f: (it: GcItem) => number) => withCur.reduce((a, r) => a + f(r.ref) * r.q, 0);
+  const A = { loy: sumCur((i) => i.loyer), en: sumCur((i) => i.energie), fis: sumCur((i) => i.fisc), tot: sumCur((i) => i.tco) };
+  const B = { loy: sumRef((i) => i.loyer), en: sumRef((i) => i.energie), fis: sumRef((i) => i.fisc), tot: sumRef((i) => i.tco) };
+  const ECO = A.tot - B.tot;
+  const Q = withCur.reduce((a, r) => a + r.q, 0);
+  const cashA = A.loy + A.en;
+  const cashB = B.loy + B.en;
+
+  let y = 124;
+  eyebrow(doc, L("SYNTHÈSE · DIRECTION FINANCIÈRE", "SUMMARY · FINANCE DIRECTION"), y);
+  y += 28;
+  const headline = ECO > 0
+    ? L(`Passer à l'électrique réduit le coût de votre flotte de ${pct(A.tot, B.tot)} %.`, `Switching to electric cuts your fleet cost by ${pct(A.tot, B.tot)}%.`)
+    : L("Comparaison du coût complet de votre flotte actuelle et de la solution Beev.", "Full cost comparison of your current fleet and the Beev solution.");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(19);
+  doc.setTextColor(...INK);
+  const hl = doc.splitTextToSize(headline, CW) as string[];
+  doc.text(hl, M, y);
+  y += (hl.length - 1) * 23 + 17;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...SUB);
+  const lead = doc.splitTextToSize(L(
+    `${Q} véhicule${Q > 1 ? "s" : ""} remplacé${Q > 1 ? "s" : ""} sur ${withCur.length} segment${withCur.length > 1 ? "s" : ""}, à kilométrage identique. Coût complet employeur : loyers, énergie, taxes et charges sociales.`,
+    `${Q} vehicle${Q > 1 ? "s" : ""} replaced across ${withCur.length} segment${withCur.length > 1 ? "s" : ""}, for identical mileage. Full employer cost: lease, energy, taxes and social charges.`,
+  ), CW) as string[];
+  doc.text(lead, M, y);
+  y += lead.length * 11 + 8;
+
+  // Bandeau d'économie
+  const hh = 58;
+  doc.setFillColor(...INK);
+  doc.roundedRect(M, y, CW, hh, 8, 8, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(6.4);
+  doc.setTextColor(...PINK);
+  doc.text(ECO > 0 ? L("ÉCONOMIE SUR LA DURÉE DES CONTRATS", "SAVINGS OVER THE CONTRACT TERMS") : L("ÉCART SUR LA DURÉE DES CONTRATS", "GAP OVER THE CONTRACT TERMS"), M + 18, y + 17);
+  doc.setFontSize(27);
+  doc.setTextColor(255, 255, 255);
+  doc.text(ECO > 0 ? eur(ECO) : sgn(-ECO), M + 18, y + 45);
+  doc.setFontSize(23);
+  doc.setTextColor(...GOOD_LT);
+  doc.text(ECO > 0 ? `−${pct(A.tot, B.tot)} %` : `+${Math.abs(pct(A.tot, B.tot))} %`, M + CW - 18, y + 32, { align: "right" });
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(189, 184, 171);
+  doc.text(L(`actuel ${eur(A.tot)} · avec Beev ${eur(B.tot)}`, `current ${eur(A.tot)} · with Beev ${eur(B.tot)}`), M + CW - 18, y + 46, { align: "right" });
+  y += hh + 16;
+
+  // Tableau par segment
+  const h3 = (label: string) => {
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...INK);
+    doc.text(label, M, y);
+    y += 7;
+  };
+  h3(L("ÉCONOMIE PAR SEGMENT", "SAVINGS BY SEGMENT"));
+  const W = [72, 26, 84, 56, 84, 56, 56, 65];
+  const X: number[] = [];
+  W.reduce((acc, w, i) => { X[i] = M + acc; return acc + w; }, 0);
+  const head: string[][] = [
+    [L("Segment", "Segment")], [L("Qté", "Qty")], [L("Flotte actuelle", "Current fleet")],
+    [L("Coût actuel", "Current cost"), L("par véhicule", "per vehicle")],
+    [L("Recommandation", "Recommendation")],
+    [L("Coût Beev", "Beev cost"), L("par véhicule", "per vehicle")],
+    [L("Économie", "Savings"), L("par véhicule", "per vehicle")],
+    [L("Économie", "Savings"), L("× quantité", "× quantity")],
+  ];
+  const numCol = (i: number) => i === 1 || i === 3 || i === 5 || i === 6 || i === 7;
+  const drawHead = () => {
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(5.9);
+    doc.setTextColor(...SUB);
+    head.forEach((lines, i) => {
+      lines.forEach((ln, li) => {
+        const yy = y + 8 + li * 7.5 + (lines.length === 1 ? 7.5 : 0);
+        if (numCol(i)) doc.text(ln.toUpperCase(), X[i] + W[i] - 4, yy, { align: "right" });
+        else doc.text(ln.toUpperCase(), X[i] + 2, yy);
+      });
+    });
+    doc.setDrawColor(...INK);
+    doc.setLineWidth(1.1);
+    doc.line(M, y + 21, M + CW, y + 21);
+    doc.setLineWidth(0.4);
+    y += 21;
+  };
+  drawHead();
+  const cell = (txt: string, i: number, yy: number, bold = false, color: RGB = INK, size = 7.6) => {
+    doc.setFont(BRAND_FONT, bold ? "bold" : "normal");
+    doc.setFontSize(size);
+    doc.setTextColor(...color);
+    if (numCol(i)) doc.text(txt, X[i] + W[i] - 4, yy, { align: "right" });
+    else doc.text(txt, X[i] + 2, yy);
+  };
+  rows.forEach((r) => {
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(7.4);
+    const curL = (doc.splitTextToSize(r.cur ? r.cur.name : "—", W[2] - 6) as string[]).slice(0, 2);
+    const refL = (doc.splitTextToSize(r.ref.name, W[4] - 6) as string[]).slice(0, 2);
+    const segL = (doc.splitTextToSize(r.name || L("Flotte", "Fleet"), W[0] - 4) as string[]).slice(0, 2);
+    const rowH = Math.max(curL.length, refL.length, segL.length, 2) * 8.6 + 8;
+    const pg = doc.getNumberOfPages();
+    y = ensureSpace(doc, y, rowH, client, "vehicles");
+    if (doc.getNumberOfPages() !== pg) drawHead();
+    const by = y + 11;
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7.6);
+    doc.setTextColor(...INK);
+    doc.text(segL, X[0] + 2, by);
+    cell(String(r.q), 1, by);
+    doc.setFont(BRAND_FONT, "normal"); doc.setFontSize(7.4); doc.setTextColor(...INK);
+    doc.text(curL, X[2] + 2, by);
+    doc.text(refL, X[4] + 2, by);
+    cell(r.cur ? eur(r.cur.tco) : "—", 3, by);
+    cell(eur(r.ref.tco), 5, by);
+    if (r.cur) {
+      const d = r.cur.tco - r.ref.tco;
+      const col: RGB = d >= 0 ? GOOD : [150, 90, 0];
+      cell(sgn(-d), 6, by, true, col);
+      cell(`${d >= 0 ? "−" : "+"}${Math.abs(pct(r.cur.tco, r.ref.tco))} %`, 6, by + 8.4, false, SUB, 6.4);
+      cell(sgn(-d * r.q), 7, by, true, col);
+    } else {
+      cell("—", 6, by, false, SUB);
+      cell("—", 7, by, false, SUB);
+    }
+    doc.setDrawColor(...HAIR);
+    doc.line(M, y + rowH, M + CW, y + rowH);
+    y += rowH;
+  });
+  if (withCur.length > 0) {
+    const th = 20;
+    const pg = doc.getNumberOfPages();
+    y = ensureSpace(doc, y, th, client, "vehicles");
+    if (doc.getNumberOfPages() !== pg) drawHead();
+    doc.setFillColor(...CREAM);
+    doc.rect(M, y, CW, th, "F");
+    const by = y + 13;
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7.8);
+    doc.setTextColor(...INK);
+    doc.text(L("Total", "Total"), X[0] + 2, by);
+    cell(String(Q), 1, by, true);
+    cell(eur(A.tot), 3, by, true);
+    cell(eur(B.tot), 5, by, true);
+    cell(`${ECO >= 0 ? "−" : "+"}${Math.abs(pct(A.tot, B.tot))} %`, 6, by, true, ECO >= 0 ? GOOD : [150, 90, 0]);
+    cell(sgn(-ECO), 7, by, true, ECO >= 0 ? GOOD : [150, 90, 0]);
+    y += th;
+  }
+  y += 14;
+
+  // Où se joue l'économie : trois postes, deux barres chacun, même échelle
+  if (withCur.length > 0) {
+    y = ensureSpace(doc, y, 200, client, "vehicles");
+    h3(L("OÙ SE JOUE L'ÉCONOMIE", "WHERE THE SAVINGS COME FROM"));
+    doc.setDrawColor(...INK);
+    doc.setLineWidth(1.1);
+    doc.line(M, y, M + CW, y);
+    doc.setLineWidth(0.4);
+    const levers: { label: string; a: number; b: number; fisc: boolean; col: RGB }[] = [
+      { label: L("Loyers", "Lease payments"), a: A.loy, b: B.loy, fisc: false, col: INK },
+      { label: L("Énergie", "Energy"), a: A.en, b: B.en, fisc: false, col: BAR_ENERGY },
+      { label: L("Fiscalité et charges employeur", "Taxes and employer charges"), a: A.fis, b: B.fis, fisc: true, col: BAR_FISC },
+    ];
+    const scale = Math.max(1, ...levers.flatMap((l) => [l.a, l.b]));
+    const barX = M + 168;
+    const barW = 150;
+    levers.forEach((lv) => {
+      const rh = 40;
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(...INK);
+      const lab = (doc.splitTextToSize(lv.label, 120) as string[]).slice(0, 2);
+      doc.text(lab, M, y + 13);
+      const tag = lv.fisc ? L("Fiscal, hors trésorerie", "Tax, non-cash") : L("Trésorerie", "Cash");
+      doc.setFontSize(5.8);
+      const tw = doc.getTextWidth(tag) + 10;
+      const ty2 = y + 13 + lab.length * 9;
+      doc.setFillColor(...(lv.fisc ? AMBER_LT : VIOLET_LT));
+      doc.roundedRect(M, ty2 - 6, tw, 10, 5, 5, "F");
+      doc.setTextColor(...(lv.fisc ? AMBER_TXT : VIOLET_TXT));
+      doc.text(tag, M + 5, ty2 + 1.2);
+      ([[L("Aujourd'hui", "Today"), lv.a], [L("Avec Beev", "With Beev"), lv.b]] as [string, number][]).forEach(([cap, val], bi) => {
+        const by = y + 9 + bi * 15;
+        doc.setFont(BRAND_FONT, "normal");
+        doc.setFontSize(6.4);
+        doc.setTextColor(...SUB);
+        doc.text(cap, barX - 8, by + 5, { align: "right" });
+        doc.setFillColor(...HAIR);
+        doc.roundedRect(barX, by, barW, 6.5, 3, 3, "F");
+        doc.setFillColor(...lv.col);
+        doc.roundedRect(barX, by, Math.max(2, (val / scale) * barW), 6.5, 3, 3, "F");
+        doc.setFont(BRAND_FONT, "bold");
+        doc.setFontSize(7.4);
+        doc.setTextColor(...INK);
+        doc.text(eur(val), barX + barW + 8, by + 5.6);
+      });
+      const d = lv.a - lv.b;
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(10.5);
+      doc.setTextColor(...(d >= 0 ? GOOD : ([150, 90, 0] as RGB)));
+      doc.text(sgn(-d), M + CW, y + 17, { align: "right" });
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(6.6);
+      doc.setTextColor(...SUB);
+      doc.text(`${d >= 0 ? "−" : "+"}${Math.abs(pct(lv.a, lv.b))} %`, M + CW, y + 27, { align: "right" });
+      doc.setDrawColor(...HAIR);
+      doc.line(M, y + rh, M + CW, y + rh);
+      y += rh;
+    });
+    // Décaissements : loyers + énergie
+    y += 8;
+    doc.setFillColor(...CREAM);
+    doc.roundedRect(M, y, CW, 22, 5, 5, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7.4);
+    doc.setTextColor(...INK);
+    doc.text(L("Décaissements (loyers + énergie)", "Cash outflow (lease + energy)"), M + 12, y + 14);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.text(L(`${eur(cashA)} contre ${eur(cashB)}`, `${eur(cashA)} vs ${eur(cashB)}`), M + 214, y + 14);
+    doc.setFont(BRAND_FONT, "bold");
+    const dc = cashA - cashB;
+    doc.setTextColor(...(dc >= 0 ? GOOD : ([150, 90, 0] as RGB)));
+    doc.text(`${sgn(-dc)} · ${dc >= 0 ? "−" : "+"}${Math.abs(pct(cashA, cashB))} %`, M + CW - 12, y + 14, { align: "right" });
+    y += 22 + 12;
+
+    // Lecture
+    const shLoy = ECO > 0 ? (A.loy - B.loy) / ECO : 0;
+    const read = ECO > 0 && shLoy < 0.2
+      ? L(`L'économie ne vient presque pas des loyers (${A.loy - B.loy >= 0 ? "−" : "+"}${Math.abs(pct(A.loy, B.loy))} %) : elle vient de l'énergie et de la fiscalité des véhicules actuels (TVS, malus, AND, charges sur l'avantage en nature).`,
+          `Savings hardly come from lease payments (${A.loy - B.loy >= 0 ? "−" : "+"}${Math.abs(pct(A.loy, B.loy))}%): they come from energy and from the tax burden of current vehicles (company car tax, penalty, AND, charges on benefit-in-kind).`)
+      : ECO > 0
+        ? L(`Sur ${eur(ECO)} d'économie : loyers ${eur(A.loy - B.loy)}, énergie ${eur(A.en - B.en)}, fiscalité et charges ${eur(A.fis - B.fis)}.`,
+            `Of ${eur(ECO)} saved: lease ${eur(A.loy - B.loy)}, energy ${eur(A.en - B.en)}, taxes and charges ${eur(A.fis - B.fis)}.`)
+        : "";
+    if (read) {
+      doc.setFont(BRAND_FONT, "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(...INK);
+      const rl = doc.splitTextToSize(read, CW) as string[];
+      y = ensureSpace(doc, y, rl.length * 10.5 + 30, client, "vehicles");
+      doc.text(rl, M, y);
+      y += rl.length * 10.5 + 8;
+    }
+  }
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(6.6);
+  doc.setTextColor(140, 137, 128);
+  const fn = doc.splitTextToSize(L(
+    "Estimations Beev sur les barèmes fiscaux 2026, à confirmer auprès de votre expert-comptable. Les économies multiplient l'écart par véhicule par la quantité de chaque segment. Méthode et fiscalité en fin de document.",
+    "Beev estimates based on 2026 tax scales, to be confirmed with your accountant. Savings multiply the per-vehicle gap by each segment's quantity. Method and taxes at the end of the document.",
+  ), CW) as string[];
+  y = ensureSpace(doc, y, fn.length * 8.4 + 4, client, "vehicles");
+  doc.text(fn, M, y + 6);
+}
+
+// Page « Méthode et fiscalité » : le calcul en 5 postes (sur un véhicule exemple), ce que
+// l'électrique change côté fiscal, et l'avantage en nature du collaborateur (une ligne par
+// véhicule). Remplace l'annexe de méthode et la page « avantages fiscaux ».
+function drawDafMethod(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams, client: ClientInfo) {
+  type RGB = [number, number, number];
+  const PINK: RGB = [244, 184, 170];
+  const CREAM: RGB = [245, 240, 225];
+  const HAIR: RGB = [234, 227, 208];
+  const DEEP: RGB = [194, 80, 58];
+  const CW = PAGE_W - M * 2;
+  const nf = (n: number, d = 0) => cleanSpaces(n.toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d }));
+  const contract = (sv: SelectedVehicle) => {
+    const duree = sv.durationMonths / 12;
+    return calculateTcoFull(sv.vehicle, {
+      dureeAnnees: duree,
+      kmContrat: sv.kmPerYear * duree,
+      prixEssenceLitre: e.fuelPriceL,
+      prixKwhDomicile: e.kWhHome,
+      prixKwhPublic: e.kWhPublic, mixDomicilePct: e.mixHomePct,
+      optionsTotalTtc: sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0),
+      remisePctOverride: sv.discountPct,
+      apport: svApport(sv),
+      assuranceMensuelle: svAssuranceMensuelle(sv),
+    }, sv.negotiatedMonthly);
+  };
+
+  // Véhicule exemple : une flotte actuelle thermique si elle existe (les 5 postes sont alors
+  // tous non nuls), sinon le premier véhicule du devis.
+  const exSv = vehicles.find((sv) => sv.vehicle.isCurrentFleet && sv.vehicle.energy !== "Électrique") ?? vehicles[0];
+  const exR = contract(exSv);
+  const exDuree = exSv.durationMonths / 12;
+  const exKm = exSv.kmPerYear * exDuree;
+  const exElec = exSv.vehicle.energy === "Électrique";
+  const exConso = exElec ? ((exSv.vehicle.consumptionElec ?? exSv.vehicle.consumption) || 0) : ((exSv.vehicle.consumptionThermal ?? exSv.vehicle.consumption) || 0);
+  const exApport = svApport(exSv);
+  const exYears = nf(exDuree, exDuree % 1 === 0 ? 0 : 2);
+  const exMalus = exR.malusCO2 + exR.malusPoids;
+  const exName = prettyVehicleName(exSv.vehicle) + ((exSv.vehicle.version ?? "").trim() ? ` · ${(exSv.vehicle.version ?? "").trim()}` : "");
+  const steps: { title: string; formula: string; example: string; amount: number }[] = [
+    {
+      title: L("Loyers", "Lease payments"),
+      formula: L(`Loyer mensuel × nombre de mois${exApport > 0 ? " + apport" : ""}`, `Monthly lease × months${exApport > 0 ? " + deposit" : ""}`),
+      example: `${eurLoyer(exSv.negotiatedMonthly)} × ${exSv.durationMonths} ${L("mois", "months")}${exApport > 0 ? ` + ${eur(exApport)}` : ""}`,
+      amount: exR.loyerTotal,
+    },
+    {
+      title: L("Énergie", "Energy"),
+      formula: L(`Consommation × km ÷ 100 × prix de l'énergie (recharge : ${MIX_HOME_PCT} % domicile, ${100 - MIX_HOME_PCT} % public)`, `Consumption × km ÷ 100 × energy price (charging: ${MIX_HOME_PCT}% home, ${100 - MIX_HOME_PCT}% public)`),
+      example: `${nf(exConso, 1)} ${exElec ? "kWh" : "L"}/100 km × ${nf(exKm)} km`,
+      amount: exR.coutEnergie,
+    },
+    {
+      title: L("Taxes", "Taxes"),
+      formula: L("TVS + malus CO2 et poids (0 € sur un véhicule 100 % électrique)", "Company car tax + CO2 and weight penalties (€0 on a 100% electric vehicle)"),
+      example: `${eur(exR.tvsTotal)} + ${eur(exMalus)}`,
+      amount: exR.tvsTotal + exMalus,
+    },
+    {
+      title: L("Surcoût fiscal de l'AND", "Extra tax cost of the AND"),
+      formula: L("25 % de l'AND annuel × nombre d'années (AND = (prix − plafond fiscal) ÷ 5 ans)", "25% of the yearly AND × years (AND = (price − tax ceiling) ÷ 5 years)"),
+      example: exR.coutFiscalANDTotal > 0 ? `${eur(exR.coutFiscalANDAnnuel)} ${L("par an", "per year")} × ${exYears} ${L("ans", "years")}` : L("Prix sous le plafond fiscal", "Price under the tax ceiling"),
+      amount: exR.coutFiscalANDTotal,
+    },
+    {
+      title: L("Charges sur l'avantage en nature", "Charges on benefit-in-kind"),
+      formula: L(`Loyer annuel × 50 %${exR.aenAbattement > 0 ? " × (100 % − 70 %)" : ""} × 42 % × nombre d'années`, `Yearly lease × 50%${exR.aenAbattement > 0 ? " × (100% − 70%)" : ""} × 42% × years`),
+      example: `${eur(exR.partEmployeurAnnuelle)} ${L("par an", "per year")} × ${exYears} ${L("ans", "years")}`,
+      amount: exR.aenEmployeurTotal,
+    },
+  ];
+
+  let y = 124;
+  eyebrow(doc, L("MÉTHODE ET FISCALITÉ 2026", "METHOD AND TAXES 2026"), y);
+  y += 28;
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(19);
+  doc.setTextColor(...INK);
+  const tl = doc.splitTextToSize(L("Comment le coût complet est calculé, et ce que l'électrique change côté fiscal.", "How the full cost is calculated, and what electric changes on the tax side."), CW) as string[];
+  doc.text(tl, M, y);
+  y += (tl.length - 1) * 23 + 22;
+
+  // 1. Le calcul en 5 postes
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...INK);
+  doc.text(L(`LE CALCUL EN 5 POSTES · EXEMPLE : ${exName.toUpperCase()}`, `THE CALCULATION IN 5 ITEMS · EXAMPLE: ${exName.toUpperCase()}`), M, y, { maxWidth: CW });
+  y += 6;
+  doc.setDrawColor(...INK);
+  doc.setLineWidth(1.1);
+  doc.line(M, y, M + CW, y);
+  doc.setLineWidth(0.4);
+  const cw4 = [104, 196, 130, 69];
+  const cx4 = [M, M + cw4[0], M + cw4[0] + cw4[1], M + cw4[0] + cw4[1] + cw4[2]];
+  steps.forEach((st) => {
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(7.4);
+    const fl = doc.splitTextToSize(st.formula, cw4[1] - 10) as string[];
+    const el = doc.splitTextToSize(st.example, cw4[2] - 8) as string[];
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8);
+    const tt = doc.splitTextToSize(st.title, cw4[0] - 6) as string[];
+    const rh = Math.max(fl.length, el.length, tt.length) * 9.4 + 10;
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...INK);
+    doc.text(tt, cx4[0] + 2, y + 13);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(7.4);
+    doc.setTextColor(...SUB);
+    doc.text(fl, cx4[1] + 2, y + 13);
+    doc.setTextColor(...INK);
+    doc.text(el, cx4[2] + 2, y + 13);
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(8.4);
+    doc.text(eur(st.amount), cx4[3] + cw4[3] - 4, y + 13, { align: "right" });
+    doc.setDrawColor(...HAIR);
+    doc.line(M, y + rh, M + CW, y + rh);
+    y += rh;
+  });
+  doc.setFillColor(...CREAM);
+  doc.rect(M, y, CW, 22, "F");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.4);
+  doc.setTextColor(...INK);
+  doc.text(L("Coût employeur complet", "Full employer cost"), cx4[0] + 2, y + 14.5);
+  doc.setFontSize(10.5);
+  doc.text(eur(exR.tcoEmployeurComplet), cx4[3] + cw4[3] - 4, y + 15, { align: "right" });
+  y += 22 + 20;
+
+  // 2. Ce que l'électrique change
+  const tvsAvoided = vehicles
+    .filter((sv) => sv.vehicle.isCurrentFleet && sv.vehicle.energy !== "Électrique")
+    .reduce((a, sv) => a + contract(sv).tvsTotal * Math.max(1, sv.quantity || 1), 0);
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...INK);
+  doc.text(L("CE QUE L'ÉLECTRIQUE CHANGE", "WHAT ELECTRIC CHANGES"), M, y);
+  y += 6;
+  doc.setDrawColor(...INK);
+  doc.setLineWidth(1.1);
+  doc.line(M, y, M + CW, y);
+  doc.setLineWidth(0.4);
+  y += 10;
+  const tiles: { label: string; value: string; text: string }[] = [
+    { label: "TVS", value: "0 €", text: L(`Véhicules électriques exonérés.${tvsAvoided > 0 ? ` ${eur(tvsAvoided)} évités sur votre flotte actuelle, sur la durée des contrats.` : ""}`, `Electric vehicles are exempt.${tvsAvoided > 0 ? ` ${eur(tvsAvoided)} avoided on your current fleet over the contract terms.` : ""}`) },
+    { label: L("MALUS CO2 ET POIDS", "CO2 AND WEIGHT PENALTY"), value: "0 €", text: L("Aucun malus à l'acquisition d'un véhicule électrique.", "No penalty when acquiring an electric vehicle.") },
+    { label: "AND", value: "25 %", text: L("Seuls 25 % de la part non déductible sont comptés (surcoût d'impôt). Plafond relevé pour l'électrique.", "Only 25% of the non-deductible part is counted (extra tax). Higher ceiling for electric.") },
+    { label: L("AVANTAGE EN NATURE", "BENEFIT-IN-KIND"), value: "−70 %", text: L("Abattement sur les électriques éligibles au score environnemental (plafonné).", "Reduction for electric vehicles eligible for the environmental score (capped).") },
+    { label: L("TVA SUR LA RECHARGE", "VAT ON CHARGING"), value: "100 %", text: L("Récupérable. Sur le véhicule, uniquement pour les utilitaires 100 % électriques.", "Recoverable. On the vehicle itself, only for 100% electric light commercial vehicles.") },
+  ];
+  const gapT = 8;
+  const tw = (CW - gapT * (tiles.length - 1)) / tiles.length;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(6.8);
+  const tLines = tiles.map((t) => doc.splitTextToSize(t.text, tw - 14) as string[]);
+  const tileH = 52 + Math.max(...tLines.map((l) => l.length)) * 8.4;
+  tiles.forEach((t, i) => {
+    const x = M + i * (tw + gapT);
+    doc.setFillColor(...CREAM);
+    doc.roundedRect(x, y, tw, tileH, 6, 6, "F");
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(5.8);
+    doc.setTextColor(...SUB);
+    doc.text((doc.splitTextToSize(t.label, tw - 14) as string[]).slice(0, 2), x + 7, y + 13);
+    doc.setFontSize(17);
+    doc.setTextColor(...DEEP);
+    doc.text(t.value, x + 7, y + 38);
+    doc.setFont(BRAND_FONT, "normal");
+    doc.setFontSize(6.8);
+    doc.setTextColor(...SUB);
+    doc.text(tLines[i], x + 7, y + 50);
+  });
+  y += tileH + 20;
+
+  // 3. Avantage en nature du collaborateur (information), une ligne par véhicule
+  const seen = new Set<string>();
+  const benefit: string[][] = [];
+  vehicles.forEach((sv) => {
+    const key = `${sv.vehicle.id}|${sv.negotiatedMonthly}|${sv.durationMonths}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    benefit.push([
+      prettyVehicleName(sv.vehicle) + ((sv.vehicle.version ?? "").trim() ? ` · ${(sv.vehicle.version ?? "").trim()}` : ""),
+      eurLoyer(sv.negotiatedMonthly),
+      `${eur(contract(sv).aenMensuel)} ${L("/ mois", "/ month")}`,
+    ]);
+  });
+  y = ensureSpace(doc, y, 70, client, "vehicles");
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...INK);
+  doc.text(L("AVANTAGE EN NATURE DU COLLABORATEUR (INFORMATION, HORS COÛT EMPLOYEUR)", "EMPLOYEE BENEFIT-IN-KIND (INFORMATION, NOT IN EMPLOYER COST)"), M, y);
+  autoTable(doc, {
+    startY: y + 6,
+    theme: "plain",
+    head: [[L("Véhicule", "Vehicle"), L("Loyer mensuel", "Monthly lease"), L("Avantage en nature", "Benefit-in-kind")]],
+    body: benefit,
+    headStyles: { fillColor: INK, textColor: 255, fontSize: 7.4, fontStyle: "bold", font: BRAND_FONT, cellPadding: 4, halign: "left" as any },
+    bodyStyles: { fontSize: 7.8, cellPadding: 3.6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
+    alternateRowStyles: { fillColor: BG },
+    columnStyles: { 1: { halign: "right", cellWidth: 90 }, 2: { halign: "right", cellWidth: 110 } },
+    margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
+  });
+  const yEnd = ((doc as any).lastAutoTable.finalY as number) + 12;
+  doc.setFont(BRAND_FONT, "normal");
+  doc.setFontSize(6.6);
+  doc.setTextColor(140, 137, 128);
+  const nt = doc.splitTextToSize(L(
+    `Hypothèses : kilométrage et durée propres à chaque contrat, recharge à ${MIX_HOME_PCT} % à domicile et ${100 - MIX_HOME_PCT} % en public. L'avantage en nature du salarié est calculé sur 50 % du loyer mensuel avec le même abattement électrique. Sources : Code général des impôts, barèmes 2026 (TVS, AND/AEN, malus CO2 et poids), impots.gouv.fr. Estimations indicatives, à confirmer auprès de votre expert-comptable.`,
+    `Assumptions: mileage and term specific to each contract, charging ${MIX_HOME_PCT}% at home and ${100 - MIX_HOME_PCT}% public. The employee's benefit-in-kind is calculated on 50% of the monthly lease with the same electric reduction. Sources: French tax code, 2026 scales (company car tax, AND/AEN, CO2 and weight penalties), impots.gouv.fr. Indicative estimates, to be confirmed with your accountant.`,
+  ), CW) as string[];
+  const y2 = ensureSpace(doc, yEnd, nt.length * 8.4 + 4, client, "vehicles");
+  doc.text(nt, M, y2);
 }
 
 // ============ ANNEXE · MÉTHODE DU COÛT COMPLET ============
