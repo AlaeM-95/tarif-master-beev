@@ -192,6 +192,16 @@ export const DEFAULT_PDF_CONFIG: PdfDisplayConfig = {
 const STORAGE_KEY = "beev_pdf_config_v1";
 
 // Hook pour persister la config en localStorage (par commercial / navigateur)
+// Version de la configuration enregistrée dans le navigateur de chaque utilisateur. Quand une
+// nouveauté doit s'appliquer à TOUT LE MONDE (y compris à ceux qui ont déjà enregistré leurs
+// réglages avec l'ancienne valeur), on incrémente la version et on ajoute la valeur imposée.
+//  - v2 : comparateur par groupe (coût complet) activé pour tous.
+const CONFIG_VERSION = 2;
+const CONFIG_VERSION_KEY = "beev_pdf_config_version";
+const FORCED_BY_VERSION: Record<number, Partial<PdfDisplayConfig>> = {
+  2: { showGroupComparison: true },
+};
+
 export function usePdfConfig() {
   const [config, setConfig] = useState<PdfDisplayConfig>(DEFAULT_PDF_CONFIG);
 
@@ -199,7 +209,16 @@ export function usePdfConfig() {
     if (typeof window === "undefined") return;
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setConfig({ ...DEFAULT_PDF_CONFIG, ...JSON.parse(raw) });
+      const version = Number(localStorage.getItem(CONFIG_VERSION_KEY) ?? 0) || 0;
+      let merged: PdfDisplayConfig = raw ? { ...DEFAULT_PDF_CONFIG, ...JSON.parse(raw) } : DEFAULT_PDF_CONFIG;
+      if (version < CONFIG_VERSION) {
+        // Réglage enregistré avant la dernière version : on applique une seule fois les
+        // nouveautés que tout le monde doit avoir (l'utilisateur peut ensuite les désactiver).
+        for (let v = version + 1; v <= CONFIG_VERSION; v++) merged = { ...merged, ...(FORCED_BY_VERSION[v] ?? {}) };
+        if (raw) localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+        localStorage.setItem(CONFIG_VERSION_KEY, String(CONFIG_VERSION));
+      }
+      if (raw || merged !== DEFAULT_PDF_CONFIG) setConfig(merged);
     } catch {
       // Ignore
     }
