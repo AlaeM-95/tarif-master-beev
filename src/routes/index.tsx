@@ -47,7 +47,7 @@ import { useAuth } from "@/lib/auth";
 import { useMyCoordinates } from "@/lib/users";
 import { useBrandLogos, brandInitials } from "@/lib/brand-logos";
 import { usePermissions } from "@/lib/permissions";
-import { useProposals, useProposal } from "@/lib/proposals";
+import { useProposals, useProposal, PROPOSAL_STATUS_LABEL } from "@/lib/proposals";
 import { usePdfConfig, type PdfDisplayConfig } from "@/lib/pdf-config";
 import { usePdfSettings } from "@/lib/pdf-settings";
 import { useProposalTemplates } from "@/lib/proposal-templates";
@@ -59,6 +59,25 @@ import {
 } from "recharts";
 
 type IndexSearch = { proposal?: string };
+
+/** Empreinte du contenu d'un devis, pour détecter une modification à enregistrer.
+ *  Les fiches catalogue sont réduites à leur id : un rafraîchissement du catalogue
+ *  seul ne déclenche pas d'enregistrement. */
+function proposalStateKey(
+  projectType: unknown,
+  client: unknown,
+  energy: unknown,
+  selV: Record<string, SelectedVehicle>,
+  selC: Record<string, SelectedCharger>,
+): string {
+  return JSON.stringify({
+    projectType,
+    client,
+    energy,
+    v: Object.values(selV).map((v) => ({ ...v, vehicle: v.vehicle.id })),
+    c: Object.values(selC).map((c) => ({ ...c, charger: c.charger.id })),
+  });
+}
 
 export const Route = createFileRoute("/")({
   component: App,
@@ -192,6 +211,10 @@ function App() {
   // n'a pas eu lieu, sinon on écraserait les données sauvegardées avec l'état vide
   // initial juste après mount.
   const hydratedRef = useRef(false);
+  // Enregistrement automatique d'une proposition rouverte (voir plus bas).
+  const autoSaveBaseRef = useRef<{ id: string; key: string } | null>(null);
+  const autoSaveOffRef = useRef(false);
+  const [autoSave, setAutoSave] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   // Hydratation depuis localStorage : exclusivement côté client, après mount.
   // Garantit un rendu SSR/client identique au premier passage.
@@ -347,7 +370,80 @@ function App() {
     });
     setSelectedC(sc);
     if (loadedProposal.energyParams) setEnergy(loadedProposal.energyParams);
+    // Point de départ de l'enregistrement automatique : l'état tel qu'il vient d'être chargé.
+    autoSaveOffRef.current = false;
+    autoSaveBaseRef.current = {
+      id: loadedProposal.id,
+      key: proposalStateKey(
+        loadedProposal.projectType,
+        {
+          company: loadedProposal.clientCompany,
+          contact: loadedProposal.clientContact,
+          email: loadedProposal.clientEmail,
+          salesRep: loadedProposal.salesRepName,
+          salesRepEmail: loadedProposal.salesRepEmail,
+          salesRepPhone: loadedProposal.salesRepPhone,
+          date: loadedProposal.proposalDate || new Date().toLocaleDateString("fr-FR"),
+          notes: loadedProposal.clientNotes,
+        },
+        loadedProposal.energyParams ?? energy,
+        sv,
+        sc,
+      ),
+    };
+    setAutoSave("idle");
   }, [loadedProposal?.id]);
+
+  // Enregistrement automatique d'une proposition rouverte depuis « Propositions » : chaque
+  // modification d'un BROUILLON est écrite dans la même proposition (plus besoin de la
+  // dupliquer pour continuer). Les propositions envoyées / signées / refusées restent en
+  // enregistrement manuel pour ne jamais écraser une version déjà partie chez le client.
+  const autoSaveKey = useMemo(
+    () => proposalStateKey(projectType, client, energy, selectedV, selectedC),
+    [projectType, client, energy, selectedV, selectedC],
+  );
+  useEffect(() => {
+    const base = autoSaveBaseRef.current;
+    if (!loadedProposalId || !loadedProposal || loadedProposal.id !== loadedProposalId) return;
+    if (!base || base.id !== loadedProposalId || base.key === autoSaveKey) return;
+    if (loadedProposal.status !== "draft" || autoSaveOffRef.current || !client.company.trim()) return;
+    // Sélection entièrement vidée (« Vider ») : on n'écrase jamais les véhicules / bornes
+    // enregistrés ; l'utilisateur garde la main avec le bouton « Mettre à jour ».
+    if (Object.keys(selectedV).length + Object.keys(selectedC).length === 0) return;
+    const key = autoSaveKey;
+    const timer = setTimeout(async () => {
+      setAutoSave("saving");
+      const res = await saveProposal({
+        id: loadedProposalId,
+        clientCompany: client.company,
+        clientContact: client.contact,
+        clientEmail: client.email,
+        clientNotes: client.notes,
+        proposalDate: client.date,
+        salesRepName: client.salesRep,
+        salesRepEmail: client.salesRepEmail,
+        salesRepPhone: client.salesRepPhone,
+        projectType,
+        selectedVehicles: Object.values(selectedV),
+        selectedChargers: Object.values(selectedC),
+        energyParams: energy,
+        status: loadedProposal.status,
+        followUpDate: loadedProposal.followUpDate,
+        internalNotes: loadedProposal.internalNotes,
+      });
+      if (res.error) {
+        setAutoSave("error");
+        autoSaveOffRef.current = true;
+        toast.error(`Enregistrement automatique impossible : ${res.error}. Utilisez « Mettre à jour ».`);
+        return;
+      }
+      autoSaveBaseRef.current = { id: loadedProposalId, key };
+      setLastSavedAt(new Date());
+      setAutoSave("saved");
+    }, 1500);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSaveKey, loadedProposalId, loadedProposal?.status]);
 
   const [isSavingProposal, setIsSavingProposal] = useState(false);
   // Timestamp du dernier enregistrement réussi — affiché à côté du bouton
@@ -398,12 +494,18 @@ function App() {
         selectedVehicles: Object.values(selectedV),
         selectedChargers: Object.values(selectedC),
         energyParams: energy,
+        // Une mise à jour ne doit ni repasser la proposition en brouillon, ni effacer
+        // ses notes internes et sa date de relance.
+        ...(loadedProposal
+          ? { status: loadedProposal.status, followUpDate: loadedProposal.followUpDate, internalNotes: loadedProposal.internalNotes }
+          : {}),
       });
       if (result.error) {
         toast.error(`Échec sauvegarde : ${result.error}`);
         return;
       }
       if (result.id) {
+        if (loadedProposalId) autoSaveBaseRef.current = { id: loadedProposalId, key: autoSaveKey };
         setLastSavedAt(new Date());
         toast.success(loadedProposalId ? "Proposition mise à jour" : "Proposition créée");
         if (!loadedProposalId && result.id) {
@@ -1383,7 +1485,20 @@ function App() {
                 <><Save className="w-3.5 h-3.5" /> {loadedProposalId ? "Mettre à jour" : "Sauvegarder"}</>
               )}
             </Button>
-            {lastSavedAt && (
+            {loadedProposal && (
+              <span
+                className="text-[10px] text-muted-foreground hidden lg:inline max-w-[220px] truncate"
+                title={loadedProposal.status === "draft" ? "Chaque modification est enregistrée automatiquement dans cette proposition" : "Proposition non brouillon : cliquez sur « Mettre à jour » pour enregistrer"}
+              >
+                {loadedProposal.status !== "draft"
+                  ? `${PROPOSAL_STATUS_LABEL[loadedProposal.status]} · enregistrement manuel`
+                  : autoSave === "saving" ? "Enregistrement…"
+                  : autoSave === "error" ? "Échec enregistrement auto"
+                  : lastSavedAt ? `Enregistré ${lastSavedAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`
+                  : "Enregistrement auto actif"}
+              </span>
+            )}
+            {!loadedProposal && lastSavedAt && (
               <span className="text-[10px] text-muted-foreground hidden lg:inline" title={lastSavedAt.toISOString()}>
                 {lastSavedAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
               </span>

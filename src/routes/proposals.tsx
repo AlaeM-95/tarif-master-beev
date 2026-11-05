@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Search, FileText, Car, Home as HomeIcon, Building2, Calendar, Trash2, Copy, Share2 } from "lucide-react";
+import { ArrowLeft, Search, FileText, Car, Home as HomeIcon, Building2, Calendar, Trash2, Copy, Share2, Info } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,7 +80,7 @@ function ProposalsPage() {
             </Button>
             <div>
               <h1 className="text-lg font-semibold">Propositions ({proposals.length})</h1>
-              <p className="text-xs text-muted-foreground">Toutes les offres commerciales sauvegardées.</p>
+              <p className="text-xs text-muted-foreground">Cliquez sur une proposition pour la rouvrir : client, véhicules et réglages sont repris tels que vous les avez laissés.</p>
             </div>
           </div>
         </div>
@@ -153,7 +153,10 @@ function ProposalsPage() {
               return (
                 <Card key={p.id} className="hover:shadow-md transition-shadow">
                   <CardContent className="p-4 flex items-center gap-4">
-                    <Link to="/proposals/$id" params={{ id: p.id }} className="flex-1 flex items-center gap-4">
+                    {/* Un clic rouvre directement la proposition dans l'éditeur, avec le client,
+                        les véhicules et les réglages enregistrés. La fiche (statut, relance,
+                        notes internes, PDF) reste accessible via le bouton « Détails ». */}
+                    <Link to="/" search={{ proposal: p.id }} title="Rouvrir cette proposition" className="flex-1 flex items-center gap-4">
                       <div className="w-10 h-10 rounded-lg bg-[#FCF9F2] flex items-center justify-center">
                         <ProjectIcon className="w-5 h-5 text-[#5F5F64]" />
                       </div>
@@ -197,6 +200,9 @@ function ProposalsPage() {
                         <option key={s} value={s}>{PROPOSAL_STATUS_LABEL[s]}</option>
                       ))}
                     </select>
+                    <Button asChild variant="ghost" size="icon" className="h-8 w-8 text-[#3809EA]" title="Détails : statut, relance, notes internes, PDF">
+                      <Link to="/proposals/$id" params={{ id: p.id }}><Info className="w-4 h-4" /></Link>
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
