@@ -1043,7 +1043,9 @@ export async function generateProposalPdf(opts: {
       try {
         doc.addPage();
         drawHeader(doc, client, "vehicles");
-        drawDafMethod(doc, v, energy, client);
+        drawDafMethod(doc, v, energy, client, dafJobs
+          .filter((job) => job.list.some((sv) => groupCmpCovered.has(origOf(sv))))
+          .map((job) => ({ name: job.name ?? "", list: job.list })));
       } catch (err) {
         console.error("[pdf] méthode DAF :", err);
         while (doc.getNumberOfPages() > pagesBefore) doc.deletePage(doc.getNumberOfPages());
@@ -7617,6 +7619,17 @@ function gcPrepare(vehicles: SelectedVehicle[], e: EnergyParams): GcPrep {
       img: null,
     };
   }).sort((a, b) => a.tco - b.tco);
+  // Deux véhicules du même modèle dans un groupe : le nom court ajoute la version, puis le loyer
+  // si la version est identique, pour qu'on sache de quel véhicule parle chaque phrase.
+  const clip = (t: string, n: number) => (t.length > n ? t.slice(0, n - 1).trimEnd() + "…" : t);
+  const sameName = (it: GcItem) => calc.filter((o) => o.name === it.name).length > 1;
+  for (const it of calc) {
+    if (!sameName(it)) continue;
+    const ver = (it.sv.vehicle.version ?? "").trim();
+    const withVer = ver ? `${it.name} ${ver}` : it.name;
+    const dup = calc.some((o) => o !== it && o.name === it.name && (o.sv.vehicle.version ?? "").trim() === ver);
+    it.short = clip(dup ? `${withVer} (${Math.round(it.sv.negotiatedMonthly)} €/mois)` : withVer, 52);
+  }
   const isCurFleet = (it: GcItem) => !!it.sv.vehicle.isCurrentFleet;
   const ref = calc.find((it) => !isCurFleet(it)) ?? calc[0];
   const curRaw = calc.filter(isCurFleet).reduce<GcItem | null>((a, b) => (!a || b.tco > a.tco ? b : a), null);
@@ -8466,7 +8479,7 @@ function drawDafSynthesis(doc: jsPDF, groups: DafGroup[], client: ClientInfo) {
 // Page « Méthode et fiscalité » : le calcul en 5 postes (sur un véhicule exemple), ce que
 // l'électrique change côté fiscal, et l'avantage en nature du collaborateur (une ligne par
 // véhicule). Remplace l'annexe de méthode et la page « avantages fiscaux ».
-function drawDafMethod(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams, client: ClientInfo) {
+function drawDafMethod(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams, client: ClientInfo, groups: { name: string; list: SelectedVehicle[] }[] = []) {
   type RGB = [number, number, number];
   const PINK: RGB = [244, 184, 170];
   const CREAM: RGB = [245, 240, 225];
@@ -8637,18 +8650,33 @@ function drawDafMethod(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams,
   });
   y += tileH + 20;
 
-  // 3. Avantage en nature du collaborateur (information), une ligne par véhicule
-  const seen = new Set<string>();
-  const benefit: string[][] = [];
-  vehicles.forEach((sv) => {
-    const key = `${sv.vehicle.id}|${sv.negotiatedMonthly}|${sv.durationMonths}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    benefit.push([
-      prettyVehicleName(sv.vehicle) + ((sv.vehicle.version ?? "").trim() ? ` · ${(sv.vehicle.version ?? "").trim()}` : ""),
-      eurLoyer(sv.negotiatedMonthly),
-      `${eur(contract(sv).aenMensuel)} ${L("/ mois", "/ month")}`,
-    ]);
+  // 3. Avantage en nature du collaborateur (information), une ligne par véhicule, séparée par
+  // groupe de comparaison (un véhicule présent dans plusieurs groupes apparaît dans chacun).
+  const aenRow = (sv: SelectedVehicle) => [
+    prettyVehicleName(sv.vehicle) + ((sv.vehicle.version ?? "").trim() ? ` · ${(sv.vehicle.version ?? "").trim()}` : ""),
+    eurLoyer(sv.negotiatedMonthly),
+    `${eur(contract(sv).aenMensuel)} ${L("/ mois", "/ month")}`,
+  ];
+  const aenSections: { name: string; list: SelectedVehicle[] }[] = groups.length > 0 ? groups : [{ name: "", list: vehicles }];
+  const GROUP_FILLS: RGB[] = [[244, 184, 170], [199, 208, 237], [212, 226, 196], [236, 214, 160], [211, 204, 216]];
+  const benefit: any[] = [];
+  const dense = aenSections.reduce((n, g) => n + g.list.length + 1, 0) > 11;
+  aenSections.forEach((g, gi) => {
+    const seen = new Set<string>();
+    const rows = [...g.list]
+      .sort((a, b) => a.negotiatedMonthly - b.negotiatedMonthly)
+      .filter((sv) => {
+        const key = `${sv.vehicle.id}|${sv.negotiatedMonthly}|${sv.durationMonths}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map(aenRow);
+    if (rows.length === 0) return;
+    if (aenSections.length > 1 || g.name) {
+      benefit.push(sectionHeaderRow(g.name || L("Autres véhicules", "Other vehicles"), 3, GROUP_FILLS[gi % GROUP_FILLS.length]).map((c) => ({ ...c, styles: { ...c.styles, halign: "left" as any, fontSize: 7.6, cellPadding: dense ? 2.6 : 4 } })));
+    }
+    rows.forEach((r) => benefit.push(r));
   });
   y = ensureSpace(doc, y, 70, client, "vehicles");
   doc.setFont(BRAND_FONT, "bold");
@@ -8661,8 +8689,7 @@ function drawDafMethod(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams,
     head: [[L("Véhicule", "Vehicle"), L("Loyer mensuel", "Monthly lease"), L("Avantage en nature", "Benefit-in-kind")]],
     body: benefit,
     headStyles: { fillColor: INK, textColor: 255, fontSize: 7.4, fontStyle: "bold", font: BRAND_FONT, cellPadding: 4, halign: "left" as any },
-    bodyStyles: { fontSize: 7.8, cellPadding: 3.6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
-    alternateRowStyles: { fillColor: BG },
+    bodyStyles: { fontSize: 7.8, cellPadding: dense ? 2.1 : 3.6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
     columnStyles: { 1: { halign: "right", cellWidth: 90 }, 2: { halign: "right", cellWidth: 110 } },
     margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
   });
