@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles, Copy, BarChart3, Receipt, Map as MapIcon, BookOpen, FileSearch } from "lucide-react";
+import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles, Copy, BarChart3, Receipt, Map as MapIcon, BookOpen, FileSearch, Layers } from "lucide-react";
 import { toast } from "sonner";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, fmtEur2, type EnergyParams } from "@/lib/store";
 import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, computeChargerLease, chargerQtyMultiplier, getVehicleSpecRows, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
@@ -29,6 +29,8 @@ import { BpuB2B2EEditor } from "@/components/bpu-b2b2e-editor";
 import { AuditConseilEditor } from "@/components/audit-conseil-editor";
 import { CarPolicyImporter } from "@/components/car-policy-importer";
 import { LeaserQuoteTool, type LeaserQuoteDraft } from "@/components/leaser-quote-tool";
+import { ComparisonGroupsBoard, GroupChips } from "@/components/comparison-groups-board";
+import { groupNamesOf, groupsPatch, vehicleGroups } from "@/lib/comparison-groups";
 import { assuranceMonthly as leaserAssurance, kmPerYear as leaserKmPerYear, netDownPayment as leaserNetApport } from "@/lib/leaser-quote";
 import { FleetBuilder, type FleetSelection } from "@/components/fleet-builder";
 import { LiveIndicator } from "@/components/live-indicator";
@@ -152,11 +154,19 @@ function App() {
   // Outil « Devis loueur » : 5e entrée du menu (import d'un devis Ayvens, Arval,
   // BPCE ou Alphabet → devis Beev). UI uniquement, comme tcoView.
   const [leaserView, setLeaserView] = useState(false);
+  // Vue « Groupes de comparaison » (tableau plein écran). UI uniquement.
+  const [groupsView, setGroupsView] = useState(false);
+  // Liste ordonnée des groupes du devis (l'ordre fixe la couleur de chaque groupe). Elle
+  // inclut des groupes encore vides ; les groupes portés par les véhicules y sont ajoutés
+  // automatiquement.
+  const [groupNames, setGroupNames] = useState<string[]>([]);
   // Mode de travail du catalogue véhicules : "select" (sélection unitaire,
   // petites flottes) ou "fleet" (Constructeur de flotte à partir d'une car
   // policy, 50/80/100+ véhicules). Réversible, mémorisé par session.
   const [fleetMode, setFleetMode] = useState(false);
-  const activeTab: "vehicles" | "home" | "site" | "tco" | "leaser" = leaserView ? "leaser" : tcoView ? "tco" : projectType;
+  const activeTab: "vehicles" | "home" | "site" | "tco" | "leaser" | "groups" = leaserView ? "leaser" : groupsView ? "groups" : tcoView ? "tco" : projectType;
+  // Vues plein écran : sans le panneau « Sélection en cours » à droite.
+  const wideView = leaserView || groupsView;
 
   // Auto-save : restaure les sélections depuis localStorage au montage.
   // Le commercial peut ainsi recharger la page sans perdre son travail.
@@ -167,6 +177,7 @@ function App() {
   const SK_V = "beev_session_selected_v";
   const SK_C = "beev_session_selected_c";
   const SK_CLIENT = "beev_session_client";
+  const SK_GROUPS = "beev_session_groups";
   const loadFromStorage = <T,>(key: string, fallback: T): T => {
     if (typeof window === "undefined") return fallback;
     try {
@@ -246,6 +257,7 @@ function App() {
         notes: "",
       }),
     );
+    setGroupNames(loadFromStorage<string[]>(SK_GROUPS, []));
     hydratedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -283,6 +295,19 @@ function App() {
     if (!hydratedRef.current || typeof window === "undefined") return;
     try { localStorage.setItem(SK_CLIENT, JSON.stringify(client)); } catch { /* ignore */ }
   }, [client]);
+  useEffect(() => {
+    if (!hydratedRef.current || typeof window === "undefined") return;
+    try { localStorage.setItem(SK_GROUPS, JSON.stringify(groupNames)); } catch { /* ignore */ }
+  }, [groupNames]);
+  // Tout groupe porté par un véhicule (import, proposition rouverte, flotte…) entre dans la liste.
+  useEffect(() => {
+    const found = groupNamesOf(Object.values(selectedV));
+    if (found.length === 0) return;
+    setGroupNames((prev) => {
+      const add = found.filter((n) => !prev.includes(n));
+      return add.length ? [...prev, ...add] : prev;
+    });
+  }, [selectedV]);
 
   // Sync catalogue → panneau droit : quand un ops édite un véhicule ou une
   // borne dans le catalogue (via Éditer dans la card OU via Realtime sync
@@ -361,6 +386,8 @@ function App() {
       sv[key] = { ...v, instanceId: key };
     });
     setSelectedV(sv);
+    // Les groupes de cette proposition remplacent ceux de la session précédente.
+    setGroupNames(groupNamesOf(Object.values(sv)));
     const sc: Record<string, SelectedCharger> = {};
     // Clé par instanceId. Les devis sauvegardés avant le multi-instance n'ont
     // pas d'instanceId : on en génère un (rétro-compatibilité).
@@ -723,7 +750,7 @@ function App() {
             includeTco: true,
             services: [],
             options: [],
-            comparisonGroup: group,
+            ...groupsPatch([group]),
           };
         };
         mk(line.current, true);
@@ -958,7 +985,7 @@ function App() {
       includeTco: true,
       services: [],
       options: [],
-      comparisonGroup: "Exemple",
+      ...groupsPatch(["Exemple"]),
     }));
   };
   const demoChargers = (dep: "domicile" | "site"): SelectedCharger[] => {
@@ -1019,7 +1046,9 @@ function App() {
       localStorage.removeItem(SK_V);
       localStorage.removeItem(SK_C);
       localStorage.removeItem(SK_CLIENT);
+      localStorage.removeItem(SK_GROUPS);
     } catch { /* ignore */ }
+    setGroupNames([]);
     if (loadedProposalId) navigate({ to: "/", search: {} });
     toast.success("Nouveau devis — session vidée");
   };
@@ -1107,23 +1136,47 @@ function App() {
   // Permet de passer d'un type de projet à l'autre SANS réinitialiser les sélections.
   // Le commercial peut donc construire une offre combinée (véhicules + bornes domicile
   // + bornes site dans le même PDF).
-  const switchProject = (t: "vehicles" | "home" | "site" | "tco" | "leaser") => {
-    if (t === "leaser") {
-      setLeaserView(true);
-      setTcoView(false);
-      // L'outil ajoute des véhicules : le type de projet sous-jacent reste 'vehicles'.
-      if (projectType !== "vehicles") setProjectType("vehicles");
-    } else if (t === "tco") {
-      setLeaserView(false);
-      setTcoView(true);
-      // En mode TCO on travaille sur des véhicules, on bascule le projectType
-      // sous-jacent à 'vehicles' pour que les sélections soient cohérentes.
+  const switchProject = (t: "vehicles" | "home" | "site" | "tco" | "leaser" | "groups") => {
+    setLeaserView(t === "leaser");
+    setGroupsView(t === "groups");
+    setTcoView(t === "tco");
+    if (t === "leaser" || t === "groups" || t === "tco") {
+      // Ces vues travaillent sur des véhicules : le type de projet sous-jacent reste 'vehicles'
+      // pour que les sélections soient cohérentes.
       if (projectType !== "vehicles") setProjectType("vehicles");
     } else {
-      setLeaserView(false);
-      setTcoView(false);
       setProjectType(t);
     }
+  };
+
+  // ── Groupes de comparaison ──────────────────────────────────────────────────
+  // Donne ses groupes à un véhicule ; un véhicule peut en avoir plusieurs (pas de copie).
+  const setVehicleGroups = (sv: SelectedVehicle, groups: string[]) => {
+    const key = sv.instanceId ?? sv.vehicle.id;
+    setSelectedV((s) => (s[key] ? { ...s, [key]: { ...s[key], ...groupsPatch(groups) } } : s));
+  };
+  const createGroup = (raw: string) => {
+    const name = raw.trim();
+    if (!name) return;
+    if (groupNames.includes(name)) { toast.error(`Le groupe « ${name} » existe déjà`); return; }
+    setGroupNames((prev) => (prev.includes(name) ? prev : [...prev, name]));
+  };
+  const renameGroup = (from: string, raw: string) => {
+    const to = raw.trim();
+    if (!to || to === from) return;
+    if (groupNames.includes(to)) { toast.error(`Le groupe « ${to} » existe déjà`); return; }
+    setGroupNames((prev) => prev.map((n) => (n === from ? to : n)));
+    setSelectedV((s) => Object.fromEntries(Object.entries(s).map(([k, sv]) => {
+      const gs = vehicleGroups(sv);
+      return [k, gs.includes(from) ? { ...sv, ...groupsPatch(gs.map((n) => (n === from ? to : n))) } : sv];
+    })));
+  };
+  const deleteGroup = (name: string) => {
+    setGroupNames((prev) => prev.filter((n) => n !== name));
+    setSelectedV((s) => Object.fromEntries(Object.entries(s).map(([k, sv]) => {
+      const gs = vehicleGroups(sv);
+      return [k, gs.includes(name) ? { ...sv, ...groupsPatch(gs.filter((n) => n !== name)) } : sv];
+    })));
   };
 
   // Ajoute au devis en cours le véhicule d'un devis loueur importé : loyer, durée,
@@ -1362,6 +1415,8 @@ function App() {
                   index={idx} total={keys.length}
                   tripartiteUrl={tripartiteUrl}
                   isAdmin={isAdmin}
+                  groupNames={groupNames} onCreateGroup={createGroup}
+                  onOpenGroups={() => { setConfigVKey(null); switchProject("groups"); }}
                   onMove={(dir) => setSelectedV((s) => moveInRecord(s, configVKey, dir))}
                   onChange={(p) => setSelectedV((s) => ({ ...s, [configVKey]: { ...(s[configVKey] ?? sv), ...p } }))}
                   onApplyAll={(mutate) => setSelectedV((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, mutate(v)])))}
@@ -1621,13 +1676,23 @@ function App() {
         projectType={projectType}
       />
 
-      <main className={`container mx-auto px-6 pt-20 pb-8 grid gap-8 ${leaserView ? "" : "lg:grid-cols-[1fr_380px]"}`}>
+      <main className={`container mx-auto px-6 pt-20 pb-8 grid gap-8 ${wideView ? "" : "lg:grid-cols-[1fr_380px]"}`}>
         <div className="space-y-8">
           <ProjectTypeSelector value={activeTab} onChange={switchProject} />
           <ClientCard client={client} setClient={setClient} isAdmin={isAdmin} />
 
           {leaserView ? (
             <LeaserQuoteTool vehicles={vehicles} client={client} canSaveOffer={isOps} onAddToDevis={addLeaserQuoteToDevis} />
+          ) : groupsView ? (
+            <ComparisonGroupsBoard
+              vehicles={Object.values(selectedV)}
+              groupNames={groupNames}
+              onSetGroups={setVehicleGroups}
+              onCreateGroup={createGroup}
+              onRenameGroup={renameGroup}
+              onDeleteGroup={deleteGroup}
+              onGoVehicles={() => switchProject("vehicles")}
+            />
           ) : (
           <>
           {tcoView && (
@@ -2162,7 +2227,7 @@ function App() {
           )}
         </div>
 
-        {!leaserView && (
+        {!wideView && (
         <aside className={`lg:sticky lg:top-24 self-start max-h-[calc(100vh-7rem)] overflow-auto${isAdmin ? "" : " space-y-4"}`}>
           {(() => {
             const pdfPanel = (
@@ -2253,6 +2318,8 @@ function App() {
                             <SelectedVehicleRow key={key} sv={sv} energy={energy}
                               index={idx} total={arr.length}
                               tripartiteUrl={tripartiteUrl}
+                              groupNames={groupNames} onCreateGroup={createGroup}
+                              onOpenGroups={() => switchProject("groups")}
                               onMove={(dir) => setSelectedV((s) => moveInRecord(s, key, dir))}
                               onChange={(p) => setSelectedV((s) => ({ ...s, [key]: { ...(s[key] ?? sv), ...p } }))}
                               onApplyAll={(mutate) => setSelectedV((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, mutate(v)])))}
@@ -2344,7 +2411,7 @@ function App() {
   );
 }
 
-type ProjectTab = ProjectType | "tco" | "leaser";
+type ProjectTab = ProjectType | "tco" | "leaser" | "groups";
 
 // Navigation principale : deux familles. « Construire le devis » = ce que le
 // client reçoit (véhicules, bornes domicile, bornes site) ; « Outils » = analyser
@@ -2365,6 +2432,7 @@ function ProjectTypeSelector({ value, onChange }: { value: ProjectTab; onChange:
     {
       label: "Outils",
       opts: [
+        { id: "groups", icon: <Layers className={ic} />, title: "Groupes", desc: "Ranger les véhicules du devis en groupes de comparaison, sans les dupliquer." },
         { id: "tco", icon: <Gauge className={ic} />, title: "Analyse TCO", desc: "Comparatif coût total de possession." },
         { id: "leaser", icon: <FileSearch className={ic} />, title: "Devis loueur", desc: "Importer un devis Ayvens, Arval, BPCE ou Alphabet et le présenter au format Beev." },
       ],
@@ -4507,7 +4575,7 @@ function VehicleSummaryCard({ sv, energy, onQty, onConfigure, onDuplicate, onRem
   );
 }
 
-function SelectedVehicleRow({ sv, energy, onChange, onApplyAll, onRemove, onDuplicate, index, total, onMove, tripartiteUrl, isAdmin }: { sv: SelectedVehicle; energy: EnergyParams; onChange: (p: Partial<SelectedVehicle>) => void; onApplyAll?: (mutate: (v: SelectedVehicle) => SelectedVehicle) => void; onRemove: () => void; onDuplicate?: () => void; index?: number; total?: number; onMove?: (dir: -1 | 1) => void; tripartiteUrl?: string; isAdmin?: boolean }) {
+function SelectedVehicleRow({ sv, energy, onChange, onApplyAll, onRemove, onDuplicate, index, total, onMove, tripartiteUrl, isAdmin, groupNames, onCreateGroup, onOpenGroups }: { groupNames?: string[]; onCreateGroup?: (name: string) => void; onOpenGroups?: () => void; sv: SelectedVehicle; energy: EnergyParams; onChange: (p: Partial<SelectedVehicle>) => void; onApplyAll?: (mutate: (v: SelectedVehicle) => SelectedVehicle) => void; onRemove: () => void; onDuplicate?: () => void; index?: number; total?: number; onMove?: (dir: -1 | 1) => void; tripartiteUrl?: string; isAdmin?: boolean }) {
   const [tab, setTab] = useState<"none" | "svc" | "opt">("none");
   const [newSvc, setNewSvc] = useState("");
   const [specsOpen, setSpecsOpen] = useState(false);
@@ -4808,12 +4876,22 @@ function SelectedVehicleRow({ sv, energy, onChange, onApplyAll, onRemove, onDupl
             spécifique pour le PDF. Tous les véhicules du même groupe sont
             comparés ensemble dans une slide dédiée du PDF (1 slide par
             groupe). Si vide, comparateur global. */}
-        <TxtField
-          label="Groupe de comparaison (optionnel)"
-          value={sv.comparisonGroup ?? ""}
-          onChange={(s) => onChange({ comparisonGroup: s })}
-          placeholder="ex. Remplacement 3008, Berlines..."
-        />
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-medium text-muted-foreground">Groupes de comparaison</span>
+            {onOpenGroups && (
+              <button type="button" onClick={onOpenGroups} className="text-[10px] font-semibold text-primary hover:underline">
+                Ouvrir la vue Groupes
+              </button>
+            )}
+          </div>
+          <GroupChips
+            names={groupNames ?? []}
+            value={vehicleGroups(sv)}
+            onChange={(gs) => onChange(groupsPatch(gs))}
+            onCreate={onCreateGroup}
+          />
+        </div>
       </div>
 
       {/* Mise en concurrence MULTI-OFFRES : le commercial peut saisir N

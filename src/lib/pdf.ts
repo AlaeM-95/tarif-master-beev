@@ -8,6 +8,7 @@ import { loadBeevPillars, type BeevPillar } from "./beev-pillars";
 import { loadPdfTexts, buildPdfTextMap, lookupText, lookupList, setPdfTextOverrides, type PdfTextMap } from "./pdf-texts";
 import { calculateTcoFull, calculateB2B2ETco, calculateMalusCO2, calculateMalusPoids, DEFAULT_B2B2E_INPUT, type B2B2ECalculatorInput } from "./tco-calculator";
 import type { EnergyParams } from "./store";
+import { vehicleGroups } from "./comparison-groups";
 
 export type ClientInfo = {
   company: string;
@@ -73,6 +74,10 @@ export type SelectedVehicle = {
    *  apparaît dans le comparateur global. Exemples : "Groupe A", "Berlines",
    *  "Remplacement 3008". */
   comparisonGroup?: string;
+  /** Tous les groupes de comparaison du véhicule (un véhicule peut figurer dans
+   *  plusieurs groupes sans être dupliqué ; sa fiche reste unique dans le PDF).
+   *  Référence quand elle est renseignée ; `comparisonGroup` en est le 1er élément. */
+  comparisonGroups?: string[];
   /** N° de devis du loueur saisi par le commercial : permet de retrouver l'offre
    *  préparée chez le loueur. Affiché dans le PDF sous « Proposition Beev /
    *  Tarification LLD ». */
@@ -779,6 +784,25 @@ export async function generateProposalPdf(opts: {
   // peut donc construire une offre véhicules + bornes dans le même PDF.
   const v = vehicles;
   const c = chargers;
+  // Un véhicule peut appartenir à plusieurs groupes de comparaison sans être dupliqué.
+  // Pour les pages « par groupe » on en tire une entrée par groupe (même véhicule, même
+  // loyer) ; fiches, totaux et synthèses restent sur la liste d'origine `v`.
+  const cloneOf = new Map<SelectedVehicle, SelectedVehicle>();
+  const vg: SelectedVehicle[] = [];
+  for (const sv of v) {
+    const gs = vehicleGroups(sv);
+    if (gs.length === 0) { vg.push(sv); continue; }
+    if (gs.length === 1 && (sv.comparisonGroup ?? "").trim() === gs[0]) { vg.push(sv); continue; }
+    for (const g of gs) {
+      const copy: SelectedVehicle = { ...sv, comparisonGroup: g };
+      cloneOf.set(copy, sv);
+      vg.push(copy);
+    }
+  }
+  const origOf = (sv: SelectedVehicle): SelectedVehicle => cloneOf.get(sv) ?? sv;
+  // Pages d'analyse TCO : classement par groupe seulement si l'option est active, sinon
+  // chaque véhicule ne doit figurer qu'une fois dans le classement global.
+  const vTco = cfg.tcoGroupByComparison !== false ? vg : v;
   // Détermine le type "dominant" pour les pages génériques (Pourquoi Beev,
   // Garanties, Parcours) en fonction de la sélection majoritaire.
   const hasVehicles = v.length > 0;
@@ -955,7 +979,7 @@ export async function generateProposalPdf(opts: {
   if (cfg.showGroupComparison !== false && v.length >= 2) {
     const gmap = new Map<string, SelectedVehicle[]>();
     const noGroup: SelectedVehicle[] = [];
-    for (const sv of v) {
+    for (const sv of vg) {
       const g = (sv.comparisonGroup ?? "").trim();
       if (!g) { noGroup.push(sv); continue; }
       gmap.set(g, [...(gmap.get(g) ?? []), sv]);
@@ -969,7 +993,7 @@ export async function generateProposalPdf(opts: {
         doc.addPage();
         drawHeader(doc, client, "vehicles");
         await drawGroupComparison(doc, job.list, energy, job.name, client);
-        job.list.forEach((sv) => groupCmpCovered.add(sv));
+        job.list.forEach((sv) => groupCmpCovered.add(origOf(sv)));
       } catch (err) {
         // Une erreur de rendu ne doit pas faire échouer le PDF : on retire les
         // pages partielles et le comparateur classique prend le relais.
@@ -988,7 +1012,7 @@ export async function generateProposalPdf(opts: {
     // "Groupe Berlines" (1 actuelle + 2 EV) ET "Groupe SUV" (1 actuelle
     // + 2 EV) dans le même PDF.
     const groups = new Map<string, SelectedVehicle[]>();
-    for (const sv of v) {
+    for (const sv of vg) {
       const g = (sv.comparisonGroup ?? "").trim();
       if (!g) continue;
       const arr = groups.get(g) ?? [];
@@ -999,14 +1023,14 @@ export async function generateProposalPdf(opts: {
       // Une slide par groupe (titre = nom du groupe)
       for (const [groupName, groupVehicles] of groups.entries()) {
         if (groupVehicles.length < 2) continue;
-        if (groupVehicles.every((sv) => groupCmpCovered.has(sv))) continue; // déjà couvert par le comparateur par groupe
+        if (groupVehicles.every((sv) => groupCmpCovered.has(origOf(sv)))) continue; // déjà couvert par le comparateur par groupe
         doc.addPage();
         drawHeader(doc, client, "vehicles");
         await drawVehicleComparator(doc, groupVehicles, groupName, client);
       }
       // Véhicules sans groupe : slide globale uniquement s'il y en a 2+
-      const ungrouped = v.filter((sv) => !(sv.comparisonGroup ?? "").trim());
-      if (ungrouped.length >= 2 && !ungrouped.every((sv) => groupCmpCovered.has(sv))) {
+      const ungrouped = vg.filter((sv) => !(sv.comparisonGroup ?? "").trim());
+      if (ungrouped.length >= 2 && !ungrouped.every((sv) => groupCmpCovered.has(origOf(sv)))) {
         doc.addPage();
         drawHeader(doc, client, "vehicles");
         await drawVehicleComparator(doc, ungrouped, undefined, client);
@@ -1082,17 +1106,17 @@ export async function generateProposalPdf(opts: {
       // proposés → vue « impact » (paires actuel → EV, économie mise en avant).
       // Sinon → vue synthèse & détail (classement + tableau).
       const gk = (sv: SelectedVehicle) => (sv.comparisonGroup ?? "").trim();
-      const curGroups = new Set(v.filter((sv) => sv.vehicle.isCurrentFleet).map(gk).filter(Boolean));
-      const hasPairs = v.some((sv) => !sv.vehicle.isCurrentFleet && curGroups.has(gk(sv)));
-      if (hasPairs) await drawTcoImpact(doc, v, energy, client, "vehicles");
+      const curGroups = new Set(vTco.filter((sv) => sv.vehicle.isCurrentFleet).map(gk).filter(Boolean));
+      const hasPairs = vTco.some((sv) => !sv.vehicle.isCurrentFleet && curGroups.has(gk(sv)));
+      if (hasPairs) await drawTcoImpact(doc, vTco, energy, client, "vehicles");
       else if (groupCmpCoversAll) drawTcoMethodAnnex(doc, v, energy, client);
-      else await drawTcoDetailedTable(doc, v, energy, client);
+      else await drawTcoDetailedTable(doc, vTco, energy, client);
     }
   } else {
     if (cfg.showTcoComparison && tcoEligible) {
       doc.addPage();
       drawHeader(doc, client, "vehicles");
-      await drawTcoDashboard(doc, v, energy, client, "vehicles");
+      await drawTcoDashboard(doc, vTco, energy, client, "vehicles");
     }
     if (cfg.showTcoDetailedTable && tcoEligible) {
       doc.addPage();
@@ -1100,7 +1124,7 @@ export async function generateProposalPdf(opts: {
       // Le comparateur par groupe porte déjà le coût complet par véhicule : le
       // détail des composantes laisse place à l'annexe de méthode.
       if (groupCmpCoversAll) drawTcoMethodAnnex(doc, v, energy, client);
-      else await drawTcoDetailedTable(doc, v, energy, client);
+      else await drawTcoDetailedTable(doc, vTco, energy, client);
     }
   }
   if (cfg.showCarbonImpact && v.length >= 1) {
@@ -9796,7 +9820,7 @@ function drawFinancialSynthesis(
       groupMinLoyer.set(g, Math.min(groupMinLoyer.get(g) ?? Infinity, l));
     }
     // Affiche une colonne « Groupe » seulement si au moins un groupe est nommé.
-    const hasGroups = detailVehicles.some((sv) => (sv.comparisonGroup ?? "").trim());
+    const hasGroups = detailVehicles.some((sv) => vehicleGroups(sv).length > 0);
 
     const rows = detailVehicles.map((sv) => {
       const base = [
@@ -9809,7 +9833,7 @@ function drawFinancialSynthesis(
         ),
         eurLoyer(sv.negotiatedMonthly),
       ];
-      return hasGroups ? [(sv.comparisonGroup ?? "").trim() || "—", ...base] : base;
+      return hasGroups ? [vehicleGroups(sv).join(" · ") || "—", ...base] : base;
     });
     const head = hasGroups
       ? [[L("Groupe", "Group"), L("Véhicule", "Vehicle"), L("Statut", "Status"), L("Qté", "Qty"), L("Conditions", "Terms"), L("Loyer / mois", "Lease / month")]]
