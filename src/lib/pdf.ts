@@ -8486,6 +8486,8 @@ function drawDafMethod(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams,
   const HAIR: RGB = [234, 227, 208];
   const DEEP: RGB = [194, 80, 58];
   const CW = PAGE_W - M * 2;
+  // Beaucoup de lignes d'avantage en nature (plusieurs groupes) : la page se resserre pour rester unique.
+  const dense = (groups.length > 0 ? groups : [{ list: vehicles }]).reduce((n, g) => n + g.list.length + 1, 0) > 11;
   const nf = (n: number, d = 0) => cleanSpaces(n.toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d }));
   const contract = (sv: SelectedVehicle) => {
     const duree = sv.durationMonths / 12;
@@ -8577,7 +8579,7 @@ function drawDafMethod(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams,
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(8);
     const tt = doc.splitTextToSize(st.title, cw4[0] - 6) as string[];
-    const rh = Math.max(fl.length, el.length, tt.length) * 9.4 + 10;
+    const rh = Math.max(fl.length, el.length, tt.length) * 9.4 + (dense ? 6 : 10);
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(8);
     doc.setTextColor(...INK);
@@ -8603,7 +8605,7 @@ function drawDafMethod(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams,
   doc.text(L("Coût employeur complet", "Full employer cost"), cx4[0] + 2, y + 14.5);
   doc.setFontSize(10.5);
   doc.text(eur(exR.tcoEmployeurComplet), cx4[3] + cw4[3] - 4, y + 15, { align: "right" });
-  y += 22 + 20;
+  y += 22 + (dense ? 14 : 20);
 
   // 2. Ce que l'électrique change
   const tvsAvoided = vehicles
@@ -8648,49 +8650,112 @@ function drawDafMethod(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyParams,
     doc.setTextColor(...SUB);
     doc.text(tLines[i], x + 7, y + 50);
   });
-  y += tileH + 20;
+  y += tileH + 14;
 
   // 3. Avantage en nature du collaborateur (information), une ligne par véhicule, séparée par
   // groupe de comparaison (un véhicule présent dans plusieurs groupes apparaît dans chacun).
-  const aenRow = (sv: SelectedVehicle) => [
-    prettyVehicleName(sv.vehicle) + ((sv.vehicle.version ?? "").trim() ? ` · ${(sv.vehicle.version ?? "").trim()}` : ""),
-    eurLoyer(sv.negotiatedMonthly),
-    `${eur(contract(sv).aenMensuel)} ${L("/ mois", "/ month")}`,
-  ];
+  // Même présentation que l'annexe : bandeaux de groupe bleus, flotte actuelle en beige,
+  // dernière colonne teintée.
+  const BAND: RGB = [219, 234, 251];
+  const CUR_BG: RGB = [237, 233, 221];
+  const CUR_LAST: RGB = [226, 220, 204];
+  const LAST_BG: RGB = [226, 238, 252];
   const aenSections: { name: string; list: SelectedVehicle[] }[] = groups.length > 0 ? groups : [{ name: "", list: vehicles }];
-  const GROUP_FILLS: RGB[] = [[244, 184, 170], [199, 208, 237], [212, 226, 196], [236, 214, 160], [211, 204, 216]];
+  const pad = dense ? 1.5 : 3.6;
   const benefit: any[] = [];
-  const dense = aenSections.reduce((n, g) => n + g.list.length + 1, 0) > 11;
-  aenSections.forEach((g, gi) => {
+  const benefitSvs: (SelectedVehicle | null)[] = [];
+  const mensuel = (n: number) => (n > 0.5 ? eur(n) : "—");
+  aenSections.forEach((g) => {
     const seen = new Set<string>();
-    const rows = [...g.list]
-      .sort((a, b) => a.negotiatedMonthly - b.negotiatedMonthly)
+    const list = [...g.list]
+      .sort((a, b) => Number(!!b.vehicle.isCurrentFleet) - Number(!!a.vehicle.isCurrentFleet) || a.negotiatedMonthly - b.negotiatedMonthly)
       .filter((sv) => {
         const key = `${sv.vehicle.id}|${sv.negotiatedMonthly}|${sv.durationMonths}`;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
-      })
-      .map(aenRow);
-    if (rows.length === 0) return;
+      });
+    if (list.length === 0) return;
     if (aenSections.length > 1 || g.name) {
-      benefit.push(sectionHeaderRow(g.name || L("Autres véhicules", "Other vehicles"), 3, GROUP_FILLS[gi % GROUP_FILLS.length]).map((c) => ({ ...c, styles: { ...c.styles, halign: "left" as any, fontSize: 7.6, cellPadding: dense ? 2.6 : 4 } })));
+      benefit.push([{
+        content: (g.name || L("Autres véhicules", "Other vehicles")).toUpperCase(),
+        colSpan: 6,
+        styles: { fillColor: BAND, textColor: INK, fontStyle: "bold" as any, fontSize: 7.8, halign: "left" as any, cellPadding: dense ? 2.4 : 4.6 },
+      }]);
+      benefitSvs.push(null);
     }
-    rows.forEach((r) => benefit.push(r));
+    list.forEach((sv) => {
+      const r = contract(sv);
+      const cur = !!sv.vehicle.isCurrentFleet;
+      const hasVer = !!(sv.vehicle.version ?? "").trim();
+      const base: any = cur ? { fillColor: CUR_BG } : {};
+      benefit.push([
+        { content: "", styles: { ...base, minCellHeight: hasVer ? (dense ? 16.5 : 24) : (dense ? 11 : 17) } },
+        { content: `${sv.durationMonths} ${L("mois", "months")}`, styles: { ...base, textColor: SUB } },
+        { content: eurLoyer(sv.negotiatedMonthly), styles: base },
+        { content: eur(r.aenBrut / 12), styles: base },
+        { content: r.aenAbattement > 0 ? `-${eur(r.aenAbattement / 12)}` : "—", styles: base },
+        { content: eur(r.aenMensuel), styles: { fillColor: cur ? CUR_LAST : LAST_BG, fontStyle: "bold" as any } },
+      ]);
+      benefitSvs.push(sv);
+    });
   });
   y = ensureSpace(doc, y, 70, client, "vehicles");
   doc.setFont(BRAND_FONT, "bold");
   doc.setFontSize(8);
   doc.setTextColor(...INK);
   doc.text(L("AVANTAGE EN NATURE DU COLLABORATEUR (INFORMATION, HORS COÛT EMPLOYEUR)", "EMPLOYEE BENEFIT-IN-KIND (INFORMATION, NOT IN EMPLOYER COST)"), M, y);
+  const aenColW = [54, 62, 66, 66, 78];
   autoTable(doc, {
     startY: y + 6,
     theme: "plain",
-    head: [[L("Véhicule", "Vehicle"), L("Loyer mensuel", "Monthly lease"), L("Avantage en nature", "Benefit-in-kind")]],
+    head: [[L("Véhicule", "Vehicle"), L("Contrat", "Term"), L("Loyer / mois", "Lease / month"), L("Base 50 %", "50% base"), L("Abatt. 70 %", "70% reduction"), L("Avantage / mois", "Benefit / month")].map((t) => t.toUpperCase())],
     body: benefit,
-    headStyles: { fillColor: INK, textColor: 255, fontSize: 7.4, fontStyle: "bold", font: BRAND_FONT, cellPadding: 4, halign: "left" as any },
-    bodyStyles: { fontSize: 7.8, cellPadding: dense ? 2.1 : 3.6, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT },
-    columnStyles: { 1: { halign: "right", cellWidth: 90 }, 2: { halign: "right", cellWidth: 110 } },
+    headStyles: { fillColor: INK, textColor: 255, fontSize: 6.6, fontStyle: "bold", font: BRAND_FONT, cellPadding: { top: dense ? 3.6 : 5, bottom: dense ? 3.6 : 5, left: 4, right: 4 } as any, halign: "right" as any },
+    bodyStyles: { fontSize: 7.8, cellPadding: pad, textColor: INK, lineColor: RULE, lineWidth: { bottom: 0.4, top: 0, left: 0, right: 0 } as any, font: BRAND_FONT, halign: "right" as any },
+    columnStyles: {
+      0: { halign: "left" },
+      1: { cellWidth: aenColW[0] },
+      2: { cellWidth: aenColW[1] },
+      3: { cellWidth: aenColW[2] },
+      4: { cellWidth: aenColW[3] },
+      5: { cellWidth: aenColW[4] },
+    },
+    didParseCell: (data) => {
+      if (data.section === "head" && data.column.index === 0) data.cell.styles.halign = "left";
+      if (data.section === "head" && data.column.index === 5) data.cell.styles.fillColor = [60, 70, 90];
+    },
+    didDrawCell: (data) => {
+      if (data.section !== "body" || data.column.index !== 0) return;
+      const sv = benefitSvs[data.row.index];
+      if (!sv) return;
+      const c = data.cell;
+      const ver = (sv.vehicle.version ?? "").trim();
+      const maxW = c.width - 10;
+      const x = c.x + 4;
+      const cy = c.y + (ver ? c.height / 2 - 2.2 : c.height / 2 + 2.6);
+      doc.setFont(BRAND_FONT, "bold");
+      doc.setFontSize(7.8);
+      doc.setTextColor(...INK);
+      const nm = prettyVehicleName(sv.vehicle);
+      doc.text(nm, x, cy);
+      if (sv.vehicle.isCurrentFleet) {
+        doc.setFont(BRAND_FONT, "bold");
+        doc.setFontSize(7.8);
+        const nw = doc.getTextWidth(nm);
+        doc.setTextColor(...SUB);
+        doc.setFont(BRAND_FONT, "normal");
+        doc.setFontSize(7);
+        doc.text(` (${L("actuel", "current")})`, x + nw, cy);
+      }
+      if (ver) {
+        doc.setFont(BRAND_FONT, "normal");
+        doc.setFontSize(6.3);
+        doc.setTextColor(...SUB);
+        const vl = (doc.splitTextToSize(ver, maxW) as string[])[0] ?? "";
+        doc.text(vl.length < ver.length ? vl.replace(/\s+\S*$/, "").trimEnd() + "…" : vl, x, cy + 8.4);
+      }
+    },
     margin: { left: M, right: M, bottom: TABLE_BOTTOM_MARGIN },
   });
   const yEnd = ((doc as any).lastAutoTable.finalY as number) + 12;
