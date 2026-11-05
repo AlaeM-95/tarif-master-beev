@@ -51,3 +51,36 @@ export function groupNamesOf(list: SelectedVehicle[]): string[] {
   for (const sv of list) for (const g of vehicleGroups(sv)) if (!out.includes(g)) out.push(g);
   return out;
 }
+
+// ── Ce qu'il faut pour que la page « Comparateur par groupe » apparaisse dans le PDF ──
+// Miroir de `groupComparisonEligible` (pdf.ts) : au moins 2 véhicules, tous des
+// PROPOSITIONS (pas la flotte actuelle) avec un loyer négocié > 0, dont au moins un a
+// « Inclure le TCO » ; et la page doit être activée dans la configuration PDF.
+export type GroupIssue = {
+  kind: "disabled" | "few" | "current" | "loyer" | "tco";
+  text: string;
+  /** Véhicule concerné (absent pour les points qui concernent tout le groupe). */
+  vehicle?: SelectedVehicle;
+};
+
+const vName = (sv: SelectedVehicle) => `${sv.vehicle.brand} ${sv.vehicle.model}`.trim();
+
+export function groupIssues(members: SelectedVehicle[], pageEnabled: boolean): GroupIssue[] {
+  const out: GroupIssue[] = [];
+  if (!pageEnabled) out.push({ kind: "disabled", text: "La page « Comparateur par groupe » est désactivée dans la configuration PDF." });
+  if (members.length < 2) {
+    out.push({ kind: "few", text: members.length === 0 ? "Groupe vide : ajoutez au moins 2 véhicules." : "Un seul véhicule : ajoutez-en au moins un autre." });
+  }
+  for (const sv of members) {
+    if (sv.vehicle.isCurrentFleet) {
+      out.push({ kind: "current", vehicle: sv, text: `${vName(sv)} est marqué « flotte actuelle » : le comparateur par groupe ne compare que des propositions.` });
+    }
+    if (!((sv.negotiatedMonthly ?? 0) > 0)) {
+      out.push({ kind: "loyer", vehicle: sv, text: `${vName(sv)} : loyer négocié à saisir.` });
+    }
+  }
+  if (members.length > 0 && !members.some((sv) => sv.includeTco)) {
+    out.push({ kind: "tco", text: "Aucun véhicule du groupe n'a « Inclure le TCO » activé." });
+  }
+  return out;
+}

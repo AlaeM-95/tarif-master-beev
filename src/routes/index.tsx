@@ -29,7 +29,7 @@ import { BpuB2B2EEditor } from "@/components/bpu-b2b2e-editor";
 import { AuditConseilEditor } from "@/components/audit-conseil-editor";
 import { CarPolicyImporter } from "@/components/car-policy-importer";
 import { LeaserQuoteTool, type LeaserQuoteDraft } from "@/components/leaser-quote-tool";
-import { ComparisonGroupsBoard, GroupChips } from "@/components/comparison-groups-board";
+import { ComparisonGroupsBoard, GroupChips, VehicleGroupsStatus } from "@/components/comparison-groups-board";
 import { groupNamesOf, groupsPatch, vehicleGroups } from "@/lib/comparison-groups";
 import { assuranceMonthly as leaserAssurance, kmPerYear as leaserKmPerYear, netDownPayment as leaserNetApport } from "@/lib/leaser-quote";
 import { FleetBuilder, type FleetSelection } from "@/components/fleet-builder";
@@ -1155,6 +1155,11 @@ function App() {
     const key = sv.instanceId ?? sv.vehicle.id;
     setSelectedV((s) => (s[key] ? { ...s, [key]: { ...s[key], ...groupsPatch(groups) } } : s));
   };
+  // Modifie un véhicule du devis (correctifs en un clic de la vue Groupes).
+  const patchVehicle = (sv: SelectedVehicle, patch: Partial<SelectedVehicle>) => {
+    const key = sv.instanceId ?? sv.vehicle.id;
+    setSelectedV((s) => (s[key] ? { ...s, [key]: { ...s[key], ...patch } } : s));
+  };
   const createGroup = (raw: string) => {
     const name = raw.trim();
     if (!name) return;
@@ -1411,6 +1416,17 @@ function App() {
                   <SheetTitle>Réglages · {sv.vehicle.brand} {sv.vehicle.model}</SheetTitle>
                   <SheetDescription>Tous les détails de chiffrage et d'affichage de ce véhicule.</SheetDescription>
                 </SheetHeader>
+                <div className="mb-3">
+                  <VehicleGroupsStatus
+                    sv={sv}
+                    allVehicles={Object.values(selectedV)}
+                    groupNames={groupNames}
+                    pageEnabled={pdfConfig.showGroupComparison !== false}
+                    onEnablePage={() => { updatePdfConfig({ showGroupComparison: true }); toast.success("Page « Comparateur par groupe » activée"); }}
+                    onPatchVehicle={patchVehicle}
+                    onOpenVehicle={(x) => setConfigVKey(x.instanceId ?? x.vehicle.id)}
+                  />
+                </div>
                 <SelectedVehicleRow sv={sv} energy={energy}
                   index={idx} total={keys.length}
                   tripartiteUrl={tripartiteUrl}
@@ -1692,6 +1708,10 @@ function App() {
               onRenameGroup={renameGroup}
               onDeleteGroup={deleteGroup}
               onGoVehicles={() => switchProject("vehicles")}
+              onOpenVehicle={(sv) => setConfigVKey(sv.instanceId ?? sv.vehicle.id)}
+              onPatchVehicle={patchVehicle}
+              pageEnabled={pdfConfig.showGroupComparison !== false}
+              onEnablePage={() => { updatePdfConfig({ showGroupComparison: true }); toast.success("Page « Comparateur par groupe » activée"); }}
             />
           ) : (
           <>
