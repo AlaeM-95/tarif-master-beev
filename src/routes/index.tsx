@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogT
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles, Copy, BarChart3, Receipt, Map as MapIcon, BookOpen, FileSearch, Layers } from "lucide-react";
 import { toast } from "sonner";
-import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, fmtEur2, type EnergyParams } from "@/lib/store";
+import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, fmtEur2, DEFAULT_ENERGY, type EnergyParams } from "@/lib/store";
 import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, computeChargerLease, chargerQtyMultiplier, getVehicleSpecRows, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
 import { generateCataloguePdf } from "@/lib/catalogue";
 import { BEEV_JOURNEYS, MANDATORY_SERVICES, catalogTypeOf, createBlankCharger, createBlankVehicle, isUtilitaireCategory, categoryGroupOf, CATEGORY_GROUP_LABEL, type CategoryGroupKey, type CatalogType, type Charger, type LineItem, type ProjectType, type Vehicle } from "@/lib/catalog";
@@ -923,9 +923,23 @@ function App() {
         showVehicleServices: false,
         showVehicleOptions: false,
       } : pdfConfig;
+      // Vue TCO : le tableau à l'écran applique la durée et le km/an des « Paramètres TCO et
+      // énergie » à TOUS les véhicules ; le PDF utilise ceux de chaque véhicule. On aligne le PDF
+      // sur l'écran, sinon changer la durée ou le kilométrage n'avait aucun effet sur l'aperçu.
       const vehiclesForPdf = tcoView
-        ? freshVehicles.map((sv) => ({ ...sv, includeTco: true }))
+        ? freshVehicles.map((sv) => ({
+            ...sv,
+            includeTco: true,
+            durationMonths: Math.max(1, Math.round(energy.durationYears * 12)),
+            kmPerYear: energy.kmPerYear,
+          }))
         : freshVehicles;
+      // Paramètres TCO / énergie modifiés (vue TCO, ou prix différents des valeurs par défaut) :
+      // les TCO synchronisés d'une autre application, calculés avec d'autres hypothèses, ne doivent
+      // pas masquer ces modifications.
+      const energyCustomized = (["fuelPriceL", "kWhHome", "kWhPublic", "mixHomePct"] as const).some(
+        (k) => Math.abs((energy[k] ?? 0) - DEFAULT_ENERGY[k]) > 1e-9,
+      );
       await Promise.race([
         generateProposalPdf({
           projectType, client, energy,
@@ -942,6 +956,7 @@ function App() {
           // les valeurs DB / fallback comme avant.
           textOverrides: Object.keys(pdfTextOverrides).length > 0 ? pdfTextOverrides : undefined,
           preview,
+          ignoreSyncedTco: tcoView || energyCustomized,
           adminMode: isAdmin,
           // Anglais réservé au type véhicules pour l'instant (cf. plan de
           // traduction) — le toggle FR/EN n'est de toute façon affiché que
@@ -3382,7 +3397,7 @@ function TcoCalculator({
       kmContrat: energy.kmPerYear * energy.durationYears,
       prixEssenceLitre: energy.fuelPriceL,
       prixKwhDomicile: energy.kWhHome,
-      prixKwhPublic: energy.kWhPublic,
+      prixKwhPublic: energy.kWhPublic, mixDomicilePct: energy.mixHomePct,
     };
     return Object.values(selectedV).map((sv) => {
       // sv.options sont saisies en TTC dans le panneau droit (la convention
@@ -6249,7 +6264,7 @@ function TcoSlide({ vehicles, energy }: { vehicles: SelectedVehicle[]; energy: E
       kmContrat: sv.kmPerYear * duree,
       prixEssenceLitre: energy.fuelPriceL,
       prixKwhDomicile: energy.kWhHome,
-      prixKwhPublic: energy.kWhPublic,
+      prixKwhPublic: energy.kWhPublic, mixDomicilePct: energy.mixHomePct,
       optionsTotalTtc,
       remisePctOverride: sv.discountPct,
       apport: Math.max(0, sv.apport ?? 0),

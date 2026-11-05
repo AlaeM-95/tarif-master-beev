@@ -434,6 +434,8 @@ let PRODUCT_ACCENT: [number, number, number] = PRODUCT_ROSE;
 // Résultats TCO chargés depuis Supabase (synchronisés avec beev-tco-2026)
 // Map vehicleId → TcoResult le plus récent. Vide si l'app TCO n'a rien écrit.
 let TCO_RESULTS: Map<string, TcoResult> = new Map();
+// Part de recharge à domicile (%) du devis en cours, pour les textes de méthode du PDF.
+let MIX_HOME_PCT = 85;
 
 const PAGE_W = 595.28;
 const PAGE_H = 841.89;
@@ -749,6 +751,11 @@ export async function generateProposalPdf(opts: {
   /** Compte admin : déverrouille les améliorations réservées (chiffrage en
    *  location, BPA propre à chaque type). */
   adminMode?: boolean;
+  /** Ignore les TCO synchronisés depuis beev-tco-2026 (tableau `tco-results`) : tout est
+   *  recalculé avec les paramètres du devis. À activer quand le commercial a modifié les
+   *  paramètres TCO / énergie, sinon les valeurs synchronisées (calculées avec d'autres
+   *  hypothèses) masquent ses modifications. */
+  ignoreSyncedTco?: boolean;
   /** Langue du PDF généré. Défaut "fr" — comportement inchangé si omis.
    *  Périmètre actuel : pages véhicules uniquement (voir L() plus haut). */
   lang?: "fr" | "en";
@@ -756,6 +763,7 @@ export async function generateProposalPdf(opts: {
   const { projectType, client, vehicles, chargers, energy, pdfConfig, b2b2eInput, textOverrides, preview } = opts;
   const cfg: PdfDisplayConfig = pdfConfig ?? DEFAULT_PDF_CONFIG;
   PDF_CFG = cfg; // expose la config pour les fonctions draw*
+  MIX_HOME_PCT = Math.round(Number.isFinite(energy.mixHomePct) ? energy.mixHomePct : 85);
   ADMIN_MODE = !!opts.adminMode;
   PDF_LANG = opts.lang ?? "fr";
   PRODUCT_ACCENT = projectType === "home" ? PRODUCT_BLEU : projectType === "site" ? PRODUCT_VIOLET : PRODUCT_ROSE;
@@ -778,6 +786,7 @@ export async function generateProposalPdf(opts: {
     loadPillarsCached().then((p) => { PILLARS = p; }),
     loadTextsCached().then((t) => { TEXTS = t; }),
   ]);
+  if (opts.ignoreSyncedTco) TCO_RESULTS = new Map();
 
   // Offre potentiellement combinée : on inclut TOUS les véhicules et TOUTES
   // les bornes sélectionnés, quel que soit projectType courant. Le commercial
@@ -3754,7 +3763,7 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
         kmContrat: sv.kmPerYear * duree,
         prixEssenceLitre: e.fuelPriceL ?? 1.75,
         prixKwhDomicile: e.kWhHome ?? 0.4,
-        prixKwhPublic: e.kWhPublic ?? 0.6,
+        prixKwhPublic: e.kWhPublic ?? 0.6, mixDomicilePct: e.mixHomePct,
         optionsTotalTtc,
         remisePctOverride: sv.discountPct,
         apport: svApport(sv), assuranceMensuelle: svAssuranceMensuelle(sv),
@@ -4348,7 +4357,7 @@ function drawFleetSynthesis(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPa
     const opt = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
     const r = calculateTcoFull(sv.vehicle, {
       dureeAnnees: duree, kmContrat: sv.kmPerYear * duree,
-      prixEssenceLitre: e.fuelPriceL, prixKwhDomicile: e.kWhHome, prixKwhPublic: e.kWhPublic,
+      prixEssenceLitre: e.fuelPriceL, prixKwhDomicile: e.kWhHome, prixKwhPublic: e.kWhPublic, mixDomicilePct: e.mixHomePct,
       optionsTotalTtc: opt, remisePctOverride: sv.discountPct,
       apport: svApport(sv), assuranceMensuelle: svAssuranceMensuelle(sv),
     }, loyerOverride !== undefined && loyerOverride > 0 ? loyerOverride : sv.negotiatedMonthly);
@@ -4527,7 +4536,7 @@ async function drawTcoDashboard(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: En
       kmContrat: (sv.kmPerYear * sv.durationMonths) / 12,
       prixEssenceLitre: e.fuelPriceL,
       prixKwhDomicile: e.kWhHome,
-      prixKwhPublic: e.kWhPublic,
+      prixKwhPublic: e.kWhPublic, mixDomicilePct: e.mixHomePct,
       optionsTotalTtc,
       remisePctOverride: sv.discountPct,
       apport: svApport(sv), assuranceMensuelle: svAssuranceMensuelle(sv),
@@ -4935,7 +4944,7 @@ async function drawTcoImpact(doc: jsPDF, vehiclesIn: SelectedVehicle[], e: Energ
   const compute = (sv: SelectedVehicle) => {
     const duree = sv.durationMonths / 12;
     const optionsTotalTtc = sv.options.reduce((s, o) => s + o.qty * o.unitHt, 0);
-    const r = calculateTcoFull(sv.vehicle, { dureeAnnees: duree, kmContrat: sv.kmPerYear * duree, prixEssenceLitre: e.fuelPriceL, prixKwhDomicile: e.kWhHome, prixKwhPublic: e.kWhPublic, optionsTotalTtc, remisePctOverride: sv.discountPct, apport: svApport(sv), assuranceMensuelle: svAssuranceMensuelle(sv) }, sv.negotiatedMonthly);
+    const r = calculateTcoFull(sv.vehicle, { dureeAnnees: duree, kmContrat: sv.kmPerYear * duree, prixEssenceLitre: e.fuelPriceL, prixKwhDomicile: e.kWhHome, prixKwhPublic: e.kWhPublic, mixDomicilePct: e.mixHomePct, optionsTotalTtc, remisePctOverride: sv.discountPct, apport: svApport(sv), assuranceMensuelle: svAssuranceMensuelle(sv) }, sv.negotiatedMonthly);
     const fisc = r.tvsTotal + r.malusCO2 + r.malusPoids;
     // Coût fiscal réel de l'AND (IS sur le montant réintégré), pas l'AND
     // brut — sinon ce segment + les autres dépasserait `total`.
@@ -5141,7 +5150,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
       kmContrat: sv.kmPerYear * duree,
       prixEssenceLitre: e.fuelPriceL,
       prixKwhDomicile: e.kWhHome,
-      prixKwhPublic: e.kWhPublic,
+      prixKwhPublic: e.kWhPublic, mixDomicilePct: e.mixHomePct,
       optionsTotalTtc,
       remisePctOverride: sv.discountPct,
       apport: svApport(sv), assuranceMensuelle: svAssuranceMensuelle(sv),
@@ -5479,7 +5488,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
     "The employer's share of the benefit-in-kind (AEN) is 42% of the calculated benefit-in-kind, with a 70% reduction for electric vehicles benefiting from the environmental score.",
     "The employee's benefit-in-kind, calculated on 50% of the monthly lease with the same electric reduction, is taxable for the employee. It is shown for information only and is not included in the full employer cost or the TCO.",
     "The total lease equals the negotiated monthly lease multiplied by the contract duration, recoverable VAT included for long-term leasing.",
-    "The energy cost equals the vehicle's consumption multiplied by the contract mileage and the fuel or electricity price, based on 85% home charging and 15% public charging.",
+    `The energy cost equals the vehicle's consumption multiplied by the contract mileage and the fuel or electricity price, based on ${MIX_HOME_PCT}% home charging and ${100 - MIX_HOME_PCT}% public charging.`,
   ] : [
     "Les cellules en rose signalent une charge fiscale supplémentaire à l'achat (malus CO2, malus au poids) ou une taxe annuelle sur les véhicules de société non nulle.",
     "Le coût employeur complet additionne le loyer, l'énergie, la taxe sur les véhicules de société, les malus, l'impact fiscal de l'AND et la part employeur de l'avantage en nature, sur la durée du contrat.",
@@ -5488,7 +5497,7 @@ async function drawTcoDetailedTable(doc: jsPDF, vehiclesIn: SelectedVehicle[], e
     "La part employeur de l'avantage en nature correspond à 42 % de l'avantage en nature calculé, avec un abattement de 70 % pour les véhicules électriques bénéficiant du score environnemental.",
     "L'avantage en nature du salarié, calculé sur 50 % du loyer mensuel avec le même abattement électrique, est imposable pour le collaborateur. Il est indiqué à titre d'information et n'entre pas dans le coût employeur complet ni dans le TCO.",
     "Le loyer total correspond au loyer mensuel négocié multiplié par la durée du contrat, TVA récupérable incluse en location longue durée.",
-    "Le coût énergie correspond à la consommation du véhicule multipliée par le kilométrage du contrat et le prix du carburant ou de l'électricité, sur la base d'une recharge à 85 % à domicile et 15 % en public.",
+    `Le coût énergie correspond à la consommation du véhicule multipliée par le kilométrage du contrat et le prix du carburant ou de l'électricité, sur la base d'une recharge à ${MIX_HOME_PCT} % à domicile et ${100 - MIX_HOME_PCT} % en public.`,
   ];
   // On pré-wrappe avec la police déjà fixée (8pt) pour mesurer la hauteur
   // réelle. Pas d'encart à hauteur fixe (ça désynchronise si le contenu
@@ -7410,7 +7419,7 @@ async function drawGroupComparison(
       kmContrat: sv.kmPerYear * duree,
       prixEssenceLitre: e.fuelPriceL,
       prixKwhDomicile: e.kWhHome,
-      prixKwhPublic: e.kWhPublic,
+      prixKwhPublic: e.kWhPublic, mixDomicilePct: e.mixHomePct,
       optionsTotalTtc: optionsTtc,
       remisePctOverride: sv.discountPct,
       apport: svApport(sv),
@@ -8082,7 +8091,7 @@ function drawTcoMethodAnnex(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPa
     kmContrat: exKm,
     prixEssenceLitre: e.fuelPriceL,
     prixKwhDomicile: e.kWhHome,
-    prixKwhPublic: e.kWhPublic,
+    prixKwhPublic: e.kWhPublic, mixDomicilePct: e.mixHomePct,
     optionsTotalTtc: exSv.options.reduce((s, o) => s + o.qty * o.unitHt, 0),
     remisePctOverride: exSv.discountPct,
     apport: svApport(exSv),
@@ -8108,7 +8117,7 @@ function drawTcoMethodAnnex(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPa
       formula: exElec
         ? [`Consumption${fx}kilometres ÷ 100 = kWh used, then kWh${fx}price per kWh`, `${nf(exConso, 1)} kWh/100 km${fx}${nf(exKm)} km ÷ 100 = ${nf(exKwh)} kWh, which costs ${eur(exR.coutEnergie)}`]
         : [`Consumption${fx}kilometres ÷ 100${fx}fuel price`, `= ${eur(exR.coutEnergie)}`],
-      text: "Price per kWh: 85% charged at home, 15% on public chargers.",
+      text: `Price per kWh: ${MIX_HOME_PCT}% charged at home, ${100 - MIX_HOME_PCT}% on public chargers.`,
     },
     {
       title: "Taxes",
@@ -8136,7 +8145,7 @@ function drawTcoMethodAnnex(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPa
       formula: exElec
         ? [`Consommation${fx}kilomètres ÷ 100 = kWh utilisés, puis kWh${fx}prix du kWh`, `${nf(exConso, 1)} kWh/100 km${fx}${nf(exKm)} km ÷ 100 = ${nf(exKwh)} kWh, soit ${eur(exR.coutEnergie)}`]
         : [`Consommation${fx}kilomètres ÷ 100${fx}prix du carburant`, `= ${eur(exR.coutEnergie)}`],
-      text: "Prix du kWh : 85 % de recharge à domicile, 15 % sur borne publique.",
+      text: `Prix du kWh : ${MIX_HOME_PCT} % de recharge à domicile, ${100 - MIX_HOME_PCT} % sur borne publique.`,
     },
     {
       title: "Les taxes",
@@ -8232,7 +8241,7 @@ function drawTcoMethodAnnex(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPa
       kmContrat: sv.kmPerYear * duree,
       prixEssenceLitre: e.fuelPriceL,
       prixKwhDomicile: e.kWhHome,
-      prixKwhPublic: e.kWhPublic,
+      prixKwhPublic: e.kWhPublic, mixDomicilePct: e.mixHomePct,
       optionsTotalTtc: optionsTtc,
       remisePctOverride: sv.discountPct,
       apport: svApport(sv),
@@ -8518,7 +8527,7 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
       kmContrat,
       prixEssenceLitre: e.fuelPriceL,
       prixKwhDomicile: e.kWhHome,
-      prixKwhPublic: e.kWhPublic,
+      prixKwhPublic: e.kWhPublic, mixDomicilePct: e.mixHomePct,
       optionsTotalTtc,
       remisePctOverride: sv.discountPct,
       apport: svApport(sv), assuranceMensuelle: svAssuranceMensuelle(sv),
@@ -8750,7 +8759,7 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
     const kwhPub = e.kWhPublic ?? 0.6;
     const lines = PDF_LANG === "en" ? [
       `· Petrol / Diesel fuel: ${fuelL.toFixed(2)} €/L`,
-      `· Electricity: ${kwhDom.toFixed(2)} €/kWh home (85%) + ${kwhPub.toFixed(2)} €/kWh public (15%)`,
+      `· Electricity: ${kwhDom.toFixed(2)} €/kWh home (${MIX_HOME_PCT}%) + ${kwhPub.toFixed(2)} €/kWh public (${100 - MIX_HOME_PCT}%)`,
       `· TVS: 2026 scale (CO2 tax by bracket + pollution tax €130 petrol / €650 diesel / €0 electric) × contract duration`,
       `· CO2 penalty, incl. VAT: 2026 scale (€0 below 108 g, capped at €80,000 above 192 g), plus VAT on lease refinancing`,
       `· Weight penalty, incl. VAT: from 1500 kg (100 kg reduction for hybrid, 200 kg capped at 15% of weight for PHEV with ≥50 km electric range, electric exempt), plus VAT on lease refinancing`,
@@ -8758,7 +8767,7 @@ function drawTcoComparison(doc: jsPDF, vehicles: SelectedVehicle[], e: EnergyPar
       `· AEN (Avantage en Nature, benefit-in-kind): 50% of the annual lease (capped at 15% of the purchase price), 70% reduction for eco-scored electric vehicles (capped at €4,641.60/year)`,
     ] : [
       `· Carburant SP95 / Diesel : ${fuelL.toFixed(2)} €/L`,
-      `· Électricité : ${kwhDom.toFixed(2)} €/kWh domicile (85 %) + ${kwhPub.toFixed(2)} €/kWh public (15 %)`,
+      `· Électricité : ${kwhDom.toFixed(2)} €/kWh domicile (${MIX_HOME_PCT} %) + ${kwhPub.toFixed(2)} €/kWh public (${100 - MIX_HOME_PCT} %)`,
       `· TVS : barème 2026 (taxe CO2 par tranche + taxe pollution 130 € essence / 650 € diesel / 0 € électrique) × durée contrat`,
       `· Malus CO2 TTC : barème 2026 (0 € < 108 g, plafonné à 80 000 € au-delà de 192 g), majoré de la TVA sur la refacturation en LLD`,
       `· Malus poids TTC : à partir de 1500 kg (abattement 100 kg hybride, 200 kg plafonné à 15 % du poids pour PHEV ≥ 50 km d'autonomie électrique, exonération électrique), majoré de la TVA sur la refacturation en LLD`,
@@ -9523,7 +9532,7 @@ function drawFiscalAdvantages(doc: jsPDF, vehicles: SelectedVehicle[], energy: E
         kmContrat: sv.kmPerYear * (sv.durationMonths / 12),
         prixEssenceLitre: energy.fuelPriceL,
         prixKwhDomicile: energy.kWhHome,
-        prixKwhPublic: energy.kWhPublic,
+        prixKwhPublic: energy.kWhPublic, mixDomicilePct: energy.mixHomePct,
         remisePctOverride: sv.discountPct,
         apport: svApport(sv), assuranceMensuelle: svAssuranceMensuelle(sv),
       }, sv.negotiatedMonthly);

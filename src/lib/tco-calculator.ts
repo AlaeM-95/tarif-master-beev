@@ -14,6 +14,9 @@ export type TcoContractParams = {
   prixEssenceLitre: number;
   prixKwhDomicile: number;
   prixKwhPublic: number;
+  /** Part de la recharge faite à domicile, en % (0-100) ; le reste est de la recharge
+   *  publique. Absent = 85 %. Réglable dans « Paramètres TCO et énergie » (Mix domicile). */
+  mixDomicilePct?: number;
   /** Total TTC des options sélectionnées sur le véhicule (sv.options).
    *  Ajouté au prix catalogue avant application de la remise commerciale
    *  pour le calcul AND (base d'amortissement). */
@@ -224,6 +227,7 @@ function calculateCoutEnergie(
   prixEssence: number,
   prixKwhDomicile: number,
   prixKwhPublic: number,
+  mixDomicilePct = 85,
 ): number {
   const baseConso = v.consumption ?? 0;
   const consoMinThermique = v.consoMinThermique && v.consoMinThermique > 0 ? v.consoMinThermique : baseConso;
@@ -243,7 +247,8 @@ function calculateCoutEnergie(
   const consoMoyTh = consoAffTh > 0 ? consoAffTh : (consoMinThermique + consoMaxThermique) / 2;
   const consoMoyEl = consoAffEl > 0 ? consoAffEl : (consoMinElec + consoMaxElec) / 2;
   const coutThermique = (consoMoyTh / 100) * kmContrat * prixEssence;
-  const prixKwhMoyen = prixKwhDomicile * 0.85 + prixKwhPublic * 0.15;
+  const mixDom = Math.min(1, Math.max(0, mixDomicilePct / 100));
+  const prixKwhMoyen = prixKwhDomicile * mixDom + prixKwhPublic * (1 - mixDom);
   const coutElec = (consoMoyEl / 100) * kmContrat * prixKwhMoyen;
   if (v.energy === "Électrique") return coutElec;
   if (v.energy === "Hybride Rechargeable") return coutThermique * 0.6 + coutElec * 0.4;
@@ -269,7 +274,8 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
   const prixEssence = contract.prixEssenceLitre ?? DEFAULT_COUT_ESSENCE_LITRE;
   const prixKwhDom = contract.prixKwhDomicile ?? DEFAULT_COUT_KWH_DOMICILE;
   const prixKwhPub = contract.prixKwhPublic ?? DEFAULT_COUT_KWH_PUBLIC;
-  const coutEnergie = calculateCoutEnergie(v, contract.kmContrat, prixEssence, prixKwhDom, prixKwhPub);
+  const coutEnergie = calculateCoutEnergie(v, contract.kmContrat, prixEssence, prixKwhDom, prixKwhPub,
+    Number.isFinite(contract.mixDomicilePct) ? contract.mixDomicilePct : 85);
   // Véhicules utilitaires (N1/CTTE) : exonérés de TVS et de malus CO2/poids,
   // contrairement aux véhicules particuliers (VP). Ne pas les calculer plutôt
   // que les calculer puis les masquer à l'affichage : ils ne doivent entrer

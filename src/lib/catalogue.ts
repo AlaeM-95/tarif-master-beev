@@ -69,7 +69,7 @@ function buildVehRow(sv: SelectedVehicle, energy: EnergyParams, img?: string): V
     kmContrat,
     prixEssenceLitre: energy.fuelPriceL,
     prixKwhDomicile: energy.kWhHome,
-    prixKwhPublic: energy.kWhPublic,
+    prixKwhPublic: energy.kWhPublic, mixDomicilePct: energy.mixHomePct,
     optionsTotalTtc,
     remisePctOverride: sv.discountPct,
     apport: Math.max(0, sv.apport ?? 0),
