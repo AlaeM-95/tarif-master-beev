@@ -16,7 +16,7 @@ import { Upload, FileSpreadsheet, Zap, RotateCcw, Check, Copy, Trash2, Pencil, X
 import { toast } from "sonner";
 import { ImageUpload } from "@/components/image-upload";
 import { smartImportCarPolicy } from "@/lib/smart-import";
-import { buildFleetLines, explainReco, normCategory, recommendEvs } from "@/lib/fleet";
+import { buildFleetLines, effectiveLoyer, explainReco, isLoyerEstimated, normCategory, recommendEvs } from "@/lib/fleet";
 import { calculateTcoFull } from "@/lib/tco-calculator";
 import type { Vehicle, Energy } from "@/lib/catalog";
 
@@ -64,8 +64,8 @@ export function FleetBuilder({
   const [bulkDur, setBulkDur] = useState<number>(defDur);
 
   const allEvs = catalogueVehicles
-    .filter((v) => v.energy === "Électrique" && v.monthlyLld > 0)
-    .sort((a, b) => a.monthlyLld - b.monthlyLld);
+    .filter((v) => v.energy === "Électrique")
+    .sort((a, b) => (b.rangeWltp || 0) - (a.rangeWltp || 0));
 
   const tcoAn = (v: Vehicle, loyer: number, km: number, durMonths: number) => {
     const duree = durMonths / 12;
@@ -81,8 +81,9 @@ export function FleetBuilder({
   const lineEcoPerVeh = (l: Line): number => {
     const ev = lineEv(l);
     if (!ev) return 0;
-    const currentLoyer = l.current.monthlyLld > 0 ? l.current.monthlyLld : ev.monthlyLld;
-    return Math.max(0, tcoAn(l.current, currentLoyer, l.km, l.durationMonths) - tcoAn(ev, ev.monthlyLld, l.km, l.durationMonths));
+    const evLoyer = effectiveLoyer(ev); // loyer estimé si aucun loyer au catalogue
+    const currentLoyer = l.current.monthlyLld > 0 ? l.current.monthlyLld : evLoyer;
+    return Math.max(0, tcoAn(l.current, currentLoyer, l.km, l.durationMonths) - tcoAn(ev, evLoyer, l.km, l.durationMonths));
   };
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -259,23 +260,23 @@ export function FleetBuilder({
                                   {on ? <Check className="w-3 h-3" /> : (rIdx === 0 ? <Zap className="w-3 h-3 text-[#3809EA]" /> : null)}
                                   <span className="font-medium">{ev.brand} {ev.model}</span>
                                   {ev.version && <span className={on ? "text-white/70" : "text-muted-foreground"}>{ev.version.length > 18 ? ev.version.slice(0, 18) + "…" : ev.version}</span>}
-                                  <span className={`font-semibold ${on ? "text-white/90" : "text-foreground/80"}`}>{fmtEur(ev.monthlyLld)}/mois</span>
+                                  <span className={`font-semibold ${on ? "text-white/90" : "text-foreground/80"}`} title={ev.monthlyLld > 0 ? undefined : "Aucun loyer au catalogue : à chiffrer avec une offre loueur"}>{ev.rangeWltp > 0 ? `${Math.round(ev.rangeWltp)} km` : "—"}{ev.monthlyLld > 0 ? ` · ${fmtEur(ev.monthlyLld)}/mois` : ""}</span>
                                 </button>
                               );
                             })}
                             <select value="" onChange={(e) => { if (e.target.value) addCustomEv(i, e.target.value); }}
                               className="h-7 rounded-full border border-dashed border-border bg-white px-2 text-[11px] text-muted-foreground" title="Ajouter un autre modèle du catalogue">
                               <option value="">+ autre modèle…</option>
-                              {allEvs.map((ev) => (<option key={ev.id} value={ev.id}>{ev.brand} {ev.model}{ev.version ? ` ${ev.version}` : ""} — {fmtEur(ev.monthlyLld)}/mois</option>))}
+                              {allEvs.map((ev) => (<option key={ev.id} value={ev.id}>{ev.brand} {ev.model}{ev.version ? ` ${ev.version}` : ""} — {ev.rangeWltp > 0 ? `${Math.round(ev.rangeWltp)} km` : "autonomie n.c."}{effectiveLoyer(ev) > 0 ? ` · ${isLoyerEstimated(ev) ? "≈ " : ""}${fmtEur(effectiveLoyer(ev))}/mois` : ""}</option>))}
                             </select>
                           </div>
                           {lineEv(l) && (
                             <p className="mt-1.5 text-[10px] text-muted-foreground">
-                              Pourquoi {lineEv(l)!.brand} {lineEv(l)!.model} : {explainReco(l.current, lineEv(l)!).join(" · ")}
+                              Pourquoi {lineEv(l)!.brand} {lineEv(l)!.model} : {explainReco(l.current, lineEv(l)!, catalogueVehicles).join(" · ")}
                             </p>
                           )}
                         </td>
-                        <td className="px-2 py-2.5 text-right font-semibold text-[#3809EA] whitespace-nowrap">{eco > 0 ? `− ${fmtEur(eco)}` : "—"}</td>
+                        <td className="px-2 py-2.5 text-right font-semibold text-[#3809EA] whitespace-nowrap" title={lineEv(l) && isLoyerEstimated(lineEv()!) ? "Calculé avec un loyer estimé pour l'EV : à confirmer avec une offre loueur" : undefined}>{eco > 0 ? `${lineEv(l) && isLoyerEstimated(lineEv()!) ? "≈ " : ""}− ${fmtEur(eco)}` : "—"}</td>
                         <td className="px-2 py-2.5">
                           <div className="flex items-center gap-0.5">
                             <button type="button" title="Modifier ce véhicule" onClick={() => setEditingIdx(editing ? null : i)} className={`h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-muted ${editing ? "bg-[#3809EA] text-white" : "text-foreground/70"}`}><Pencil className="w-3.5 h-3.5" /></button>

@@ -761,6 +761,12 @@ function App() {
     });
     const totalLines = selection.reduce((s, l) => s + 1 + l.evs.length, 0);
     toast.success(`Flotte ajoutée au devis (${totalLines} lignes)`);
+    // EV sans offre loueur ni loyer au catalogue : le loyer du devis sera à 0.
+    const unpriced = selection.reduce((n, l) => n + l.evs.filter((ev) => {
+      const km = l.kmPerYear || energy.kmPerYear;
+      return !(ev.monthlyLld > 0) && !findBestOffer(leaserOffers, ev.id, l.durationMonths || 48, km);
+    }).length, 0);
+    if (unpriced > 0) toast.warning(`${unpriced} véhicule${unpriced > 1 ? "s" : ""} électrique${unpriced > 1 ? "s" : ""} sans loyer : à chiffrer (import du devis loueur) avant d'envoyer l'offre.`);
     setFleetMode(false); // on bascule vers la sélection pour ajuster/visualiser
   };
 
