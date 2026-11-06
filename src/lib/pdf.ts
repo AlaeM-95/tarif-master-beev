@@ -7864,11 +7864,15 @@ async function drawGroupComparison(
     const maxName = Math.max(...nameLines.map((l) => l.length));
     const maxVer = Math.max(...verLines.map((l) => l.length));
     const photoH = k <= 3 ? 52 : k === 4 ? 44 : 36;
-    const headH = photoH + 6 + 10 + (hasEco ? 12 : 0) + (hasStock ? 12 : 0) + 4 + maxName * 11 + maxVer * 8.5 + 8;
+    const monthH = 28;
+    const headH = photoH + 6 + 10 + (hasEco ? 12 : 0) + (hasStock ? 12 : 0) + 4 + maxName * 11 + maxVer * 8.5 + 8 + monthH;
 
-    const eurMois = (it: GcItem) => `${eurLoyer(it.sv.negotiatedMonthly)}${L("/mois", "/mo")} · ${it.mois} ${L("mois", "mo")}`;
     const costDefs: { label: string; get: (it: GcItem) => number; sub: (it: GcItem) => string | null }[] = [
-      { label: anyApport ? L("Loyers, apport inclus", "Lease payments, deposit included") : L("Loyers", "Lease payments"), get: (it) => it.loyer, sub: eurMois },
+      {
+        label: anyApport ? L("Loyers, apport inclus", "Lease payments, deposit included") : L("Loyers", "Lease payments"),
+        get: (it) => it.loyer,
+        sub: (it) => { const ap = svApport(it.sv); return ap > 0 ? L(`dont apport ${eur(ap)}`, `incl. ${eur(ap)} deposit`) : null; },
+      },
       {
         label: L("Énergie", "Energy"),
         get: (it) => it.energie,
@@ -7894,24 +7898,35 @@ async function drawGroupComparison(
       const t = def.sub(it);
       return t ? (doc.splitTextToSize(t, iw - 4) as string[]).slice(0, 3) : [];
     }));
-    const costH = costDefs.map((_, di) => 26 + Math.max(0, Math.max(1, ...costSubs[di].map((l) => l.length)) - 1) * 8.2);
+    const costH = costDefs.map((_, di) => {
+      const subMax = Math.max(0, ...costSubs[di].map((l) => l.length));
+      return subMax === 0 ? 22 : 26 + (subMax - 1) * 8.2;
+    });
 
     const pmTxt = (it: GcItem) => L(`${eur(it.tco / Math.max(1, it.mois))}/mois · ${fr(per100(it), 2)} €/100 km`, `${eur(it.tco / Math.max(1, it.mois))}/month · €${fr(per100(it), 2)}/100 km`);
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(6.4);
     const pmLines = chunk.map((it) => doc.splitTextToSize(pmTxt(it), iw) as string[]);
     const totH = 46 + Math.max(1, ...pmLines.map((l) => l.length)) * 8.4 + 4;
-    const gapH = 26;
+    const gapH = 22;
     const showRange = chunk.some((it) => (it.sv.vehicle.rangeWltp ?? 0) > 0);
-    const rangeH = showRange ? 22 : 0;
+    const rangeH = showRange ? 18 : 0;
     doc.setFont(BRAND_FONT, "normal");
     doc.setFontSize(6.4);
     const extraLines = chunk.map((it) => {
       const ex = extrasOf(it);
       return ex.length ? (doc.splitTextToSize(ex.join(" · "), iw - 4) as string[]).slice(0, 4) : [];
     });
+    // Options du véhicule (saisies / importées du devis loueur) : libellé et montant, 4 lignes max.
+    const showOpts = PDF_CFG.showVehicleOptions !== false && chunk.some((it) => it.sv.options.length > 0);
+    const optLines = chunk.map((it) => {
+      const all = it.sv.options.map((o) => `${o.label}${o.qty > 1 ? ` ×${o.qty}` : ""}${o.unitHt > 0 ? ` (${eur(o.qty * o.unitHt)})` : ""}`);
+      const wrapped = all.flatMap((t) => (doc.splitTextToSize(t, iw - 4) as string[]).slice(0, 2));
+      return wrapped.length > 5 ? [...wrapped.slice(0, 4), L(`+ ${wrapped.length - 4} autres lignes`, `+ ${wrapped.length - 4} more lines`)] : wrapped;
+    });
+    const optRowH = showOpts ? Math.max(19, 8 + Math.max(1, ...optLines.map((l) => l.length)) * 7.6) : 0;
     const extraRowH = hasExtras ? Math.max(19, 8 + Math.max(1, ...extraLines.map((l) => l.length)) * 7.6) : 0;
-    const tableH = headH + secH + costH.reduce((a, b) => a + b, 0) + totH + gapH + rangeH + extraRowH;
+    const tableH = headH + secH + costH.reduce((a, b) => a + b, 0) + totH + gapH + rangeH + optRowH + extraRowH;
     const top = y;
 
     // fond de la colonne recommandée
@@ -7972,6 +7987,31 @@ async function drawGroupComparison(
       doc.setFontSize(7);
       doc.setTextColor(...SUB);
       verLines[i].forEach((ln, li) => doc.text(ln, ix, cy + 7 + li * 8.5));
+      // Loyer mensuel : en gros, à la même hauteur pour toutes les colonnes.
+      const my = top + headH - monthH;
+      doc.setDrawColor(...HAIR);
+      doc.setLineWidth(0.4);
+      doc.line(ix, my, ix + iw, my);
+      if (it.sv.negotiatedMonthly > 0) {
+        doc.setFont(BRAND_FONT, "bold");
+        doc.setFontSize(13.5);
+        doc.setTextColor(...INK);
+        const mTxt = eurLoyer(it.sv.negotiatedMonthly);
+        doc.text(mTxt, ix, my + 15);
+        const mw = doc.getTextWidth(mTxt);
+        doc.setFont(BRAND_FONT, "normal");
+        doc.setFontSize(7);
+        doc.setTextColor(...SUB);
+        const unitTxt = L("/ mois", "/ month");
+        if (mw + doc.getTextWidth(unitTxt) + 3 <= iw) doc.text(unitTxt, ix + mw + 3, my + 15);
+        doc.setFontSize(6.4);
+        doc.text(`${it.mois} ${L("mois", "months")} · ${fr(Math.round(it.sv.kmPerYear))} km${L("/an", "/yr")}`, ix, my + 24);
+      } else {
+        doc.setFont(BRAND_FONT, "bold");
+        doc.setFontSize(10);
+        doc.setTextColor(140, 137, 128);
+        doc.text("—", ix, my + 15);
+      }
     });
 
     let ty = top + headH;
@@ -8019,6 +8059,9 @@ async function drawGroupComparison(
       doc.setLineWidth(0.4);
       doc.line(M, ry + rh, M + CW, ry + rh);
     };
+
+    // Libellé de la ligne mensualité (dessinée dans l'en-tête des colonnes)
+    rowLabel(L("Loyer mensuel", "Monthly lease"), top + headH - monthH, monthH, true);
 
     section(L(sameBase ? `Coût complet sur ${ref.mois} mois` : "Coût complet sur la durée du contrat", sameBase ? `Full cost over ${ref.mois} months` : "Full cost over the contract duration"), true);
 
@@ -8114,6 +8157,23 @@ async function drawGroupComparison(
       hair(ty, rangeH);
       ty += rangeH;
     }
+    if (showOpts) {
+      rowLabel(L("Options du véhicule", "Vehicle options"), ty, optRowH);
+      chunk.forEach((it, i) => {
+        const cx = colX(i) + pad;
+        doc.setFont(BRAND_FONT, "normal");
+        doc.setFontSize(6.4);
+        if (!optLines[i].length) {
+          doc.setTextColor(140, 137, 128);
+          doc.text("—", cx, ty + 12.5);
+        } else {
+          doc.setTextColor(...INK);
+          optLines[i].forEach((ln, li) => doc.text(ln, cx, ty + 11 + li * 7.6));
+        }
+      });
+      hair(ty, optRowH);
+      ty += optRowH;
+    }
     if (hasExtras) {
       rowLabel(L("Inclus en plus au loyer", "Also included in the lease"), ty, extraRowH);
       chunk.forEach((it, i) => {
@@ -8139,7 +8199,7 @@ async function drawGroupComparison(
       doc.setFontSize(6.8);
       const txt = commonSvc.map((x) => x.charAt(0).toLowerCase() + x.slice(1)).join(" · ");
       const lines = (doc.splitTextToSize(txt, CW - 24) as string[]).slice(0, 2);
-      const bh = 22 + lines.length * 8.6;
+      const bh = 18 + lines.length * 8.6;
       if (y + bh < FOOTER_LIMIT) {
         doc.setFillColor(...STRIP_BG);
         doc.roundedRect(M, y, CW, bh, 5, 5, "F");
@@ -8150,8 +8210,8 @@ async function drawGroupComparison(
         doc.setFont(BRAND_FONT, "normal");
         doc.setFontSize(6.8);
         doc.setTextColor(...CHIP_TEXT);
-        doc.text(lines, M + 12, y + 21);
-        y += bh + 10;
+        doc.text(lines, M + 12, y + 20);
+        y += bh + 8;
       }
     }
 
@@ -8171,7 +8231,7 @@ async function drawGroupComparison(
     doc.setFontSize(8);
     const insCols = pageTake.map((tk) => doc.splitTextToSize(tk.t, insColW) as string[]);
     const insH = pageTake.length ? 28 + Math.max(...insCols.map((w) => w.length)) * 9.8 : 0;
-    if (pageTake.length && y + insH + noteH + 6 <= FOOTER_LIMIT) {
+    if (pageTake.length && y + insH <= FOOTER_LIMIT) {
       doc.setFont(BRAND_FONT, "bold");
       doc.setFontSize(6.2);
       doc.setTextColor(140, 137, 128);
