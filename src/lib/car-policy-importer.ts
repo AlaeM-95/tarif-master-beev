@@ -14,6 +14,7 @@
 
 import * as XLSX from "xlsx";
 import type { Vehicle, Energy } from "./catalog";
+import { inferEnergy, recognizeVehicle } from "./vehicle-recognizer";
 
 export type ImportReport = {
   vehicles: Vehicle[];
@@ -21,8 +22,12 @@ export type ImportReport = {
   warnings: string[];
   totalRows: number;
   importedRows: number;
-  /** Moteur de lecture : « ia » (lecture intelligente) ou « classique » (mots-clés). */
-  engine?: "ia" | "classique";
+  /** Moteur de lecture : « ia » (lecture intelligente) ou « locale » (colonnes,
+   *  dictionnaire de modèles et règles de motorisation, sans IA). */
+  engine?: "ia" | "locale";
+  /** Vrai si au moins une ligne n'a pas été reconnue avec certitude : la lecture
+   *  intelligente est alors utile pour la compléter. */
+  needsReview?: boolean;
   /** Nombre de plaques détectées dans le fichier (jamais transmises à l'IA). */
   plates?: number;
 };
@@ -44,6 +49,7 @@ const COLUMN_SYNONYMS: Record<keyof typeof FIELD_MAP, string[]> = {
   priceTtc: ["prix ttc", "prix catalogue", "price ttc", "prix vehicule", "prix véhicule", "tarif"],
   monthlyLld: ["loyer", "lld", "leasing", "monthly", "mensualite", "mensualité"],
   durationMonths: ["duree", "durée", "duration", "mois", "months"],
+  quantity: ["quantite", "quantité", "qte", "qté", "nombre", "quantity", "qty"],
   kmPerYear: ["km/an", "kilometrage", "kilométrage", "km par an", "annual km"],
   trunkLitres: ["coffre", "trunk", "volume coffre", "litres coffre"],
   chargeDcMaxKw: ["recharge dc", "dc max", "puissance dc", "fast charge"],
@@ -58,7 +64,7 @@ const FIELD_MAP = {
   brand: true, model: true, version: true, category: true, energy: true,
   batteryKwh: true, rangeWltp: true, powerHp: true, consumption: true,
   co2: true, fiscalHp: true, priceTtc: true, monthlyLld: true,
-  durationMonths: true, kmPerYear: true, trunkLitres: true,
+  durationMonths: true, quantity: true, kmPerYear: true, trunkLitres: true,
   chargeDcMaxKw: true, chargeAcMaxKw: true, dimensions: true,
   chargeTime2080Ac: true, chargeTime2080Dc: true,
 };
@@ -249,6 +255,9 @@ export async function importCarPolicy(file: File): Promise<ImportReport> {
         bestIdx = idx;
       }
     });
+    if (bestIdx >= 0 && field === "quantity" && /place|porte|km|jour|mois|cv|kw|cylindre/.test(normalize(String(headerRow[bestIdx])))) {
+      bestIdx = -1;
+    }
     if (bestIdx >= 0) {
       fieldToColIdx[field] = bestIdx;
       detectedColumns[field] = String(headerRow[bestIdx]);
@@ -264,6 +273,8 @@ export async function importCarPolicy(file: File): Promise<ImportReport> {
   // Conversion ligne par ligne
   const vehicles: Vehicle[] = [];
   const seenIds = new Set<string>();
+  let unresolved = 0; // lignes non reconnues, ignorées
+  let lowRows = 0; // lignes reconnues avec une confiance faible
 
   // Marqueur de section : si la dernière ligne séparateur traitée contient
   // "flotte actuelle" / "véhicules actuels", les véhicules qui suivent sont
@@ -305,19 +316,49 @@ export async function importCarPolicy(file: File): Promise<ImportReport> {
       return idx !== undefined ? row[idx] : null;
     };
 
-    const brand = String(get("brand") ?? "").trim();
-    const model = String(get("model") ?? "").trim();
-    if (!brand && !model) continue; // ligne sans identification
-    if (!brand) {
-      warnings.push(`Ligne ${headerRowIdx + 2 + i} : marque manquante, ignorée.`);
-      continue;
-    }
-    if (!model) {
-      warnings.push(`Ligne ${headerRowIdx + 2 + i} : modèle manquant, ignorée.`);
-      continue;
+    const brandCell = String(get("brand") ?? "").trim();
+    const modelCell = String(get("model") ?? "").trim();
+    if (!brandCell && !modelCell) continue; // ligne sans identification
+    if (/^(total|sous total|somme|moyenne|nombre total)\b/.test(normalize(brandCell || modelCell))) continue; // ligne de total
+    const versionCell = String(get("version") ?? "").trim();
+    const categoryCell = String(get("category") ?? "").trim();
+    const lineNo = headerRowIdx + 2 + i;
+
+    // Identification : marque + modèle explicites, sinon reconnaissance du
+    // libellé libre (« Peugeot 308 SW 1.5 BlueHDi 130 ») par le dictionnaire.
+    const rec = recognizeVehicle([brandCell, modelCell, versionCell].filter(Boolean).join(" "));
+    let brand = brandCell;
+    let model = modelCell;
+    let version = versionCell;
+    let identityConf = 0.95;
+    if (!(brand && model)) {
+      if (rec && rec.brand && rec.model) {
+        brand = rec.brand;
+        model = rec.model;
+        version = rec.version;
+        identityConf = rec.confidence;
+      } else {
+        warnings.push(`Ligne ${lineNo} : véhicule non reconnu (« ${[brandCell, modelCell].filter(Boolean).join(" ").slice(0, 40)} »), ignoré.`);
+        unresolved++;
+        continue;
+      }
     }
 
-    const version = String(get("version") ?? "").trim();
+    // Segment : colonne du fichier, sinon dictionnaire, sinon « Berline » (à vérifier).
+    let category = categoryCell;
+    let catConf = categoryCell ? 0.95 : 0;
+    const inferred: string[] = [];
+    if (!category) {
+      if (rec && rec.model && rec.category) { category = rec.category; catConf = 0.9; inferred.push("category"); }
+      else { category = "Berline"; catConf = 0.6; }
+    }
+
+    // Énergie : colonne du fichier, sinon motorisation du libellé, sinon dictionnaire.
+    const guess = inferEnergy(String(get("energy") ?? ""), [modelCell, versionCell, brandCell], rec?.energyHint ?? null);
+    if (!guess.explicit) inferred.push("energy");
+    const confidence = Math.min(identityConf, guess.confidence, catConf);
+    if (confidence < 0.8) lowRows++;
+
     let id = `imported_${brand}_${model}_${version}`
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "_")
@@ -336,8 +377,8 @@ export async function importCarPolicy(file: File): Promise<ImportReport> {
       brand,
       model,
       version,
-      category: String(get("category") ?? "").trim() || "Berline",
-      energy: detectEnergy(get("energy")),
+      category,
+      energy: guess.energy,
       batteryKwh: parseFrNumber(get("batteryKwh")),
       rangeWltp: parseFrNumber(get("rangeWltp")),
       powerHp: parseFrNumber(get("powerHp")),
@@ -364,6 +405,10 @@ export async function importCarPolicy(file: File): Promise<ImportReport> {
     const durImp = parseFrNumber(get("durationMonths"));
     if (kmImp > 0) (vehicle as Vehicle & { kmPerYear?: number }).kmPerYear = kmImp;
     if (durImp > 0) (vehicle as Vehicle & { durationMonths?: number }).durationMonths = durImp;
+    const qtyImp = Math.round(parseFrNumber(get("quantity")));
+    if (qtyImp > 1) (vehicle as Vehicle & { quantity?: number }).quantity = qtyImp;
+    // Pastille « reconnu automatiquement » seulement si quelque chose a été déduit.
+    if (inferred.length > 0) vehicle.aiMeta = { confidence, inferred, source: "local" };
 
     vehicles.push(vehicle);
   }
@@ -378,5 +423,7 @@ export async function importCarPolicy(file: File): Promise<ImportReport> {
     warnings,
     totalRows: dataRows.length,
     importedRows: vehicles.length,
+    engine: "locale",
+    needsReview: unresolved > 0 || lowRows > 0,
   };
 }

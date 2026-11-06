@@ -148,7 +148,8 @@ export function CarPolicyImporter({
             </CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
               Importez la car policy actuelle de votre prospect (Excel / CSV, quel
-              que soit le format) : l'IA identifie chaque véhicule. Les véhicules
+              que soit le format) : chaque véhicule est reconnu automatiquement, l'IA
+              n'intervenant que sur les lignes douteuses. Les véhicules
               importés vivent uniquement dans ce devis : ils ne touchent ni au
               catalogue Beev officiel, ni à Supabase.
             </p>
@@ -232,7 +233,7 @@ export function CarPolicyImporter({
           <div className="text-xs space-y-2 px-1">
             <div className="flex flex-wrap gap-1">
               <Badge variant="outline" className={`text-[9px] gap-1 ${report.engine === "ia" ? "border-beev-violet text-beev-violet" : ""}`}>
-                {report.engine === "ia" ? <><Sparkles className="w-2.5 h-2.5" /> Lecture intelligente</> : "Lecture classique"}
+                {report.engine === "ia" ? <><Sparkles className="w-2.5 h-2.5" /> Lecture intelligente</> : "Lecture locale"}
               </Badge>
               {Object.entries(report.detectedColumns)
                 .filter(([, h]) => h)

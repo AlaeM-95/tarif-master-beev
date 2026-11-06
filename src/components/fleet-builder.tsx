@@ -104,7 +104,7 @@ export function FleetBuilder({
           km: l.kmPerYear && l.kmPerYear > 0 ? Math.round(l.kmPerYear) : defKm,
           durationMonths: l.durationMonths && l.durationMonths > 0 ? Math.round(l.durationMonths) : defDur,
         })));
-        toast.success(`${report.importedRows} véhicules · ${built.length} modèles regroupés${report.engine === "ia" ? " · lecture intelligente" : ""}`);
+        toast.success(`${report.importedRows} véhicules · ${built.length} modèles regroupés${report.engine === "ia" ? " · lecture intelligente" : " · lecture locale"}`);
         if (report.warnings.length) toast.warning(report.warnings.slice(0, 2).join(" — "));
       }
     } catch (err) {
@@ -164,7 +164,7 @@ export function FleetBuilder({
         <div>
           <CardTitle className="text-base">Constructeur de flotte</CardTitle>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Importez la car policy, quel que soit son format : l'IA identifie chaque véhicule (marque, modèle, énergie, segment), les regroupe, puis propose des EV du même segment issus du catalogue. Loyer, km et durée de l'Excel sont conservés.
+            Importez la car policy, quel que soit son format : chaque véhicule est reconnu (marque, modèle, énergie, segment) par un dictionnaire de modèles et des règles de motorisation, l'IA ne servant qu'aux lignes douteuses. Les véhicules sont regroupés, puis des EV du même segment issus du catalogue sont proposés. Loyer, km et durée de l'Excel sont conservés.
           </p>
         </div>
         <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
@@ -237,9 +237,9 @@ export function FleetBuilder({
                           </div>
                           <div className="text-[10px] text-muted-foreground">{l.current.energy}{l.current.category ? ` · ${l.current.category}` : ""}{l.current.version ? ` · ${l.current.version}` : ""}{l.current.monthlyLld > 0 ? ` · ${fmtEur(l.current.monthlyLld)}/mois` : ""}</div>
                           {l.current.aiMeta && (
-                            <div className="mt-1 flex flex-wrap items-center gap-1" title={[l.current.aiMeta.note, l.current.aiMeta.inferred.length ? `Complété par l'IA : ${l.current.aiMeta.inferred.join(", ")}` : ""].filter(Boolean).join(" — ") || undefined}>
+                            <div className="mt-1 flex flex-wrap items-center gap-1" title={[l.current.aiMeta.note, l.current.aiMeta.inferred.length ? `${l.current.aiMeta.source === "local" ? "Déduit du libellé" : "Complété par l'IA"} : ${l.current.aiMeta.inferred.join(", ")}` : ""].filter(Boolean).join(" — ") || undefined}>
                               {l.current.aiMeta.confidence >= 0.7 ? (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-[#3809EA]/10 text-[#3809EA] px-1.5 py-0.5 text-[9px] font-semibold"><Sparkles className="w-2.5 h-2.5" />Identifié par IA · {Math.round(l.current.aiMeta.confidence * 100)} %</span>
+                                <span className="inline-flex items-center gap-1 rounded-full bg-[#3809EA]/10 text-[#3809EA] px-1.5 py-0.5 text-[9px] font-semibold">{l.current.aiMeta.source === "local" ? <Check className="w-2.5 h-2.5" /> : <Sparkles className="w-2.5 h-2.5" />}{l.current.aiMeta.source === "local" ? "Reconnu automatiquement" : "Identifié par IA"} · {Math.round(l.current.aiMeta.confidence * 100)} %</span>
                               ) : (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[9px] font-semibold"><AlertTriangle className="w-2.5 h-2.5" />À vérifier · {Math.round(l.current.aiMeta.confidence * 100)} %</span>
                               )}

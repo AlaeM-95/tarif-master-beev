@@ -1,13 +1,16 @@
 // Lecture intelligente d'une car policy client (n'importe quel Excel / CSV).
 //
-// 1) On lit le classeur, on épure les données personnelles (colonnes nom,
-//    prénom, e-mail, téléphone, plaque… + e-mails / téléphones / plaques repérés
-//    dans les cellules) puis on regroupe les lignes identiques (×N).
-// 2) L'Edge Function « smart-import » demande à Claude d'identifier chaque
-//    véhicule (marque, modèle, version, énergie, catégorie, quantité, loyer, km,
-//    durée) et de compléter les caractéristiques absentes, avec une confiance.
-// 3) Si la fonction est indisponible (pas déployée, pas de clé, erreur), on
-//    retombe sur la lecture classique par mots-clés : l'import ne casse jamais.
+// 1) Moteur LOCAL d'abord (gratuit, sans clé, sans réseau) : colonnes détectées
+//    par mots-clés + dictionnaire de modèles + règles de motorisation (voir
+//    vehicle-recognizer.ts). Si toutes les lignes sont reconnues avec certitude,
+//    on s'arrête là : aucun appel IA, aucun coût, rien ne quitte le navigateur.
+// 2) Sinon, l'IA prend le relais : on épure les données personnelles (colonnes
+//    nom, prénom, e-mail, téléphone, plaque… + e-mails / téléphones / plaques
+//    repérés dans les cellules), on regroupe les lignes identiques (×N) et
+//    l'Edge Function « smart-import » demande à Claude d'identifier chaque
+//    véhicule et de compléter les caractéristiques absentes, avec une confiance.
+// 3) Si l'IA est indisponible (pas déployée, pas de clé, crédit épuisé, erreur),
+//    on garde le résultat du moteur local : l'import ne casse jamais.
 //
 // Les véhicules produits ont la même forme que ceux de l'import classique, et
 // restent éphémères (state local, aucune écriture en base).
@@ -193,6 +196,7 @@ function toVehicle(a: AiVehicle, id: string, n: number): Vehicle & { quantity: n
       confidence: typeof a.confidence === "number" ? a.confidence : 0.5,
       inferred: a.inferred ?? [],
       note: a.note || undefined,
+      source: "ia",
     },
     quantity: Math.max(1, Math.round(a.quantity ?? 1)) * n,
   };
@@ -202,11 +206,26 @@ function toVehicle(a: AiVehicle, id: string, n: number): Vehicle & { quantity: n
 }
 
 /**
- * Lit une car policy avec l'IA ; retombe sur la lecture classique si l'IA est
- * indisponible. `categories` aligne le vocabulaire de l'IA sur celui du catalogue.
+ * Lit une car policy : moteur local d'abord, IA seulement si une ligne n'est pas
+ * reconnue avec certitude. `categories` aligne le vocabulaire de l'IA sur celui
+ * du catalogue.
  */
 export async function smartImportCarPolicy(file: File, opts: { categories?: string[] } = {}): Promise<ImportReport> {
-  let fallbackReason = "";
+  // 1) Moteur local (jamais bloquant : une erreur de lecture passe la main à l'IA).
+  let local: ImportReport | null = null;
+  let localError = "";
+  try {
+    local = await importCarPolicy(file);
+  } catch (e) {
+    localError = e instanceof Error ? e.message : "fichier illisible";
+  }
+  if (local && local.vehicles.length > 0 && !local.needsReview) {
+    local.engine = "locale";
+    return local;
+  }
+
+  // 2) IA pour les lignes douteuses.
+  let aiError = "";
   try {
     const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
     const { sheets, plates, droppedColumns, truncated } = prepareSheets(wb);
@@ -251,11 +270,16 @@ export async function smartImportCarPolicy(file: File, opts: { categories?: stri
       plates,
     };
   } catch (e) {
-    fallbackReason = e instanceof Error ? e.message : "erreur inconnue";
+    aiError = e instanceof Error ? e.message : "erreur inconnue";
   }
 
-  const report = await importCarPolicy(file);
-  report.engine = "classique";
-  report.warnings.unshift(`Lecture classique par mots-clés (lecture intelligente indisponible : ${fallbackReason}).`);
-  return report;
+  // 3) IA indisponible : on garde ce que le moteur local a compris.
+  if (local) {
+    local.engine = "locale";
+    if (local.vehicles.length > 0) {
+      local.warnings.unshift(`Lecture locale sans IA (lecture intelligente indisponible : ${aiError}) : vérifiez les lignes signalées « À vérifier ».`);
+    }
+    return local;
+  }
+  throw new Error(localError || aiError || "fichier illisible");
 }
