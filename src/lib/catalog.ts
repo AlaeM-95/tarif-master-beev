@@ -244,6 +244,10 @@ export type Vehicle = {
   consumptionThermal?: number;
   services?: string[];
   custom?: boolean;
+  /** Renseigné par la lecture intelligente d'une car policy : confiance de
+   *  l'identification (0 à 1), champs complétés par l'IA (absents du fichier)
+   *  et remarque éventuelle. Jamais en DB, état local uniquement. */
+  aiMeta?: { confidence: number; inferred: string[]; note?: string };
 };
 
 // marginPct est appliqué uniquement à l'affichage côté client :

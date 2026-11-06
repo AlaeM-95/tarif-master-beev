@@ -16,9 +16,10 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Upload, FileSpreadsheet, X, AlertTriangle, Download, Pencil, Zap, ArrowRightLeft, Trash2 } from "lucide-react";
+import { Upload, FileSpreadsheet, X, AlertTriangle, Download, Pencil, Zap, ArrowRightLeft, Trash2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { importCarPolicy, type ImportReport } from "@/lib/car-policy-importer";
+import type { ImportReport } from "@/lib/car-policy-importer";
+import { smartImportCarPolicy } from "@/lib/smart-import";
 import type { Vehicle, Energy } from "@/lib/catalog";
 import { ImageUpload } from "@/components/image-upload";
 
@@ -87,7 +88,7 @@ export function CarPolicyImporter({
   const handleFile = async (file: File) => {
     setImporting(true);
     try {
-      const r = await importCarPolicy(file);
+      const r = await smartImportCarPolicy(file, { categories: catalogueVehicles.map((v) => v.category) });
       setReport(r);
       // Détection des doublons : un véhicule importé qui correspond (marque +
       // modèle + version) à un véhicule DÉJÀ au catalogue n'est PAS importé —
@@ -146,9 +147,10 @@ export function CarPolicyImporter({
               Import Car Policy Client
             </CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              Importez la car policy actuelle de votre prospect (Excel / CSV).
-              Les véhicules importés vivent uniquement dans ce devis : ils ne
-              touchent ni au catalogue Beev officiel, ni à Supabase.
+              Importez la car policy actuelle de votre prospect (Excel / CSV, quel
+              que soit le format) : l'IA identifie chaque véhicule. Les véhicules
+              importés vivent uniquement dans ce devis : ils ne touchent ni au
+              catalogue Beev officiel, ni à Supabase.
             </p>
           </div>
           <Button variant="ghost" size="sm" onClick={downloadTemplate} className="gap-1 text-xs h-8">
@@ -168,8 +170,9 @@ export function CarPolicyImporter({
               : "Glissez votre fichier ou cliquez pour parcourir"}
           </p>
           <p className="text-[10px] text-muted-foreground mb-3">
-            Formats acceptés : .xlsx, .xls, .csv · les colonnes sont détectées
-            automatiquement (Marque, Modèle, Batterie, Autonomie, Prix, etc.)
+            Formats acceptés : .xlsx, .xls, .csv · lecture intelligente (colonnes
+            libres ou texte libre) · les colonnes nom, e-mail, téléphone et plaque
+            ne sont pas transmises à l'IA
           </p>
           <div className="flex items-center justify-center gap-2 flex-wrap">
             <input
@@ -228,6 +231,9 @@ export function CarPolicyImporter({
         {report && (
           <div className="text-xs space-y-2 px-1">
             <div className="flex flex-wrap gap-1">
+              <Badge variant="outline" className={`text-[9px] gap-1 ${report.engine === "ia" ? "border-beev-violet text-beev-violet" : ""}`}>
+                {report.engine === "ia" ? <><Sparkles className="w-2.5 h-2.5" /> Lecture intelligente</> : "Lecture classique"}
+              </Badge>
               {Object.entries(report.detectedColumns)
                 .filter(([, h]) => h)
                 .map(([field, header]) => (
@@ -277,6 +283,11 @@ export function CarPolicyImporter({
                       <Badge className="bg-beev-violet-30 text-beev-black text-[9px] border-beev-violet">
                         Import
                       </Badge>
+                      {v.aiMeta && v.aiMeta.confidence < 0.7 && (
+                        <Badge className="bg-amber-100 text-amber-800 text-[9px] border-amber-300 gap-1" title={v.aiMeta.note}>
+                          <AlertTriangle className="w-2.5 h-2.5" /> À vérifier
+                        </Badge>
+                      )}
                       {v.isCurrentFleet && (
                         <Badge className="bg-beev-rose-30 text-beev-black text-[9px] border-beev-rose gap-1">
                           <ArrowRightLeft className="w-2.5 h-2.5" /> Flotte actuelle

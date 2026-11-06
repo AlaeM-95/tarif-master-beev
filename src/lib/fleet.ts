@@ -107,13 +107,30 @@ export function groupFleet(
 
 const norm = (s?: string) => (s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
 
+/** Clé de marque tolérante aux appellations courantes (Volkswagen = VW…), pour
+ *  rapprocher une marque lue dans un Excel de celle du catalogue. */
+const BRAND_ALIASES: Record<string, string> = {
+  volkswagen: "vw",
+  "mercedes benz": "mercedes",
+  "mercedes-benz": "mercedes",
+  citroen: "citroen",
+  "ds automobiles": "ds",
+  "alfa romeo": "alfaromeo",
+  "land rover": "landrover",
+  "range rover": "landrover",
+};
+function brandKey(b?: string): string {
+  const n = norm(b).replace(/[^a-z0-9 -]/g, "");
+  return BRAND_ALIASES[n] ?? n.replace(/[ -]/g, "");
+}
+
 /** Si le véhicule importé correspond à un modèle du catalogue (marque + modèle,
  *  + version si renseignée des deux côtés), on reprend les caractéristiques du
  *  catalogue (specs, image…) MAIS on conserve le loyer de l'Excel (et l'id
  *  importé + le flag flotte actuelle). Sinon on garde l'import tel quel. */
 export function enrichFromCatalogue<T extends Vehicle & { kmPerYear?: number; durationMonths?: number }>(v: T, catalogue: Vehicle[]): T {
   const match = catalogue.find((c) =>
-    norm(c.brand) === norm(v.brand) && norm(c.model) === norm(v.model) &&
+    brandKey(c.brand) === brandKey(v.brand) && norm(c.model) === norm(v.model) &&
     (!v.version || !c.version || norm(c.version) === norm(v.version)),
   );
   if (!match) return v;
@@ -122,10 +139,31 @@ export function enrichFromCatalogue<T extends Vehicle & { kmPerYear?: number; du
     id: v.id,
     isCurrentFleet: true,
     custom: true,
+    aiMeta: v.aiMeta,
     monthlyLld: v.monthlyLld > 0 ? v.monthlyLld : match.monthlyLld, // loyer de l'Excel prioritaire
     kmPerYear: v.kmPerYear,
     durationMonths: v.durationMonths,
   } as T;
+}
+
+/** Courtes justifications d'une suggestion (puces affichables) : segment,
+ *  épinglage Beev, écart de loyer vs le véhicule actuel, stock, autonomie. */
+export function explainReco(current: Vehicle, ev: Vehicle): string[] {
+  const out: string[] = [];
+  const cat = normCategory(current.category);
+  const sameSegment = !!cat && normCategory(ev.category) === cat;
+  const ref = current.monthlyLld > 0 ? current.monthlyLld : 0;
+  if (sameSegment) out.push(`Même segment (${ev.category})`);
+  else if (ref > 0 && Math.abs(ev.monthlyLld - ref) <= ref * 0.4) out.push("Tranche de loyer proche");
+  else out.push("Alternative électrique accessible");
+  if (ev.topRank && ev.topRank > 0) out.push("Sélection Beev");
+  if (ref > 0 && ev.monthlyLld > 0) {
+    const d = Math.round(((ev.monthlyLld - ref) / ref) * 100);
+    if (d !== 0) out.push(`Loyer ${d > 0 ? "+" : "−"}${Math.abs(d)} % vs actuel`);
+  }
+  if (ev.availableStock) out.push("En stock");
+  if (ev.rangeWltp > 0) out.push(`${Math.round(ev.rangeWltp)} km WLTP`);
+  return out;
 }
 
 /** Construit les lignes du constructeur de flotte : pour chaque modèle regroupé,

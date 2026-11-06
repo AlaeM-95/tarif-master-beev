@@ -21,6 +21,10 @@ export type ImportReport = {
   warnings: string[];
   totalRows: number;
   importedRows: number;
+  /** Moteur de lecture : « ia » (lecture intelligente) ou « classique » (mots-clés). */
+  engine?: "ia" | "classique";
+  /** Nombre de plaques détectées dans le fichier (jamais transmises à l'IA). */
+  plates?: number;
 };
 
 // Synonymes par champ — recherche case-insensitive, accents ignorés,
@@ -89,7 +93,7 @@ function parseFrNumber(raw: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function detectEnergy(raw: unknown): Energy {
+export function detectEnergy(raw: unknown): Energy {
   if (!raw) return "Électrique";
   const s = normalize(String(raw));
   if (/^(ev|bev|elect|100%|electric)/i.test(s) || s.includes("electrique")) return "Électrique";

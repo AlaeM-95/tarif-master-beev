@@ -12,11 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Upload, FileSpreadsheet, Zap, RotateCcw, Check, Copy, Trash2, Pencil, X } from "lucide-react";
+import { Upload, FileSpreadsheet, Zap, RotateCcw, Check, Copy, Trash2, Pencil, X, Sparkles, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { ImageUpload } from "@/components/image-upload";
-import { importCarPolicy } from "@/lib/car-policy-importer";
-import { buildFleetLines, normCategory, recommendEvs } from "@/lib/fleet";
+import { smartImportCarPolicy } from "@/lib/smart-import";
+import { buildFleetLines, explainReco, normCategory, recommendEvs } from "@/lib/fleet";
 import { calculateTcoFull } from "@/lib/tco-calculator";
 import type { Vehicle, Energy } from "@/lib/catalog";
 
@@ -90,7 +90,8 @@ export function FleetBuilder({
     if (!file) return;
     setImporting(true);
     try {
-      const report = await importCarPolicy(file);
+      const categories = catalogueVehicles.map((v) => v.category);
+      const report = await smartImportCarPolicy(file, { categories });
       if (report.vehicles.length === 0) {
         toast.error("Aucun véhicule détecté. Vérifiez les colonnes marque / modèle.");
       } else {
@@ -103,8 +104,8 @@ export function FleetBuilder({
           km: l.kmPerYear && l.kmPerYear > 0 ? Math.round(l.kmPerYear) : defKm,
           durationMonths: l.durationMonths && l.durationMonths > 0 ? Math.round(l.durationMonths) : defDur,
         })));
-        toast.success(`${report.importedRows} véhicules · ${built.length} modèles regroupés`);
-        if (report.warnings.length) toast.warning(report.warnings[0]);
+        toast.success(`${report.importedRows} véhicules · ${built.length} modèles regroupés${report.engine === "ia" ? " · lecture intelligente" : ""}`);
+        if (report.warnings.length) toast.warning(report.warnings.slice(0, 2).join(" — "));
       }
     } catch (err) {
       toast.error(`Import impossible : ${err instanceof Error ? err.message : "fichier illisible"}`);
@@ -163,7 +164,7 @@ export function FleetBuilder({
         <div>
           <CardTitle className="text-base">Constructeur de flotte</CardTitle>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Importez la car policy : modèles regroupés, enrichis depuis le catalogue (loyer de l'Excel conservé), km/durée par véhicule, EV les moins chers proposés.
+            Importez la car policy, quel que soit son format : l'IA identifie chaque véhicule (marque, modèle, énergie, segment), les regroupe, puis propose des EV du même segment issus du catalogue. Loyer, km et durée de l'Excel sont conservés.
           </p>
         </div>
         <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
@@ -181,7 +182,7 @@ export function FleetBuilder({
           >
             <FileSpreadsheet className="w-8 h-8 text-[#3809EA]/60" />
             <span>Glissez ou cliquez pour importer un fichier <b>.xlsx / .csv</b></span>
-            <span className="text-[11px]">Colonnes utiles : marque, modèle, version, énergie, segment, km/an, durée (mois), quantité.</span>
+            <span className="text-[11px]">N'importe quel format : colonnes libres ou texte du type « Peugeot 308 SW 1.5 BlueHDi ». Les colonnes nom, e-mail, téléphone et plaque ne sont pas transmises à l'IA.</span>
           </button>
         ) : (
           <>
@@ -234,7 +235,16 @@ export function FleetBuilder({
                             ) : null}
                             {l.current.brand} {l.current.model}
                           </div>
-                          <div className="text-[10px] text-muted-foreground">{l.current.energy}{l.current.version ? ` · ${l.current.version}` : ""}{l.current.monthlyLld > 0 ? ` · ${fmtEur(l.current.monthlyLld)}/mois` : ""}</div>
+                          <div className="text-[10px] text-muted-foreground">{l.current.energy}{l.current.category ? ` · ${l.current.category}` : ""}{l.current.version ? ` · ${l.current.version}` : ""}{l.current.monthlyLld > 0 ? ` · ${fmtEur(l.current.monthlyLld)}/mois` : ""}</div>
+                          {l.current.aiMeta && (
+                            <div className="mt-1 flex flex-wrap items-center gap-1" title={[l.current.aiMeta.note, l.current.aiMeta.inferred.length ? `Complété par l'IA : ${l.current.aiMeta.inferred.join(", ")}` : ""].filter(Boolean).join(" — ") || undefined}>
+                              {l.current.aiMeta.confidence >= 0.7 ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-[#3809EA]/10 text-[#3809EA] px-1.5 py-0.5 text-[9px] font-semibold"><Sparkles className="w-2.5 h-2.5" />Identifié par IA · {Math.round(l.current.aiMeta.confidence * 100)} %</span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[9px] font-semibold"><AlertTriangle className="w-2.5 h-2.5" />À vérifier · {Math.round(l.current.aiMeta.confidence * 100)} %</span>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="px-2 py-2.5"><Input type="number" value={l.quantity} min={1} onChange={(e) => patchLine(i, { quantity: Math.max(1, Number(e.target.value) || 1) })} className="h-8 w-12 text-xs" /></td>
                         <td className="px-2 py-2.5"><Input type="number" value={l.km} step={1000} onChange={(e) => patchLine(i, { km: Math.max(0, Number(e.target.value) || 0) })} className="h-8 w-16 text-xs" /></td>
@@ -259,6 +269,11 @@ export function FleetBuilder({
                               {allEvs.map((ev) => (<option key={ev.id} value={ev.id}>{ev.brand} {ev.model}{ev.version ? ` ${ev.version}` : ""} — {fmtEur(ev.monthlyLld)}/mois</option>))}
                             </select>
                           </div>
+                          {lineEv(l) && (
+                            <p className="mt-1.5 text-[10px] text-muted-foreground">
+                              Pourquoi {lineEv(l)!.brand} {lineEv(l)!.model} : {explainReco(l.current, lineEv(l)!).join(" · ")}
+                            </p>
+                          )}
                         </td>
                         <td className="px-2 py-2.5 text-right font-semibold text-[#3809EA] whitespace-nowrap">{eco > 0 ? `− ${fmtEur(eco)}` : "—"}</td>
                         <td className="px-2 py-2.5">
