@@ -204,9 +204,19 @@ async function analyse(system: string, sheet: InSheet, rows: InRow[]): Promise<O
     signal: AbortSignal.timeout(120_000),
   });
   if (!res.ok) {
+    // Motif renvoyé par Anthropic (type + message d'erreur, jamais le contenu du
+    // fichier) : affiché à l'utilisateur et journalisé pour le diagnostic.
+    let detail = "";
+    try {
+      const body = await res.json();
+      detail = String(body?.error?.message ?? "").slice(0, 200);
+    } catch { /* corps illisible */ }
+    console.error(`[smart-import] Anthropic ${res.status} (modèle ${MODEL}) : ${detail}`);
     if (res.status === 401 || res.status === 403) throw new UpstreamError("Clé API Anthropic refusée", 502);
     if (res.status === 429 || res.status === 529) throw new UpstreamError("Service IA surchargé, réessayez dans un instant", 503);
-    throw new UpstreamError(`Service IA indisponible (${res.status})`, 502);
+    if (/credit balance/i.test(detail)) throw new UpstreamError("Crédit Anthropic insuffisant : rechargez-le dans console.anthropic.com > Plans & Billing", 502);
+    if (res.status === 404 || /model/i.test(detail)) throw new UpstreamError(`Modèle IA refusé (${MODEL}) : ${detail}`, 502);
+    throw new UpstreamError(`Service IA indisponible (${res.status}) : ${detail}`, 502);
   }
   const data = await res.json();
   const block = (data?.content ?? []).find((b: any) => b?.type === "tool_use" && b?.name === TOOL.name);
