@@ -3328,19 +3328,34 @@ async function drawVehiclePage(doc: jsPDF, sv: SelectedVehicle, e: EnergyParams,
   // AEN 70 % — voir tco-calculator.ts), orange plein si en cours d'obtention
   // (ecoScoreUpcoming, communication commerciale uniquement, aucun effet
   // fiscal). Mutuellement exclusifs.
+  doc.setFont(BRAND_FONT, "bold");
+  doc.setFontSize(8.5);
+  let eyebrowPillX = M + 30 + doc.getTextWidth(L(`VÉHICULE ${idx} / ${total}`, `VEHICLE ${idx} / ${total}`)) + 10;
   if (v.ecoScoreBool || v.ecoScoreUpcoming) {
     const GREEN: [number, number, number] = [53, 218, 118];
     const ORANGE: [number, number, number] = [245, 166, 35];
-    const eyebrowW = doc.getTextWidth(L(`VÉHICULE ${idx} / ${total}`, `VEHICLE ${idx} / ${total}`));
     doc.setFont(BRAND_FONT, "bold");
     doc.setFontSize(7.5);
     const ecoText = v.ecoScoreBool ? L("ÉCO-SCORE", "ECO-SCORE") : L("PROCHAINEMENT ÉCO-SCORÉ", "ECO-SCORE COMING SOON");
     const ecoW = doc.getTextWidth(ecoText) + 12;
-    const ecoX = M + 30 + eyebrowW + 10;
+    const ecoX = eyebrowPillX;
     doc.setFillColor(...(v.ecoScoreBool ? GREEN : ORANGE));
     doc.roundedRect(ecoX, 101, ecoW, 13, 6.5, 6.5, "F");
     doc.setTextColor(255, 255, 255);
     doc.text(ecoText, ecoX + ecoW / 2, 110, { align: "center" });
+    eyebrowPillX = ecoX + ecoW + 6;
+  }
+  // Pastille « EN STOCK » : véhicule disponible immédiatement chez le distributeur
+  // (flag availableStock du catalogue). Jamais sur la flotte actuelle du client.
+  if (v.availableStock && !v.isCurrentFleet) {
+    doc.setFont(BRAND_FONT, "bold");
+    doc.setFontSize(7.5);
+    const stockText = L("EN STOCK", "IN STOCK");
+    const stockW = doc.getTextWidth(stockText) + 12;
+    doc.setFillColor(165, 210, 255);
+    doc.roundedRect(eyebrowPillX, 101, stockW, 13, 6.5, 6.5, "F");
+    doc.setTextColor(...INK);
+    doc.text(stockText, eyebrowPillX + stockW / 2, 110, { align: "center" });
   }
 
   // Badge en haut à droite : « FLOTTE ACTUELLE » (rose) si véhicule à
@@ -7844,10 +7859,12 @@ async function drawGroupComparison(
     doc.setFontSize(7);
     const verLines = chunk.map((it) => (doc.splitTextToSize((it.sv.vehicle.version ?? "").trim(), iw) as string[]).slice(0, 2));
     const hasEco = chunk.some((it) => it.sv.vehicle.ecoScoreBool || it.sv.vehicle.ecoScoreUpcoming);
+    const isStock = (it: GcItem) => !!it.sv.vehicle.availableStock && !it.sv.vehicle.isCurrentFleet;
+    const hasStock = chunk.some(isStock);
     const maxName = Math.max(...nameLines.map((l) => l.length));
     const maxVer = Math.max(...verLines.map((l) => l.length));
     const photoH = k <= 3 ? 52 : k === 4 ? 44 : 36;
-    const headH = photoH + 6 + 10 + (hasEco ? 12 : 0) + 4 + maxName * 11 + maxVer * 8.5 + 8;
+    const headH = photoH + 6 + 10 + (hasEco ? 12 : 0) + (hasStock ? 12 : 0) + 4 + maxName * 11 + maxVer * 8.5 + 8;
 
     const eurMois = (it: GcItem) => `${eurLoyer(it.sv.negotiatedMonthly)}${L("/mois", "/mo")} · ${it.mois} ${L("mois", "mo")}`;
     const costDefs: { label: string; get: (it: GcItem) => number; sub: (it: GcItem) => string | null }[] = [
@@ -7938,6 +7955,11 @@ async function drawGroupComparison(
         cy += 2;
         if (it.sv.vehicle.ecoScoreBool) chip(L("ÉCO-SCORE", "ECO-SCORE"), GREEN_LIGHT, GREEN_TEXT, ix, cy);
         else if (it.sv.vehicle.ecoScoreUpcoming) chip(L("ÉCO-SCORE À VENIR", "ECO-SCORE SOON"), ORANGE_LIGHT, ORANGE_TEXT, ix, cy);
+        cy += 10;
+      }
+      if (hasStock) {
+        cy += 2;
+        if (isStock(it)) chip(L("EN STOCK", "IN STOCK"), [212, 232, 255], [30, 70, 130], ix, cy);
         cy += 10;
       }
       cy += 4;
