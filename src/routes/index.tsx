@@ -27,6 +27,7 @@ import { VehicleComparator } from "@/components/vehicle-comparator";
 import { PdfTextEditor, usePdfTextOverrides } from "@/components/pdf-text-editor";
 import { BpuB2B2EEditor } from "@/components/bpu-b2b2e-editor";
 import { AuditConseilEditor } from "@/components/audit-conseil-editor";
+import { CatalogueTcoEditor } from "@/components/catalogue-tco-editor";
 import { CarPolicyImporter } from "@/components/car-policy-importer";
 import { CompanySearchField } from "@/components/company-search-input";
 import { LeaserQuoteTool, type LeaserQuoteDraft } from "@/components/leaser-quote-tool";
@@ -853,6 +854,7 @@ function App() {
   const [marginDialog, setMarginDialog] = useState(false);
   const [bpuB2B2EOpen, setBpuB2B2EOpen] = useState(false);
   const [auditConseilOpen, setAuditConseilOpen] = useState(false);
+  const [catalogueTcoOpen, setCatalogueTcoOpen] = useState(false);
   // v2 Sélection (admin) : clé du véhicule dont le panneau de réglages est ouvert.
   const [configVKey, setConfigVKey] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -1426,6 +1428,13 @@ function App() {
       />
       <BpuB2B2EEditor open={bpuB2B2EOpen} onOpenChange={setBpuB2B2EOpen} clientName={client.company} />
       <AuditConseilEditor open={auditConseilOpen} onOpenChange={setAuditConseilOpen} clientName={client.company} />
+      <CatalogueTcoEditor
+        open={catalogueTcoOpen}
+        onOpenChange={setCatalogueTcoOpen}
+        selection={Object.values(selectedV)}
+        energy={energy}
+        client={{ company: client.company, contact: client.contact }}
+      />
 
       {/* v2 admin : panneau latéral de réglages détaillés d'un véhicule.
           Réutilise l'éditeur complet SelectedVehicleRow comme corps du drawer. */}
@@ -1646,6 +1655,14 @@ function App() {
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setAuditConseilOpen(true)} className="cursor-pointer">
                   <Sparkles className="w-4 h-4 mr-2 text-beev-rose" /> Audit & conseil
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setCatalogueTcoOpen(true)}
+                  disabled={visibleCount === 0}
+                  className="cursor-pointer"
+                  title="Présentation d'analyse TCO générée depuis le catalogue et votre sélection"
+                >
+                  <BarChart3 className="w-4 h-4 mr-2 text-beev-bleu" /> Catalogue TCO
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
