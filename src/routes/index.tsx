@@ -28,6 +28,7 @@ import { PdfTextEditor, usePdfTextOverrides } from "@/components/pdf-text-editor
 import { BpuB2B2EEditor } from "@/components/bpu-b2b2e-editor";
 import { AuditConseilEditor } from "@/components/audit-conseil-editor";
 import { CarPolicyImporter } from "@/components/car-policy-importer";
+import { CompanySearchField } from "@/components/company-search-input";
 import { LeaserQuoteTool, type LeaserQuoteDraft } from "@/components/leaser-quote-tool";
 import { ComparisonGroupsBoard, GroupChips, VehicleGroupsStatus } from "@/components/comparison-groups-board";
 import { comparatorNotes, groupNamesOf, groupsPatch, vehicleGroups } from "@/lib/comparison-groups";
@@ -2692,7 +2693,7 @@ function ClientCard({ client, setClient, isAdmin }: { client: any; setClient: (c
           )}
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
-          <Field label="Société *"><Input value={client.company} onChange={(e) => setClient({ ...client, company: e.target.value })} placeholder="Ex. BIG France" /></Field>
+          <Field label="Société *"><CompanySearchField client={client} setClient={setClient} /></Field>
           <Field label="Contact client"><Input value={client.contact} onChange={(e) => setClient({ ...client, contact: e.target.value })} placeholder="Nom Prénom" /></Field>
           <Field label="Email client"><Input type="email" value={client.email} onChange={(e) => setClient({ ...client, email: e.target.value })} /></Field>
           <Field label="Date"><Input value={client.date} onChange={(e) => setClient({ ...client, date: e.target.value })} /></Field>
@@ -2782,7 +2783,7 @@ function ClientCard({ client, setClient, isAdmin }: { client: any; setClient: (c
       </CardHeader>
       <CardContent className="grid gap-4 sm:grid-cols-2">
         <p className="sm:col-span-2 text-[10px] uppercase font-semibold text-muted-foreground tracking-wide -mb-1">Client</p>
-        <Field label="Société *"><Input value={client.company} onChange={(e) => setClient({ ...client, company: e.target.value })} placeholder="Ex. BIG France" /></Field>
+        <Field label="Société *"><CompanySearchField client={client} setClient={setClient} /></Field>
         <Field label="Contact client"><Input value={client.contact} onChange={(e) => setClient({ ...client, contact: e.target.value })} placeholder="Nom Prénom" /></Field>
         <Field label="Email client"><Input type="email" value={client.email} onChange={(e) => setClient({ ...client, email: e.target.value })} /></Field>
         <Field label="Date"><Input value={client.date} onChange={(e) => setClient({ ...client, date: e.target.value })} /></Field>
