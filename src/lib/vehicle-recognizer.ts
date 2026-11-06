@@ -610,7 +610,8 @@ export function recognizeVehicle(text: string): Recognized | null {
     }
     if (!best) {
       const p = patternModel(brand.name, tk);
-      if (p) best = { brand, name: p.name, category: p.category, ev: false, hint: p.energy, i: p.i, len: 1 };
+      // len 0 : la désignation (320d, A200…) reste dans la version, elle précise le modèle exact.
+      if (p) best = { brand, name: p.name, category: p.category, ev: false, hint: p.energy, i: p.i, len: 0 };
     }
   } else {
     // 2) pas de marque : un modèle distinctif suffit s'il n'appartient qu'à une marque

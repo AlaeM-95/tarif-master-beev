@@ -243,28 +243,31 @@ export async function importCarPolicy(file: File): Promise<ImportReport> {
   const fieldToColIdx: Record<string, number> = {};
   const detectedColumns: Record<string, string | null> = {};
 
-  for (const field of Object.keys(COLUMN_SYNONYMS) as Array<keyof typeof COLUMN_SYNONYMS>) {
-    let bestIdx = -1;
-    let bestScore = 0;
+  // Affectation gloutonne : les meilleurs scores d'abord, et une colonne ne sert
+  // qu'à UN champ (sinon « Km/an » était lue aussi comme autonomie WLTP, et
+  // « Puissance fiscale » aussi comme puissance moteur).
+  const fields = Object.keys(COLUMN_SYNONYMS) as Array<keyof typeof COLUMN_SYNONYMS>;
+  const candidates: Array<{ field: keyof typeof COLUMN_SYNONYMS; idx: number; score: number }> = [];
+  for (const field of fields) {
     headerRow.forEach((cell, idx) => {
       if (!cell) return;
       const cellN = normalize(String(cell));
       const score = detectColumn(cellN, COLUMN_SYNONYMS[field]);
-      if (score > bestScore) {
-        bestScore = score;
-        bestIdx = idx;
-      }
+      if (score <= 0) return;
+      // « Nombre de places / portes », « km », « mois »… ne sont pas une quantité.
+      if (field === "quantity" && /place|porte|km|jour|mois|cv|kw|cylindre/.test(cellN)) return;
+      candidates.push({ field, idx, score });
     });
-    if (bestIdx >= 0 && field === "quantity" && /place|porte|km|jour|mois|cv|kw|cylindre/.test(normalize(String(headerRow[bestIdx])))) {
-      bestIdx = -1;
-    }
-    if (bestIdx >= 0) {
-      fieldToColIdx[field] = bestIdx;
-      detectedColumns[field] = String(headerRow[bestIdx]);
-    } else {
-      detectedColumns[field] = null;
-    }
   }
+  candidates.sort((x, y) => y.score - x.score || x.idx - y.idx);
+  const usedCols = new Set<number>();
+  for (const c of candidates) {
+    if (fieldToColIdx[c.field] !== undefined || usedCols.has(c.idx)) continue;
+    fieldToColIdx[c.field] = c.idx;
+    usedCols.add(c.idx);
+    detectedColumns[c.field] = String(headerRow[c.idx]);
+  }
+  for (const field of fields) if (detectedColumns[field] === undefined) detectedColumns[field] = null;
 
   if (fieldToColIdx.brand === undefined && fieldToColIdx.model === undefined) {
     throw new Error("Impossible de trouver les colonnes Marque ou Modèle. Renommez vos colonnes ou vérifiez l'en-tête.");

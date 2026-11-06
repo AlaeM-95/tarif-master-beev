@@ -19,6 +19,7 @@ import * as XLSX from "xlsx";
 import { supabase } from "./supabase";
 import type { Vehicle } from "./catalog";
 import { detectEnergy, importCarPolicy, type ImportReport } from "./car-policy-importer";
+import { enrichVehicles } from "./vehicle-reference";
 
 type PreparedRow = { ref: string; n: number; cells: string[] };
 type PreparedSheet = { name: string; head: string[][]; rows: PreparedRow[] };
@@ -205,6 +206,19 @@ function toVehicle(a: AiVehicle, id: string, n: number): Vehicle & { quantity: n
   return v;
 }
 
+/** Complète CO₂, CV fiscaux, poids, autonomie… depuis les données ouvertes
+ *  (ADEME Car Labelling, Open EV Data). Ne bloque jamais l'import. */
+async function withReferenceSpecs(report: ImportReport): Promise<ImportReport> {
+  try {
+    const { list, enriched } = await enrichVehicles(report.vehicles);
+    if (enriched > 0) {
+      report.vehicles = list;
+      report.warnings.push(`Caractéristiques complétées pour ${enriched} véhicule${enriched > 1 ? "s" : ""} depuis les données ouvertes (ADEME, Open EV Data) : CO₂, CV fiscaux, autonomie… Survolez la mention « Données » pour voir la source.`);
+    }
+  } catch { /* données de référence indisponibles : l'import reste tel quel */ }
+  return report;
+}
+
 /**
  * Lit une car policy : moteur local d'abord, IA seulement si une ligne n'est pas
  * reconnue avec certitude. `categories` aligne le vocabulaire de l'IA sur celui
@@ -221,7 +235,7 @@ export async function smartImportCarPolicy(file: File, opts: { categories?: stri
   }
   if (local && local.vehicles.length > 0 && !local.needsReview) {
     local.engine = "locale";
-    return local;
+    return withReferenceSpecs(local);
   }
 
   // 2) IA pour les lignes douteuses.
@@ -260,7 +274,7 @@ export async function smartImportCarPolicy(file: File, opts: { categories?: stri
     if (truncated) warnings.push(`Seules les ${MAX_ROWS} premières lignes distinctes ont été lues.`);
 
     const totalRows = sheets.reduce((s, sh) => s + sh.rows.reduce((t, r) => t + r.n, 0), 0);
-    return {
+    return withReferenceSpecs({
       vehicles,
       detectedColumns: {},
       warnings,
@@ -268,7 +282,7 @@ export async function smartImportCarPolicy(file: File, opts: { categories?: stri
       importedRows: vehicles.reduce((s, v) => s + v.quantity, 0),
       engine: "ia",
       plates,
-    };
+    });
   } catch (e) {
     aiError = e instanceof Error ? e.message : "erreur inconnue";
   }
@@ -279,7 +293,7 @@ export async function smartImportCarPolicy(file: File, opts: { categories?: stri
     if (local.vehicles.length > 0) {
       local.warnings.unshift(`Lecture locale sans IA (lecture intelligente indisponible : ${aiError}) : vérifiez les lignes signalées « À vérifier ».`);
     }
-    return local;
+    return withReferenceSpecs(local);
   }
   throw new Error(localError || aiError || "fichier illisible");
 }

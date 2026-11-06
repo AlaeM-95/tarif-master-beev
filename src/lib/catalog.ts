@@ -248,6 +248,11 @@ export type Vehicle = {
    *  l'identification (0 à 1), champs complétés par l'IA (absents du fichier)
    *  et remarque éventuelle. Jamais en DB, état local uniquement. */
   aiMeta?: { confidence: number; inferred: string[]; note?: string; source?: "ia" | "local" };
+  /** Caractéristiques complétées depuis les données ouvertes (ADEME Car Labelling,
+   *  Open EV Data) quand elles manquaient : sources, champs remplis, libellé de la
+   *  ligne de référence retenue, `approx` si la version exacte n'a pas été
+   *  identifiée. Jamais en DB, état local uniquement. */
+  specsMeta?: { sources: string[]; fields: string[]; label: string; approx: boolean };
 };
 
 // marginPct est appliqué uniquement à l'affichage côté client :

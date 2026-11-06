@@ -6,7 +6,7 @@
 // chers du segment → économie en direct → ajout en masse. Lignes
 // supprimables / duplicables.
 
-import { Fragment, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,7 @@ import { ImageUpload } from "@/components/image-upload";
 import { smartImportCarPolicy } from "@/lib/smart-import";
 import { buildFleetLines, effectiveLoyer, explainReco, isLoyerEstimated, normCategory, recommendEvs } from "@/lib/fleet";
 import { calculateTcoFull } from "@/lib/tco-calculator";
+import { fillMissingRanges, loadVehicleReference, type VehicleReference } from "@/lib/vehicle-reference";
 import type { Vehicle, Energy } from "@/lib/catalog";
 
 export type FleetSelection = { current: Vehicle; quantity: number; evs: Vehicle[]; kmPerYear: number; durationMonths: number };
@@ -41,6 +42,11 @@ function Fld({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+const SPEC_LABELS: Record<string, string> = {
+  co2: "CO₂", fiscalHp: "CV fiscaux", powerHp: "puissance", consumption: "conso", poidsVide: "poids",
+  rangeWltp: "autonomie", batteryKwh: "batterie", chargeDcMaxKw: "recharge DC", chargeAcMaxKw: "recharge AC",
+};
+
 const fmtEur = (n: number) =>
   new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n || 0);
 
@@ -54,6 +60,15 @@ export function FleetBuilder({
   onBulkAdd: (sel: FleetSelection[]) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  // Données ouvertes (Open EV Data) : complètent l'autonomie des EV du catalogue
+  // qui n'en ont pas, pour le classement par autonomie (copie, base inchangée).
+  const [ref, setRef] = useState<VehicleReference | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void loadVehicleReference().then((r) => { if (alive) setRef(r); });
+    return () => { alive = false; };
+  }, []);
+  const catalogue = useMemo(() => fillMissingRanges(catalogueVehicles, ref), [catalogueVehicles, ref]);
   const [lines, setLines] = useState<Line[]>([]);
   const [importing, setImporting] = useState(false);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
@@ -63,7 +78,7 @@ export function FleetBuilder({
   const [bulkKm, setBulkKm] = useState<number>(defKm);
   const [bulkDur, setBulkDur] = useState<number>(defDur);
 
-  const allEvs = catalogueVehicles
+  const allEvs = catalogue
     .filter((v) => v.energy === "Électrique")
     .sort((a, b) => (b.rangeWltp || 0) - (a.rangeWltp || 0));
 
@@ -96,7 +111,9 @@ export function FleetBuilder({
       if (report.vehicles.length === 0) {
         toast.error("Aucun véhicule détecté. Vérifiez les colonnes marque / modèle.");
       } else {
-        const built = buildFleetLines(report.vehicles, catalogueVehicles, 3);
+        // Référence chargée avant de classer (l'effet de montage peut ne pas être fini).
+        const cat = fillMissingRanges(catalogueVehicles, await loadVehicleReference());
+        const built = buildFleetLines(report.vehicles, cat, 3);
         setLines(built.map((l) => ({
           current: l.current,
           quantity: l.quantity,
@@ -143,7 +160,7 @@ export function FleetBuilder({
   const reSuggest = (idx: number) =>
     setLines((ls) => ls.map((l, i) => {
       if (i !== idx) return l;
-      const recos = recommendEvs(l.current, catalogueVehicles, 3);
+      const recos = recommendEvs(l.current, catalogue, 3);
       return { ...l, recommendations: recos, selectedIds: recos[0] ? [recos[0].id] : [] };
     }));
 
@@ -237,6 +254,11 @@ export function FleetBuilder({
                             {l.current.brand} {l.current.model}
                           </div>
                           <div className="text-[10px] text-muted-foreground">{l.current.energy}{l.current.category ? ` · ${l.current.category}` : ""}{l.current.version ? ` · ${l.current.version}` : ""}{l.current.monthlyLld > 0 ? ` · ${fmtEur(l.current.monthlyLld)}/mois` : ""}</div>
+                          {l.current.specsMeta && (
+                            <div className="mt-1 text-[10px] text-muted-foreground" title={l.current.specsMeta.label}>
+                              Données {l.current.specsMeta.sources.join(" + ")} : {l.current.specsMeta.fields.map((f) => SPEC_LABELS[f] ?? f).join(", ")}{l.current.specsMeta.approx ? " (version approchée)" : ""}
+                            </div>
+                          )}
                           {l.current.aiMeta && (
                             <div className="mt-1 flex flex-wrap items-center gap-1" title={[l.current.aiMeta.note, l.current.aiMeta.inferred.length ? `${l.current.aiMeta.source === "local" ? "Déduit du libellé" : "Complété par l'IA"} : ${l.current.aiMeta.inferred.join(", ")}` : ""].filter(Boolean).join(" — ") || undefined}>
                               {l.current.aiMeta.confidence >= 0.7 ? (
@@ -260,7 +282,7 @@ export function FleetBuilder({
                                   {on ? <Check className="w-3 h-3" /> : (rIdx === 0 ? <Zap className="w-3 h-3 text-[#3809EA]" /> : null)}
                                   <span className="font-medium">{ev.brand} {ev.model}</span>
                                   {ev.version && <span className={on ? "text-white/70" : "text-muted-foreground"}>{ev.version.length > 18 ? ev.version.slice(0, 18) + "…" : ev.version}</span>}
-                                  <span className={`font-semibold ${on ? "text-white/90" : "text-foreground/80"}`} title={ev.monthlyLld > 0 ? undefined : "Aucun loyer au catalogue : à chiffrer avec une offre loueur"}>{ev.rangeWltp > 0 ? `${Math.round(ev.rangeWltp)} km` : "—"}{ev.monthlyLld > 0 ? ` · ${fmtEur(ev.monthlyLld)}/mois` : ""}</span>
+                                  <span className={`font-semibold ${on ? "text-white/90" : "text-foreground/80"}`} title={[ev.specsMeta?.fields.includes("rangeWltp") ? `Autonomie issue de ${ev.specsMeta.label}` : "", ev.monthlyLld > 0 ? "" : "Aucun loyer au catalogue : à chiffrer avec une offre loueur"].filter(Boolean).join(" — ") || undefined}>{ev.rangeWltp > 0 ? `${ev.specsMeta?.fields.includes("rangeWltp") ? "≈ " : ""}${Math.round(ev.rangeWltp)} km` : "—"}{ev.monthlyLld > 0 ? ` · ${fmtEur(ev.monthlyLld)}/mois` : ""}</span>
                                 </button>
                               );
                             })}
@@ -272,7 +294,7 @@ export function FleetBuilder({
                           </div>
                           {lineEv(l) && (
                             <p className="mt-1.5 text-[10px] text-muted-foreground">
-                              Pourquoi {lineEv(l)!.brand} {lineEv(l)!.model} : {explainReco(l.current, lineEv(l)!, catalogueVehicles).join(" · ")}
+                              Pourquoi {lineEv(l)!.brand} {lineEv(l)!.model} : {explainReco(l.current, lineEv(l)!, catalogue).join(" · ")}
                             </p>
                           )}
                         </td>
