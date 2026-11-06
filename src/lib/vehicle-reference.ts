@@ -382,9 +382,17 @@ const AI_FIELD_TO_KEY: Record<string, string> = {
   range_wltp: "rangeWltp", consumption: "consumption",
 };
 
-export function enrichVehicle<T extends Vehicle>(v: T, ref: VehicleReference): T {
-  const spec = lookupSpecs(ref, v);
-  if (!spec) return v;
+/** Puissance fiscale française (véhicules à moteur thermique, depuis 1998) :
+ *  P = CO₂ (g/km) ÷ 45 + (puissance kW ÷ 40)^1,6, arrondie à l'entier le plus proche.
+ *  Renvoie 0 si une des deux données manque. */
+export function computeFiscalHp(co2: number, powerHp: number): number {
+  if (!(co2 > 0) || !(powerHp > 0)) return 0;
+  const kw = powerHp / KW_TO_HP;
+  return Math.max(1, Math.round(co2 / 45 + Math.pow(kw / 40, 1.6)));
+}
+
+export function enrichVehicle<T extends Vehicle>(v: T, ref: VehicleReference | null): T {
+  const spec = ref ? lookupSpecs(ref, v) : null;
   const next = { ...v } as T & Record<string, unknown>;
   const filled: string[] = [];
   // Une valeur que l'IA a seulement estimée (hors fichier) cède la place à la
@@ -392,24 +400,41 @@ export function enrichVehicle<T extends Vehicle>(v: T, ref: VehicleReference): T
   const aiEstimated = new Set(
     v.aiMeta?.source === "ia" ? v.aiMeta.inferred.map((f) => AI_FIELD_TO_KEY[f]).filter(Boolean) : [],
   );
-  for (const f of FIELDS) {
-    const val = spec[f];
-    if (!(val > 0)) continue;
-    if (f === "co2" && v.energy === "Électrique") continue;
-    const cur = (v as unknown as Record<string, unknown>)[f];
-    if (typeof cur === "number" && cur > 0 && !aiEstimated.has(f)) continue;
-    next[f] = val;
-    filled.push(f);
+  if (spec) {
+    for (const f of FIELDS) {
+      const val = spec[f];
+      if (!(val > 0)) continue;
+      if (f === "co2" && v.energy === "Électrique") continue;
+      const cur = (v as unknown as Record<string, unknown>)[f];
+      if (typeof cur === "number" && cur > 0 && !aiEstimated.has(f)) continue;
+      next[f] = val;
+      filled.push(f);
+    }
   }
+  const sources = spec ? [...spec.sources] : [];
+  let label = spec ? spec.label : "";
+
+  // CV fiscaux : si aucune source ne les donne mais que CO₂ et puissance sont connus
+  // (fichier client ou source de référence), on les calcule avec la formule officielle.
+  if (v.energy !== "Électrique" && !(Number(next.fiscalHp) > 0)) {
+    const calc = computeFiscalHp(Number(next.co2), Number(next.powerHp));
+    if (calc > 0) {
+      next.fiscalHp = calc;
+      filled.push("fiscalHp");
+      sources.push("Formule fiscale");
+      label = `${label ? `${label} · ` : ""}CV fiscaux calculés : CO₂ ÷ 45 + (kW ÷ 40)^1,6`;
+    }
+  }
+
   if (filled.length === 0) return v;
-  next.specsMeta = { sources: spec.sources, fields: filled, label: spec.label, approx: spec.approx };
+  next.specsMeta = { sources, fields: filled, label, approx: spec?.approx ?? false };
   return next as T;
 }
 
 /** Charge la référence puis complète une liste de véhicules. */
 export async function enrichVehicles<T extends Vehicle>(list: T[]): Promise<{ list: T[]; enriched: number }> {
-  const ref = await loadVehicleReference();
-  if (ref.ademe.length === 0 && ref.ev.length === 0) return { list, enriched: 0 };
+  const loaded = await loadVehicleReference();
+  const ref = loaded.ademe.length === 0 && loaded.ev.length === 0 ? null : loaded;
   let enriched = 0;
   const out = list.map((v) => {
     const e = enrichVehicle(v, ref);
