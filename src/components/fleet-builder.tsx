@@ -19,7 +19,7 @@ import { smartImportCarPolicy } from "@/lib/smart-import";
 import { LocalAiPanel } from "@/components/local-ai-panel";
 import { buildFleetLines, effectiveLoyer, explainReco, isLoyerEstimated, normCategory, recommendEvs } from "@/lib/fleet";
 import { calculateTcoFull } from "@/lib/tco-calculator";
-import { fillMissingRanges, loadVehicleReference, type VehicleReference } from "@/lib/vehicle-reference";
+import { completeVehicle, fillMissingRanges, loadVehicleReference, type VehicleReference } from "@/lib/vehicle-reference";
 import type { Vehicle, Energy } from "@/lib/catalog";
 
 export type FleetSelection = { current: Vehicle; quantity: number; evs: Vehicle[]; kmPerYear: number; durationMonths: number };
@@ -46,7 +46,8 @@ function Fld({ label, children }: { label: string; children: ReactNode }) {
 const SPEC_LABELS: Record<string, string> = {
   co2: "CO₂", fiscalHp: "CV fiscaux", powerHp: "puissance", consumption: "conso", poidsVide: "poids",
   rangeWltp: "autonomie", batteryKwh: "batterie", chargeDcMaxKw: "recharge DC", chargeAcMaxKw: "recharge AC",
-  trunkLitres: "coffre", dimensions: "dimensions",
+  trunkLitres: "coffre", dimensions: "dimensions", envScore: "score env.", cargoVolumeM3: "volume utile",
+  chargeTime2080Ac: "recharge AC 20-80 %", chargeTime2080Dc: "recharge DC 20-80 %", image: "photo",
 };
 
 const fmtEur = (n: number) =>
@@ -109,7 +110,7 @@ export function FleetBuilder({
     setImporting(true);
     try {
       const categories = catalogueVehicles.map((v) => v.category);
-      const report = await smartImportCarPolicy(file, { categories });
+      const report = await smartImportCarPolicy(file, { categories, catalogue: catalogueVehicles });
       if (report.vehicles.length === 0) {
         toast.error("Aucun véhicule détecté. Vérifiez les colonnes marque / modèle.");
       } else {
@@ -156,6 +157,16 @@ export function FleetBuilder({
   const applyToAll = () => setLines((ls) => ls.map((l) => ({ ...l, km: bulkKm, durationMonths: bulkDur })));
 
   // Édition d'un véhicule importé : on patche le `current` de la ligne.
+  // Complète les champs vides du véhicule édité depuis le catalogue Beev et les données ouvertes.
+  const completeCurrent = async (idx: number) => {
+    const { patch, fields, found } = await completeVehicle(lines[idx].current, catalogueVehicles);
+    if (found) {
+      patchCurrent(idx, patch);
+      toast.success(`${fields.length} champ${fields.length > 1 ? "s" : ""} complété${fields.length > 1 ? "s" : ""} : ${fields.join(", ")}`);
+    } else {
+      toast.info(`Aucune donnée trouvée pour ${lines[idx].current.brand} ${lines[idx].current.model}. Vérifiez la marque et le modèle, ou saisissez les champs.`);
+    }
+  };
   const patchCurrent = (idx: number, p: Partial<Vehicle>) =>
     setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, current: { ...l.current, ...p } as Vehicle } : l)));
   // Recalcule les EV proposés depuis le segment/loyer du véhicule actuel modifié.
@@ -339,9 +350,14 @@ export function FleetBuilder({
                               </div>
                               <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
                                 <ImageUpload currentUrl={l.current.image} onChange={(url) => patchCurrent(i, { image: url })} folder="vehicles" label="Photo du véhicule" />
-                                <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 mb-0.5" onClick={() => reSuggest(i)}>
-                                  <Zap className="w-3.5 h-3.5 text-[#3809EA]" /> Re-proposer les EV du segment
-                                </Button>
+                                <div className="flex flex-wrap gap-2 mb-0.5">
+                                  <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={() => void completeCurrent(i)}>
+                                    <Sparkles className="w-3.5 h-3.5 text-[#3809EA]" /> Compléter les champs vides
+                                  </Button>
+                                  <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={() => reSuggest(i)}>
+                                    <Zap className="w-3.5 h-3.5 text-[#3809EA]" /> Re-proposer les EV du segment
+                                  </Button>
+                                </div>
                               </div>
                               <p className="text-[10px] text-muted-foreground">Si vous changez la marque, le modèle ou le segment, cliquez sur « Re-proposer les EV » pour rafraîchir les suggestions.</p>
                             </div>

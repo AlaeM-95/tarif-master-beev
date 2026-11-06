@@ -22,13 +22,18 @@ import { inferEnergy, recognizeVehicle } from "./vehicle-recognizer";
 import { enrichVehicles } from "./vehicle-reference";
 import { isLocalAiEnabled, localAiReady, ensureLocalAi, resolveVehicleTexts } from "./local-llm";
 
-/** Complète CO₂, CV fiscaux, poids, autonomie… depuis les données ouvertes. Ne bloque jamais l'import. */
-async function withReferenceSpecs(report: ImportReport): Promise<ImportReport> {
+/** Complète les champs vides : catalogue Beev d'abord, puis données ouvertes (ADEME, Open EV
+ *  Data), puis calculs (CV fiscaux, recharge AC). Ne bloque jamais l'import. */
+async function withReferenceSpecs(report: ImportReport, catalogue?: Vehicle[]): Promise<ImportReport> {
   try {
-    const { list, enriched } = await enrichVehicles(report.vehicles);
+    const { list, enriched, unmatched } = await enrichVehicles(report.vehicles, catalogue);
+    report.vehicles = list;
     if (enriched > 0) {
-      report.vehicles = list;
-      report.warnings.push(`Caractéristiques complétées pour ${enriched} véhicule${enriched > 1 ? "s" : ""} depuis les données ouvertes (ADEME, Open EV Data) : CO₂, CV fiscaux, autonomie… Survolez la mention « Données » pour voir la source.`);
+      report.warnings.push(`Champs vides complétés pour ${enriched} véhicule${enriched > 1 ? "s" : ""} (catalogue Beev, ADEME, Open EV Data) : CV fiscaux, coffre, dimensions, recharge, autonomie… Survolez la mention « Données » pour voir la source.`);
+    }
+    const names = [...new Set(unmatched)];
+    if (names.length > 0) {
+      report.warnings.push(`Aucune donnée trouvée pour : ${names.slice(0, 4).join(", ")}${names.length > 4 ? ` et ${names.length - 4} autre${names.length - 4 > 1 ? "s" : ""}` : ""}. Utilisez « Compléter » dans la fenêtre de modification après avoir corrigé la marque et le modèle, ou saisissez les champs à la main.`);
     }
   } catch { /* données de référence indisponibles : l'import reste tel quel */ }
   return report;
@@ -105,11 +110,11 @@ async function importHeaderless(
 }
 
 /**
- * Lit une car policy. `categories` est conservé pour la compatibilité des appelants.
+ * Lit une car policy. `catalogue` (catalogue Beev) sert à compléter les champs vides.
  * Si l'IA locale est activée, elle est chargée (depuis le cache du navigateur) et
  * identifie les libellés que le dictionnaire ne reconnaît pas.
  */
-export async function smartImportCarPolicy(file: File, _opts: { categories?: string[] } = {}): Promise<ImportReport> {
+export async function smartImportCarPolicy(file: File, opts: { categories?: string[]; catalogue?: Vehicle[] } = {}): Promise<ImportReport> {
   let resolve: ((texts: string[]) => Promise<Map<string, ResolvedVehicle>>) | undefined;
   if (isLocalAiEnabled()) {
     try {
@@ -132,5 +137,5 @@ export async function smartImportCarPolicy(file: File, _opts: { categories?: str
     }
   }
   report.engine = "locale";
-  return withReferenceSpecs(report);
+  return withReferenceSpecs(report, opts.catalogue);
 }

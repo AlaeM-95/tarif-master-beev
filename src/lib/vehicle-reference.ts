@@ -142,6 +142,12 @@ const EV_NOISE = new Set(["electric", "ev", "e", "tech", "etech", "new", "nouvel
 function evTokens(brand: string, model: string): string[] {
   let t = tokens(model).map((x) => (brand === "renault" && /^r\d$/.test(x) ? x.slice(1) : x));
   t = t.filter((x) => !EV_NOISE.has(x));
+  // La marque collée ou répétée devant le modèle est retirée : « MG4 », « MG 4 » et « 4 »
+  // désignent le même modèle chez MG.
+  if (t.length > 0 && brand.length >= 2) {
+    if (t[0] === brand) t = t.slice(1);
+    else if (t[0].startsWith(brand) && t[0].length > brand.length) t = [t[0].slice(brand.length), ...t.slice(1)];
+  }
   return t;
 }
 
@@ -414,8 +420,6 @@ const FIELDS: Array<keyof Pick<SpecPatch, "co2" | "fiscalHp" | "powerHp" | "cons
   "co2", "fiscalHp", "powerHp", "consumption", "poidsVide", "rangeWltp", "batteryKwh", "chargeDcMaxKw", "chargeAcMaxKw", "trunkLitres",
 ];
 
-/** Complète les champs VIDES d'un véhicule depuis la référence. Renvoie une copie
- *  (jamais l'original) avec `specsMeta`, ou le même objet si rien n'a été ajouté. */
 /** Puissance fiscale française (véhicules à moteur thermique, depuis 1998) :
  *  P = CO₂ (g/km) ÷ 45 + (puissance kW ÷ 40)^1,6, arrondie à l'entier le plus proche.
  *  Renvoie 0 si une des deux données manque. */
@@ -425,58 +429,202 @@ export function computeFiscalHp(co2: number, powerHp: number): number {
   return Math.max(1, Math.round(co2 / 45 + Math.pow(kw / 40, 1.6)));
 }
 
-export function enrichVehicle<T extends Vehicle>(v: T, ref: VehicleReference | null): T {
-  const spec = ref ? lookupSpecs(ref, v) : null;
+/** Durée de recharge AC de 20 à 80 % : 60 % de la batterie nette ÷ (puissance AC × 90 %
+ *  de rendement). Calcul physique, fiable en AC (puissance constante). « 4h40 ». */
+export function computeAcChargeTime(batteryKwh: number, acKw: number): string {
+  if (!(batteryKwh > 0) || !(acKw > 0)) return "";
+  const minutes = Math.round(((0.6 * batteryKwh) / (acKw * 0.9)) * 60);
+  return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}`;
+}
+
+// ── Catalogue Beev : source prioritaire pour les modèles qu'il contient ─────
+const versionTokens = (s: string) => tokens(s).filter((t) => t.length >= 2);
+
+/** Modèle du catalogue le plus proche d'un véhicule importé (même marque, même modèle),
+ *  et finition la plus proche. `exact` : la finition correspond ; `single` : le catalogue
+ *  ne connaît qu'une finition de ce modèle (aucune ambiguïté). */
+export function matchCatalogue(v: Vehicle, catalogue: Vehicle[]): { match: Vehicle; exact: boolean; single: boolean } | null {
+  const bk = brandKey(v.brand);
+  const app = evTokens(bk, v.model);
+  if (app.length === 0) return null;
+  let best = 0;
+  const cands: Vehicle[] = [];
+  for (const c of catalogue) {
+    if (brandKey(c.brand) !== bk) continue;
+    const ct = evTokens(bk, c.model);
+    if (ct.length === 0) continue;
+    // « MG4 » = « MG 4 », « ID.4 » = « ID 4 » : comparaison aussi sans espaces.
+    const s = sameTokens(app, ct) || app.join("") === ct.join("") ? 100 : startsWith(app, ct) ? 70 : startsWith(ct, app) ? 60 : 0;
+    if (s === 0) continue;
+    if (s > best) { best = s; cands.length = 0; }
+    if (s === best) cands.push(c);
+  }
+  if (cands.length === 0) return null;
+
+  const mine = new Set(versionTokens(`${v.version} ${v.model}`));
+  const score = (c: Vehicle) => {
+    const ct = new Set(versionTokens(c.version));
+    if (ct.size === 0 && mine.size === 0) return 1;
+    let inter = 0;
+    ct.forEach((t) => { if (mine.has(t)) inter++; });
+    const union = new Set([...ct, ...versionTokens(v.version)]).size || 1;
+    return inter / union;
+  };
+  const filledCount = (c: Vehicle) => (["fiscalHp", "trunkLitres", "chargeDcMaxKw", "chargeAcMaxKw", "powerHp", "consumption", "batteryKwh", "rangeWltp"] as const)
+    .reduce((n, k) => n + (Number(c[k]) > 0 ? 1 : 0), 0) + (c.dimensions ? 1 : 0) + (c.image ? 1 : 0);
+  const ranked = [...cands].sort((a, b) => score(b) - score(a) || filledCount(b) - filledCount(a));
+  const top = ranked[0];
+  const versions = new Set(cands.map((c) => norm(c.version)));
+  return { match: top, exact: score(top) >= 0.5, single: versions.size === 1 };
+}
+
+// Champs dont la valeur dépend de la finition : repris seulement si la finition correspond
+// (ou s'il n'y en a qu'une), jamais d'une finition voisine.
+const STRICT_FIELDS = ["batteryKwh", "rangeWltp", "powerHp", "consumption"] as const;
+// Champs repris de la finition la plus proche, signalés « version approchée ».
+const LENIENT_FIELDS = ["fiscalHp", "envScore", "poidsVide", "chargeDcMaxKw", "chargeAcMaxKw", "trunkLitres", "cargoVolumeM3"] as const;
+const TEXT_FIELDS = ["dimensions", "chargeTime2080Ac", "chargeTime2080Dc", "image"] as const;
+
+function catalogueFill(v: Vehicle, m: { match: Vehicle; exact: boolean; single: boolean }): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const c = m.match as unknown as Record<string, unknown>;
+  const cur = v as unknown as Record<string, unknown>;
+  const strictOk = m.exact || m.single;
+  const numeric = (k: string) => { const val = Number(c[k]); if (val > 0 && !(Number(cur[k]) > 0)) out[k] = val; };
+  if (strictOk) STRICT_FIELDS.forEach(numeric);
+  LENIENT_FIELDS.forEach(numeric);
+  for (const k of TEXT_FIELDS) {
+    const val = c[k];
+    if (typeof val === "string" && val.trim() && !(typeof cur[k] === "string" && (cur[k] as string).trim())) out[k] = val;
+  }
+  // Le CO₂ d'un thermique vient du catalogue seulement pour la bonne finition.
+  if (strictOk && v.energy !== "Électrique" && Number(c.co2) > 0 && !(Number(cur.co2) > 0)) out.co2 = Number(c.co2);
+  return out;
+}
+
+/** Complète les champs VIDES d'un véhicule : 1) catalogue Beev (même modèle), 2) ADEME et
+ *  Open EV Data, 3) formule des CV fiscaux et calcul de la recharge AC. Renvoie une copie
+ *  (jamais l'original) avec `specsMeta`, ou le même objet si rien n'a été ajouté. Une valeur
+ *  du fichier client n'est jamais écrasée. */
+export function enrichVehicle<T extends Vehicle>(v: T, ref: VehicleReference | null, catalogue?: Vehicle[]): T {
   const next = { ...v } as T & Record<string, unknown>;
   const filled: string[] = [];
-  // Une valeur du fichier ou du catalogue n'est jamais écrasée.
+  const sources: string[] = [];
+  const labels: string[] = [];
+  let approx = false;
+  let warn = "";
+  const empty = (k: string) => {
+    const x = next[k];
+    return typeof x === "string" ? !x.trim() : !(Number(x) > 0);
+  };
+
+  // 1) Catalogue Beev
+  const cm = catalogue && catalogue.length > 0 ? matchCatalogue(v, catalogue) : null;
+  if (cm) {
+    const patch = catalogueFill(next, cm);
+    const keys = Object.keys(patch);
+    if (keys.length > 0) {
+      Object.assign(next, patch);
+      filled.push(...keys);
+      sources.push("Catalogue Beev");
+      labels.push(`Catalogue Beev : ${cm.match.brand} ${cm.match.model} ${cm.match.version}`.trim());
+      if (!cm.exact && !cm.single) approx = true;
+    }
+  }
+
+  // 2) ADEME / Open EV Data, pour ce qui reste vide
+  const spec = ref ? lookupSpecs(ref, next) : null;
   if (spec) {
+    let used = false;
     for (const f of FIELDS) {
       const val = spec[f];
       if (!(val > 0)) continue;
       if (f === "co2" && v.energy === "Électrique") continue;
       if (f === "rangeWltp" && spec.warn) continue; // autonomie suspecte : non reprise
-      const cur = (v as unknown as Record<string, unknown>)[f];
-      if (typeof cur === "number" && cur > 0) continue;
+      if (!empty(f)) continue;
       next[f] = val;
       filled.push(f);
+      used = true;
     }
+    if (spec.dimensions && empty("dimensions")) {
+      next.dimensions = spec.dimensions;
+      filled.push("dimensions");
+      used = true;
+    }
+    if (used) {
+      sources.push(...spec.sources);
+      labels.push(spec.label);
+      if (spec.approx) approx = true;
+    }
+    if (spec.warn) warn = spec.warn;
   }
-  if (spec?.dimensions && !(typeof v.dimensions === "string" && v.dimensions.trim())) {
-    next.dimensions = spec.dimensions;
-    filled.push("dimensions");
-  }
-  const sources = spec ? [...spec.sources] : [];
-  let label = spec ? spec.label : "";
 
-  // CV fiscaux : si aucune source ne les donne mais que CO₂ et puissance sont connus
-  // (fichier client ou source de référence), on les calcule avec la formule officielle.
-  if (v.energy !== "Électrique" && !(Number(next.fiscalHp) > 0)) {
+  // 3) CV fiscaux d'un thermique : formule officielle si CO₂ et puissance sont connus.
+  if (v.energy !== "Électrique" && empty("fiscalHp")) {
     const calc = computeFiscalHp(Number(next.co2), Number(next.powerHp));
     if (calc > 0) {
       next.fiscalHp = calc;
       filled.push("fiscalHp");
       sources.push("Formule fiscale");
-      label = `${label ? `${label} · ` : ""}CV fiscaux calculés : CO₂ ÷ 45 + (kW ÷ 40)^1,6`;
+      labels.push("CV fiscaux calculés : CO₂ ÷ 45 + (kW ÷ 40)^1,6");
+    }
+  }
+  // Recharge AC 20-80 % : calcul à partir de la batterie et de la puissance AC.
+  if ((v.energy === "Électrique" || v.energy === "Hybride Rechargeable") && empty("chargeTime2080Ac")) {
+    const t = computeAcChargeTime(Number(next.batteryKwh), Number(next.chargeAcMaxKw));
+    if (t) {
+      next.chargeTime2080Ac = t;
+      filled.push("chargeTime2080Ac");
+      sources.push("Calcul");
+      labels.push("Recharge AC 20-80 % calculée : 60 % de la batterie ÷ (puissance AC × 90 %)");
     }
   }
 
-  if (filled.length === 0 && !spec?.warn) return v;
-  next.specsMeta = { sources, fields: filled, label, approx: spec?.approx ?? false, ...(spec?.warn ? { warn: spec.warn } : {}) };
+  if (filled.length === 0 && !warn) return v;
+  next.specsMeta = {
+    sources: [...new Set(sources)],
+    fields: [...new Set(filled)],
+    label: labels.join(" · "),
+    approx,
+    ...(warn ? { warn } : {}),
+  };
   return next as T;
 }
 
-/** Charge la référence puis complète une liste de véhicules. */
-export async function enrichVehicles<T extends Vehicle>(list: T[]): Promise<{ list: T[]; enriched: number }> {
+/** Charge la référence puis complète une liste de véhicules. `unmatched` : véhicules que
+ *  ni le catalogue ni les données ouvertes ne connaissent (à compléter à la main). */
+export async function enrichVehicles<T extends Vehicle>(
+  list: T[],
+  catalogue?: Vehicle[],
+): Promise<{ list: T[]; enriched: number; unmatched: string[] }> {
   const loaded = await loadVehicleReference();
   const ref = loaded.ademe.length === 0 && loaded.ev.length === 0 ? null : loaded;
   let enriched = 0;
+  const unmatched: string[] = [];
   const out = list.map((v) => {
-    const e = enrichVehicle(v, ref);
+    const e = enrichVehicle(v, ref, catalogue);
     if (e !== v) enriched++;
+    else if (!(catalogue && matchCatalogue(v, catalogue)) && !(ref && lookupSpecs(ref, v))) {
+      unmatched.push(`${displayModel(v)}`);
+    }
     return e;
   });
-  return { list: out, enriched };
+  return { list: out, enriched, unmatched };
+}
+
+const displayModel = (v: Vehicle) => `${v.brand} ${v.model}`.replace(/\s+/g, " ").trim();
+
+/** Pour le bouton « Compléter » : champs vides d'UN véhicule, prêts à fusionner dans le formulaire. */
+export async function completeVehicle(v: Vehicle, catalogue?: Vehicle[]): Promise<{ patch: Partial<Vehicle>; fields: string[]; found: boolean }> {
+  const loaded = await loadVehicleReference();
+  const ref = loaded.ademe.length === 0 && loaded.ev.length === 0 ? null : loaded;
+  const e = enrichVehicle(v, ref, catalogue);
+  if (e === v) return { patch: {}, fields: [], found: false };
+  const patch: Record<string, unknown> = {};
+  const before = v as unknown as Record<string, unknown>;
+  const after = e as unknown as Record<string, unknown>;
+  for (const k of Object.keys(after)) if (after[k] !== before[k]) patch[k] = after[k];
+  return { patch: patch as Partial<Vehicle>, fields: e.specsMeta?.fields ?? [], found: (e.specsMeta?.fields.length ?? 0) > 0 };
 }
 
 /** Catalogue dont les EV sans autonomie reçoivent celle d'Open EV Data (copie ; le

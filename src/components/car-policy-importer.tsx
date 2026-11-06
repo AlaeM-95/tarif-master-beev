@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import type { ImportReport } from "@/lib/car-policy-importer";
 import { smartImportCarPolicy } from "@/lib/smart-import";
 import { LocalAiPanel } from "@/components/local-ai-panel";
+import { completeVehicle } from "@/lib/vehicle-reference";
 import type { Vehicle, Energy } from "@/lib/catalog";
 import { ImageUpload } from "@/components/image-upload";
 
@@ -89,7 +90,7 @@ export function CarPolicyImporter({
   const handleFile = async (file: File) => {
     setImporting(true);
     try {
-      const r = await smartImportCarPolicy(file, { categories: catalogueVehicles.map((v) => v.category) });
+      const r = await smartImportCarPolicy(file, { categories: catalogueVehicles.map((v) => v.category), catalogue: catalogueVehicles });
       setReport(r);
       // Détection des doublons : un véhicule importé qui correspond (marque +
       // modèle + version) à un véhicule DÉJÀ au catalogue n'est PAS importé —
@@ -379,6 +380,7 @@ export function CarPolicyImporter({
               <ImportedVehicleForm
                 vehicle={editingVehicle}
                 onChange={(patch) => updateImported(editingVehicle.id, patch)}
+                catalogue={catalogueVehicles}
               />
               <DialogFooter>
                 <Button onClick={() => setEditingId(null)}>OK</Button>
@@ -397,12 +399,39 @@ export function CarPolicyImporter({
 function ImportedVehicleForm({
   vehicle,
   onChange,
+  catalogue,
 }: {
   vehicle: Vehicle;
   onChange: (patch: Partial<Vehicle>) => void;
+  catalogue?: Vehicle[];
 }) {
+  const [completing, setCompleting] = useState(false);
+  // Complète les champs VIDES (jamais ceux déjà saisis) depuis le catalogue Beev et les
+  // données ouvertes, avec la marque, le modèle et la version actuellement saisis.
+  const complete = async () => {
+    setCompleting(true);
+    try {
+      const { patch, fields, found } = await completeVehicle(vehicle, catalogue);
+      if (found) {
+        onChange(patch);
+        toast.success(`${fields.length} champ${fields.length > 1 ? "s" : ""} complété${fields.length > 1 ? "s" : ""} : ${fields.join(", ")}`);
+      } else {
+        toast.info(`Aucune donnée trouvée pour ${vehicle.brand} ${vehicle.model} dans le catalogue, ADEME ou Open EV Data. Vérifiez la marque et le modèle, ou saisissez les champs.`);
+      }
+    } finally {
+      setCompleting(false);
+    }
+  };
   return (
     <div className="space-y-4 py-2">
+      <div className="flex items-center justify-between gap-2 rounded-md border border-beev-violet/30 bg-beev-violet-20/30 p-2">
+        <p className="text-[11px] text-muted-foreground">
+          Champs vides : CV fiscaux, coffre, dimensions, recharge… peuvent être complétés depuis le catalogue Beev et les données ouvertes.
+        </p>
+        <Button size="sm" variant="outline" className="h-8 text-xs shrink-0 gap-1.5" onClick={complete} disabled={completing}>
+          <Zap className="w-3.5 h-3.5 text-beev-violet" /> {completing ? "Recherche…" : "Compléter"}
+        </Button>
+      </div>
       {/* Identité */}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Marque" value={vehicle.brand} onChange={(s) => onChange({ brand: s })} />
