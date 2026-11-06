@@ -1481,9 +1481,6 @@ function App() {
               }}
             />
             <div className="w-10 h-10 rounded-xl items-center justify-center bg-primary text-primary-foreground font-bold text-xl tracking-tight shadow-sm" style={{ display: "none" }}>B</div>
-            <div className="hidden lg:block">
-              <p className="text-[10px] text-muted-foreground tracking-wide uppercase font-medium">Offre commerciale grand compte</p>
-            </div>
             <Badge variant="outline" className="hidden md:inline-flex border-primary/30 bg-primary/5 text-primary text-[10px] font-semibold ml-2">{visibleCount} sélection(s)</Badge>
             <LiveIndicator />
           </div>
