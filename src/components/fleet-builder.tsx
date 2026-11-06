@@ -16,6 +16,7 @@ import { Upload, FileSpreadsheet, Zap, RotateCcw, Check, Copy, Trash2, Pencil, X
 import { toast } from "sonner";
 import { ImageUpload } from "@/components/image-upload";
 import { smartImportCarPolicy } from "@/lib/smart-import";
+import { LocalAiPanel } from "@/components/local-ai-panel";
 import { buildFleetLines, effectiveLoyer, explainReco, isLoyerEstimated, normCategory, recommendEvs } from "@/lib/fleet";
 import { calculateTcoFull } from "@/lib/tco-calculator";
 import { fillMissingRanges, loadVehicleReference, type VehicleReference } from "@/lib/vehicle-reference";
@@ -123,7 +124,7 @@ export function FleetBuilder({
           km: l.kmPerYear && l.kmPerYear > 0 ? Math.round(l.kmPerYear) : defKm,
           durationMonths: l.durationMonths && l.durationMonths > 0 ? Math.round(l.durationMonths) : defDur,
         })));
-        toast.success(`${report.importedRows} véhicules · ${built.length} modèles regroupés${report.engine === "ia" ? " · lecture intelligente" : " · lecture locale"}`);
+        toast.success(`${report.importedRows} véhicules · ${built.length} modèles regroupés · lecture locale`);
         if (report.warnings.length) toast.warning(report.warnings.slice(0, 2).join(" — "));
       }
     } catch (err) {
@@ -183,7 +184,7 @@ export function FleetBuilder({
         <div>
           <CardTitle className="text-base">Constructeur de flotte</CardTitle>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Importez la car policy, quel que soit son format : chaque véhicule est reconnu (marque, modèle, énergie, segment) par un dictionnaire de modèles et des règles de motorisation, l'IA ne servant qu'aux lignes douteuses. Les véhicules sont regroupés, puis des EV du même segment issus du catalogue sont proposés. Loyer, km et durée de l'Excel sont conservés.
+            Importez la car policy, quel que soit son format : chaque véhicule est reconnu (marque, modèle, énergie, segment) par un dictionnaire de modèles et des règles de motorisation, avec une IA locale facultative pour les libellés inconnus. Tout se passe dans votre navigateur : aucune donnée n'est envoyée. Les véhicules sont regroupés, puis des EV du même segment issus du catalogue sont proposés. Loyer, km et durée de l'Excel sont conservés.
           </p>
         </div>
         <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
@@ -193,6 +194,7 @@ export function FleetBuilder({
       </CardHeader>
 
       <CardContent className="space-y-3">
+        <LocalAiPanel />
         {lines.length === 0 ? (
           <button
             type="button"
@@ -201,7 +203,7 @@ export function FleetBuilder({
           >
             <FileSpreadsheet className="w-8 h-8 text-[#3809EA]/60" />
             <span>Glissez ou cliquez pour importer un fichier <b>.xlsx / .csv</b></span>
-            <span className="text-[11px]">N'importe quel format : colonnes libres ou texte du type « Peugeot 308 SW 1.5 BlueHDi ». Les colonnes nom, e-mail, téléphone et plaque ne sont pas transmises à l'IA.</span>
+            <span className="text-[11px]">N'importe quel format : colonnes libres, texte du type « Peugeot 308 SW 1.5 BlueHDi », ou liste sans en-têtes. Lecture 100 % dans votre navigateur.</span>
           </button>
         ) : (
           <>
@@ -262,9 +264,9 @@ export function FleetBuilder({
                             </div>
                           )}
                           {l.current.aiMeta && (
-                            <div className="mt-1 flex flex-wrap items-center gap-1" title={[l.current.aiMeta.note, l.current.aiMeta.inferred.length ? `${l.current.aiMeta.source === "local" ? "Déduit du libellé" : "Complété par l'IA"} : ${l.current.aiMeta.inferred.join(", ")}` : ""].filter(Boolean).join(" — ") || undefined}>
+                            <div className="mt-1 flex flex-wrap items-center gap-1" title={[l.current.aiMeta.note, l.current.aiMeta.inferred.length ? `${l.current.aiMeta.source === "llm" ? "Identifié par l'IA locale" : "Déduit du libellé"} : ${l.current.aiMeta.inferred.join(", ")}` : ""].filter(Boolean).join(" — ") || undefined}>
                               {l.current.aiMeta.confidence >= 0.7 ? (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-[#3809EA]/10 text-[#3809EA] px-1.5 py-0.5 text-[9px] font-semibold">{l.current.aiMeta.source === "local" ? <Check className="w-2.5 h-2.5" /> : <Sparkles className="w-2.5 h-2.5" />}{l.current.aiMeta.source === "local" ? "Reconnu automatiquement" : "Identifié par IA"} · {Math.round(l.current.aiMeta.confidence * 100)} %</span>
+                                <span className="inline-flex items-center gap-1 rounded-full bg-[#3809EA]/10 text-[#3809EA] px-1.5 py-0.5 text-[9px] font-semibold">{l.current.aiMeta.source === "llm" ? <Sparkles className="w-2.5 h-2.5" /> : <Check className="w-2.5 h-2.5" />}{l.current.aiMeta.source === "llm" ? "Identifié par l'IA locale" : "Reconnu automatiquement"} · {Math.round(l.current.aiMeta.confidence * 100)} %</span>
                               ) : (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[9px] font-semibold"><AlertTriangle className="w-2.5 h-2.5" />À vérifier · {Math.round(l.current.aiMeta.confidence * 100)} %</span>
                               )}

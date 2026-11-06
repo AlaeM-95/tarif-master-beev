@@ -16,10 +16,11 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Upload, FileSpreadsheet, X, AlertTriangle, Download, Pencil, Zap, ArrowRightLeft, Trash2, Sparkles } from "lucide-react";
+import { Upload, FileSpreadsheet, X, AlertTriangle, Download, Pencil, Zap, ArrowRightLeft, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { ImportReport } from "@/lib/car-policy-importer";
 import { smartImportCarPolicy } from "@/lib/smart-import";
+import { LocalAiPanel } from "@/components/local-ai-panel";
 import type { Vehicle, Energy } from "@/lib/catalog";
 import { ImageUpload } from "@/components/image-upload";
 
@@ -148,8 +149,8 @@ export function CarPolicyImporter({
             </CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
               Importez la car policy actuelle de votre prospect (Excel / CSV, quel
-              que soit le format) : chaque véhicule est reconnu automatiquement, l'IA
-              n'intervenant que sur les lignes douteuses. Les véhicules
+              que soit le format) : chaque véhicule est reconnu automatiquement dans
+              votre navigateur, sans envoi de données. Les véhicules
               importés vivent uniquement dans ce devis : ils ne touchent ni au
               catalogue Beev officiel, ni à Supabase.
             </p>
@@ -160,6 +161,8 @@ export function CarPolicyImporter({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        <LocalAiPanel />
+
         {/* Drop zone / upload */}
         <div className="border border-dashed border-beev-violet/40 rounded-lg p-6 text-center bg-beev-violet-20/40">
           <Upload className="w-7 h-7 mx-auto text-beev-violet mb-2" />
@@ -172,8 +175,8 @@ export function CarPolicyImporter({
           </p>
           <p className="text-[10px] text-muted-foreground mb-3">
             Formats acceptés : .xlsx, .xls, .csv · lecture intelligente (colonnes
-            libres ou texte libre) · les colonnes nom, e-mail, téléphone et plaque
-            ne sont pas transmises à l'IA
+            libres, texte libre ou liste sans en-têtes) · lecture 100 % dans votre
+            navigateur, aucune donnée envoyée
           </p>
           <div className="flex items-center justify-center gap-2 flex-wrap">
             <input
@@ -232,9 +235,7 @@ export function CarPolicyImporter({
         {report && (
           <div className="text-xs space-y-2 px-1">
             <div className="flex flex-wrap gap-1">
-              <Badge variant="outline" className={`text-[9px] gap-1 ${report.engine === "ia" ? "border-beev-violet text-beev-violet" : ""}`}>
-                {report.engine === "ia" ? <><Sparkles className="w-2.5 h-2.5" /> Lecture intelligente</> : "Lecture locale"}
-              </Badge>
+              <Badge variant="outline" className="text-[9px] gap-1">Lecture locale</Badge>
               {Object.entries(report.detectedColumns)
                 .filter(([, h]) => h)
                 .map(([field, header]) => (

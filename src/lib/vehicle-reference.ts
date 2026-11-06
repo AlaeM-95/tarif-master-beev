@@ -416,12 +416,6 @@ const FIELDS: Array<keyof Pick<SpecPatch, "co2" | "fiscalHp" | "powerHp" | "cons
 
 /** Complète les champs VIDES d'un véhicule depuis la référence. Renvoie une copie
  *  (jamais l'original) avec `specsMeta`, ou le même objet si rien n'a été ajouté. */
-// Champs que l'IA déclare avoir « complétés » (noms de la fonction smart-import).
-const AI_FIELD_TO_KEY: Record<string, string> = {
-  co2: "co2", fiscal_hp: "fiscalHp", power_hp: "powerHp", battery_kwh: "batteryKwh",
-  range_wltp: "rangeWltp", consumption: "consumption",
-};
-
 /** Puissance fiscale française (véhicules à moteur thermique, depuis 1998) :
  *  P = CO₂ (g/km) ÷ 45 + (puissance kW ÷ 40)^1,6, arrondie à l'entier le plus proche.
  *  Renvoie 0 si une des deux données manque. */
@@ -435,11 +429,7 @@ export function enrichVehicle<T extends Vehicle>(v: T, ref: VehicleReference | n
   const spec = ref ? lookupSpecs(ref, v) : null;
   const next = { ...v } as T & Record<string, unknown>;
   const filled: string[] = [];
-  // Une valeur que l'IA a seulement estimée (hors fichier) cède la place à la
-  // donnée officielle ; une valeur du fichier ou du catalogue n'est jamais touchée.
-  const aiEstimated = new Set(
-    v.aiMeta?.source === "ia" ? v.aiMeta.inferred.map((f) => AI_FIELD_TO_KEY[f]).filter(Boolean) : [],
-  );
+  // Une valeur du fichier ou du catalogue n'est jamais écrasée.
   if (spec) {
     for (const f of FIELDS) {
       const val = spec[f];
@@ -447,7 +437,7 @@ export function enrichVehicle<T extends Vehicle>(v: T, ref: VehicleReference | n
       if (f === "co2" && v.energy === "Électrique") continue;
       if (f === "rangeWltp" && spec.warn) continue; // autonomie suspecte : non reprise
       const cur = (v as unknown as Record<string, unknown>)[f];
-      if (typeof cur === "number" && cur > 0 && !aiEstimated.has(f)) continue;
+      if (typeof cur === "number" && cur > 0) continue;
       next[f] = val;
       filled.push(f);
     }

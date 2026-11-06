@@ -1,222 +1,28 @@
-// Lecture intelligente d'une car policy client (n'importe quel Excel / CSV).
+// Lecture d'une car policy client (n'importe quel Excel / CSV), 100 % dans le navigateur.
 //
-// 1) Moteur LOCAL d'abord (gratuit, sans clé, sans réseau) : colonnes détectées
-//    par mots-clés + dictionnaire de modèles + règles de motorisation (voir
-//    vehicle-recognizer.ts). Si toutes les lignes sont reconnues avec certitude,
-//    on s'arrête là : aucun appel IA, aucun coût, rien ne quitte le navigateur.
-// 2) Sinon, l'IA prend le relais : on épure les données personnelles (colonnes
-//    nom, prénom, e-mail, téléphone, plaque… + e-mails / téléphones / plaques
-//    repérés dans les cellules), on regroupe les lignes identiques (×N) et
-//    l'Edge Function « smart-import » demande à Claude d'identifier chaque
-//    véhicule et de compléter les caractéristiques absentes, avec une confiance.
-// 3) Si l'IA est indisponible (pas déployée, pas de clé, crédit épuisé, erreur),
-//    on garde le résultat du moteur local : l'import ne casse jamais.
+// Aucune donnée n'est envoyée à un service externe, aucune clé, aucun coût :
+//   1) Moteur local : colonnes détectées par mots-clés, dictionnaire de modèles et
+//      règles de motorisation (vehicle-recognizer.ts).
+//   2) IA locale FACULTATIVE (local-llm.ts) : un petit modèle qui tourne sur le
+//      poste du commercial (WebGPU) identifie les libellés que le dictionnaire ne
+//      reconnaît pas. Elle n'est utilisée que si le commercial l'a activée.
+//   3) Fichier sans en-têtes de colonnes : lecture ligne à ligne des libellés.
+//   4) Données ouvertes (ADEME, Open EV Data, formule fiscale) complètent CO₂, CV
+//      fiscaux, poids, autonomie… pour les champs restés vides.
 //
-// Les véhicules produits ont la même forme que ceux de l'import classique, et
-// restent éphémères (state local, aucune écriture en base).
+// Les véhicules produits restent éphémères (state local, aucune écriture en base).
 
 import * as XLSX from "xlsx";
-import { supabase } from "./supabase";
 import type { Vehicle } from "./catalog";
-import { detectEnergy, importCarPolicy, type ImportReport } from "./car-policy-importer";
+import {
+  detectEnergy, importCarPolicy,
+  type ImportReport, type ResolvedVehicle,
+} from "./car-policy-importer";
+import { inferEnergy, recognizeVehicle } from "./vehicle-recognizer";
 import { enrichVehicles } from "./vehicle-reference";
+import { isLocalAiEnabled, localAiReady, ensureLocalAi, resolveVehicleTexts } from "./local-llm";
 
-type PreparedRow = { ref: string; n: number; cells: string[] };
-type PreparedSheet = { name: string; head: string[][]; rows: PreparedRow[] };
-
-type AiVehicle = {
-  ref: string;
-  brand: string;
-  model: string;
-  version?: string;
-  energy?: string;
-  category?: string;
-  quantity?: number;
-  section?: string;
-  monthly_lease?: number;
-  km_per_year?: number;
-  duration_months?: number;
-  price_ttc?: number;
-  co2?: number;
-  fiscal_hp?: number;
-  power_hp?: number;
-  battery_kwh?: number;
-  range_wltp?: number;
-  consumption?: number;
-  confidence?: number;
-  inferred?: string[];
-  note?: string;
-};
-
-const MAX_SHEETS = 4;
-const MAX_ROWS = 240;
-const MAX_COLS = 30;
-
-const norm = (s: string) =>
-  s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
-
-// En-têtes de colonnes personnelles (jamais transmises). « nom » seul est un
-// mot entier : « Nom du véhicule » est protégé par VEHICLE_HEADER.
-const PERSONAL_HEADER =
-  /(^| )(nom|prenom|collaborateur|conducteur|salarie|employe|utilisateur|beneficiaire|porteur|titulaire|driver|matricule)( |$)|e ?mail|mail|telephone|(^| )tel( |$)|mobile|adresse|iban|(^| )rib( |$)|immat|plaque|(^| )plates?( |$)|(^| )vin( |$)|chassis/;
-const VEHICLE_HEADER = /vehicule|modele|marque|model|brand|version|categorie|energie|carburant/;
-const PLATE_HEADER = /immat|plaque|(^| )plates?( |$)/;
-
-const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
-const PHONE_RE = /(?:\+33|0033|0)\s?[1-9](?:[\s.-]?\d{2}){4}/g;
-// Plaque au format SIV (AB-123-CD) — le format ancien n'est traité que dans les
-// colonnes « immatriculation » (sinon « 1.6 HDi 90 » serait pris pour une plaque).
-const PLATE_RE = /\b[A-Z]{2}[\s-]?\d{3}[\s-]?[A-Z]{2}\b/g;
-
-function isPersonalColumn(headerCells: string[]): { personal: boolean; plate: boolean } {
-  let personal = false;
-  let plate = false;
-  for (const c of headerCells) {
-    if (!c || c.length > 40) continue;
-    const n = norm(c);
-    if (PERSONAL_HEADER.test(n) && !VEHICLE_HEADER.test(n)) {
-      personal = true;
-      if (PLATE_HEADER.test(n)) plate = true;
-    }
-  }
-  return { personal, plate };
-}
-
-/** Épure et compacte les feuilles avant envoi. Exporté pour les tests. */
-export function prepareSheets(wb: XLSX.WorkBook): {
-  sheets: PreparedSheet[];
-  plates: number;
-  droppedColumns: number;
-  truncated: boolean;
-} {
-  const sheets: PreparedSheet[] = [];
-  let plates = 0;
-  let droppedColumns = 0;
-  let truncated = false;
-  let budget = MAX_ROWS;
-
-  wb.SheetNames.forEach((name, sIdx) => {
-    if (sheets.length >= MAX_SHEETS || budget <= 0) return;
-    const grid: unknown[][] = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: "", raw: false });
-    if (grid.length < 2) return;
-    const width = Math.min(MAX_COLS, grid.reduce((m, r) => Math.max(m, r.length), 0));
-
-    // Colonnes personnelles : repérées sur les 12 premières lignes (en-têtes).
-    const personalCols = new Set<number>();
-    const plateCols = new Set<number>();
-    // Seules les lignes à ≥ 3 cellules comptent comme en-têtes : un titre isolé
-    // (« Nom du client : ACME ») ne doit pas faire retirer toute une colonne.
-    const headerRows = grid.slice(0, 12).filter((r) => r.filter((x) => String(x ?? "").trim() !== "").length >= 3);
-    for (let c = 0; c < width; c++) {
-      const headerCells = headerRows.map((r) => String(r[c] ?? "").trim());
-      const { personal, plate } = isPersonalColumn(headerCells);
-      if (personal) personalCols.add(c);
-      if (plate) plateCols.add(c);
-    }
-
-    const cleaned: Array<{ ref: string; cells: string[] }> = [];
-    grid.forEach((row, i) => {
-      const cells: string[] = [];
-      for (let c = 0; c < width; c++) {
-        let v = String(row[c] ?? "").trim().slice(0, 80);
-        if (v && plateCols.has(c) && /\d/.test(v)) plates++;
-        else if (v && !personalCols.has(c)) {
-          const found = v.match(PLATE_RE);
-          if (found) plates += found.length;
-        }
-        if (personalCols.has(c)) v = "";
-        else if (v) v = v.replace(EMAIL_RE, "").replace(PHONE_RE, "").replace(PLATE_RE, "").trim();
-        cells.push(v);
-      }
-      if (cells.some((x) => x !== "")) cleaned.push({ ref: `${sIdx + 1}:${i + 1}`, cells });
-    });
-    if (cleaned.length < 2) return;
-
-    // Colonnes entièrement vides (ou personnelles vidées) retirées.
-    const keep: number[] = [];
-    for (let c = 0; c < width; c++) if (cleaned.some((r) => r.cells[c] !== "")) keep.push(c);
-    droppedColumns += personalCols.size;
-    const compact = cleaned.map((r) => ({ ref: r.ref, cells: keep.map((c) => r.cells[c]) }));
-
-    // Regroupement des lignes strictement identiques (×N).
-    const byKey = new Map<string, PreparedRow>();
-    const rows: PreparedRow[] = [];
-    for (const r of compact) {
-      const key = r.cells.join("\u0001");
-      const ex = byKey.get(key);
-      if (ex) ex.n += 1;
-      else {
-        const pr = { ref: r.ref, n: 1, cells: r.cells };
-        byKey.set(key, pr);
-        rows.push(pr);
-      }
-    }
-    let kept = rows;
-    if (kept.length > budget) { kept = kept.slice(0, budget); truncated = true; }
-    budget -= kept.length;
-    sheets.push({ name, head: rows.slice(0, 6).map((r) => r.cells), rows: kept });
-  });
-
-  return { sheets, plates, droppedColumns, truncated };
-}
-
-async function errorMessage(error: unknown): Promise<string> {
-  const ctx = (error as { context?: { json?: () => Promise<{ error?: string }> } })?.context;
-  if (ctx?.json) {
-    try {
-      const body = await ctx.json();
-      if (body?.error) return String(body.error);
-    } catch { /* corps illisible : message générique */ }
-  }
-  return error instanceof Error ? error.message : "service indisponible";
-}
-
-const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
-
-function toVehicle(a: AiVehicle, id: string, n: number): Vehicle & { quantity: number; kmPerYear?: number; durationMonths?: number } {
-  const energy = detectEnergy(a.energy);
-  // L'IA identifie le véhicule (marque, modèle, version, énergie, segment) mais ses
-  // caractéristiques chiffrées « de mémoire » ne sont PAS retenues : prix, autonomie,
-  // CO₂, CV fiscaux… venaient parfois faux. Seules comptent les valeurs lues dans le
-  // fichier ; le reste est complété ensuite par les données officielles (ADEME,
-  // Open EV Data) ou laissé vide.
-  const estimated = new Set(a.inferred ?? []);
-  const fromFile = (field: string, value?: number) => (estimated.has(field) ? 0 : value ?? 0);
-  const v: Vehicle & { quantity: number; kmPerYear?: number; durationMonths?: number } = {
-    id,
-    brand: a.brand,
-    model: a.model,
-    version: a.version ?? "",
-    category: a.category || "Berline",
-    energy,
-    batteryKwh: fromFile("battery_kwh", a.battery_kwh),
-    rangeWltp: fromFile("range_wltp", a.range_wltp),
-    powerHp: fromFile("power_hp", a.power_hp),
-    consumption: fromFile("consumption", a.consumption),
-    co2: energy === "Électrique" ? 0 : fromFile("co2", a.co2),
-    fiscalHp: fromFile("fiscal_hp", a.fiscal_hp),
-    priceTtc: fromFile("price_ttc", a.price_ttc),
-    monthlyLld: a.monthly_lease ?? 0,
-    image: "",
-    custom: true,
-    isCurrentFleet: a.section === "current",
-    aiMeta: {
-      confidence: typeof a.confidence === "number" ? a.confidence : 0.5,
-      // Seuls l'énergie, le segment et la version peuvent encore être « déduits » ;
-      // les valeurs chiffrées estimées ont été écartées ci-dessus.
-      inferred: (a.inferred ?? []).filter((f) => ["energy", "category", "version"].includes(f)),
-      note: a.note || undefined,
-      source: "ia",
-    },
-    quantity: Math.max(1, Math.round(a.quantity ?? 1)) * n,
-  };
-  if ((a.km_per_year ?? 0) > 0) v.kmPerYear = a.km_per_year;
-  if ((a.duration_months ?? 0) > 0) v.durationMonths = a.duration_months;
-  return v;
-}
-
-/** Complète CO₂, CV fiscaux, poids, autonomie… depuis les données ouvertes
- *  (ADEME Car Labelling, Open EV Data). Ne bloque jamais l'import. */
+/** Complète CO₂, CV fiscaux, poids, autonomie… depuis les données ouvertes. Ne bloque jamais l'import. */
 async function withReferenceSpecs(report: ImportReport): Promise<ImportReport> {
   try {
     const { list, enriched } = await enrichVehicles(report.vehicles);
@@ -228,81 +34,103 @@ async function withReferenceSpecs(report: ImportReport): Promise<ImportReport> {
   return report;
 }
 
-/**
- * Lit une car policy : moteur local d'abord, IA seulement si une ligne n'est pas
- * reconnue avec certitude. `categories` aligne le vocabulaire de l'IA sur celui
- * du catalogue.
- */
-export async function smartImportCarPolicy(file: File, opts: { categories?: string[] } = {}): Promise<ImportReport> {
-  // 1) Moteur local (jamais bloquant : une erreur de lecture passe la main à l'IA).
-  let local: ImportReport | null = null;
-  let localError = "";
-  try {
-    local = await importCarPolicy(file);
-  } catch (e) {
-    localError = e instanceof Error ? e.message : "fichier illisible";
-  }
-  if (local && local.vehicles.length > 0 && !local.needsReview) {
-    local.engine = "locale";
-    return withReferenceSpecs(local);
-  }
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
 
-  // 2) IA pour les lignes douteuses.
-  let aiError = "";
-  try {
-    const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
-    const { sheets, plates, droppedColumns, truncated } = prepareSheets(wb);
-    if (sheets.length === 0) throw new Error("fichier vide");
-
-    const categories = Array.from(new Set((opts.categories ?? []).map((c) => c.trim()).filter(Boolean))).slice(0, 30);
-    const { data, error } = await supabase.functions.invoke("smart-import", { body: { sheets, categories } });
-    if (error) throw new Error(await errorMessage(error));
-    const list: AiVehicle[] = Array.isArray(data?.vehicles) ? data.vehicles : [];
-    if (list.length === 0) throw new Error("aucun véhicule reconnu par l'IA");
-
-    const nByRef = new Map<string, number>();
-    sheets.forEach((s) => s.rows.forEach((r) => nByRef.set(r.ref, r.n)));
-
-    const seen = new Set<string>();
-    const vehicles = list.map((a) => {
-      let id = `imported_${slug(`${a.brand}_${a.model}_${a.version ?? ""}`)}`;
-      if (seen.has(id)) {
-        let k = 2;
-        while (seen.has(`${id}_${k}`)) k++;
-        id = `${id}_${k}`;
-      }
-      seen.add(id);
-      return toVehicle(a, id, nByRef.get(a.ref) ?? 1);
-    });
-
-    const warnings: string[] = [...(Array.isArray(data?.warnings) ? data.warnings : [])];
-    const low = vehicles.filter((v) => (v.aiMeta?.confidence ?? 1) < 0.7).length;
-    if (low > 0) warnings.push(`${low} véhicule${low > 1 ? "s" : ""} identifié${low > 1 ? "s" : ""} avec une confiance faible : à vérifier avant de chiffrer.`);
-    if (droppedColumns > 0) warnings.push(`${droppedColumns} colonne${droppedColumns > 1 ? "s" : ""} personnelle${droppedColumns > 1 ? "s" : ""} (nom, e-mail, téléphone, plaque…) non transmise${droppedColumns > 1 ? "s" : ""} à l'IA.`);
-    if (plates > 0) warnings.push(`${plates} plaque${plates > 1 ? "s" : ""} détectée${plates > 1 ? "s" : ""} : non transmise${plates > 1 ? "s" : ""} à l'IA (la lecture par plaque n'est pas encore active).`);
-    if (truncated) warnings.push(`Seules les ${MAX_ROWS} premières lignes distinctes ont été lues.`);
-
-    const totalRows = sheets.reduce((s, sh) => s + sh.rows.reduce((t, r) => t + r.n, 0), 0);
-    return withReferenceSpecs({
-      vehicles,
-      detectedColumns: {},
-      warnings,
-      totalRows,
-      importedRows: vehicles.reduce((s, v) => s + v.quantity, 0),
-      engine: "ia",
-      plates,
-    });
-  } catch (e) {
-    aiError = e instanceof Error ? e.message : "erreur inconnue";
-  }
-
-  // 3) IA indisponible : on garde ce que le moteur local a compris.
-  if (local) {
-    local.engine = "locale";
-    if (local.vehicles.length > 0) {
-      local.warnings.unshift(`Lecture locale sans IA (lecture intelligente indisponible : ${aiError}) : vérifiez les lignes signalées « À vérifier ».`);
+/** Fichier SANS ligne d'en-têtes : chaque ligne est lue comme un libellé de véhicule
+ *  (« Peugeot 308 SW 1.5 BlueHDi 130 »). Loyer, km et durée ne sont pas lus. */
+async function importHeaderless(
+  file: File,
+  resolve?: (texts: string[]) => Promise<Map<string, ResolvedVehicle>>,
+): Promise<ImportReport> {
+  const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+  const texts: string[] = [];
+  for (const name of wb.SheetNames) {
+    const grid: unknown[][] = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: "", raw: false });
+    for (const row of grid) {
+      // Seules les cellules de texte portent un libellé : les nombres (loyers, km) sont écartés.
+      const t = row.map((c) => String(c ?? "").trim()).filter((c) => c && !/^[\d\s.,€%]+$/.test(c)).join(" ").slice(0, 120);
+      if (t && !/^(total|sous total|somme|moyenne|nombre total)\b/i.test(t.normalize("NFD").replace(/[̀-ͯ]/g, "").trim())) texts.push(t);
     }
-    return withReferenceSpecs(local);
   }
-  throw new Error(localError || aiError || "fichier illisible");
+
+  const found: Array<{ text: string; r: ReturnType<typeof recognizeVehicle> }> = [];
+  const pending = new Set<string>();
+  for (const text of texts) {
+    const r = recognizeVehicle(text);
+    found.push({ text, r });
+    if (!(r && r.brand && r.model) && text.length >= 4) pending.add(text);
+  }
+  let llm = new Map<string, ResolvedVehicle>();
+  if (resolve && pending.size > 0) {
+    try { llm = await resolve([...pending]); } catch { /* IA locale indisponible */ }
+  }
+
+  const vehicles: Array<Vehicle & { quantity: number }> = [];
+  const ids = new Set<string>();
+  const unresolved: Array<{ line: number; text: string }> = [];
+  let low = 0;
+  found.forEach(({ text, r }, i) => {
+    let brand = "", model = "", version = "", category = "", conf = 0.9;
+    let energy = inferEnergy("", [text], r?.energyHint ?? null);
+    const l = llm.get(text);
+    const byDictionary = !!(r && r.brand && r.model);
+    if (byDictionary && r) {
+      brand = r.brand; model = r.model; version = r.version; category = r.category; conf = r.confidence;
+    } else if (l && l.brand && l.model) {
+      brand = l.brand.toUpperCase(); model = l.model; version = l.version ?? ""; category = l.category ?? ""; conf = Math.min(0.6, l.confidence ?? 0.6);
+      if (!energy.known && l.energy) energy = { energy: detectEnergy(l.energy), confidence: 0.6, explicit: false, known: true };
+    } else {
+      if (text.length >= 4 && /[a-zA-ZÀ-ÿ]{3}/.test(text)) unresolved.push({ line: i + 1, text: text.slice(0, 80) });
+      return;
+    }
+    const confidence = Math.min(conf, energy.confidence, category ? 0.9 : 0.6);
+    if (confidence < 0.8) low++;
+    let id = `imported_${slug(`${brand}_${model}_${version}`)}`;
+    if (ids.has(id)) { let k = 2; while (ids.has(`${id}_${k}`)) k++; id = `${id}_${k}`; }
+    ids.add(id);
+    vehicles.push({
+      id, brand, model, version, category: category || "Berline", energy: energy.energy,
+      batteryKwh: 0, rangeWltp: 0, powerHp: 0, consumption: 0, co2: 0, fiscalHp: 0, priceTtc: 0, monthlyLld: 0,
+      image: "", custom: true, isCurrentFleet: false, quantity: 1,
+      aiMeta: { confidence, inferred: ["energy", "category"], source: byDictionary ? "local" : "llm" },
+    });
+  });
+
+  const warnings = ["Fichier sans en-têtes de colonnes : seuls les libellés de véhicules ont été lus (loyer, km et durée ne sont pas repris)."];
+  if (unresolved.length > 0) warnings.push(`${unresolved.length} ligne${unresolved.length > 1 ? "s" : ""} non reconnue${unresolved.length > 1 ? "s" : ""} (${unresolved.slice(0, 3).map((u) => `« ${u.text} »`).join(", ")}${unresolved.length > 3 ? "…" : ""}).`);
+  return {
+    vehicles, detectedColumns: {}, warnings, totalRows: texts.length,
+    importedRows: vehicles.length, engine: "locale", needsReview: unresolved.length > 0 || low > 0, unresolved,
+  };
+}
+
+/**
+ * Lit une car policy. `categories` est conservé pour la compatibilité des appelants.
+ * Si l'IA locale est activée, elle est chargée (depuis le cache du navigateur) et
+ * identifie les libellés que le dictionnaire ne reconnaît pas.
+ */
+export async function smartImportCarPolicy(file: File, _opts: { categories?: string[] } = {}): Promise<ImportReport> {
+  let resolve: ((texts: string[]) => Promise<Map<string, ResolvedVehicle>>) | undefined;
+  if (isLocalAiEnabled()) {
+    try {
+      if (!localAiReady()) await ensureLocalAi();
+      if (localAiReady()) resolve = resolveVehicleTexts;
+    } catch { /* IA locale indisponible (pas de WebGPU, modèle non téléchargé…) : moteur local seul */ }
+  }
+
+  let report: ImportReport;
+  try {
+    report = await importCarPolicy(file, { resolve });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "";
+    // Aucune ligne d'en-têtes / colonnes Marque et Modèle absentes : lecture par libellés.
+    if (/en-tête|colonnes Marque ou Modèle/i.test(msg)) {
+      report = await importHeaderless(file, resolve);
+      if (report.vehicles.length === 0) throw e;
+    } else {
+      throw e;
+    }
+  }
+  report.engine = "locale";
+  return withReferenceSpecs(report);
 }

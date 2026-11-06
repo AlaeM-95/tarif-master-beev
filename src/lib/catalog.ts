@@ -244,10 +244,10 @@ export type Vehicle = {
   consumptionThermal?: number;
   services?: string[];
   custom?: boolean;
-  /** Renseigné à l'import d'une car policy (IA ou moteur local) : confiance de
+  /** Renseigné à l'import d'une car policy (moteur local ou IA locale) : confiance de
    *  l'identification (0 à 1), champs complétés par l'IA (absents du fichier)
    *  et remarque éventuelle. Jamais en DB, état local uniquement. */
-  aiMeta?: { confidence: number; inferred: string[]; note?: string; source?: "ia" | "local" };
+  aiMeta?: { confidence: number; inferred: string[]; note?: string; source?: "local" | "llm" };
   /** Caractéristiques complétées depuis les données ouvertes (ADEME Car Labelling,
    *  Open EV Data) quand elles manquaient : sources, champs remplis, libellé de la
    *  ligne de référence retenue, `approx` si la version exacte n'a pas été

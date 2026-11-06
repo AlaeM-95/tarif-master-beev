@@ -22,14 +22,15 @@ export type ImportReport = {
   warnings: string[];
   totalRows: number;
   importedRows: number;
-  /** Moteur de lecture : « ia » (lecture intelligente) ou « locale » (colonnes,
-   *  dictionnaire de modèles et règles de motorisation, sans IA). */
-  engine?: "ia" | "locale";
-  /** Vrai si au moins une ligne n'a pas été reconnue avec certitude : la lecture
-   *  intelligente est alors utile pour la compléter. */
+  /** Moteur de lecture : toujours « locale » (colonnes, dictionnaire de modèles,
+   *  règles de motorisation, et IA locale facultative) : rien ne quitte le navigateur. */
+  engine?: "locale";
+  /** Vrai si au moins une ligne n'a pas été reconnue avec certitude. */
   needsReview?: boolean;
-  /** Nombre de plaques détectées dans le fichier (jamais transmises à l'IA). */
+  /** Nombre de plaques détectées dans le fichier. */
   plates?: number;
+  /** Lignes que ni le dictionnaire ni l'IA locale n'ont reconnues (ignorées). */
+  unresolved?: Array<{ line: number; text: string }>;
 };
 
 // Synonymes par champ — recherche case-insensitive, accents ignorés,
@@ -169,7 +170,22 @@ function isSeparatorRow(row: unknown[]): boolean {
  * Choisit automatiquement la meilleure feuille (préfère « Import TCO Lovable »
  * sur une éventuelle feuille de synthèse / matrice comparative).
  */
-export async function importCarPolicy(file: File): Promise<ImportReport> {
+/** Véhicule identifié par l'IA locale à partir d'un libellé libre. */
+export type ResolvedVehicle = {
+  brand: string;
+  model: string;
+  version?: string;
+  energy?: string;
+  category?: string;
+  confidence?: number;
+};
+export type ImportOptions = {
+  /** Reçoit les libellés non reconnus par le dictionnaire (sans doublon) et renvoie
+   *  ce que l'IA locale en comprend, indexé par libellé. Facultatif. */
+  resolve?: (texts: string[]) => Promise<Map<string, ResolvedVehicle>>;
+};
+
+export async function importCarPolicy(file: File, opts: ImportOptions = {}): Promise<ImportReport> {
   const warnings: string[] = [];
   const buffer = await file.arrayBuffer();
   const wb = XLSX.read(buffer, { type: "array" });
@@ -278,6 +294,7 @@ export async function importCarPolicy(file: File): Promise<ImportReport> {
   const seenIds = new Set<string>();
   let unresolved = 0; // lignes non reconnues, ignorées
   let lowRows = 0; // lignes reconnues avec une confiance faible
+  const unresolvedList: Array<{ line: number; text: string }> = [];
 
   // Marqueur de section : si la dernière ligne séparateur traitée contient
   // "flotte actuelle" / "véhicules actuels", les véhicules qui suivent sont
@@ -290,6 +307,32 @@ export async function importCarPolicy(file: File): Promise<ImportReport> {
   // Beev). On considère qu'une ligne est un re-header si elle a au moins 3
   // cellules qui correspondent à des cellules de l'en-tête de référence.
   const headerCellsNormalized = headerRow.map((c) => c != null ? normalize(String(c)) : "");
+
+  // Libellés que le dictionnaire ne reconnaît pas : soumis en un seul lot à l'IA locale.
+  const llmMap = new Map<string, ResolvedVehicle>();
+  if (opts.resolve) {
+    const pending = new Set<string>();
+    for (const row of dataRows) {
+      if (!row || row.every((c) => c == null || c === "") || isSeparatorRow(row)) continue;
+      const pick = (field: keyof typeof COLUMN_SYNONYMS) => {
+        const idx = fieldToColIdx[field];
+        return String((idx !== undefined ? row[idx] : null) ?? "").trim();
+      };
+      const b = pick("brand");
+      const m = pick("model");
+      if (!b && !m) continue;
+      if (/^(total|sous total|somme|moyenne|nombre total)\b/.test(normalize(b || m))) continue;
+      if (b && m) continue;
+      const text = [b, m, pick("version")].filter(Boolean).join(" ");
+      const r = recognizeVehicle(text);
+      if (!(r && r.brand && r.model)) pending.add(text);
+    }
+    if (pending.size > 0) {
+      try {
+        for (const [k, v] of await opts.resolve([...pending])) llmMap.set(k, v);
+      } catch { /* IA locale indisponible : les lignes restent signalées */ }
+    }
+  }
 
   for (let i = 0; i < dataRows.length; i++) {
     const row = dataRows[i];
@@ -334,15 +377,25 @@ export async function importCarPolicy(file: File): Promise<ImportReport> {
     let model = modelCell;
     let version = versionCell;
     let identityConf = 0.95;
+    let llm: ResolvedVehicle | undefined;
     if (!(brand && model)) {
+      const text = [brandCell, modelCell, versionCell].filter(Boolean).join(" ");
+      llm = !(rec && rec.brand && rec.model) ? llmMap.get(text) : undefined;
       if (rec && rec.brand && rec.model) {
         brand = rec.brand;
         model = rec.model;
         version = rec.version;
         identityConf = rec.confidence;
+      } else if (llm && llm.brand && llm.model) {
+        // Identifié par l'IA locale : toujours signalé « À vérifier ».
+        brand = llm.brand.toUpperCase();
+        model = llm.model;
+        version = llm.version ?? "";
+        identityConf = Math.min(0.6, llm.confidence ?? 0.6);
       } else {
         warnings.push(`Ligne ${lineNo} : véhicule non reconnu (« ${[brandCell, modelCell].filter(Boolean).join(" ").slice(0, 40)} »), ignoré.`);
         unresolved++;
+        unresolvedList.push({ line: lineNo, text: [brandCell, modelCell].filter(Boolean).join(" ").slice(0, 80) });
         continue;
       }
     }
@@ -353,11 +406,13 @@ export async function importCarPolicy(file: File): Promise<ImportReport> {
     const inferred: string[] = [];
     if (!category) {
       if (rec && rec.model && rec.category) { category = rec.category; catConf = 0.9; inferred.push("category"); }
+      else if (llm?.category) { category = llm.category; catConf = 0.6; inferred.push("category"); }
       else { category = "Berline"; catConf = 0.6; }
     }
 
     // Énergie : colonne du fichier, sinon motorisation du libellé, sinon dictionnaire.
-    const guess = inferEnergy(String(get("energy") ?? ""), [modelCell, versionCell, brandCell], rec?.energyHint ?? null);
+    let guess = inferEnergy(String(get("energy") ?? ""), [modelCell, versionCell, brandCell], rec?.energyHint ?? null);
+    if (!guess.known && llm?.energy) guess = { energy: detectEnergy(llm.energy), confidence: 0.6, explicit: false, known: true };
     if (!guess.explicit) inferred.push("energy");
     const confidence = Math.min(identityConf, guess.confidence, catConf);
     if (confidence < 0.8) lowRows++;
@@ -411,7 +466,9 @@ export async function importCarPolicy(file: File): Promise<ImportReport> {
     const qtyImp = Math.round(parseFrNumber(get("quantity")));
     if (qtyImp > 1) (vehicle as Vehicle & { quantity?: number }).quantity = qtyImp;
     // Pastille « reconnu automatiquement » seulement si quelque chose a été déduit.
-    if (inferred.length > 0) vehicle.aiMeta = { confidence, inferred, source: "local" };
+    if (llm || inferred.length > 0) {
+      vehicle.aiMeta = { confidence, inferred: inferred.length ? inferred : ["brand", "model"], source: llm ? "llm" : "local" };
+    }
 
     vehicles.push(vehicle);
   }
@@ -428,5 +485,6 @@ export async function importCarPolicy(file: File): Promise<ImportReport> {
     importedRows: vehicles.length,
     engine: "locale",
     needsReview: unresolved > 0 || lowRows > 0,
+    unresolved: unresolvedList,
   };
 }

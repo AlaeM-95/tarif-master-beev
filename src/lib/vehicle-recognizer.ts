@@ -702,5 +702,8 @@ export function inferEnergy(explicit: string, rest: string[], hint: Energy | nul
   const fromText = detectEnergy(rest.join(" "));
   if (fromText) return { energy: fromText, confidence: 0.85, explicit: false, known: true };
   if (hint) return { energy: hint, confidence: 0.9, explicit: false, known: true };
+  // Petite cylindrée citée seule (« 1.0 », « 1.2 », « 1.4 ») : le plus souvent de l'essence.
+  const disp = rest.join(" ").match(/(?:^|[^\d.,])([01][.,]\d)(?![\d])/);
+  if (disp && parseFloat(disp[1].replace(",", ".")) <= 1.4) return { energy: "Essence", confidence: 0.65, explicit: false, known: true };
   return { energy: "Diesel", confidence: 0.5, explicit: false, known: false };
 }
