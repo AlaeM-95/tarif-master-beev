@@ -31,6 +31,8 @@ type AdemeRow = {
   conso: number;
   consoElec: number;
   weight: number;
+  /** Autonomie électrique (km) : voitures électriques et hybrides rechargeables. */
+  elecRange: number;
 };
 
 type EvRow = {
@@ -46,6 +48,13 @@ type EvRow = {
   wltp: number;
   dc: number;
   ac: number;
+  curb: number;
+  cargo: number;
+  len: number;
+  wid: number;
+  hei: number;
+  /** Vendu en France (marché FR déclaré). */
+  fr: boolean;
 };
 
 export type VehicleReference = { ademe: AdemeRow[]; ev: EvRow[] };
@@ -61,12 +70,19 @@ export type SpecPatch = {
   batteryKwh: number;
   chargeDcMaxKw: number;
   chargeAcMaxKw: number;
+  trunkLitres: number;
+  /** « 4 750 × 1 850 × 1 620 mm », vide si inconnu. */
+  dimensions: string;
+  /** Avertissement affiché quand une valeur paraît incohérente. */
+  warn: string;
   sources: string[];
   label: string;
   approx: boolean;
 };
 
 const KW_TO_HP = 1.359;
+/** 4750 -> « 4 750 » (espace insécable fine). */
+const fmtMm = (v: number) => String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, "\u202F");
 
 const norm = (s: string) =>
   String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
@@ -98,7 +114,7 @@ function parseAdeme(f: RefFile): AdemeRow[] {
   const c = (k: string) => f.cols.indexOf(k);
   const iBrand = c("Marque"), iModel = c("Modèle"), iDesc = c("Description_Commerciale"), iEn = c("Energie"), iBody = c("Carrosserie");
   const iFisc = c("Puissance_fiscale"), iKw = c("Puissance_maximale"), iKwE = c("Puissance_nominale_électrique");
-  const iCo2 = c("CO2_vitesse_mixte_Max"), iCons = c("Conso_vitesse_mixte_Max"), iConsE = c("Conso_elec_Max"), iW = c("Poids_à_vide");
+  const iCo2 = c("CO2_vitesse_mixte_Max"), iCons = c("Conso_vitesse_mixte_Max"), iConsE = c("Conso_elec_Max"), iW = c("Poids_à_vide"), iER = c("Autonomie_elec_Max");
   return f.rows.map((r) => {
     const desc = String(r[iDesc] ?? "");
     const chInDesc = desc.match(/\((\d+)\s*ch/i);
@@ -116,6 +132,7 @@ function parseAdeme(f: RefFile): AdemeRow[] {
       conso: n(r[iCons]),
       consoElec: n(r[iConsE]),
       weight: n(r[iW]),
+      elecRange: n(r[iER]),
     };
   });
 }
@@ -132,6 +149,7 @@ function parseEv(f: RefFile): EvRow[] {
   const c = (k: string) => f.cols.indexOf(k);
   const iMake = c("make_name"), iModel = c("model_name"), iYear = c("year"), iTrim = c("trim_name"), iVar = c("variant_name");
   const iKw = c("system_power_kw"), iKwh = c("battery_capacity_net_kwh"), iR = c("range_wltp_km"), iDc = c("dc_max_power_kw"), iAc = c("ac_max_power_kw");
+  const iCurb = c("curb_weight_kg"), iCargo = c("cargo_l"), iLen = c("length_mm"), iWid = c("width_mm"), iHei = c("height_mm"), iFr = c("fr_market");
   return f.rows.map((r) => {
     const make = String(r[iMake] ?? "");
     const bk = brandKey(make);
@@ -148,6 +166,12 @@ function parseEv(f: RefFile): EvRow[] {
       wltp: n(r[iR]),
       dc: n(r[iDc]),
       ac: n(r[iAc]),
+      curb: n(r[iCurb]),
+      cargo: n(r[iCargo]),
+      len: n(r[iLen]),
+      wid: n(r[iWid]),
+      hei: n(r[iHei]),
+      fr: n(r[iFr]) > 0,
     };
   });
 }
@@ -292,8 +316,11 @@ function lookupEv(ref: VehicleReference, v: Pick<Vehicle, "brand" | "model" | "v
     scored.push({ row, s });
     if (s > best) best = s;
   }
-  const top = scored.filter((x) => x.s === best).map((x) => x.row);
+  let top = scored.filter((x) => x.s === best).map((x) => x.row);
   if (top.length === 0) return null;
+  // Variantes déclarées vendues en France d'abord (évite une version chinoise ou américaine).
+  const sold = top.filter((r) => r.fr);
+  if (sold.length > 0) top = sold;
 
   // Variante : capacité (« 77 kWh »), mots de la finition, année la plus récente.
   const text = `${v.model} ${v.version}`;
@@ -326,7 +353,8 @@ export function lookupSpecs(
 ): SpecPatch | null {
   const patch: SpecPatch = {
     co2: 0, fiscalHp: 0, powerHp: 0, consumption: 0, poidsVide: 0, rangeWltp: 0, batteryKwh: 0,
-    chargeDcMaxKw: 0, chargeAcMaxKw: 0, sources: [], label: "", approx: false,
+    chargeDcMaxKw: 0, chargeAcMaxKw: 0, trunkLitres: 0, dimensions: "", warn: "",
+    sources: [], label: "", approx: false,
   };
   const labels: string[] = [];
 
@@ -336,8 +364,12 @@ export function lookupSpecs(
     patch.fiscalHp = r.fiscal;
     patch.powerHp = r.hp;
     patch.poidsVide = r.weight;
-    if (v.energy === "Électrique") patch.consumption = r.consoElec > 0 ? Math.round(r.consoElec) / 10 : 0; // Wh/km -> kWh/100 km
-    else {
+    if (v.energy === "Électrique") {
+      patch.consumption = r.consoElec > 0 ? Math.round(r.consoElec) / 10 : 0; // Wh/km -> kWh/100 km
+      patch.rangeWltp = r.elecRange; // repli si Open EV Data ne connaît pas le modèle (écrasé plus bas sinon)
+    } else {
+      // Hybride rechargeable : autonomie 100 % électrique homologuée.
+      if (v.energy === "Hybride Rechargeable") patch.rangeWltp = r.elecRange;
       patch.co2 = Math.round(r.co2);
       patch.consumption = Math.round(r.conso * 10) / 10;
     }
@@ -352,9 +384,17 @@ export function lookupSpecs(
       const r = e.row;
       patch.rangeWltp = r.wltp;
       patch.batteryKwh = r.kwh;
+      patch.trunkLitres = r.cargo;
+      if (r.len > 0 && r.wid > 0 && r.hei > 0) patch.dimensions = `${fmtMm(r.len)} × ${fmtMm(r.wid)} × ${fmtMm(r.hei)} mm`;
+      // Autonomie incohérente avec la batterie (kWh pour 100 km) : valeur à vérifier.
+      if (r.kwh > 0 && r.wltp > 0) {
+        const kwh100 = (r.kwh / r.wltp) * 100;
+        if (kwh100 < 11.5 || kwh100 > 26) patch.warn = `Autonomie non reprise, à vérifier : ${Math.round(r.wltp)} km annoncés pour ${r.kwh} kWh de batterie (${kwh100.toFixed(1).replace(".", ",")} kWh/100 km), écart inhabituel.`;
+      }
       // Puissance et recharge ne sont reprises que si la finition est identifiée
       // (une variante « médiane » peut avoir une toute autre puissance).
       if (!e.approx) {
+        if (!patch.poidsVide && r.curb > 0) patch.poidsVide = r.curb;
         if (!patch.powerHp && r.kw > 0) patch.powerHp = Math.round(r.kw * KW_TO_HP);
         patch.chargeDcMaxKw = r.dc;
         patch.chargeAcMaxKw = r.ac;
@@ -370,8 +410,8 @@ export function lookupSpecs(
   return patch;
 }
 
-const FIELDS: Array<keyof Pick<SpecPatch, "co2" | "fiscalHp" | "powerHp" | "consumption" | "poidsVide" | "rangeWltp" | "batteryKwh" | "chargeDcMaxKw" | "chargeAcMaxKw">> = [
-  "co2", "fiscalHp", "powerHp", "consumption", "poidsVide", "rangeWltp", "batteryKwh", "chargeDcMaxKw", "chargeAcMaxKw",
+const FIELDS: Array<keyof Pick<SpecPatch, "co2" | "fiscalHp" | "powerHp" | "consumption" | "poidsVide" | "rangeWltp" | "batteryKwh" | "chargeDcMaxKw" | "chargeAcMaxKw" | "trunkLitres">> = [
+  "co2", "fiscalHp", "powerHp", "consumption", "poidsVide", "rangeWltp", "batteryKwh", "chargeDcMaxKw", "chargeAcMaxKw", "trunkLitres",
 ];
 
 /** Complète les champs VIDES d'un véhicule depuis la référence. Renvoie une copie
@@ -405,11 +445,16 @@ export function enrichVehicle<T extends Vehicle>(v: T, ref: VehicleReference | n
       const val = spec[f];
       if (!(val > 0)) continue;
       if (f === "co2" && v.energy === "Électrique") continue;
+      if (f === "rangeWltp" && spec.warn) continue; // autonomie suspecte : non reprise
       const cur = (v as unknown as Record<string, unknown>)[f];
       if (typeof cur === "number" && cur > 0 && !aiEstimated.has(f)) continue;
       next[f] = val;
       filled.push(f);
     }
+  }
+  if (spec?.dimensions && !(typeof v.dimensions === "string" && v.dimensions.trim())) {
+    next.dimensions = spec.dimensions;
+    filled.push("dimensions");
   }
   const sources = spec ? [...spec.sources] : [];
   let label = spec ? spec.label : "";
@@ -426,8 +471,8 @@ export function enrichVehicle<T extends Vehicle>(v: T, ref: VehicleReference | n
     }
   }
 
-  if (filled.length === 0) return v;
-  next.specsMeta = { sources, fields: filled, label, approx: spec?.approx ?? false };
+  if (filled.length === 0 && !spec?.warn) return v;
+  next.specsMeta = { sources, fields: filled, label, approx: spec?.approx ?? false, ...(spec?.warn ? { warn: spec.warn } : {}) };
   return next as T;
 }
 
@@ -453,6 +498,8 @@ export function fillMissingRanges(catalogue: Vehicle[], ref: VehicleReference | 
     const e = lookupEv(ref, v);
     if (!e) return v;
     const r = e.row;
+    // Une autonomie incohérente avec la batterie ne sert pas au classement.
+    if (r.kwh > 0 && ((r.kwh / r.wltp) * 100 < 11.5 || (r.kwh / r.wltp) * 100 > 26)) return v;
     return {
       ...v,
       rangeWltp: r.wltp,

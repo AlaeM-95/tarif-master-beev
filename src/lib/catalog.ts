@@ -252,7 +252,7 @@ export type Vehicle = {
    *  Open EV Data) quand elles manquaient : sources, champs remplis, libellé de la
    *  ligne de référence retenue, `approx` si la version exacte n'a pas été
    *  identifiée. Jamais en DB, état local uniquement. */
-  specsMeta?: { sources: string[]; fields: string[]; label: string; approx: boolean };
+  specsMeta?: { sources: string[]; fields: string[]; label: string; approx: boolean; warn?: string };
 };
 
 // marginPct est appliqué uniquement à l'affichage côté client :

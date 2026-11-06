@@ -2,7 +2,7 @@
 """Régénère les jeux de référence véhicules embarqués dans l'app.
 
   public/data/ademe-car-labelling.json  <- API ADEME « Car Labelling » (data.ademe.fr)
-  public/data/open-ev-data.json         <- Open EV Data (dernière release GitHub)
+  public/data/open-ev-data.json         <- Open EV Data (dernière release GitHub, fichier JSON)
 
 Usage (depuis le dossier repo/) :  python3 scripts/refresh-reference-data.py
 
@@ -16,8 +16,6 @@ Sources et licences
   - Open EV Data : CDLA-Permissive-2.0.
     https://github.com/open-ev-data/open-ev-data-dataset
 """
-import csv
-import io
 import json
 import os
 import urllib.parse
@@ -39,6 +37,7 @@ OEV_COLS = [
     "make_name", "model_name", "year", "trim_name", "variant_name", "vehicle_type",
     "system_power_kw", "battery_capacity_net_kwh", "range_wltp_km",
     "dc_max_power_kw", "ac_max_power_kw",
+    "curb_weight_kg", "cargo_l", "length_mm", "width_mm", "height_mm", "fr_market",
 ]
 
 
@@ -88,16 +87,30 @@ def ademe():
 
 def open_ev_data():
     rel = json.loads(get(OEV_RELEASE))
-    asset = next(a for a in rel["assets"] if a["name"].endswith(".csv"))
-    text = get(asset["browser_download_url"]).decode("utf-8")
+    asset = next(a for a in rel["assets"] if a["name"].endswith(".json"))
+    data = json.loads(get(asset["browser_download_url"]))
+
+    def dig(o, *path):
+        for k in path:
+            if not isinstance(o, dict):
+                return None
+            o = o.get(k)
+        return o
+
     rows = []
-    for r in csv.DictReader(io.StringIO(text)):
-        if not (r["range_wltp_km"] or r["battery_capacity_net_kwh"]):
+    for v in data["vehicles"]:
+        wltp = next((c.get("range_km") for c in (dig(v, "range", "rated") or []) if c.get("cycle") == "wltp"), None)
+        kwh = dig(v, "battery", "pack_capacity_kwh_net")
+        if not (wltp or kwh):
             continue
         rows.append([
-            r["make_name"], r["model_name"], num(r["year"]), r["trim_name"], r["variant_name"],
-            r["vehicle_type"], num(r["system_power_kw"]), num(r["battery_capacity_net_kwh"]),
-            num(r["range_wltp_km"]), num(r["dc_max_power_kw"]), num(r["ac_max_power_kw"]),
+            dig(v, "make", "name"), dig(v, "model", "name"), num(v.get("year")),
+            dig(v, "trim", "name") or "", dig(v, "variant", "name") or "", v.get("vehicle_type") or "",
+            num(dig(v, "powertrain", "system_power_kw")), num(kwh), num(wltp),
+            num(dig(v, "charging", "dc", "max_power_kw")), num(dig(v, "charging", "ac", "max_power_kw")),
+            num(dig(v, "weights", "curb_weight_kg")), num(dig(v, "capacity", "cargo_l")),
+            num(dig(v, "dimensions", "length_mm")), num(dig(v, "dimensions", "width_mm")), num(dig(v, "dimensions", "height_mm")),
+            1 if "FR" in (v.get("markets") or []) else 0,
         ])
     rows.sort(key=lambda r: (r[0], r[1], r[2] or 0, r[3], r[4]))
     out = {
@@ -106,7 +119,8 @@ def open_ev_data():
             "license": "CDLA-Permissive-2.0",
             "url": "https://github.com/open-ev-data/open-ev-data-dataset",
             "generated": date.today().isoformat(),
-            "units": "puissance et recharge en kW, batterie nette en kWh, autonomie WLTP en km",
+            "units": "puissance et recharge en kW, batterie nette en kWh, autonomie WLTP en km, poids en kg, coffre en L, dimensions en mm",
+            "caveat": "Jeu communautaire : des valeurs peuvent être erronées (ex. Model Y Long Range AWD à 719 km WLTP). Toujours croiser.",
         },
         "cols": OEV_COLS,
         "rows": rows,

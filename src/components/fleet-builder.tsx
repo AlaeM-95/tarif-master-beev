@@ -45,6 +45,7 @@ function Fld({ label, children }: { label: string; children: ReactNode }) {
 const SPEC_LABELS: Record<string, string> = {
   co2: "CO₂", fiscalHp: "CV fiscaux", powerHp: "puissance", consumption: "conso", poidsVide: "poids",
   rangeWltp: "autonomie", batteryKwh: "batterie", chargeDcMaxKw: "recharge DC", chargeAcMaxKw: "recharge AC",
+  trunkLitres: "coffre", dimensions: "dimensions",
 };
 
 const fmtEur = (n: number) =>
@@ -257,6 +258,7 @@ export function FleetBuilder({
                           {l.current.specsMeta && (
                             <div className="mt-1 text-[10px] text-muted-foreground" title={l.current.specsMeta.label}>
                               Données {l.current.specsMeta.sources.join(" + ")} : {l.current.specsMeta.fields.map((f) => SPEC_LABELS[f] ?? f).join(", ")}{l.current.specsMeta.approx ? " (version approchée)" : ""}
+                              {l.current.specsMeta.warn && <span className="block text-amber-700">{l.current.specsMeta.warn}</span>}
                             </div>
                           )}
                           {l.current.aiMeta && (
