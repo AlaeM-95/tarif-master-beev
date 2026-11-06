@@ -301,9 +301,23 @@ export function CarPolicyImporter({
                       )}
                     </div>
                   </div>
-                  <div className="mt-2 grid grid-cols-3 gap-1 text-[10px] text-muted-foreground">
-                    <span>{v.rangeWltp ? `${v.rangeWltp} km` : "—"}</span>
-                    <span>{v.batteryKwh ? `${v.batteryKwh} kWh` : "—"}</span>
+                  {/* Électrique et hybride rechargeable : autonomie + batterie ; thermique et
+                      hybride simple : CO₂ + CV fiscaux (une « autonomie WLTP » n'a pas de sens). */}
+                  <div
+                    className="mt-2 grid grid-cols-3 gap-1 text-[10px] text-muted-foreground"
+                    title={v.specsMeta ? `Données ${v.specsMeta.sources.join(" + ")} : ${v.specsMeta.label}` : undefined}
+                  >
+                    {v.energy === "Électrique" || v.energy === "Hybride Rechargeable" ? (
+                      <>
+                        <span>{v.rangeWltp ? `${v.rangeWltp} km` : "—"}</span>
+                        <span>{v.batteryKwh ? `${v.batteryKwh} kWh` : "—"}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>{v.co2 ? `${v.co2} g CO₂` : "—"}</span>
+                        <span>{v.fiscalHp ? `${v.fiscalHp} CV` : "—"}</span>
+                      </>
+                    )}
                     <span>{v.powerHp ? `${v.powerHp} ch` : "—"}</span>
                   </div>
                   <div className="mt-2 flex items-baseline justify-between text-[11px]">

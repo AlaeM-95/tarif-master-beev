@@ -175,6 +175,13 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(
 
 function toVehicle(a: AiVehicle, id: string, n: number): Vehicle & { quantity: number; kmPerYear?: number; durationMonths?: number } {
   const energy = detectEnergy(a.energy);
+  // L'IA identifie le véhicule (marque, modèle, version, énergie, segment) mais ses
+  // caractéristiques chiffrées « de mémoire » ne sont PAS retenues : prix, autonomie,
+  // CO₂, CV fiscaux… venaient parfois faux. Seules comptent les valeurs lues dans le
+  // fichier ; le reste est complété ensuite par les données officielles (ADEME,
+  // Open EV Data) ou laissé vide.
+  const estimated = new Set(a.inferred ?? []);
+  const fromFile = (field: string, value?: number) => (estimated.has(field) ? 0 : value ?? 0);
   const v: Vehicle & { quantity: number; kmPerYear?: number; durationMonths?: number } = {
     id,
     brand: a.brand,
@@ -182,20 +189,22 @@ function toVehicle(a: AiVehicle, id: string, n: number): Vehicle & { quantity: n
     version: a.version ?? "",
     category: a.category || "Berline",
     energy,
-    batteryKwh: a.battery_kwh ?? 0,
-    rangeWltp: a.range_wltp ?? 0,
-    powerHp: a.power_hp ?? 0,
-    consumption: a.consumption ?? 0,
-    co2: energy === "Électrique" ? 0 : a.co2 ?? 0,
-    fiscalHp: a.fiscal_hp ?? 0,
-    priceTtc: a.price_ttc ?? 0,
+    batteryKwh: fromFile("battery_kwh", a.battery_kwh),
+    rangeWltp: fromFile("range_wltp", a.range_wltp),
+    powerHp: fromFile("power_hp", a.power_hp),
+    consumption: fromFile("consumption", a.consumption),
+    co2: energy === "Électrique" ? 0 : fromFile("co2", a.co2),
+    fiscalHp: fromFile("fiscal_hp", a.fiscal_hp),
+    priceTtc: fromFile("price_ttc", a.price_ttc),
     monthlyLld: a.monthly_lease ?? 0,
     image: "",
     custom: true,
     isCurrentFleet: a.section === "current",
     aiMeta: {
       confidence: typeof a.confidence === "number" ? a.confidence : 0.5,
-      inferred: a.inferred ?? [],
+      // Seuls l'énergie, le segment et la version peuvent encore être « déduits » ;
+      // les valeurs chiffrées estimées ont été écartées ci-dessus.
+      inferred: (a.inferred ?? []).filter((f) => ["energy", "category", "version"].includes(f)),
       note: a.note || undefined,
       source: "ia",
     },

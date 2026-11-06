@@ -112,7 +112,7 @@ function systemPrompt(categories: string[]): string {
     "- Énergie : Essence, Diesel, Hybride, Mild Hybrid, Hybride Rechargeable ou Électrique. Un « hybride » sans précision est « Hybride » ; « rechargeable », « PHEV » ou « plug-in » donne « Hybride Rechargeable ».",
     `- Catégorie : choisis dans cette liste, sinon la plus proche : ${categories.join(", ")}.`,
     "- Valeurs présentes dans le fichier (loyer mensuel, km/an, durée en mois, quantité, prix) : reprends-les telles quelles. Un kilométrage total sur la durée du contrat se convertit en km/an.",
-    "- Valeurs absentes du fichier : complète-les depuis ta connaissance du modèle (CO₂ WLTP, CV fiscaux, puissance, batterie, autonomie, consommation, prix catalogue TTC approximatif) UNIQUEMENT si tu es raisonnablement sûr, et liste alors le champ dans `inferred`. Sinon mets 0. N'invente jamais.",
+    "- Caractéristiques chiffrées (CO₂, CV fiscaux, puissance, batterie, autonomie, consommation, prix) : ne reprends QUE ce qui est écrit dans le fichier. Absentes du fichier : mets 0. Ne les complète JAMAIS depuis ta mémoire, elles sont complétées ensuite par des données officielles.",
     "- confidence : 0.9+ si marque, modèle et énergie sont explicites ; 0.6-0.8 si déduits ; sous 0.5 si tu devines.",
     "- section : « current » seulement si le fichier l'indique explicitement (ex. titre « flotte actuelle »), « proposed » pour des propositions, sinon « unknown ».",
     "- quantity est le nombre de véhicules portés par UNE ligne (colonne quantité / nombre / effectif), 1 par défaut. Une ligne marquée ×N est répétée N fois à l'identique : ne multiplie pas toi-même.",
