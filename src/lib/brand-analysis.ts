@@ -115,7 +115,7 @@ export function summarizeFleetBrands(items: Array<{ brand: string; quantity: num
     tiers.set(p.tier, (tiers.get(p.tier) ?? 0) + q);
     const name = displayBrand(it.brand);
     brands.set(name, (brands.get(name) ?? 0) + q);
-    groups.add(p.group);
+    groups.add(p.group === p.key ? displayBrand(it.brand) : p.group); // marque sans groupe connu : elle-même
   }
   return {
     total,
