@@ -1754,6 +1754,8 @@ function App() {
               onPatchVehicle={patchVehicle}
               pageEnabled={pdfConfig.showGroupComparison !== false}
               onEnablePage={() => { updatePdfConfig({ showGroupComparison: true }); toast.success("Page « Comparateur par groupe » activée"); }}
+              energy={energy}
+              leaserOffers={leaserOffers}
             />
           ) : (
           <>

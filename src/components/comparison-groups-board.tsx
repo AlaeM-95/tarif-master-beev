@@ -10,6 +10,9 @@ import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { SelectedVehicle } from "@/lib/pdf";
 import { groupIssues, groupTone, vehicleGroups, type GroupIssue } from "@/lib/comparison-groups";
+import { GroupTcoSimulator } from "@/components/group-tco-simulator";
+import type { EnergyParams } from "@/lib/store";
+import type { LeaserOffer } from "@/lib/leaser-offers";
 
 const eur0 = (n: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
 const keyOf = (sv: SelectedVehicle) => sv.instanceId ?? sv.vehicle.id;
@@ -104,9 +107,13 @@ type Props = {
   /** La page « Comparateur par groupe » est-elle activée dans la configuration PDF ? */
   pageEnabled: boolean;
   onEnablePage: () => void;
+  /** Prix de l'énergie et mix de recharge : servent au TCO par durée et kilométrage. */
+  energy: EnergyParams;
+  /** Offres loueur du catalogue : loyers connus pour d'autres durées et kilométrages. */
+  leaserOffers: LeaserOffer[];
 };
 
-export function ComparisonGroupsBoard({ vehicles, groupNames, onSetGroups, onCreateGroup, onRenameGroup, onDeleteGroup, onGoVehicles, onOpenVehicle, onPatchVehicle, pageEnabled, onEnablePage }: Props) {
+export function ComparisonGroupsBoard({ vehicles, groupNames, onSetGroups, onCreateGroup, onRenameGroup, onDeleteGroup, onGoVehicles, onOpenVehicle, onPatchVehicle, pageEnabled, onEnablePage, energy, leaserOffers }: Props) {
   const [search, setSearch] = useState("");
   const [onlyFree, setOnlyFree] = useState(false);
   const [newName, setNewName] = useState("");
@@ -202,6 +209,8 @@ export function ComparisonGroupsBoard({ vehicles, groupNames, onSetGroups, onCre
                 onPatchVehicle={onPatchVehicle}
                 pageEnabled={pageEnabled}
                 onEnablePage={onEnablePage}
+                energy={energy}
+                leaserOffers={leaserOffers}
               />
             ))}
             <div className="space-y-3 rounded-2xl border border-dashed bg-card/60 p-4">
@@ -234,7 +243,7 @@ export function ComparisonGroupsBoard({ vehicles, groupNames, onSetGroups, onCre
   );
 }
 
-function GroupCard({ name, index, members, candidates, onAdd, onRemove, onRename, onDelete, onOpenVehicle, onPatchVehicle, pageEnabled, onEnablePage }: {
+function GroupCard({ name, index, members, candidates, onAdd, onRemove, onRename, onDelete, onOpenVehicle, onPatchVehicle, pageEnabled, onEnablePage, energy, leaserOffers }: {
   name: string;
   index: number;
   members: SelectedVehicle[];
@@ -247,6 +256,8 @@ function GroupCard({ name, index, members, candidates, onAdd, onRemove, onRename
   onPatchVehicle: (sv: SelectedVehicle, patch: Partial<SelectedVehicle>) => void;
   pageEnabled: boolean;
   onEnablePage: () => void;
+  energy: EnergyParams;
+  leaserOffers: LeaserOffer[];
 }) {
   const t = groupTone(index);
   const issues = groupIssues(members, pageEnabled);
@@ -345,6 +356,7 @@ function GroupCard({ name, index, members, candidates, onAdd, onRemove, onRename
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+        <GroupTcoSimulator members={members} energy={energy} offers={leaserOffers} />
       </div>
     </div>
   );
