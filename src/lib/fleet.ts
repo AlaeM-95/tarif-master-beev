@@ -6,6 +6,7 @@
 // son segment (classement top_rank du catalogue).
 
 import type { Vehicle } from "./catalog";
+import { brandAffinity, brandReasons, isBrandInRange } from "./brand-analysis";
 
 /** Normalise une catégorie pour le matching segment (minuscules, sans accents,
  *  quelques regroupements de synonymes courants). */
@@ -47,7 +48,7 @@ export const isLoyerEstimated = (v: Vehicle): boolean => !(v.monthlyLld > 0) && 
  *  3) sinon, les EV les moins chers du catalogue.
  *  Les modèles épinglés (top_rank) restent prioritaires dans chaque cas. */
 export function recommendEvs(current: Vehicle, catalogue: Vehicle[], n = 3): Vehicle[] {
-  const fromCat = topEvsForCategory(current.category, catalogue, n);
+  const fromCat = topEvsForCategory(current.category, catalogue, n, current.brand);
   // Si la catégorie a matché un vrai segment (pas le repli "tous EV"), on garde.
   const cat = normCategory(current.category);
   const catHasMatch = cat && catalogue.some((v) => v.energy === "Électrique" && normCategory(v.category) === cat);
@@ -59,7 +60,7 @@ export function recommendEvs(current: Vehicle, catalogue: Vehicle[], n = 3): Veh
   if (ref > 0) {
     const rank = (v: Vehicle) => (v.topRank && v.topRank > 0 ? v.topRank : Infinity);
     const inBand = dedupeByModel(catalogue
-      .filter((v) => v.energy === "Électrique" && effectiveLoyer(v) > 0 && Math.abs(effectiveLoyer(v) - ref) <= ref * 0.4)
+      .filter((v) => v.energy === "Électrique" && effectiveLoyer(v) > 0 && Math.abs(effectiveLoyer(v) - ref) <= ref * 0.4 && isBrandInRange(current.brand, v.brand))
       .sort((a, b) => rank(a) - rank(b) || Math.abs(effectiveLoyer(a) - ref) - Math.abs(effectiveLoyer(b) - ref)));
     if (inBand.length > 0) return inBand.slice(0, n);
   }
@@ -69,27 +70,56 @@ export function recommendEvs(current: Vehicle, catalogue: Vehicle[], n = 3): Veh
 /** Autonomie WLTP connue (0 = inconnue, classée en dernier). */
 const rangeOf = (v: Vehicle) => (v.rangeWltp > 0 ? v.rangeWltp : 0);
 
-/** EV du catalogue recommandés pour une catégorie donnée. Tri : d'abord les
- *  modèles ÉPINGLÉS (top_rank renseigné, par rang croissant : override éditorial
- *  de l'équipe), puis les autres par AUTONOMIE WLTP décroissante — le véhicule
- *  à la meilleure autonomie du segment passe en première ligne. À autonomie
- *  égale, le loyer le plus bas ; le loyer n'est pas requis (un EV sans loyer
- *  reste proposable). Repli sur l'ensemble des EV si la catégorie ne matche
- *  aucun modèle. */
-export function topEvsForCategory(category: string, catalogue: Vehicle[], n = 3): Vehicle[] {
+/** EV du catalogue recommandés pour une catégorie donnée. Sélection : même segment, puis,
+ *  si la marque du véhicule actuel est connue, uniquement les marques de la même gamme
+ *  (un niveau d'écart au plus : pas de Mercedes pour un parc Peugeot). Tri : modèles
+ *  ÉPINGLÉS (top_rank, override éditorial) ; puis AFFINITÉ DE MARQUE (même marque, puis même
+ *  groupe) ; puis AUTONOMIE WLTP décroissante ; à égalité, le loyer le plus bas (le loyer
+ *  n'est pas requis). Si aucune marque n'est dans la gamme, on retombe sur tout le segment ;
+ *  si le segment est vide, sur l'ensemble des EV. */
+export function topEvsForCategory(category: string, catalogue: Vehicle[], n = 3, clientBrand?: string): Vehicle[] {
   const cat = normCategory(category);
   const isEv = (v: Vehicle) => v.energy === "Électrique";
   const rank = (v: Vehicle) => (v.topRank && v.topRank > 0 ? v.topRank : Infinity);
   const loyerAsc = (v: Vehicle) => effectiveLoyer(v) || Infinity; // 0 = inconnu, en dernier
-  const bestRangeFirst = (a: Vehicle, b: Vehicle) => {
+  const affinity = (v: Vehicle) => (clientBrand ? brandAffinity(clientBrand, v.brand) : 2);
+  const best = (a: Vehicle, b: Vehicle) => {
     const ra = rank(a), rb = rank(b);
-    if (ra !== rb) return ra - rb;                         // épinglés d'abord, par rang
-    if (rangeOf(a) !== rangeOf(b)) return rangeOf(b) - rangeOf(a); // meilleure autonomie d'abord
-    return loyerAsc(a) - loyerAsc(b);                      // puis le moins cher
+    if (ra !== rb) return ra - rb;                                  // épinglés d'abord, par rang
+    if (affinity(a) !== affinity(b)) return affinity(a) - affinity(b); // même marque, puis même groupe
+    if (rangeOf(a) !== rangeOf(b)) return rangeOf(b) - rangeOf(a);  // meilleure autonomie d'abord
+    return loyerAsc(a) - loyerAsc(b);                               // puis le moins cher
   };
   const inCat = catalogue.filter((v) => isEv(v) && normCategory(v.category) === cat);
-  const pool = inCat.length > 0 ? inCat : catalogue.filter(isEv);
-  return dedupeByModel([...pool].sort(bestRangeFirst)).slice(0, Math.max(1, n));
+  let pool = inCat.length > 0 ? inCat : catalogue.filter(isEv);
+  if (clientBrand) {
+    const inRange = pool.filter((v) => isBrandInRange(clientBrand, v.brand));
+    if (inRange.length > 0) pool = inRange;
+  }
+  return dedupeByModel([...pool].sort(best)).slice(0, Math.max(1, n));
+}
+
+/** Électriques proposables à la main pour une ligne : UNIQUEMENT le segment du véhicule actuel
+ *  (jamais tout le catalogue), séparés en « gamme comparable » et « gamme différente »
+ *  (déconseillé), chacun trié par affinité de marque puis autonomie. `segmentEmpty` : le
+ *  catalogue n'a aucun électrique dans ce segment (la liste montre alors tout le catalogue). */
+export function evOptionsForLine(
+  current: Vehicle,
+  catalogue: Vehicle[],
+  excludeIds: string[] = [],
+): { inRange: Vehicle[]; outOfRange: Vehicle[]; segmentEmpty: boolean } {
+  const cat = normCategory(current.category);
+  const evs = catalogue.filter((v) => v.energy === "Électrique" && !excludeIds.includes(v.id));
+  const sameSeg = evs.filter((v) => normCategory(v.category) === cat);
+  const segmentEmpty = sameSeg.length === 0;
+  const pool = segmentEmpty ? evs : sameSeg;
+  const order = (a: Vehicle, b: Vehicle) =>
+    brandAffinity(current.brand, a.brand) - brandAffinity(current.brand, b.brand) || rangeOf(b) - rangeOf(a);
+  return {
+    inRange: pool.filter((v) => isBrandInRange(current.brand, v.brand)).sort(order),
+    outOfRange: pool.filter((v) => !isBrandInRange(current.brand, v.brand)).sort(order),
+    segmentEmpty,
+  };
 }
 
 /** Ne garde que la première variante de chaque modèle distinct (marque +
@@ -172,15 +202,18 @@ export function explainReco(current: Vehicle, ev: Vehicle, catalogue?: Vehicle[]
   const out: string[] = [];
   const cat = normCategory(current.category);
   const sameSegment = !!cat && normCategory(ev.category) === cat;
-  // Meilleure autonomie WLTP parmi les EV du même segment du catalogue ?
+  // Meilleure autonomie WLTP parmi les EV du même segment ET d'une marque de la même gamme ?
   const bestRange = catalogue && sameSegment && rangeOf(ev) > 0
-    ? rangeOf(ev) >= Math.max(...catalogue.filter((v) => v.energy === "Électrique" && normCategory(v.category) === cat).map(rangeOf))
+    ? rangeOf(ev) >= Math.max(...catalogue
+        .filter((v) => v.energy === "Électrique" && normCategory(v.category) === cat && isBrandInRange(current.brand, v.brand))
+        .map(rangeOf))
     : false;
   if (bestRange) out.push("Meilleure autonomie du segment");
   const ref = current.monthlyLld > 0 ? current.monthlyLld : 0;
   if (sameSegment) out.push(`Même segment (${ev.category})`);
   else if (ref > 0 && Math.abs(effectiveLoyer(ev) - ref) <= ref * 0.4) out.push("Tranche de loyer proche");
   else out.push("Alternative électrique accessible");
+  out.push(...brandReasons(current.brand, ev.brand)); // même marque / même groupe / gamme
   if (ev.topRank && ev.topRank > 0) out.push("Sélection Beev");
   if (ref > 0 && ev.monthlyLld > 0) {
     const d = Math.round(((ev.monthlyLld - ref) / ref) * 100);

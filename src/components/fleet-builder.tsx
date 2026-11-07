@@ -17,7 +17,8 @@ import { toast } from "sonner";
 import { ImageUpload } from "@/components/image-upload";
 import { smartImportCarPolicy } from "@/lib/smart-import";
 import { LocalAiPanel } from "@/components/local-ai-panel";
-import { buildFleetLines, effectiveLoyer, explainReco, isLoyerEstimated, normCategory, recommendEvs } from "@/lib/fleet";
+import { buildFleetLines, effectiveLoyer, evOptionsForLine, explainReco, isLoyerEstimated, normCategory, recommendEvs } from "@/lib/fleet";
+import { summarizeFleetBrands } from "@/lib/brand-analysis";
 import { calculateTcoFull } from "@/lib/tco-calculator";
 import { completeVehicle, fillMissingRanges, loadVehicleReference, type VehicleReference } from "@/lib/vehicle-reference";
 import type { Vehicle, Energy } from "@/lib/catalog";
@@ -49,6 +50,14 @@ const SPEC_LABELS: Record<string, string> = {
   trunkLitres: "coffre", dimensions: "dimensions", envScore: "score env.", cargoVolumeM3: "volume utile",
   chargeTime2080Ac: "recharge AC 20-80 %", chargeTime2080Dc: "recharge DC 20-80 %", image: "photo",
 };
+
+/** Ligne de la liste « + autre modèle… » : modèle, autonomie et loyer s'il existe. */
+const evOption = (ev: Vehicle) => (
+  <option key={ev.id} value={ev.id}>
+    {ev.brand} {ev.model}{ev.version ? ` ${ev.version}` : ""} — {ev.rangeWltp > 0 ? `${Math.round(ev.rangeWltp)} km` : "autonomie n.c."}
+    {effectiveLoyer(ev) > 0 ? ` · ${isLoyerEstimated(ev) ? "≈ " : ""}${fmtEur(effectiveLoyer(ev))}/mois` : ""}
+  </option>
+);
 
 const fmtEur = (n: number) =>
   new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n || 0);
@@ -180,6 +189,8 @@ export function FleetBuilder({
     }));
 
   const totalVeh = lines.reduce((s, l) => s + l.quantity, 0);
+  // Analyse des marques du parc : gamme et groupes, pondérés par la quantité.
+  const brandSummary = useMemo(() => summarizeFleetBrands(lines.map((l) => ({ brand: l.current.brand, quantity: l.quantity }))), [lines]);
   const segments = new Set(lines.map((l) => normCategory(l.current.category) || "—")).size;
   const totalEcoAn = lines.reduce((s, l) => s + lineEcoPerVeh(l) * l.quantity, 0);
 
@@ -242,6 +253,21 @@ export function FleetBuilder({
               </Button>
             </div>
 
+            <div className="rounded-lg border bg-muted/30 p-2.5 text-xs space-y-1">
+              <p className="font-semibold">Analyse des marques du parc</p>
+              <p>
+                {brandSummary.byBrand.slice(0, 5).map((b) => `${b.brand} ${b.pct} %`).join(" · ")}
+                {brandSummary.byBrand.length > 5 ? ` · +${brandSummary.byBrand.length - 5} autre${brandSummary.byBrand.length - 5 > 1 ? "s" : ""}` : ""}
+              </p>
+              <p className="text-muted-foreground">
+                Gamme : {brandSummary.byTier.map((t) => `${t.label} ${t.pct} %`).join(" · ")}
+                {brandSummary.groups.length > 0 ? ` · groupes : ${brandSummary.groups.join(", ")}` : ""}
+              </p>
+              <p className="text-muted-foreground">
+                Les électriques proposés restent dans la gamme de la marque actuelle (un niveau d'écart au plus) : un parc Peugeot ne reçoit pas de Mercedes. La même marque, puis le même groupe, passent en premier.
+              </p>
+            </div>
+
             <div className="overflow-x-auto rounded-lg border">
               <table className="w-full text-xs">
                 <thead className="bg-muted/50">
@@ -259,6 +285,8 @@ export function FleetBuilder({
                   {lines.map((l, i) => {
                     const eco = lineEcoPerVeh(l);
                     const editing = editingIdx === i;
+                    // Liste manuelle : segment de la ligne uniquement (déjà proposés exclus).
+                    const opts = evOptionsForLine(l.current, catalogue, l.recommendations.map((r) => r.id));
                     return (
                     <Fragment key={i}>
                       <tr className={`border-t align-top ${editing ? "bg-[#3809EA]/[0.04]" : ""}`}>
@@ -305,8 +333,13 @@ export function FleetBuilder({
                             })}
                             <select value="" onChange={(e) => { if (e.target.value) addCustomEv(i, e.target.value); }}
                               className="h-7 rounded-full border border-dashed border-border bg-white px-2 text-[11px] text-muted-foreground" title="Ajouter un autre modèle du catalogue">
-                              <option value="">+ autre modèle…</option>
-                              {allEvs.map((ev) => (<option key={ev.id} value={ev.id}>{ev.brand} {ev.model}{ev.version ? ` ${ev.version}` : ""} — {ev.rangeWltp > 0 ? `${Math.round(ev.rangeWltp)} km` : "autonomie n.c."}{effectiveLoyer(ev) > 0 ? ` · ${isLoyerEstimated(ev) ? "≈ " : ""}${fmtEur(effectiveLoyer(ev))}/mois` : ""}</option>))}
+                              <option value="">{`+ autre modèle${opts.segmentEmpty ? " (aucun EV dans ce segment : tout le catalogue)" : ` ${l.current.category ? `(${l.current.category})` : "du segment"}`}…`}</option>
+                              {opts.inRange.length > 0 && (
+                                <optgroup label="Même segment · gamme comparable">{opts.inRange.map(evOption)}</optgroup>
+                              )}
+                              {opts.outOfRange.length > 0 && (
+                                <optgroup label="Même segment · gamme différente (déconseillé)">{opts.outOfRange.map(evOption)}</optgroup>
+                              )}
                             </select>
                           </div>
                           {lineEv(l) && (
