@@ -615,16 +615,21 @@ export async function enrichVehicles<T extends Vehicle>(
 const displayModel = (v: Vehicle) => `${v.brand} ${v.model}`.replace(/\s+/g, " ").trim();
 
 /** Pour le bouton « Compléter » : champs vides d'UN véhicule, prêts à fusionner dans le formulaire. */
-export async function completeVehicle(v: Vehicle, catalogue?: Vehicle[]): Promise<{ patch: Partial<Vehicle>; fields: string[]; found: boolean }> {
+export async function completeVehicle(
+  v: Vehicle,
+  catalogue?: Vehicle[],
+): Promise<{ patch: Partial<Vehicle>; fields: string[]; found: boolean; matched: boolean }> {
   const loaded = await loadVehicleReference();
   const ref = loaded.ademe.length === 0 && loaded.ev.length === 0 ? null : loaded;
   const e = enrichVehicle(v, ref, catalogue);
-  if (e === v) return { patch: {}, fields: [], found: false };
+  // `matched` : une source connaît ce modèle, même s'il n'y a plus rien à compléter.
+  const matched = !!(catalogue && matchCatalogue(v, catalogue)) || !!(ref && lookupSpecs(ref, v));
+  if (e === v) return { patch: {}, fields: [], found: false, matched };
   const patch: Record<string, unknown> = {};
   const before = v as unknown as Record<string, unknown>;
   const after = e as unknown as Record<string, unknown>;
   for (const k of Object.keys(after)) if (after[k] !== before[k]) patch[k] = after[k];
-  return { patch: patch as Partial<Vehicle>, fields: e.specsMeta?.fields ?? [], found: (e.specsMeta?.fields.length ?? 0) > 0 };
+  return { patch: patch as Partial<Vehicle>, fields: e.specsMeta?.fields ?? [], found: (e.specsMeta?.fields.length ?? 0) > 0, matched };
 }
 
 /** Catalogue dont les EV sans autonomie reçoivent celle d'Open EV Data (copie ; le

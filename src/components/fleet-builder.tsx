@@ -159,10 +159,12 @@ export function FleetBuilder({
   // Édition d'un véhicule importé : on patche le `current` de la ligne.
   // Complète les champs vides du véhicule édité depuis le catalogue Beev et les données ouvertes.
   const completeCurrent = async (idx: number) => {
-    const { patch, fields, found } = await completeVehicle(lines[idx].current, catalogueVehicles);
+    const { patch, fields, found, matched } = await completeVehicle(lines[idx].current, catalogueVehicles);
     if (found) {
       patchCurrent(idx, patch);
       toast.success(`${fields.length} champ${fields.length > 1 ? "s" : ""} complété${fields.length > 1 ? "s" : ""} : ${fields.join(", ")}`);
+    } else if (matched) {
+      toast.info(`Rien à compléter pour ${lines[idx].current.brand} ${lines[idx].current.model} : les données disponibles sont déjà reprises, les champs restants n'existent dans aucune source.`);
     } else {
       toast.info(`Aucune donnée trouvée pour ${lines[idx].current.brand} ${lines[idx].current.model}. Vérifiez la marque et le modèle, ou saisissez les champs.`);
     }
@@ -313,7 +315,7 @@ export function FleetBuilder({
                             </p>
                           )}
                         </td>
-                        <td className="px-2 py-2.5 text-right font-semibold text-[#3809EA] whitespace-nowrap" title={lineEv(l) && isLoyerEstimated(lineEv()!) ? "Calculé avec un loyer estimé pour l'EV : à confirmer avec une offre loueur" : undefined}>{eco > 0 ? `${lineEv(l) && isLoyerEstimated(lineEv()!) ? "≈ " : ""}− ${fmtEur(eco)}` : "—"}</td>
+                        <td className="px-2 py-2.5 text-right font-semibold text-[#3809EA] whitespace-nowrap" title={lineEv(l) && isLoyerEstimated(lineEv(l)!) ? "Calculé avec un loyer estimé pour l'EV : à confirmer avec une offre loueur" : undefined}>{eco > 0 ? `${lineEv(l) && isLoyerEstimated(lineEv(l)!) ? "≈ " : ""}− ${fmtEur(eco)}` : "—"}</td>
                         <td className="px-2 py-2.5">
                           <div className="flex items-center gap-0.5">
                             <button type="button" title="Modifier ce véhicule" onClick={() => setEditingIdx(editing ? null : i)} className={`h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-muted ${editing ? "bg-[#3809EA] text-white" : "text-foreground/70"}`}><Pencil className="w-3.5 h-3.5" /></button>

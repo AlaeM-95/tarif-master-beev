@@ -411,10 +411,12 @@ function ImportedVehicleForm({
   const complete = async () => {
     setCompleting(true);
     try {
-      const { patch, fields, found } = await completeVehicle(vehicle, catalogue);
+      const { patch, fields, found, matched } = await completeVehicle(vehicle, catalogue);
       if (found) {
         onChange(patch);
         toast.success(`${fields.length} champ${fields.length > 1 ? "s" : ""} complété${fields.length > 1 ? "s" : ""} : ${fields.join(", ")}`);
+      } else if (matched) {
+        toast.info(`Rien à compléter pour ${vehicle.brand} ${vehicle.model} : les données disponibles sont déjà reprises, les champs restants n'existent dans aucune source.`);
       } else {
         toast.info(`Aucune donnée trouvée pour ${vehicle.brand} ${vehicle.model} dans le catalogue, ADEME ou Open EV Data. Vérifiez la marque et le modèle, ou saisissez les champs.`);
       }
