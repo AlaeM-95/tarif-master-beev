@@ -989,7 +989,8 @@ const tokenHit = (t: string, targetTokens: string[], targetCompact: string) =>
   (t.length >= 4 && targetTokens.some((x) => x.length >= 4 && (x.startsWith(t) || t.startsWith(x)))) ||
   (t.length >= 3 && targetCompact.includes(t));
 
-export type CatalogueMatch = { vehicle: Vehicle; score: number };
+/** conflict : une donnée chiffrée du devis contredit la fiche (batterie) — jamais « Reconnu ». */
+export type CatalogueMatch = { vehicle: Vehicle; score: number; conflict?: boolean };
 
 /** Classe les véhicules du catalogue par proximité avec le devis : marque (obligatoire),
  *  modèle (jusqu'à 3 pts), version / finition (jusqu'à 2 pts), batterie et puissance
@@ -998,7 +999,10 @@ export function matchCatalogue(q: LeaserQuote, vehicles: Vehicle[]): CatalogueMa
   const brand = brandKey(q.vehicle.brand);
   if (!brand) return [];
   const qModel = compact(q.vehicle.model);
-  const modelTok = norm(q.vehicle.model).split(" ").filter(Boolean);
+  // Mots distinctifs du modèle : « ID. Tiguan » → « tiguan » (« id » seul ne suffit pas).
+  const allModelTok = norm(q.vehicle.model).split(" ").filter(Boolean);
+  const longTok = allModelTok.filter((t) => t.length >= 3);
+  const modelTok = longTok.length > 0 ? longTok : allModelTok;
   const finTok = norm(q.vehicle.finition).split(" ").filter((t) => t.length > 1 && !/^\d+(kw|ch|cv)?$/.test(t));
   // « 82.5 kWh » devient « 82 5 kwh » après normalisation ; « 204 77 kwh » (ch puis kWh) : on garde 77.
   const kwh = norm(`${q.vehicle.finition} ${q.vehicle.model}`).match(/(\d+)(?: (\d{1,2}))?\s*kwh/);
@@ -1015,13 +1019,17 @@ export function matchCatalogue(q: LeaserQuote, vehicles: Vehicle[]): CatalogueMa
       if (!qEv && vEv) return { vehicle: v, score: 0 };
       let score = qEv && !vEv ? -1 : 1;
       // Modèle : comparaison compacte (« model3 » = « model 3 », « e208 » = « e-208 »).
+      // Un modèle sans aucun mot commun écarte le véhicule (ID. Tiguan ≠ ID.7).
       const vModel = compact(v.model);
-      if (qModel && vModel === qModel) score += 3;
-      else if (qModel && vModel && (qModel.includes(vModel) || vModel.includes(qModel))) score += 2.5;
+      let modelScore = 0;
+      if (qModel && vModel === qModel) modelScore = 3;
+      else if (qModel && vModel && (qModel.includes(vModel) || vModel.includes(qModel))) modelScore = 2.5;
       else if (modelTok.length > 0) {
         const vmTok = norm(v.model).split(" ");
-        score += (modelTok.filter((t) => tokenHit(t, vmTok, vModel)).length / modelTok.length) * 3;
+        modelScore = (modelTok.filter((t) => tokenHit(t, vmTok, vModel)).length / modelTok.length) * 3;
       }
+      if (qModel && modelScore === 0) return { vehicle: v, score: 0 };
+      score += modelScore;
       // Version / finition : les mots du devis retrouvés dans la version (ou le modèle) Beev.
       if (finTok.length > 0) {
         const target = `${v.version} ${v.model}`;
@@ -1029,9 +1037,14 @@ export function matchCatalogue(q: LeaserQuote, vehicles: Vehicle[]): CatalogueMa
         const vCompact = compact(target);
         score += (finTok.filter((t) => tokenHit(t, vTok, vCompact)).length / finTok.length) * 2;
       }
-      if (kwhVal && v.batteryKwh && Math.abs(v.batteryKwh - kwhVal) < 1.5) score += 1;
+      // Batterie : identique → bonus ; nettement différente (58 vs 79 kWh) → autre version.
+      let conflict = false;
+      if (kwhVal && v.batteryKwh) {
+        if (Math.abs(v.batteryKwh - kwhVal) < 1.5) score += 1;
+        else if (Math.abs(v.batteryKwh - kwhVal) > 3) { score -= 1.5; conflict = true; }
+      }
       if (q.vehicle.powerHp && v.powerHp && Math.abs(v.powerHp - q.vehicle.powerHp) / q.vehicle.powerHp <= 0.05) score += 1;
-      return { vehicle: v, score };
+      return { vehicle: v, score, conflict };
     })
     .filter((x) => x.score > 1)
     .sort((a, b) => b.score - a.score)
@@ -1044,7 +1057,7 @@ export function autoMatch(matches: CatalogueMatch[]): { match: CatalogueMatch; c
   const [a, b] = matches;
   if (!a) return null;
   const gap = a.score - (b?.score ?? 1);
-  if (a.score >= 4 && gap >= 0.5) return { match: a, confidence: "high" };
+  if (a.score >= 4 && gap >= 0.5 && !a.conflict) return { match: a, confidence: "high" };
   if (a.score >= 3 || (a.score >= 2.5 && gap >= 1)) return { match: a, confidence: "medium" };
   return null;
 }
