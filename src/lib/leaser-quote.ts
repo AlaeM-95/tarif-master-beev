@@ -404,8 +404,9 @@ function parseAyvens(text: string, fileName: string): LeaserQuote {
     flag(q, "options", "check", `Options lues : ${optSum.toLocaleString("fr-FR")} € pour un total de ${(q.price.optionsTtc ?? 0).toLocaleString("fr-FR")} € sur le devis : liste à vérifier`);
   }
 
-  q.contract.months = num1(text, /Durée\s+(\d+)\s*mois/i) ?? 0;
-  q.contract.km = toNum(g1(text, /Kilométrage\s+([\d.\s]+?)\s*km/i)) ?? 0;
+  // « Durée 37 mois » ou « Durée variable 37 mois - Kilométrage variable 45.000 km » (offre Ayvens Essentiel).
+  q.contract.months = num1(text, /Durée\s+(?:(?:variable|fixe)\s+)?(\d+)\s*mois/i) ?? 0;
+  q.contract.km = toNum(g1(text, /Kilométrage\s+(?:(?:variable|fixe)\s+)?([\d.\s]+?)\s*km/i)) ?? 0;
   q.contract.kmSuppTtc = num1(text, /kilomètre supplémentaire\s*\(TTC\)\s*:\s*([\d,.]+)/i);
   const tol = g1(text, /Tolérance Kilométrique\s*:\s*(\d+)\s*km/i);
   q.contract.tolerance = tol ? `${Number(tol).toLocaleString("fr-FR")} km` : "";
@@ -505,6 +506,15 @@ function parseArval(text: string, fileName: string): LeaserQuote {
 
   q.rent.totalTtc = toNum(rx(text, new RegExp(`LOYER TOTAL MENSUEL\\s+${M}\\s*€\\s*TTC`, "i"))?.[1])
     ?? toNum(rx(text, new RegExp(`mois\\s*\\/\\s*[\\d\\s]+km\\s+${M}\\s*€\\s*TTC`, "i"))?.[1]) ?? 0;
+  // Contrat Arval exprimé en HT seulement (« LOYER TOTAL MENSUEL 1 300,13 € HT ») :
+  // on garde le HT et on calcule le TTC (TVA 20 %), signalé à vérifier.
+  const rentHt = toNum(rx(text, new RegExp(`LOYER TOTAL MENSUEL\\s+${M}\\s*€\\s*HT`, "i"))?.[1])
+    ?? toNum(rx(text, new RegExp(`mois\\s*\\/\\s*[\\d\\s]+km\\s+${M}\\s*€\\s*HT`, "i"))?.[1]);
+  if (rentHt != null) q.rent.totalHt = rentHt;
+  if (!(q.rent.totalTtc > 0) && rentHt != null && rentHt > 0) {
+    q.rent.totalTtc = Math.round(rentHt * 1.2 * 100) / 100;
+    flag(q, "loyer-ht", "check", `Loyer lu en HT (${rentHt.toLocaleString("fr-FR")} € HT) : TTC calculé avec une TVA de 20 %`);
+  }
   const ass = toNum(rx(text, new RegExp(`Assurance Auto Multirisques\\s+${M}\\s*€\\s*TTC`, "i"))?.[1]);
   const franchise = g1(text, /franchise de\s+(\d[\d\s]*,\d{2})\s*€/i);
   if (ass != null) {
@@ -705,6 +715,63 @@ function parseAlphabet(text: string, fileName: string): LeaserQuote {
   const en = toNum(rx(text, new RegExp(`Charge électrique à la livraison TTC\\s+${M}`, "i"))?.[1]);
   if (en != null) q.extras.push(`Énergie à la livraison : ${Math.round(en)} € TTC`);
   q.extras.push("Assurance dommages non proposée sur ce devis");
+  flag(q, "ecoscore", "absent", "Éco-score absent du devis : repris du catalogue Beev");
+  if (!q.vehicle.brand && /valant Bon de commande|Loyer TOTAL\s*:/i.test(text)) return parseAlphabetDealer(text, fileName);
+  return q;
+}
+
+// Offre Alphabet émise par un concessionnaire (« Offre de location valant Bon de
+// commande ») : mise en page différente du devis Alphabet direct.
+function parseAlphabetDealer(text: string, fileName: string): LeaserQuote {
+  const q = blankQuote("alphabet", fileName);
+  q.channel = "Concessionnaire";
+  q.offerNumber = g1(text, /Bon de commande\s*\n?\s*N°\s*(\d+)/i);
+  const d = g1(text, /Date de l['’]offre\s*:\s*(\d{2}\/\d{2}\/\d{4})/i);
+  if (d) q.dateIso = dmyToIso(d);
+  q.client = g1(text, /Locataire\s*\n\s*([^\n(]+?)\s*(?:\(SIREN[^)]*\))?\s*(?:\n|$)/i);
+  if (!q.client) flag(q, "client", "absent", "Locataire introuvable sur le devis");
+
+  // « SKODA ELROQ 85 Sportline VP [5P] bva 1-286CH-6cv (SUV) »
+  const vl = g1(text, /\nVéhicule\s*\n\s*([^\n]+)/i);
+  if (vl) {
+    const clean = vl.replace(/\s+(VP|VU|VUL)\b.*$/i, "").trim();
+    Object.assign(q.vehicle, splitVehicle(clean));
+    const ch = vl.match(/(\d{2,3})\s*CH\b/i);
+    if (ch) q.vehicle.powerHp = Number(ch[1]);
+    const cv = vl.match(/(\d{1,2})\s*cv\b/i);
+    if (cv) q.vehicle.fiscalHp = Number(cv[1]);
+    q.vehicle.body = detectBody(vl);
+    q.vehicle.gearbox = /\bbva\b|automati/i.test(vl) ? "Automatique" : "";
+  }
+  const typeFiscal = g1(text, /Type fiscal\s*:\s*([^\n]+)/i);
+  if (typeFiscal) q.vehicle.energy = /lectri/i.test(typeFiscal) ? "Électrique" : /hybride/i.test(typeFiscal) ? "Hybride" : /diesel|gazole/i.test(typeFiscal) ? "Diesel" : /essence/i.test(typeFiscal) ? "Essence" : q.vehicle.energy;
+
+  q.price.catalogueTtc = toNum(rx(text, new RegExp(`Prix Catalogue TTC\\s*${M}`, "i"))?.[1]);
+  q.price.optionsTtc = toNum(rx(text, new RegExp(`TOTAL OPTIONS & ACCESSOIRES TTC[^\\d\\n]*${M}`, "i"))?.[1]);
+  q.price.totalTtc = toNum(rx(text, new RegExp(`PRIX TOTAL VEHICULE TTC[^\\d\\n]*${M}`, "i"))?.[1]);
+  const optBlock = rx(text, /Prix Catalogue TTC[^\n]*\n[^\n]*\n([\s\S]*?)TOTAL OPTIONS/i)?.[1] ?? "";
+  for (const l of optBlock.split("\n")) {
+    const m = l.trim().match(new RegExp(`^(.+?)\\s+${M}$`));
+    if (m && (toNum(m[2]) ?? 0) > 0 && !/mise a la route|mise à la route/i.test(m[1])) q.price.options.push({ name: prettyOption(m[1].replace(/\s+-\s+[A-Z0-9]+$/, "")), priceTtc: toNum(m[2]) });
+  }
+
+  // « Durée : 37 Mois Kilométrage : 30 000 km » (kilométrage total du contrat)
+  q.contract.months = num1(text, /Durée\s*:\s*(\d+)\s*Mois/i) ?? 0;
+  q.contract.km = toNum(g1(text, /Kilométrage\s*:\s*([\d\s.]+?)\s*km/i)) ?? 0;
+
+  // « Loyer TOTAL: 436,69 518,20 » (HT puis TTC)
+  const tot = rx(text, new RegExp(`Loyer TOTAL\\s*:\\s*${M}\\s+${M}`, "i"));
+  if (tot) { q.rent.totalHt = toNum(tot[1]); q.rent.totalTtc = toNum(tot[2]) ?? 0; }
+  const LINES: [string, RentCat, string][] = [
+    ["Loyer financier", "fin", "Loyer financier"],
+    ["Entretien\\s*\\/\\s*Assistance", "ent", "Entretien et assistance"],
+    ["Perte Financière", "ass", "Garantie perte financière"],
+  ];
+  for (const [src, cat, label] of LINES) {
+    const m = rx(text, new RegExp(`${src}\\s+[\\d,]+\\s+${M}\\s+${M}`, "i"));
+    if (m) q.rent.lines.push({ cat, label, amount: toNum(m[2]) ?? 0 });
+  }
+  q.scope = { maint: /Entretien/i.test(text) ? 1 : null, assist: /Assistance/i.test(text) ? 1 : null, pneus: null, dom: null, rc: null, pf: /Perte Financière/i.test(text) ? 1 : null, relais: null, cg: null };
   flag(q, "ecoscore", "absent", "Éco-score absent du devis : repris du catalogue Beev");
   return q;
 }

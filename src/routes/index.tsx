@@ -1251,6 +1251,13 @@ function App() {
     { quote, vehicle: matched, confidence }: { quote: LeaserQuote; vehicle: Vehicle | null; confidence?: "high" | "medium" },
     opts: { stay?: boolean; recap?: boolean; source?: string } = {},
   ) => {
+    // Véhicule ni lu ni rapproché : on n'ajoute pas de ligne vide.
+    if (!matched && !quote.vehicle.brand.trim()) {
+      toast.error(`Véhicule non lu dans ${opts.source || quote.fileName || "le devis"}`, {
+        description: "Ouvrez l'outil Devis loueur, saisissez la marque et le modèle, puis « Mettre à jour la Sélection en cours ».",
+      });
+      return;
+    }
     let vehicle = matched;
     let created = false;
     if (!vehicle) {
