@@ -1007,7 +1007,13 @@ export function matchCatalogue(q: LeaserQuote, vehicles: Vehicle[]): CatalogueMa
     .map((v) => {
       const vb = brandKey(v.brand);
       if (vb !== brand && !vb.includes(brand) && !brand.includes(vb)) return { vehicle: v, score: 0 };
-      let score = 1;
+      // Énergie : un devis thermique ne se rapproche jamais d'un véhicule électrique
+      // (Polo TSI ≠ ID. Polo). L'énergie « Électrique » d'un devis peut être une valeur
+      // par défaut : l'écart inverse ne fait que baisser le score.
+      const qEv = /lectri/i.test(q.vehicle.energy);
+      const vEv = v.energy === "Électrique";
+      if (!qEv && vEv) return { vehicle: v, score: 0 };
+      let score = qEv && !vEv ? -1 : 1;
       // Modèle : comparaison compacte (« model3 » = « model 3 », « e208 » = « e-208 »).
       const vModel = compact(v.model);
       if (qModel && vModel === qModel) score += 3;
