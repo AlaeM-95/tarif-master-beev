@@ -30,6 +30,7 @@ import { AuditConseilEditor } from "@/components/audit-conseil-editor";
 import { CatalogueTcoEditor } from "@/components/catalogue-tco-editor";
 import { CarPolicyImporter } from "@/components/car-policy-importer";
 import { CompanySearchField } from "@/components/company-search-input";
+import { HubspotClientSearch } from "@/components/hubspot-client-search";
 import { LeaserQuoteTool, type LeaserQuoteDraft } from "@/components/leaser-quote-tool";
 import { ComparisonGroupsBoard, GroupChips, VehicleGroupsStatus } from "@/components/comparison-groups-board";
 import { comparatorNotes, groupNamesOf, groupsPatch, vehicleGroups } from "@/lib/comparison-groups";
@@ -1068,7 +1069,7 @@ function App() {
   // localStorage de session et retire le paramètre ?proposal= de l'URL — sinon
   // au rechargement, le dernier devis (localStorage ou proposition liée) revient.
   const newSession = () => {
-    if (!window.confirm("Démarrer un nouveau devis ? La sélection en cours et les informations client seront vidées.")) return;
+    if (!window.confirm("Démarrer un nouveau devis ? La sélection en cours et les informations client seront vidées. Votre configuration PDF est conservée.")) return;
     setSelectedV({});
     setSelectedC({});
     setClient({ company: "", contact: "", email: "", salesRep: "", salesRepEmail: "", salesRepPhone: "", date: "", notes: "" });
@@ -1079,8 +1080,12 @@ function App() {
       localStorage.removeItem(SK_GROUPS);
     } catch { /* ignore */ }
     setGroupNames([]);
+    // La configuration PDF (sections cochées / décochées) est un réglage du
+    // commercial, pas du devis : on la conserve telle quelle et on la réécrit
+    // pour qu'elle survive au rechargement de la page.
+    updatePdfConfig({});
     if (loadedProposalId) navigate({ to: "/", search: {} });
-    toast.success("Nouveau devis — session vidée");
+    toast.success("Nouveau devis — session vidée (configuration PDF conservée)");
   };
 
   // Export « catalogue » : rendu éditorial paysage (HTML → impression PDF),
@@ -1218,36 +1223,63 @@ function App() {
   // km/an, apport net de la prime CEE, assurance et options viennent du devis du
   // loueur ; le véhicule est celui du catalogue Beev choisi dans l'outil.
   const addLeaserQuoteToDevis = ({ quote, vehicle }: LeaserQuoteDraft) => {
-    const instanceId = newInstanceId();
     const assurance = leaserAssurance(quote);
     const apport = leaserNetApport(quote);
     const optionLines: LineItem[] = quote.price.options
       .filter((o) => (o.priceTtc ?? 0) > 0)
       .map((o) => ({ label: o.name, qty: 1, unitHt: o.priceTtc as number }));
-    setSelectedV((s) => ({
-      ...s,
-      [instanceId]: {
-        instanceId,
-        vehicle,
-        quantity: 1,
-        discountPct: vehicle.remise ?? 0,
-        negotiatedMonthly: quote.rent.totalTtc,
-        durationMonths: quote.contract.months,
-        kmPerYear: leaserKmPerYear(quote),
-        includeTco: true,
-        services: [],
-        options: optionLines,
-        leaserQuoteRef: quote.offerNumber || undefined,
-        apport: apport > 0 ? apport : undefined,
-        assuranceTousRisques: assurance > 0 ? true : undefined,
-        assuranceMonthly: assurance > 0 ? assurance : undefined,
-      },
-    }));
+    // Données du devis loueur reportées dans la ligne de la Sélection en cours :
+    // durée, kilométrage annuel, loyer, apport, assurance, options.
+    const fromQuote = {
+      negotiatedMonthly: quote.rent.totalTtc,
+      durationMonths: quote.contract.months,
+      kmPerYear: leaserKmPerYear(quote),
+      leaserQuoteRef: quote.offerNumber || undefined,
+      apport: apport > 0 ? apport : undefined,
+      assuranceTousRisques: assurance > 0 ? true : undefined,
+      assuranceMonthly: assurance > 0 ? assurance : undefined,
+    };
+    // Véhicule déjà dans la sélection (sans devis loueur, ou avec ce même devis) :
+    // on met sa ligne à jour au lieu de créer un doublon. Une ligne portant le devis
+    // d'un AUTRE loueur est conservée (comparaison de deux offres).
+    const ref = quote.offerNumber || undefined;
+    const existing = Object.values(selectedV).find(
+      (sv) => sv.vehicle.id === vehicle.id && !sv.vehicle.isCurrentFleet && (!sv.leaserQuoteRef || sv.leaserQuoteRef === ref),
+    );
+    const loyer = quote.rent.totalTtc.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
+    const contrat = `${quote.contract.months} mois · ${leaserKmPerYear(quote).toLocaleString("fr-FR")} km/an`;
+    if (existing) {
+      setSelectedV((s) => ({
+        ...s,
+        [existing.instanceId]: {
+          ...existing,
+          ...fromQuote,
+          options: optionLines.length > 0 ? optionLines : existing.options,
+        },
+      }));
+    } else {
+      const instanceId = newInstanceId();
+      setSelectedV((s) => ({
+        ...s,
+        [instanceId]: {
+          instanceId,
+          vehicle,
+          quantity: 1,
+          discountPct: vehicle.remise ?? 0,
+          includeTco: true,
+          services: [],
+          options: optionLines,
+          ...fromQuote,
+        },
+      }));
+    }
     if (!client.company && quote.client && !/beev/i.test(quote.client)) setClient({ ...client, company: quote.client });
     setLeaserView(false);
     setTcoView(false);
     if (projectType !== "vehicles") setProjectType("vehicles");
-    toast.success(`${vehicle.brand} ${vehicle.model} ajouté au devis · loyer ${quote.rent.totalTtc.toLocaleString("fr-FR", { style: "currency", currency: "EUR" })} (${quote.leaserLabel})`);
+    toast.success(
+      `${vehicle.brand} ${vehicle.model} ${existing ? "mis à jour" : "ajouté"} dans la sélection · ${contrat} · loyer ${loyer} (${quote.leaserLabel})`,
+    );
   };
 
   if (presenting) {
@@ -2718,6 +2750,7 @@ function ClientCard({ client, setClient, isAdmin }: { client: any; setClient: (c
           )}
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2"><HubspotClientSearch client={client} setClient={setClient} /></div>
           <Field label="Société *"><CompanySearchField client={client} setClient={setClient} /></Field>
           <Field label="Contact client"><Input value={client.contact} onChange={(e) => setClient({ ...client, contact: e.target.value })} placeholder="Nom Prénom" /></Field>
           <Field label="Email client"><Input type="email" value={client.email} onChange={(e) => setClient({ ...client, email: e.target.value })} /></Field>
@@ -2808,6 +2841,7 @@ function ClientCard({ client, setClient, isAdmin }: { client: any; setClient: (c
       </CardHeader>
       <CardContent className="grid gap-4 sm:grid-cols-2">
         <p className="sm:col-span-2 text-[10px] uppercase font-semibold text-muted-foreground tracking-wide -mb-1">Client</p>
+        <div className="sm:col-span-2"><HubspotClientSearch client={client} setClient={setClient} /></div>
         <Field label="Société *"><CompanySearchField client={client} setClient={setClient} /></Field>
         <Field label="Contact client"><Input value={client.contact} onChange={(e) => setClient({ ...client, contact: e.target.value })} placeholder="Nom Prénom" /></Field>
         <Field label="Email client"><Input type="email" value={client.email} onChange={(e) => setClient({ ...client, email: e.target.value })} /></Field>

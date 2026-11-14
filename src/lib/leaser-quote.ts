@@ -804,29 +804,73 @@ export async function parseLeaserQuotePdf(file: File): Promise<LeaserQuote> {
 
 const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9+]+/g, " ").trim();
 
-/** Classe les véhicules du catalogue par proximité avec le devis (marque, modèle,
- *  finition, batterie). Score ≥ 3 : correspondance fiable. */
-export function matchCatalogue(q: LeaserQuote, vehicles: Vehicle[]): { vehicle: Vehicle; score: number }[] {
-  const brand = norm(q.vehicle.brand).replace(/ /g, "");
-  const modelTok = norm(q.vehicle.model).split(" ").filter(Boolean);
-  const finTok = norm(q.vehicle.finition).split(" ").filter((t) => t.length > 1);
-  const kwh = norm(`${q.vehicle.finition} ${q.vehicle.model}`).match(/(\d+(?:\.\d+)?)\s*kwh/);
+// Alias de marques (devis loueur ↔ catalogue Beev) : formes courtes ou longues.
+const BRAND_ALIASES: Record<string, string> = {
+  vw: "volkswagen", mercedesbenz: "mercedes", mb: "mercedes", dsautomobiles: "ds", ds: "ds",
+  mini: "mini", bmwi: "bmw", lynkco: "lynkco", alfa: "alfaromeo", landrover: "landrover",
+};
+const brandKey = (s: string) => {
+  const k = norm(s).replace(/ /g, "");
+  return BRAND_ALIASES[k] ?? k;
+};
+const compact = (s: string) => norm(s).replace(/ /g, "");
+/** Mot du devis présent dans la cible : égalité, ou préfixe commun d'au moins 4 lettres
+ *  (« perf » ↔ « performance », « grandlong » ↔ « grand long »). */
+const tokenHit = (t: string, targetTokens: string[], targetCompact: string) =>
+  targetTokens.includes(t) ||
+  (t.length >= 4 && targetTokens.some((x) => x.length >= 4 && (x.startsWith(t) || t.startsWith(x)))) ||
+  (t.length >= 3 && targetCompact.includes(t));
+
+export type CatalogueMatch = { vehicle: Vehicle; score: number };
+
+/** Classe les véhicules du catalogue par proximité avec le devis : marque (obligatoire),
+ *  modèle (jusqu'à 3 pts), version / finition (jusqu'à 2 pts), batterie et puissance
+ *  (1 pt chacune). Score ≥ 3 : correspondance fiable. */
+export function matchCatalogue(q: LeaserQuote, vehicles: Vehicle[]): CatalogueMatch[] {
+  const brand = brandKey(q.vehicle.brand);
   if (!brand) return [];
+  const qModel = compact(q.vehicle.model);
+  const modelTok = norm(q.vehicle.model).split(" ").filter(Boolean);
+  const finTok = norm(q.vehicle.finition).split(" ").filter((t) => t.length > 1 && !/^\d+(kw|ch|cv)?$/.test(t));
+  // « 82.5 kWh » devient « 82 5 kwh » après normalisation ; « 204 77 kwh » (ch puis kWh) : on garde 77.
+  const kwh = norm(`${q.vehicle.finition} ${q.vehicle.model}`).match(/(\d+)(?: (\d{1,2}))?\s*kwh/);
+  const kwhVal = kwh ? (kwh[2] && Number(kwh[1]) > 150 ? Number(kwh[2]) : Number(kwh[2] ? `${kwh[1]}.${kwh[2]}` : kwh[1])) : null;
   return vehicles
     .map((v) => {
-      const vb = norm(v.brand).replace(/ /g, "");
+      const vb = brandKey(v.brand);
       if (vb !== brand && !vb.includes(brand) && !brand.includes(vb)) return { vehicle: v, score: 0 };
       let score = 1;
-      const vm = norm(v.model);
-      const mHit = modelTok.filter((t) => vm.split(" ").includes(t)).length;
-      if (modelTok.length > 0) score += (mHit / modelTok.length) * 3;
-      const vf = norm(v.version);
-      const fHit = finTok.filter((t) => vf.split(" ").includes(t)).length;
-      if (finTok.length > 0) score += (fHit / finTok.length) * 2;
-      if (kwh && v.batteryKwh && Math.abs(v.batteryKwh - Number(kwh[1])) < 1.5) score += 1;
+      // Modèle : comparaison compacte (« model3 » = « model 3 », « e208 » = « e-208 »).
+      const vModel = compact(v.model);
+      if (qModel && vModel === qModel) score += 3;
+      else if (qModel && vModel && (qModel.includes(vModel) || vModel.includes(qModel))) score += 2.5;
+      else if (modelTok.length > 0) {
+        const vmTok = norm(v.model).split(" ");
+        score += (modelTok.filter((t) => tokenHit(t, vmTok, vModel)).length / modelTok.length) * 3;
+      }
+      // Version / finition : les mots du devis retrouvés dans la version (ou le modèle) Beev.
+      if (finTok.length > 0) {
+        const target = `${v.version} ${v.model}`;
+        const vTok = norm(target).split(" ");
+        const vCompact = compact(target);
+        score += (finTok.filter((t) => tokenHit(t, vTok, vCompact)).length / finTok.length) * 2;
+      }
+      if (kwhVal && v.batteryKwh && Math.abs(v.batteryKwh - kwhVal) < 1.5) score += 1;
+      if (q.vehicle.powerHp && v.powerHp && Math.abs(v.powerHp - q.vehicle.powerHp) / q.vehicle.powerHp <= 0.05) score += 1;
       return { vehicle: v, score };
     })
     .filter((x) => x.score > 1)
     .sort((a, b) => b.score - a.score)
     .slice(0, 6);
+}
+
+/** Véhicule retenu automatiquement : le meilleur s'il est fiable (score ≥ 3), ou
+ *  s'il devance nettement le suivant (score ≥ 2,5 et 1 point d'avance). */
+export function autoMatch(matches: CatalogueMatch[]): { match: CatalogueMatch; confidence: "high" | "medium" } | null {
+  const [a, b] = matches;
+  if (!a) return null;
+  const gap = a.score - (b?.score ?? 1);
+  if (a.score >= 4 && gap >= 0.5) return { match: a, confidence: "high" };
+  if (a.score >= 3 || (a.score >= 2.5 && gap >= 1)) return { match: a, confidence: "medium" };
+  return null;
 }

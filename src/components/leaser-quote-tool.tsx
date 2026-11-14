@@ -27,6 +27,7 @@ import {
   isExpired,
   kmPerYear,
   matchCatalogue,
+  autoMatch,
   netDownPayment,
   parseLeaserQuotePdf,
   rentLinesSum,
@@ -97,8 +98,12 @@ export function LeaserQuoteTool({ vehicles, client, canSaveOffer, onAddToDevis }
   const setCt = (patch: Partial<LeaserQuote["contract"]>) => update((x) => ({ ...x, contract: { ...x.contract, ...patch } }));
   const setDp = (patch: Partial<LeaserQuote["downPayment"]>) => update((x) => ({ ...x, downPayment: { ...x.downPayment, ...patch, ambiguous: false } }));
 
-  const matches = useMemo(() => (q ? matchCatalogue(q, vehicles) : []), [q?.vehicle.brand, q?.vehicle.model, q?.vehicle.finition, vehicles]);
-  const chosenId = q ? (choice[q.id] ?? (matches[0] && matches[0].score >= 3 ? matches[0].vehicle.id : "")) : "";
+  const matches = useMemo(() => (q ? matchCatalogue(q, vehicles) : []), [q?.vehicle.brand, q?.vehicle.model, q?.vehicle.finition, q?.vehicle.powerHp, vehicles]);
+  // Rapprochement automatique avec la base véhicules (marque, modèle, version) ;
+  // le commercial peut toujours choisir un autre véhicule dans la liste.
+  const auto = useMemo(() => autoMatch(matches), [matches]);
+  const manualChoice = q ? choice[q.id] : undefined;
+  const chosenId = q ? (manualChoice ?? auto?.match.vehicle.id ?? "") : "";
   const chosen = vehicles.find((v) => v.id === chosenId);
   const ecoOk = q ? effectiveEcoOk(q, chosen?.ecoScoreBool) : false;
   const blockers = q ? blockingFlags(q) : [];
@@ -322,6 +327,16 @@ export function LeaserQuoteTool({ vehicles, client, canSaveOffer, onAddToDevis }
                       {[...vehicles].sort((a, b) => `${a.brand} ${a.model}`.localeCompare(`${b.brand} ${b.model}`)).map((v) => <option key={`all-${v.id}`} value={v.id}>{v.brand} {v.model} · {v.version}</option>)}
                     </optgroup>
                   </select>
+                  {chosen && manualChoice == null && auto && (
+                    <p className={`mt-1 text-[11px] ${auto.confidence === "high" ? "text-emerald-700" : "text-amber-700"}`}>
+                      {auto.confidence === "high" ? "✓ Reconnu automatiquement" : "≈ Rapproché automatiquement, à vérifier"} : {chosen.brand} {chosen.model} · {chosen.version}
+                    </p>
+                  )}
+                  {!chosen && q.vehicle.brand && (
+                    <p className="mt-1 text-[11px] text-amber-700">
+                      {matches.length > 0 ? "Plusieurs véhicules possibles : choisissez la bonne version." : "Aucun véhicule correspondant dans la base : choisissez-le dans la liste."}
+                    </p>
+                  )}
                 </Field>
               </div>
 

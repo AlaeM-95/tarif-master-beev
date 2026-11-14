@@ -401,9 +401,11 @@ export function PdfConfigPanel({ config, update, reset, projectType, onPreviewSe
               type="button"
               variant="ghost"
               size="sm"
-              onClick={reset}
+              onClick={() => {
+                if (window.confirm("Revenir à la configuration PDF par défaut ? Les sections que vous avez décochées seront recochées.")) reset();
+              }}
               className="gap-1 h-7 text-xs"
-              title="Revenir aux valeurs par défaut"
+              title="Revenir aux valeurs par défaut (recoche les sections décochées)"
             >
               <RotateCcw className="w-3 h-3" /> Défaut
             </Button>
