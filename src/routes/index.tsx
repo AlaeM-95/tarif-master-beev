@@ -161,7 +161,17 @@ function App() {
   // Récapitulatif affiché après un import (devis loueur ou car policy).
   const [importRecap, setImportRecap] = useState<ImportRecapItem[]>([]);
   const pushImportRecap = (items: ImportRecapItem[]) => {
-    if (items.length > 0) setImportRecap((prev) => [...prev.filter((p) => !items.some((i) => i.instanceId === p.instanceId)), ...items]);
+    if (items.length === 0) return;
+    // Même ligne déjà au récapitulatif (offres fusionnées) : on ajoute ses contrats.
+    setImportRecap((prev) => {
+      const next = [...prev];
+      for (const it of items) {
+        const i = next.findIndex((p) => p.instanceId === it.instanceId);
+        if (i < 0) next.push(it);
+        else next[i] = { ...next[i], contracts: [...(next[i].contracts ?? []), ...(it.contracts ?? [])] };
+      }
+      return next;
+    });
   };
   // Vue « Groupes de comparaison » (tableau plein écran). UI uniquement.
   const [groupsView, setGroupsView] = useState(false);
@@ -198,6 +208,10 @@ function App() {
   };
 
   const [selectedV, setSelectedV] = useState<Record<string, SelectedVehicle>>({});
+  // Dernier état connu de la sélection : les imports de plusieurs PDF à la suite
+  // décident (mise à jour, fusion, ajout) sur l'état le plus récent.
+  const selRef = useRef(selectedV);
+  selRef.current = selectedV;
   const [selectedC, setSelectedC] = useState<Record<string, SelectedCharger>>({});
   const [presenting, setPresenting] = useState(false);
   // IDs des véhicules à comparer. Initialisé vide, alimenté via boutons ajout
@@ -1301,20 +1315,46 @@ function App() {
       const gs = vehicleGroups(sv);
       return gs.includes(importGroup) ? {} : groupsPatch([...gs, importGroup]);
     };
-    const existingNow = Object.values(selectedV).find(isSameLine);
-    const updated = !!existingNow;
-    const targetId = existingNow ? (existingNow.instanceId ?? existingNow.vehicle.id) : newInstanceId();
-    setSelectedV((s) => {
-      const existing = s[targetId] ?? Object.values(s).find(isSameLine);
-      if (existing) {
-        const key = existing.instanceId ?? existing.vehicle.id;
-        return { ...s, [key]: { ...existing, vehicle: existing.vehicle.id === v.id ? existing.vehicle : v, ...fromQuote, options: optionLines.length > 0 ? optionLines : existing.options, ...withGroup(existing) } };
-      }
-      const instanceId = targetId;
-      return {
-        ...s,
-        [instanceId]: {
-          instanceId,
+    // Même véhicule chez le même loueur : les autres durées / kilométrages deviennent
+    // des configurations supplémentaires de la même ligne (vrai loyer dans l'analyse TCO).
+    const mergeKey = `${quote.leaser}|${`${quote.vehicle.brand} ${quote.vehicle.model} ${quote.vehicle.finition}`.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim()}`;
+    const sameContract = (months: number, kmAn: number) =>
+      months === quote.contract.months && Math.abs(kmAn - km) <= Math.max(100, km * 0.01);
+    const contractText = `${quote.contract.months} mois · ${km.toLocaleString("fr-FR")} km/an · ${quote.rent.totalTtc.toLocaleString("fr-FR", { style: "currency", currency: "EUR" })}`;
+
+    // Ordre : 1) même devis déjà importé → mise à jour ; 2) même véhicule chez le même
+    // loueur → même contrat : mise à jour, autre contrat : configuration supplémentaire ;
+    // 3) même véhicule sans devis, ou même n° d'offre → mise à jour ; 4) nouvelle ligne.
+    const cur = selRef.current;
+    let existing = Object.values(cur).find((sv) => sv.leaserQuoteId === quote.id);
+    const base = !existing && opts.recap && quote.contract.months > 0 && quote.rent.totalTtc > 0
+      ? Object.values(cur).find((sv) => !sv.vehicle.isCurrentFleet && sv.leaserMergeKey === mergeKey)
+      : undefined;
+    if (base && sameContract(base.durationMonths, base.kmPerYear)) existing = base;
+    if (!existing && !base) existing = Object.values(cur).find(isSameLine);
+    let next: Record<string, SelectedVehicle>;
+    let targetId: string;
+    let mode: "maj" | "ajout" | "config";
+    if (existing) {
+      mode = "maj";
+      targetId = existing.instanceId ?? existing.vehicle.id;
+      next = { ...cur, [targetId]: { ...existing, vehicle: existing.vehicle.id === v.id || existing === base ? existing.vehicle : v, ...fromQuote, leaserMergeKey: mergeKey, options: optionLines.length > 0 ? optionLines : existing.options, ...withGroup(existing) } };
+    } else if (base) {
+      mode = "config";
+      targetId = base.instanceId ?? base.vehicle.id;
+      const configs = [...(base.additionalConfigs ?? [])];
+      const i = configs.findIndex((c) => sameContract(Math.round(c.durationMonths), c.kmPerYear));
+      const cfg = { id: i >= 0 ? configs[i].id : `cfg-${quote.id.slice(0, 8)}`, durationMonths: quote.contract.months, kmPerYear: km, negotiatedMonthly: quote.rent.totalTtc };
+      if (i >= 0) configs[i] = cfg; else configs.push(cfg);
+      configs.sort((a, b) => a.durationMonths - b.durationMonths || a.kmPerYear - b.kmPerYear);
+      next = { ...cur, [targetId]: { ...base, additionalConfigs: configs, ...withGroup(base) } };
+    } else {
+      mode = "ajout";
+      targetId = newInstanceId();
+      next = {
+        ...cur,
+        [targetId]: {
+          instanceId: targetId,
           vehicle: v,
           quantity: 1,
           discountPct: v.remise ?? 0,
@@ -1325,10 +1365,14 @@ function App() {
           services: [],
           options: optionLines,
           ...fromQuote,
+          leaserMergeKey: mergeKey,
           ...(importGroup ? groupsPatch([importGroup]) : {}),
         },
       };
-    });
+    }
+    selRef.current = next;
+    setSelectedV(next);
+    const updated = mode !== "ajout";
     if (opts.recap) {
       pushImportRecap([{
         instanceId: targetId,
@@ -1336,6 +1380,7 @@ function App() {
         label: [quote.leaserLabel, `${quote.vehicle.brand} ${quote.vehicle.model} ${quote.vehicle.finition}`.trim()].filter(Boolean).join(" · "),
         status: created ? "cree" : confidence === "high" ? "reconnu" : "a-verifier",
         group: importGroup ?? undefined,
+        contracts: quote.contract.months > 0 ? [mode === "config" ? `${contractText} (configuration supplémentaire)` : contractText] : [],
       }]);
     }
     if (!client.company && quote.client && !/beev/i.test(quote.client)) setClient({ ...client, company: quote.client });
@@ -1344,7 +1389,9 @@ function App() {
     const loyer = quote.rent.totalTtc > 0 ? quote.rent.totalTtc.toLocaleString("fr-FR", { style: "currency", currency: "EUR" }) : "loyer à saisir";
     const contrat = quote.contract.months > 0 ? `${quote.contract.months} mois · ${km.toLocaleString("fr-FR")} km/an` : "durée et km à saisir";
     toast.success(
-      `${v.brand} ${v.model} ${updated ? "mis à jour" : "ajouté"} dans la Sélection en cours · ${contrat} · ${loyer} (${quote.leaserLabel})`,
+      mode === "config"
+        ? `${v.brand} ${v.model} : contrat ${contrat} à ${loyer} ajouté en configuration supplémentaire (${quote.leaserLabel})`
+        : `${v.brand} ${v.model} ${updated ? "mis à jour" : "ajouté"} dans la Sélection en cours · ${contrat} · ${loyer} (${quote.leaserLabel})`,
       {
         description: created ? "Véhicule absent de la base Beev : fiche créée depuis le devis, à vérifier (catégorie, consommation, image)." : undefined,
         action: opts.stay && leaserView ? { label: "Voir la sélection", onClick: () => setLeaserView(false) } : undefined,

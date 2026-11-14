@@ -23,6 +23,9 @@ export type ImportRecapItem = {
   status: ImportRecapStatus;
   /** Groupe de comparaison donné à la ligne par l'import (analyse TCO par groupe). */
   group?: string;
+  /** Contrats lus pour cette ligne (plusieurs quand des offres du même véhicule chez
+   *  le même loueur ont été fusionnées en configurations supplémentaires). */
+  contracts?: string[];
 };
 
 /** Nom du groupe d'import, modifiable ; validé à la sortie du champ ou sur Entrée. */
@@ -152,6 +155,14 @@ export function ImportRecapDialog({
                       <td className="py-2 pr-2">
                         <p className="font-medium leading-snug">{it.label || "—"}</p>
                         <p className="text-[10px] text-muted-foreground truncate max-w-[220px]" title={it.source}>{it.source}</p>
+                        {(it.contracts?.length ?? 0) > 1 && (
+                          <div className="mt-1 rounded bg-beev-violet-20/60 px-1.5 py-1 text-[10px] leading-snug">
+                            <p className="font-semibold">{it.contracts!.length} contrats fusionnés sur cette ligne</p>
+                            <ul className="list-disc pl-3">
+                              {it.contracts!.map((c, i) => <li key={i}>{c}</li>)}
+                            </ul>
+                          </div>
+                        )}
                       </td>
                       <td className="py-2 pr-2">
                         <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap ${st.cls}`} title={st.hint}>{st.text}</span>

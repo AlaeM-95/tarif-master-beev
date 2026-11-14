@@ -84,6 +84,9 @@ export type SelectedVehicle = {
   leaserQuoteRef?: string;
   /** Identifiant interne du devis loueur importé (rapprochement à la mise à jour). */
   leaserQuoteId?: string;
+  /** Loueur + véhicule du devis importé : les offres suivantes du même véhicule chez le
+   *  même loueur (autres durées / kilométrages) deviennent des configurations supplémentaires. */
+  leaserMergeKey?: string;
   /** Clés de caractéristiques techniques MASQUÉES sur la fiche véhicule, choisies
    *  par le commercial dans le panneau de droite (cf. getVehicleSpecRows pour les
    *  clés). Par défaut vide = toutes les caractéristiques disponibles s'affichent. */
