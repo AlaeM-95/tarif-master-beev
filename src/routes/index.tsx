@@ -1292,6 +1292,15 @@ function App() {
       (sv.vehicle.id === v.id && !sv.leaserQuoteId && !sv.leaserQuoteRef) ||
       (sv.vehicle.id === v.id && !!quote.offerNumber && sv.leaserQuoteRef === quote.offerNumber)
     );
+    // Import automatique : les offres d'un même client sont rangées dans un groupe de
+    // comparaison (« Offres ADAPEI 35 ») pour l'analyse TCO par groupe.
+    const who = (quote.client && !/beev|—/i.test(quote.client) ? quote.client : client.company || "").trim();
+    const importGroup = opts.recap ? (who ? `Offres ${who}` : "Offres loueurs") : null;
+    const withGroup = (sv: SelectedVehicle): Partial<SelectedVehicle> => {
+      if (!importGroup) return {};
+      const gs = vehicleGroups(sv);
+      return gs.includes(importGroup) ? {} : groupsPatch([...gs, importGroup]);
+    };
     const existingNow = Object.values(selectedV).find(isSameLine);
     const updated = !!existingNow;
     const targetId = existingNow ? (existingNow.instanceId ?? existingNow.vehicle.id) : newInstanceId();
@@ -1299,7 +1308,7 @@ function App() {
       const existing = s[targetId] ?? Object.values(s).find(isSameLine);
       if (existing) {
         const key = existing.instanceId ?? existing.vehicle.id;
-        return { ...s, [key]: { ...existing, vehicle: existing.vehicle.id === v.id ? existing.vehicle : v, ...fromQuote, options: optionLines.length > 0 ? optionLines : existing.options } };
+        return { ...s, [key]: { ...existing, vehicle: existing.vehicle.id === v.id ? existing.vehicle : v, ...fromQuote, options: optionLines.length > 0 ? optionLines : existing.options, ...withGroup(existing) } };
       }
       const instanceId = targetId;
       return {
@@ -1316,6 +1325,7 @@ function App() {
           services: [],
           options: optionLines,
           ...fromQuote,
+          ...(importGroup ? groupsPatch([importGroup]) : {}),
         },
       };
     });
@@ -1325,6 +1335,7 @@ function App() {
         source: opts.source || quote.fileName || quote.leaserLabel,
         label: [quote.leaserLabel, `${quote.vehicle.brand} ${quote.vehicle.model} ${quote.vehicle.finition}`.trim()].filter(Boolean).join(" · "),
         status: created ? "cree" : confidence === "high" ? "reconnu" : "a-verifier",
+        group: importGroup ?? undefined,
       }]);
     }
     if (!client.company && quote.client && !/beev/i.test(quote.client)) setClient({ ...client, company: quote.client });
@@ -1363,6 +1374,7 @@ function App() {
     const inSel = (sel: Record<string, SelectedVehicle>, v: Vehicle) =>
       Object.values(sel).some((sv) => sv.vehicle.id === v.id && !!sv.vehicle.isCurrentFleet === !!v.isCurrentFleet);
     // Identifiants de ligne fixés AVANT la mise à jour : le récapitulatif s'y réfère.
+    const importGroup = `Car policy ${(client.company || source.replace(/\.[^.]+$/, "")).trim()}`;
     const seen: Vehicle[] = [];
     const toAdd = items
       .filter((it) => {
@@ -1390,6 +1402,7 @@ function App() {
           includeTco: true,
           services: [],
           options: [],
+          ...groupsPatch([importGroup]),
         };
       }
       return next;
@@ -1399,6 +1412,7 @@ function App() {
       source,
       label: it.label || `${it.vehicle.brand} ${it.vehicle.model} ${it.vehicle.version}`.trim(),
       status: it.matched ? "reconnu" : it.vehicle.aiMeta ? "a-verifier" : "fichier",
+      group: importGroup,
     })));
     return toAdd.length;
   };
@@ -1913,6 +1927,19 @@ function App() {
             onChangeVehicle={recapChangeVehicle}
             onPatchLine={recapPatchLine}
             onRemove={recapRemove}
+            onRenameGroup={(from, to) => {
+              const name = to.trim();
+              if (!name || name === from) return;
+              renameGroup(from, name);
+              if (groupNames.includes(name)) return; // nom déjà pris : renameGroup a prévenu
+              setImportRecap((items) => items.map((it) => (it.group === from ? { ...it, group: name } : it)));
+            }}
+            onUngroup={(name) => {
+              const ids = new Set(importRecap.filter((it) => it.group === name).map((it) => it.instanceId));
+              setSelectedV((s) => Object.fromEntries(Object.entries(s).map(([k, sv]) => [k, ids.has(k) ? { ...sv, ...groupsPatch(vehicleGroups(sv).filter((g) => g !== name)) } : sv])));
+              setGroupNames((prev) => prev.filter((g) => g !== name || Object.entries(selectedV).some(([k, sv]) => !ids.has(k) && vehicleGroups(sv).includes(g))));
+              setImportRecap((items) => items.map((it) => (it.group === name ? { ...it, group: undefined } : it)));
+            }}
             onClose={() => setImportRecap([])}
           />
           <div hidden={!leaserView}>

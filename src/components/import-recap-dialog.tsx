@@ -3,8 +3,8 @@
 // rapproché, et permet de corriger sur place : véhicule retenu (base Beev),
 // quantité, durée, km/an, loyer, ou retrait de la ligne.
 
-import { useMemo } from "react";
-import { Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Layers, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { Vehicle } from "@/lib/catalog";
@@ -21,7 +21,33 @@ export type ImportRecapItem = {
   /** Libellé tel que lu dans le fichier. */
   label: string;
   status: ImportRecapStatus;
+  /** Groupe de comparaison donné à la ligne par l'import (analyse TCO par groupe). */
+  group?: string;
 };
+
+/** Nom du groupe d'import, modifiable ; validé à la sortie du champ ou sur Entrée. */
+function GroupField({ name, count, onRename, onUngroup }: { name: string; count: number; onRename: (from: string, to: string) => void; onUngroup: (name: string) => void }) {
+  const [draft, setDraft] = useState(name);
+  useEffect(() => setDraft(name), [name]);
+  const commit = () => { if (draft.trim() && draft.trim() !== name) onRename(name, draft.trim()); else setDraft(name); };
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-beev-violet/40 bg-beev-violet-20/40 px-3 py-2 text-xs">
+      <Layers className="w-3.5 h-3.5 text-beev-violet shrink-0" />
+      <span className="text-muted-foreground">{count} ligne{count > 1 ? "s" : ""} rangée{count > 1 ? "s" : ""} dans le groupe de comparaison</span>
+      <input
+        className="min-w-[180px] flex-1 rounded border border-border/60 bg-background px-2 py-1 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-beev-rose"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+        aria-label="Nom du groupe de comparaison"
+      />
+      <button type="button" className="text-muted-foreground hover:text-destructive" onClick={() => onUngroup(name)}>
+        Ne pas grouper
+      </button>
+    </div>
+  );
+}
 
 const STATUS: Record<ImportRecapStatus, { text: string; cls: string; hint: string }> = {
   reconnu: { text: "Reconnu", cls: "bg-emerald-100 text-emerald-800", hint: "Véhicule de la base Beev retrouvé avec certitude" },
@@ -53,6 +79,8 @@ export function ImportRecapDialog({
   onChangeVehicle,
   onPatchLine,
   onRemove,
+  onRenameGroup,
+  onUngroup,
   onClose,
 }: {
   items: ImportRecapItem[];
@@ -61,6 +89,8 @@ export function ImportRecapDialog({
   onChangeVehicle: (instanceId: string, vehicle: Vehicle) => void;
   onPatchLine: (instanceId: string, patch: Partial<Pick<SelectedVehicle, "quantity" | "durationMonths" | "kmPerYear" | "negotiatedMonthly">>) => void;
   onRemove: (instanceId: string) => void;
+  onRenameGroup: (from: string, to: string) => void;
+  onUngroup: (name: string) => void;
   onClose: () => void;
 }) {
   const sorted = useMemo(
@@ -70,6 +100,7 @@ export function ImportRecapDialog({
   // Lignes encore présentes (une ligne retirée disparaît du récapitulatif).
   const rows = items.filter((it) => lines[it.instanceId]);
   const toCheck = rows.filter((it) => it.status !== "reconnu").length;
+  const groups = [...new Set(rows.map((it) => it.group).filter((g): g is string => !!g))];
 
   return (
     <Dialog open={items.length > 0} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -81,6 +112,15 @@ export function ImportRecapDialog({
             Corrigez ici le véhicule retenu, la durée, le kilométrage ou le loyer : la Sélection en cours est mise à jour aussitôt.
           </DialogDescription>
         </DialogHeader>
+
+        {groups.map((g) => (
+          <GroupField key={g} name={g} count={rows.filter((it) => it.group === g).length} onRename={onRenameGroup} onUngroup={onUngroup} />
+        ))}
+        {groups.length > 0 && (
+          <p className="-mt-1 text-[11px] text-muted-foreground">
+            Le groupe alimente l'analyse « TCO par durée et kilométrage » (Outils → Groupes) et la page Comparateur par groupe du PDF.
+          </p>
+        )}
 
         {rows.length === 0 ? (
           <p className="text-sm text-muted-foreground py-6 text-center">Toutes les lignes importées ont été retirées.</p>
