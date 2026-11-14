@@ -16,13 +16,14 @@ import { AEN_ABATTEMENT_MAX_AN, AEN_PLAFOND_PCT_PRIX } from "./tco-calculator";
 // Modèle commun
 // ============================================================================
 
-export type LeaserId = "ayvens" | "arval" | "bpce" | "alphabet" | "autre";
+export type LeaserId = "ayvens" | "arval" | "bpce" | "alphabet" | "vwbank" | "autre";
 
 export const LEASER_LABEL: Record<LeaserId, string> = {
   ayvens: "Ayvens",
   arval: "Arval",
   bpce: "BPCE Car Lease",
   alphabet: "Alphabet",
+  vwbank: "Volkswagen Bank",
   autre: "Autre loueur",
 };
 
@@ -321,6 +322,7 @@ export function detectLeaser(text: string): LeaserId {
   if (/arval/.test(t)) return "arval";
   if (/bpce car lease|bpcecl|bpce/.test(t)) return "bpce";
   if (/alphabet france|alphabet\.com|www\.alphabet/.test(t)) return "alphabet";
+  if (/volkswagen bank/.test(t)) return "vwbank";
   return "autre";
 }
 
@@ -720,6 +722,88 @@ function parseAlphabet(text: string, fileName: string): LeaserQuote {
   return q;
 }
 
+// ---- Volkswagen Bank ----
+// Contrat de location longue durée (conditions particulières) émis par le
+// distributeur. Montants en colonnes « HT  TTC ». La page « Étude tarifaire »
+// (remise distributeur) est interne : elle n'est pas reprise.
+function parseVwBank(text: string, fileName: string): LeaserQuote {
+  const q = blankQuote("vwbank", fileName);
+  const pair = (label: string) => rx(text, new RegExp(`${label}\\s*:?\\s*${M}\\s*€\\s+${M}\\s*€`, "i"));
+  q.offerNumber = g1(text, /CONTRAT DE LOCATION LONGUE DUR[ÉE]E\s+(\d{6,})/i);
+  const d = g1(text, /CONDITIONS PARTICULI[ÈE]RES[^\n]*?du\s+(\d{2}\/\d{2}\/\d{4})/i) || g1(text, /\bdu\s+(\d{2}\/\d{2}\/\d{4})/i);
+  if (d) q.dateIso = dmyToIso(d);
+  const vd = num1(text, /valable\s+(\d+)\s+jours/i);
+  if (vd) q.validityDays = vd;
+  // « Raison Sociale : <distributeur> Raison Sociale : <client> »
+  const rs = rx(text, /Raison Sociale\s*:\s*(.+?)\s+Raison Sociale\s*:\s*([^\n]+)/i);
+  if (rs) { q.channel = `Distributeur ${prettyWords(rs[1].trim())}`; q.client = rs[2].trim(); }
+  if (!q.client) flag(q, "client", "absent", "Client introuvable sur le contrat");
+
+  const brand = g1(text, /Marque\s*:\s*(.+?)\s+Genre\s*:/i);
+  const modelLine = g1(text, /Modèle\s*:\s*(.+?)\s+Options\s*:/i) || g1(text, /MODELE\s*:\s*([^\n]+)/i);
+  if (brand || modelLine) {
+    // « POLO 6 FL LIFE PLUS 1.0 TSI 95 CH BVM5 0CV » : modèle = premier mot ;
+    // « NOUVELLE ID.3 NEO … » / « NOUVEAU ID. CROSS … » : « Nouveau » écarté,
+    // « ID. » rattaché au mot suivant.
+    const words = modelLine.replace(/\s+\d+CV$/i, "").replace(/^(NOUVEAU|NOUVELLE|NEW)\s+/i, "").split(/\s+/).filter(Boolean);
+    const nModel = /\.$/.test(words[0] ?? "") && words.length > 1 ? 2 : 1;
+    q.vehicle.brand = prettyBrand(brand || "Volkswagen");
+    q.vehicle.model = prettyWords(words.slice(0, nModel).join(" ")).replace(/^Id\b/, "ID");
+    q.vehicle.finition = prettyWords(words.slice(nModel).join(" "));
+    const ch = modelLine.match(/(\d{2,3})\s*CH\b/i);
+    if (ch) q.vehicle.powerHp = Number(ch[1]);
+    q.vehicle.gearbox = /\b(DSG|BVA|AUTO)/i.test(modelLine) ? "Automatique" : /\bBVM/i.test(modelLine) ? "Manuelle" : "";
+  }
+  const en = g1(text, /Energie\s*:\s*([A-Za-zÉé]+)/i).toUpperCase();
+  q.vehicle.energy = /^(EL|ELEC|ÉLEC|ELECTRIQUE|ÉLECTRIQUE)/.test(en) ? "Électrique"
+    : /^(HR|PHEV|EH|HYBRIDE?R)/.test(en) ? "Hybride Rechargeable"
+    : /^(HYB|HEV|EE)/.test(en) ? "Hybride"
+    : /^(GO|GAZ|DIE)/.test(en) ? "Diesel"
+    : /^(ES|SP)/.test(en) ? "Essence" : q.vehicle.energy;
+  if (!q.vehicle.gearbox && q.vehicle.energy === "Électrique") q.vehicle.gearbox = "Automatique";
+  q.vehicle.fiscalHp = num1(text, /Puissance Fiscale\s*:\s*(\d+)/i);
+  q.vehicle.co2 = num1(text, /CO\s?2\s*:[^\n]*\n(?:[^\n]*\n)?\s*(\d{1,3})\s*$/im);
+  q.vehicle.body = detectBody(g1(text, /Carrosserie\s*:\s*([^\n]*?)\s+Energie/i));
+
+  const cat = pair("Prix catalogue");
+  if (cat) q.price.catalogueTtc = toNum(cat[2]);
+  const opt = pair("Options");
+  if (opt) q.price.optionsTtc = toNum(opt[2]);
+  const acc = pair("Accessoires");
+  if (acc && (toNum(acc[2]) ?? 0) > 0) q.price.options.push({ name: "Accessoires", priceTtc: toNum(acc[2]) });
+
+  q.contract.months = num1(text, /Durée du contrat\s*:\s*(\d+)\s*mois/i) ?? 0;
+  q.contract.km = toNum(g1(text, /Kilométrage total souscrit\s*:\s*([\d\s.]+?)(?:\s*km)?\s*(?:\n|$)/i)) ?? 0;
+  const supp = rx(text, /km supplémentaire\s+([\d,]+)\s+([\d,]+)/i);
+  if (supp) q.contract.kmSuppTtc = toNum(supp[2]);
+
+  const tot = pair("Loyer mensuel total");
+  if (tot) { q.rent.totalHt = toNum(tot[1]); q.rent.totalTtc = toNum(tot[2]) ?? 0; }
+  const fin = pair("Loyer financier");
+  if (fin) q.rent.lines.push({ cat: "fin", label: "Loyer financier", amount: toNum(fin[2]) ?? 0 });
+  const svc = pair("Services");
+  if (svc) q.rent.lines.push({ cat: "ent", label: "Maintenance et assistance", detail: "Entretien constructeur, réparations mécaniques, assistance 24h/24", amount: toNum(svc[2]) ?? 0 });
+  const pf = rx(text, new RegExp(`Perte financière\\s+inclus\\w*\\s+${M}\\s*€\\s+${M}\\s*€`, "i"));
+  if (pf) q.rent.lines.push({ cat: "ass", label: "Garantie perte financière", amount: toNum(pf[2]) ?? 0 });
+  const first = toNum(rx(text, new RegExp(`1\\s*(?:er)?\\s*loyer TTC\\s*:\\s*${M}`, "i"))?.[1]);
+  if (first != null && first > q.rent.totalTtc + 1) q.extras.push(`Premier loyer TTC : ${first.toLocaleString("fr-FR")} € (dépôt de garantie, prestations et assurances inclus)`);
+
+  q.scope = {
+    maint: /Maintenance[^\n]*Entretien/i.test(text) || /Services[^\n]*\n\s*inclus/i.test(text) ? 1 : null,
+    assist: /Assistance constructeur/i.test(text) ? 1 : null,
+    pneus: /Pneumatiques[^\n]*non inclus/i.test(text) ? 0 : null,
+    dom: /dommages tous risques\s*\n?\s*non inclus/i.test(text) ? 0 : null,
+    rc: /RC & dommages tous risques\s*\n?\s*non inclus/i.test(text) ? 0 : null,
+    pf: /Perte financière\s+inclus/i.test(text) ? 1 : null,
+    relais: /Véhicule de remplacement[^\n]*inclus/i.test(text) ? 1 : null,
+    cg: /Carte grise, immatriculation inclus/i.test(text) ? 1 : null,
+  };
+  if (q.scope.pneus === 0) q.extras.push("Pneumatiques non inclus");
+  if (q.scope.rc === 0) q.extras.push("RC et dommages tous risques non inclus");
+  flag(q, "ecoscore", "absent", "Éco-score absent du devis : repris du catalogue Beev");
+  return q;
+}
+
 // Offre Alphabet émise par un concessionnaire (« Offre de location valant Bon de
 // commande ») : mise en page différente du devis Alphabet direct.
 function parseAlphabetDealer(text: string, fileName: string): LeaserQuote {
@@ -799,12 +883,17 @@ export function parseLeaserQuoteText(text: string, fileName = ""): LeaserQuote {
     : leaser === "arval" ? parseArval(text, fileName)
     : leaser === "bpce" ? parseBpce(text, fileName)
     : leaser === "alphabet" ? parseAlphabet(text, fileName)
+    : leaser === "vwbank" ? parseVwBank(text, fileName)
     : blankQuote("autre", fileName);
   return finalizeQuote(q, leaser === "autre");
 }
 
 /** Drapeaux communs : champs indispensables manquants, cohérence du loyer. */
 export function finalizeQuote(q: LeaserQuote, unknownLeaser = false): LeaserQuote {
+  // Énergie « Électrique » par défaut alors que le libellé indique un moteur
+  // thermique (« Dci », « TSI »…) : on corrige.
+  const thermal = ENERGY_FROM_QUOTE.find(([re, e]) => e !== "Électrique" && re.test(`${q.vehicle.model} ${q.vehicle.finition}`));
+  if (thermal && /lectri/i.test(q.vehicle.energy)) q.vehicle.energy = thermal[1];
   const has = (f: string) => q.flags.some((x) => x.field === f);
   if (unknownLeaser) flag(q, "loueur", "check", "Loueur non reconnu : saisissez les champs à la main");
   if (!q.vehicle.brand || !q.vehicle.model) { if (!has("vehicule")) flag(q, "vehicule", "check", "Véhicule non lu : à saisir"); }
@@ -955,11 +1044,11 @@ export function autoMatch(matches: CatalogueMatch[]): { match: CatalogueMatch; c
 }
 
 const ENERGY_FROM_QUOTE: [RegExp, Vehicle["energy"]][] = [
-  [/rechargeable|plug|phev/i, "Hybride Rechargeable"],
-  [/mild|mhev|micro/i, "Mild Hybrid"],
-  [/hybride|hybrid|hev/i, "Hybride"],
-  [/diesel|gazole|gasoil/i, "Diesel"],
-  [/essence|petrol|sp95|sp98/i, "Essence"],
+  [/rechargeable|plug-?in|\bphev\b|\be-hybrid\b/i, "Hybride Rechargeable"],
+  [/\bmild\b|\bmhev\b|micro-?hybrid/i, "Mild Hybrid"],
+  [/\bhybride\b|\bhybrid\b|\bhev\b|full hybrid/i, "Hybride"],
+  [/diesel|gazole|gasoil|\b(dci|hdi|bluehdi|tdi|crdi|cdi|jtd|multijet|ecoblue)\b/i, "Diesel"],
+  [/essence|petrol|sp95|sp98|\b(tsi|tfsi|tce|puretech|ecoboost|vti|thp)\b/i, "Essence"],
   [/lectri/i, "Électrique"],
 ];
 
@@ -967,8 +1056,12 @@ const ENERGY_FROM_QUOTE: [RegExp, Vehicle["energy"]][] = [
  *  loueur (propre à ce devis, ne touche pas au catalogue). Les champs non lus
  *  restent à 0 et sont complétés ensuite par les données ouvertes si possible. */
 export function vehicleFromQuote(q: LeaserQuote): Vehicle {
-  const energyText = `${q.vehicle.energy} ${q.vehicle.finition} ${q.vehicle.model}`;
-  const energy = ENERGY_FROM_QUOTE.find(([re]) => re.test(energyText))?.[1] ?? "Électrique";
+  // Motorisation lue dans le libellé (« Dci », « TSI »…) avant l'énergie du devis,
+  // qui vaut « Électrique » par défaut quand le loueur ne la précise pas.
+  const label = `${q.vehicle.model} ${q.vehicle.finition}`;
+  const energy = ENERGY_FROM_QUOTE.find(([re]) => re.test(label))?.[1]
+    ?? ENERGY_FROM_QUOTE.find(([re]) => re.test(q.vehicle.energy))?.[1]
+    ?? "Électrique";
   return {
     id: `devis-${q.id}`,
     brand: q.vehicle.brand,

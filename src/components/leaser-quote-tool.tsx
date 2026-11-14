@@ -53,7 +53,7 @@ type Props = {
 
 const eur2 = (n: number) => n.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
 const SELECT_CLS = "h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-const OFFER_LEASER_NAME: Record<LeaserId, string> = { ayvens: "Ayvens", arval: "Arval", alphabet: "Alphabet", bpce: "BPCE Lease", autre: "" };
+const OFFER_LEASER_NAME: Record<LeaserId, string> = { ayvens: "Ayvens", arval: "Arval", alphabet: "Alphabet", bpce: "BPCE Lease", vwbank: "Volkswagen Bank", autre: "" };
 
 function Field({ label, flagKey, q, children, className = "" }: { label: string; flagKey?: string; q: LeaserQuote; children: React.ReactNode; className?: string }) {
   const f = flagKey ? q.flags.find((x) => x.field === flagKey && !flagResolved(q, x)) : undefined;
@@ -217,7 +217,7 @@ export function LeaserQuoteTool({ vehicles, client, canSaveOffer, onAddToDevis }
             <>
               <Upload className="w-6 h-6 mx-auto text-muted-foreground" />
               <p className="mt-2 text-sm font-medium">Déposez un ou plusieurs devis PDF ici</p>
-              <p className="text-xs text-muted-foreground">Ayvens, Arval, BPCE Car Lease, Alphabet. Un autre loueur se saisit à la main.</p>
+              <p className="text-xs text-muted-foreground">Ayvens, Arval, BPCE Car Lease, Alphabet, Volkswagen Bank. Un autre loueur se saisit à la main.</p>
               <div className="mt-3 flex items-center justify-center gap-2 flex-wrap">
                 <Button size="sm" onClick={() => fileRef.current?.click()} className="gap-1.5"><FileSearch className="w-3.5 h-3.5" /> Choisir un PDF</Button>
                 <Button size="sm" variant="outline" onClick={addManual} className="gap-1.5"><PenLine className="w-3.5 h-3.5" /> Saisie manuelle</Button>
