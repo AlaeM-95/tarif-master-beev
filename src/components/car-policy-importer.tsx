@@ -35,7 +35,14 @@ export function CarPolicyImporter({
   onUpdateSelected,
   selectedIds,
   catalogueVehicles = [],
+  onAutoAdd,
+  onLeaserPdf,
 }: {
+  /** Ajoute automatiquement les véhicules lus à la Sélection en cours (avec km/an,
+   *  durée et quantité du fichier). Renvoie le nombre de lignes ajoutées. */
+  onAutoAdd?: (items: Array<{ vehicle: Vehicle; kmPerYear?: number; durationMonths?: number; quantity?: number }>) => number;
+  /** Devis loueur PDF déposé ici : lu, rapproché de la base et ajouté à la sélection. */
+  onLeaserPdf?: (file: File) => Promise<void>;
   /** Liste des véhicules actuellement importés (state React du parent) */
   importedVehicles: Vehicle[];
   /** Catalogue véhicules (DB) — pour détecter les doublons à l'import */
@@ -89,6 +96,14 @@ export function CarPolicyImporter({
 
   const handleFile = async (file: File) => {
     setImporting(true);
+    // Devis loueur (PDF) : même encart, traité par la lecture des devis loueurs.
+    if ((/\.pdf$/i.test(file.name) || file.type === "application/pdf") && onLeaserPdf) {
+      try { await onLeaserPdf(file); } finally {
+        setImporting(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+      return;
+    }
     try {
       const r = await smartImportCarPolicy(file, { categories: catalogueVehicles.map((v) => v.category), catalogue: catalogueVehicles });
       setReport(r);
@@ -101,7 +116,22 @@ export function CarPolicyImporter({
       const dupes = r.vehicles.filter((v) => catKeys.has(dedupKey(v)));
       setDuplicates(dupes);
       onImported(fresh);
-      if (dupes.length > 0) {
+      // Ajout automatique à la Sélection en cours : véhicules importés + équivalents
+      // déjà présents dans la base Beev (on ajoute alors la fiche de la base), avec
+      // le km/an, la durée et la quantité du fichier.
+      if (onAutoAdd) {
+        type Extra = Vehicle & { kmPerYear?: number; durationMonths?: number; quantity?: number };
+        const catByKey = new Map(catalogueVehicles.map((c) => [dedupKey(c), c] as const));
+        const items = r.vehicles.map((raw) => {
+          const x = raw as Extra;
+          const base = catByKey.get(dedupKey(x));
+          const vehicle = base ? { ...base, isCurrentFleet: x.isCurrentFleet } : x;
+          return { vehicle, kmPerYear: x.kmPerYear, durationMonths: x.durationMonths, quantity: x.quantity };
+        });
+        const n = onAutoAdd(items);
+        if (n > 0) toast.success(`${n} véhicule${n > 1 ? "s" : ""} ajouté${n > 1 ? "s" : ""} à la Sélection en cours`);
+      }
+      if (dupes.length > 0 && !onAutoAdd) {
         toast.info(`${dupes.length} véhicule${dupes.length > 1 ? "s" : ""} déjà au catalogue — non importé${dupes.length > 1 ? "s" : ""}, à sélectionner directement dans le catalogue ci-dessus`);
       }
       if (fresh.length > 0) {
@@ -175,7 +205,7 @@ export function CarPolicyImporter({
               : "Glissez votre fichier ou cliquez pour parcourir"}
           </p>
           <p className="text-[10px] text-muted-foreground mb-3">
-            Formats acceptés : .xlsx, .xls, .csv · lecture intelligente (colonnes
+            Formats acceptés : .xlsx, .xls, .csv (car policy) et .pdf (devis loueur) · lecture intelligente (colonnes
             libres, texte libre ou liste sans en-têtes) · lecture 100 % dans votre
             navigateur, aucune donnée envoyée
           </p>
@@ -183,7 +213,7 @@ export function CarPolicyImporter({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+              accept=".xlsx,.xls,.csv,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) void handleFile(f);

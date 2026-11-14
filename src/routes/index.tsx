@@ -30,10 +30,11 @@ import { AuditConseilEditor } from "@/components/audit-conseil-editor";
 import { CatalogueTcoEditor } from "@/components/catalogue-tco-editor";
 import { CarPolicyImporter } from "@/components/car-policy-importer";
 import { CompanySearchField } from "@/components/company-search-input";
-import { LeaserQuoteTool, type LeaserQuoteDraft } from "@/components/leaser-quote-tool";
+import { LeaserQuoteTool } from "@/components/leaser-quote-tool";
 import { ComparisonGroupsBoard, GroupChips, VehicleGroupsStatus } from "@/components/comparison-groups-board";
 import { comparatorNotes, groupNamesOf, groupsPatch, vehicleGroups } from "@/lib/comparison-groups";
-import { assuranceMonthly as leaserAssurance, kmPerYear as leaserKmPerYear, netDownPayment as leaserNetApport } from "@/lib/leaser-quote";
+import { assuranceMonthly as leaserAssurance, kmPerYear as leaserKmPerYear, netDownPayment as leaserNetApport, matchCatalogue as matchLeaserCatalogue, autoMatch as autoMatchLeaser, parseLeaserQuotePdf, vehicleFromQuote, type LeaserQuote } from "@/lib/leaser-quote";
+import { enrichVehicle, loadVehicleReference } from "@/lib/vehicle-reference";
 import { FleetBuilder, type FleetSelection } from "@/components/fleet-builder";
 import { LiveIndicator } from "@/components/live-indicator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -1236,64 +1237,128 @@ function App() {
   // Ajoute au devis en cours le véhicule d'un devis loueur importé : loyer, durée,
   // km/an, apport net de la prime CEE, assurance et options viennent du devis du
   // loueur ; le véhicule est celui du catalogue Beev choisi dans l'outil.
-  const addLeaserQuoteToDevis = ({ quote, vehicle }: LeaserQuoteDraft) => {
+  // Devis loueur → ligne de la Sélection en cours. `vehicle` = véhicule de la base
+  // Beev rapproché ; null = absent de la base : une fiche est créée depuis le devis
+  // (complétée par les données ouvertes). `stay` : ne pas quitter la vue en cours
+  // (ajout automatique à l'import).
+  const addLeaserQuoteToDevis = async ({ quote, vehicle: matched }: { quote: LeaserQuote; vehicle: Vehicle | null }, opts: { stay?: boolean } = {}) => {
+    let vehicle = matched;
+    let created = false;
+    if (!vehicle) {
+      created = true;
+      vehicle = vehicleFromQuote(quote);
+      try { vehicle = enrichVehicle(vehicle, await loadVehicleReference(), vehicles); } catch { /* données ouvertes indisponibles */ }
+    }
+    const v = vehicle;
     const assurance = leaserAssurance(quote);
     const apport = leaserNetApport(quote);
     const optionLines: LineItem[] = quote.price.options
       .filter((o) => (o.priceTtc ?? 0) > 0)
       .map((o) => ({ label: o.name, qty: 1, unitHt: o.priceTtc as number }));
+    const km = leaserKmPerYear(quote);
     // Données du devis loueur reportées dans la ligne de la Sélection en cours :
-    // durée, kilométrage annuel, loyer, apport, assurance, options.
+    // durée, kilométrage annuel, loyer, apport, assurance, options. Une donnée non
+    // lue (0) ne remplace pas la valeur existante de la ligne.
     const fromQuote = {
-      negotiatedMonthly: quote.rent.totalTtc,
-      durationMonths: quote.contract.months,
-      kmPerYear: leaserKmPerYear(quote),
+      ...(quote.rent.totalTtc > 0 ? { negotiatedMonthly: quote.rent.totalTtc } : {}),
+      ...(quote.contract.months > 0 ? { durationMonths: quote.contract.months } : {}),
+      ...(km > 0 ? { kmPerYear: km } : {}),
       leaserQuoteRef: quote.offerNumber || undefined,
+      leaserQuoteId: quote.id,
       apport: apport > 0 ? apport : undefined,
       assuranceTousRisques: assurance > 0 ? true : undefined,
       assuranceMonthly: assurance > 0 ? assurance : undefined,
     };
-    // Véhicule déjà dans la sélection (sans devis loueur, ou avec ce même devis) :
-    // on met sa ligne à jour au lieu de créer un doublon. Une ligne portant le devis
-    // d'un AUTRE loueur est conservée (comparaison de deux offres).
-    const ref = quote.offerNumber || undefined;
-    const existing = Object.values(selectedV).find(
-      (sv) => sv.vehicle.id === vehicle.id && !sv.vehicle.isCurrentFleet && (!sv.leaserQuoteRef || sv.leaserQuoteRef === ref),
+    // Même devis déjà importé, ou même véhicule ajouté sans devis loueur : on met
+    // la ligne à jour. Une ligne portant un AUTRE devis est conservée (comparaison).
+    const isSameLine = (sv: SelectedVehicle) => !sv.vehicle.isCurrentFleet && (
+      sv.leaserQuoteId === quote.id ||
+      (sv.vehicle.id === v.id && !sv.leaserQuoteId && !sv.leaserQuoteRef) ||
+      (sv.vehicle.id === v.id && !!quote.offerNumber && sv.leaserQuoteRef === quote.offerNumber)
     );
-    const loyer = quote.rent.totalTtc.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
-    const contrat = `${quote.contract.months} mois · ${leaserKmPerYear(quote).toLocaleString("fr-FR")} km/an`;
-    if (existing) {
-      setSelectedV((s) => ({
-        ...s,
-        [existing.instanceId]: {
-          ...existing,
-          ...fromQuote,
-          options: optionLines.length > 0 ? optionLines : existing.options,
-        },
-      }));
-    } else {
+    const updated = Object.values(selectedV).some(isSameLine);
+    setSelectedV((s) => {
+      const existing = Object.values(s).find(isSameLine);
+      if (existing) {
+        const key = existing.instanceId ?? existing.vehicle.id;
+        return { ...s, [key]: { ...existing, vehicle: existing.vehicle.id === v.id ? existing.vehicle : v, ...fromQuote, options: optionLines.length > 0 ? optionLines : existing.options } };
+      }
       const instanceId = newInstanceId();
-      setSelectedV((s) => ({
+      return {
         ...s,
         [instanceId]: {
           instanceId,
-          vehicle,
+          vehicle: v,
           quantity: 1,
-          discountPct: vehicle.remise ?? 0,
+          discountPct: v.remise ?? 0,
+          negotiatedMonthly: v.monthlyLld,
+          durationMonths: 48,
+          kmPerYear: energy.kmPerYear,
           includeTco: true,
           services: [],
           options: optionLines,
           ...fromQuote,
         },
-      }));
-    }
+      };
+    });
     if (!client.company && quote.client && !/beev/i.test(quote.client)) setClient({ ...client, company: quote.client });
-    setLeaserView(false);
-    setTcoView(false);
+    if (!opts.stay) { setLeaserView(false); setTcoView(false); }
     if (projectType !== "vehicles") setProjectType("vehicles");
+    const loyer = quote.rent.totalTtc > 0 ? quote.rent.totalTtc.toLocaleString("fr-FR", { style: "currency", currency: "EUR" }) : "loyer à saisir";
+    const contrat = quote.contract.months > 0 ? `${quote.contract.months} mois · ${km.toLocaleString("fr-FR")} km/an` : "durée et km à saisir";
     toast.success(
-      `${vehicle.brand} ${vehicle.model} ${existing ? "mis à jour" : "ajouté"} dans la sélection · ${contrat} · loyer ${loyer} (${quote.leaserLabel})`,
+      `${v.brand} ${v.model} ${updated ? "mis à jour" : "ajouté"} dans la Sélection en cours · ${contrat} · ${loyer} (${quote.leaserLabel})`,
+      {
+        description: created ? "Véhicule absent de la base Beev : fiche créée depuis le devis, à vérifier (catégorie, consommation, image)." : undefined,
+        action: opts.stay && leaserView ? { label: "Voir la sélection", onClick: () => setLeaserView(false) } : undefined,
+      },
     );
+  };
+
+  // Import d'un devis loueur PDF (outil Devis loueur ou encart Import Car Policy) :
+  // lecture, rapprochement avec la base véhicules, ajout à la Sélection en cours.
+  const importLeaserPdf = async (file: File) => {
+    try {
+      const quote = await parseLeaserQuotePdf(file);
+      const hit = autoMatchLeaser(matchLeaserCatalogue(quote, vehicles));
+      await addLeaserQuoteToDevis({ quote, vehicle: hit?.match.vehicle ?? null }, { stay: true });
+    } catch (e) {
+      toast.error(`Lecture du devis impossible : ${file.name}${e instanceof Error ? ` (${e.message})` : ""}`);
+    }
+  };
+
+  // Import Car Policy : chaque véhicule importé (ou son équivalent déjà présent
+  // dans la base Beev) arrive directement dans la Sélection en cours, avec le
+  // km/an, la durée et la quantité lus dans le fichier quand ils existent.
+  const addCarPolicyToSelection = (items: Array<{ vehicle: Vehicle; kmPerYear?: number; durationMonths?: number; quantity?: number }>) => {
+    const inSel = (s: Record<string, SelectedVehicle>, v: Vehicle) =>
+      Object.values(s).some((sv) => sv.vehicle.id === v.id && !!sv.vehicle.isCurrentFleet === !!v.isCurrentFleet);
+    const added = items.filter((it) => !inSel(selectedV, it.vehicle)).length;
+    setSelectedV((s) => {
+      const next = { ...s };
+      for (const it of items) {
+        const v = it.vehicle;
+        if (inSel(next, v)) continue;
+        const offer = findBestOffer(leaserOffers, v.id, it.durationMonths ?? 48, it.kmPerYear ?? energy.kmPerYear);
+        const duration = it.durationMonths ?? offer?.durationMonths ?? 48;
+        const kmPerYear = it.kmPerYear ?? (offer && offer.durationMonths > 0 ? offer.kmTotal / (offer.durationMonths / 12) : energy.kmPerYear);
+        const instanceId = newInstanceId();
+        next[instanceId] = {
+          instanceId,
+          vehicle: v,
+          quantity: it.quantity && it.quantity > 0 ? it.quantity : 1,
+          discountPct: v.remise ?? 0,
+          negotiatedMonthly: offer ? offer.monthlyPriceTtc : v.monthlyLld,
+          durationMonths: duration,
+          kmPerYear,
+          includeTco: true,
+          services: [],
+          options: [],
+        };
+      }
+      return next;
+    });
+    return added;
   };
 
   if (presenting) {
@@ -1785,9 +1850,12 @@ function App() {
           <ProjectTypeSelector value={activeTab} onChange={switchProject} />
           <ClientCard client={client} setClient={setClient} isAdmin={isAdmin} />
 
-          {leaserView ? (
+          {/* Outil Devis loueur toujours monté (masqué hors de sa vue) : les devis
+              importés restent disponibles quand on revient à la Sélection en cours. */}
+          <div hidden={!leaserView}>
             <LeaserQuoteTool vehicles={vehicles} client={client} canSaveOffer={isOps} onAddToDevis={addLeaserQuoteToDevis} />
-          ) : groupsView ? (
+          </div>
+          {leaserView ? null : groupsView ? (
             <ComparisonGroupsBoard
               vehicles={Object.values(selectedV)}
               groupNames={groupNames}
@@ -2161,38 +2229,36 @@ function App() {
               onImported={setImportedVehicles}
               onClear={() => setImportedVehicles([])}
               onAddOne={(v) => toggleV(v)}
+              onAutoAdd={addCarPolicyToSelection}
+              onLeaserPdf={importLeaserPdf}
               onRemoveOne={(id) => {
-                // Retire de selectedV mais conserve la disponibilité dans la liste importée
-                setSelectedV((prev) => {
-                  const next = { ...prev };
-                  delete next[id];
-                  return next;
-                });
+                // Retire de selectedV (lignes de ce véhicule, clés = instanceId) mais
+                // conserve la disponibilité dans la liste importée.
+                setSelectedV((prev) => Object.fromEntries(Object.entries(prev).filter(([, sv]) => sv.vehicle.id !== id)));
               }}
               onDeleteImported={(id) => {
                 // Supprime définitivement le véhicule de la liste importée
                 // ET du devis s'il y était (import non souhaité / doublon).
                 setImportedVehicles((prev) => prev.filter((v) => v.id !== id));
-                setSelectedV((prev) => {
-                  const next = { ...prev };
-                  delete next[id];
-                  return next;
-                });
+                setSelectedV((prev) => Object.fromEntries(Object.entries(prev).filter(([, sv]) => sv.vehicle.id !== id)));
               }}
               onUpdateSelected={(id, patch) => {
                 // Propage les modifs de fiche aux SelectedVehicles déjà au devis.
                 // Si le loyer catalogue (monthlyLld) change, on resynchronise
                 // negotiatedMonthly pour éviter le décalage panneau droite vs PDF.
                 setSelectedV((prev) => {
-                  if (!prev[id]) return prev;
-                  const next = { ...prev[id], vehicle: { ...prev[id].vehicle, ...patch } };
-                  if (patch.monthlyLld !== undefined) {
-                    next.negotiatedMonthly = patch.monthlyLld;
+                  if (!Object.values(prev).some((sv) => sv.vehicle.id === id)) return prev;
+                  const next = { ...prev };
+                  for (const [key, sv] of Object.entries(prev)) {
+                    if (sv.vehicle.id !== id) continue;
+                    const line = { ...sv, vehicle: { ...sv.vehicle, ...patch } };
+                    if (patch.monthlyLld !== undefined) line.negotiatedMonthly = patch.monthlyLld;
+                    next[key] = line;
                   }
-                  return { ...prev, [id]: next };
+                  return next;
                 });
               }}
-              selectedIds={new Set(Object.keys(selectedV))}
+              selectedIds={new Set(Object.values(selectedV).map((sv) => sv.vehicle.id))}
             />
           )}
 

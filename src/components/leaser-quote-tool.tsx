@@ -39,7 +39,8 @@ import {
 } from "@/lib/leaser-quote";
 import { LEASER_QUOTE_CSS, printLeaserQuote, renderLeaserQuoteHtml } from "@/lib/leaser-quote-html";
 
-export type LeaserQuoteDraft = { quote: LeaserQuote; vehicle: Vehicle; ecoOk: boolean };
+/** vehicle = véhicule de la base Beev rapproché ; null = absent de la base (fiche créée depuis le devis). */
+export type LeaserQuoteDraft = { quote: LeaserQuote; vehicle: Vehicle | null; ecoOk?: boolean };
 
 type ClientLite = { company?: string; salesRep?: string; salesRepEmail?: string; salesRepPhone?: string };
 
@@ -47,7 +48,7 @@ type Props = {
   vehicles: Vehicle[];
   client: ClientLite;
   canSaveOffer: boolean;
-  onAddToDevis: (draft: LeaserQuoteDraft) => void;
+  onAddToDevis: (draft: LeaserQuoteDraft, opts?: { stay?: boolean }) => void | Promise<void>;
 };
 
 const eur2 = (n: number) => n.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
@@ -124,6 +125,13 @@ export function LeaserQuoteTool({ vehicles, client, canSaveOffer, onAddToDevis }
         setCurrentId(added[0].id);
         const unknown = added.filter((a) => a.leaser === "autre").length;
         toast.success(`${added.length} devis lu${added.length > 1 ? "s" : ""}${unknown ? ` · ${unknown} loueur non reconnu` : ""}`);
+        // Ajout automatique à la Sélection en cours : véhicule de la base rapproché
+        // (marque, modèle, version), sinon fiche créée depuis le devis. Les
+        // corrections faites ensuite ici mettent la même ligne à jour.
+        for (const a of added) {
+          const hit = autoMatch(matchCatalogue(a, vehicles));
+          await onAddToDevis({ quote: a, vehicle: hit?.match.vehicle ?? null }, { stay: true });
+        }
       }
     } finally {
       setBusy(false);
@@ -167,8 +175,8 @@ export function LeaserQuoteTool({ vehicles, client, canSaveOffer, onAddToDevis }
 
   const handleAdd = () => {
     if (!q) return;
-    if (!chosen) { toast.error("Choisissez le véhicule du catalogue Beev correspondant."); return; }
-    onAddToDevis({ quote: q, vehicle: chosen, ecoOk });
+    // Sans véhicule choisi : fiche créée depuis le devis (absent de la base Beev).
+    void onAddToDevis({ quote: q, vehicle: chosen ?? null, ecoOk });
   };
 
   const handleSaveOffer = async () => {
@@ -388,8 +396,8 @@ export function LeaserQuoteTool({ vehicles, client, canSaveOffer, onAddToDevis }
                 <Button size="sm" disabled={!ready} onClick={() => void printLeaserQuote(q, renderOpts())} className="gap-1.5" title={ready ? "Ouvre le devis Beev prêt à enregistrer en PDF" : "Confirmez les points à vérifier"}>
                   <FileDown className="w-3.5 h-3.5" /> Télécharger le PDF
                 </Button>
-                <Button size="sm" variant="outline" disabled={!ready || !chosen} onClick={handleAdd} className="gap-1.5" title={chosen ? "Crée la ligne dans le devis en cours" : "Choisissez le véhicule du catalogue"}>
-                  <FilePlus2 className="w-3.5 h-3.5" /> Ajouter au devis en cours
+                <Button size="sm" variant="outline" disabled={!q.vehicle.brand} onClick={handleAdd} className="gap-1.5" title="Le véhicule est ajouté automatiquement à l'import ; ce bouton reporte vos corrections (véhicule, loyer, durée, km) dans la Sélection en cours">
+                  <FilePlus2 className="w-3.5 h-3.5" /> Mettre à jour la Sélection en cours
                 </Button>
                 {canSaveOffer && (
                   <Button size="sm" variant="ghost" disabled={!ready || !chosen || createOffer.isPending} onClick={() => void handleSaveOffer()} className="gap-1.5" title="Mémorise ce loyer comme offre loueur du véhicule">
@@ -397,7 +405,7 @@ export function LeaserQuoteTool({ vehicles, client, canSaveOffer, onAddToDevis }
                   </Button>
                 )}
                 {!ready && <span className="text-xs text-muted-foreground">{blockers.length > 0 ? `${blockers.length} point(s) à confirmer` : "Loyer, durée et véhicule requis"}</span>}
-                {ready && !chosen && <span className="text-xs text-muted-foreground">Choisissez le véhicule du catalogue pour l'ajouter au devis.</span>}
+                {!chosen && <span className="text-xs text-muted-foreground">Véhicule absent de la base : une fiche a été créée depuis le devis dans la Sélection en cours.</span>}
                 {ready && chosen && <span className="text-xs text-muted-foreground tabular-nums">Apport net {eur2(netDownPayment(q))} · {kmPerYear(q).toLocaleString("fr-FR")} km / an</span>}
               </div>
               <div className="lq-wrap rounded-xl border bg-white overflow-hidden shadow-sm">

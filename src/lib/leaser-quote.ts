@@ -874,3 +874,40 @@ export function autoMatch(matches: CatalogueMatch[]): { match: CatalogueMatch; c
   if (a.score >= 3 || (a.score >= 2.5 && gap >= 1)) return { match: a, confidence: "medium" };
   return null;
 }
+
+const ENERGY_FROM_QUOTE: [RegExp, Vehicle["energy"]][] = [
+  [/rechargeable|plug|phev/i, "Hybride Rechargeable"],
+  [/mild|mhev|micro/i, "Mild Hybrid"],
+  [/hybride|hybrid|hev/i, "Hybride"],
+  [/diesel|gazole|gasoil/i, "Diesel"],
+  [/essence|petrol|sp95|sp98/i, "Essence"],
+  [/lectri/i, "Électrique"],
+];
+
+/** Véhicule absent de la base Beev : fiche créée à partir des données du devis
+ *  loueur (propre à ce devis, ne touche pas au catalogue). Les champs non lus
+ *  restent à 0 et sont complétés ensuite par les données ouvertes si possible. */
+export function vehicleFromQuote(q: LeaserQuote): Vehicle {
+  const energyText = `${q.vehicle.energy} ${q.vehicle.finition} ${q.vehicle.model}`;
+  const energy = ENERGY_FROM_QUOTE.find(([re]) => re.test(energyText))?.[1] ?? "Électrique";
+  return {
+    id: `devis-${q.id}`,
+    brand: q.vehicle.brand,
+    model: q.vehicle.model,
+    version: q.vehicle.finition,
+    category: "À confirmer",
+    energy,
+    batteryKwh: 0,
+    rangeWltp: 0,
+    powerHp: q.vehicle.powerHp ?? 0,
+    consumption: 0,
+    co2: q.vehicle.co2 ?? 0,
+    fiscalHp: q.vehicle.fiscalHp ?? 0,
+    priceTtc: q.price.catalogueTtc ?? q.price.totalTtc ?? 0,
+    monthlyLld: q.rent.totalTtc,
+    image: "",
+    custom: true,
+    ecoScoreBool: q.vehicle.ecoScoreOk ?? undefined,
+    poidsVide: q.vehicle.weightKg ?? undefined,
+  } as Vehicle;
+}

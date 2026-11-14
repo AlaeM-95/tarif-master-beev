@@ -82,6 +82,8 @@ export type SelectedVehicle = {
    *  préparée chez le loueur. Affiché dans le PDF sous « Proposition Beev /
    *  Tarification LLD ». */
   leaserQuoteRef?: string;
+  /** Identifiant interne du devis loueur importé (rapprochement à la mise à jour). */
+  leaserQuoteId?: string;
   /** Clés de caractéristiques techniques MASQUÉES sur la fiche véhicule, choisies
    *  par le commercial dans le panneau de droite (cf. getVehicleSpecRows pour les
    *  clés). Par défaut vide = toutes les caractéristiques disponibles s'affichent. */
