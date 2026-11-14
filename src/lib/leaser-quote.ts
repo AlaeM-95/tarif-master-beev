@@ -728,11 +728,16 @@ function parseAlphabetDealer(text: string, fileName: string): LeaserQuote {
   q.offerNumber = g1(text, /Bon de commande\s*\n?\s*N°\s*(\d+)/i);
   const d = g1(text, /Date de l['’]offre\s*:\s*(\d{2}\/\d{2}\/\d{4})/i);
   if (d) q.dateIso = dmyToIso(d);
-  q.client = g1(text, /Locataire\s*\n\s*([^\n(]+?)\s*(?:\(SIREN[^)]*\))?\s*(?:\n|$)/i);
+  // « Locataire » seul sur sa ligne (sinon les colonnes concessionnaire / locataire sont mêlées).
+  q.client = g1(text, /^Locataire\s*\n\s*([^\n(]+?)\s*(?:\(SIREN[^)]*\))?\s*(?:\n|$)/im);
   if (!q.client) flag(q, "client", "absent", "Locataire introuvable sur le devis");
 
   // « SKODA ELROQ 85 Sportline VP [5P] bva 1-286CH-6cv (SUV) »
-  const vl = g1(text, /\nVéhicule\s*\n\s*([^\n]+)/i);
+  // « Véhicule » seul ou suivi de « Prix Catalogue TTC » ; la ligne suivante peut se
+  // terminer par le prix catalogue (« … (SUV) 45 720,00 »).
+  const vRaw = g1(text, /\nVéhicule(?:\s+Prix Catalogue TTC)?\s*\n\s*([^\n]+)/i);
+  const vPrice = vRaw.match(new RegExp(`\\s${M}$`));
+  const vl = vPrice ? vRaw.slice(0, vPrice.index).trim() : vRaw;
   if (vl) {
     const clean = vl.replace(/\s+(VP|VU|VUL)\b.*$/i, "").trim();
     Object.assign(q.vehicle, splitVehicle(clean));
@@ -746,13 +751,20 @@ function parseAlphabetDealer(text: string, fileName: string): LeaserQuote {
   const typeFiscal = g1(text, /Type fiscal\s*:\s*([^\n]+)/i);
   if (typeFiscal) q.vehicle.energy = /lectri/i.test(typeFiscal) ? "Électrique" : /hybride/i.test(typeFiscal) ? "Hybride" : /diesel|gazole/i.test(typeFiscal) ? "Diesel" : /essence/i.test(typeFiscal) ? "Essence" : q.vehicle.energy;
 
-  q.price.catalogueTtc = toNum(rx(text, new RegExp(`Prix Catalogue TTC\\s*${M}`, "i"))?.[1]);
+  q.price.catalogueTtc = (vPrice ? toNum(vPrice[1]) : null) ?? toNum(rx(text, new RegExp(`Prix Catalogue TTC\\s*${M}`, "i"))?.[1]);
   q.price.optionsTtc = toNum(rx(text, new RegExp(`TOTAL OPTIONS & ACCESSOIRES TTC[^\\d\\n]*${M}`, "i"))?.[1]);
   q.price.totalTtc = toNum(rx(text, new RegExp(`PRIX TOTAL VEHICULE TTC[^\\d\\n]*${M}`, "i"))?.[1]);
-  const optBlock = rx(text, /Prix Catalogue TTC[^\n]*\n[^\n]*\n([\s\S]*?)TOTAL OPTIONS/i)?.[1] ?? "";
+  // Options entre la ligne du véhicule et « TOTAL OPTIONS » (une ou plusieurs par ligne).
+  const optStart = vRaw ? text.indexOf(vRaw) + vRaw.length : -1;
+  const optEnd = text.search(/TOTAL OPTIONS/i);
+  const optBlock = optStart > 0 && optEnd > optStart ? text.slice(optStart, optEnd) : "";
   for (const l of optBlock.split("\n")) {
-    const m = l.trim().match(new RegExp(`^(.+?)\\s+${M}$`));
-    if (m && (toNum(m[2]) ?? 0) > 0 && !/mise a la route|mise à la route/i.test(m[1])) q.price.options.push({ name: prettyOption(m[1].replace(/\s+-\s+[A-Z0-9]+$/, "")), priceTtc: toNum(m[2]) });
+    if (/^(Type fiscal|Consommation)/i.test(l.trim())) continue;
+    for (const m of l.matchAll(/([^\d\n][^\n]*?)\s+(\d{1,3}(?:\s\d{3})*,\d{2})(?=\s|$)/g)) {
+      const name = m[1].trim().replace(/\s+-\s*[A-Z0-9]*$/, "").trim();
+      const price = toNum(m[2]) ?? 0;
+      if (price > 0 && name && !/mise a la route|mise à la route/i.test(name)) q.price.options.push({ name: prettyOption(name), priceTtc: price });
+    }
   }
 
   // « Durée : 37 Mois Kilométrage : 30 000 km » (kilométrage total du contrat)
