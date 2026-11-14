@@ -31,6 +31,7 @@ import { CatalogueTcoEditor } from "@/components/catalogue-tco-editor";
 import { CarPolicyImporter } from "@/components/car-policy-importer";
 import { CompanySearchField } from "@/components/company-search-input";
 import { LeaserQuoteTool } from "@/components/leaser-quote-tool";
+import { ImportRecapDialog, type ImportRecapItem } from "@/components/import-recap-dialog";
 import { ComparisonGroupsBoard, GroupChips, VehicleGroupsStatus } from "@/components/comparison-groups-board";
 import { comparatorNotes, groupNamesOf, groupsPatch, vehicleGroups } from "@/lib/comparison-groups";
 import { assuranceMonthly as leaserAssurance, kmPerYear as leaserKmPerYear, netDownPayment as leaserNetApport, matchCatalogue as matchLeaserCatalogue, autoMatch as autoMatchLeaser, parseLeaserQuotePdf, vehicleFromQuote, type LeaserQuote } from "@/lib/leaser-quote";
@@ -157,6 +158,11 @@ function App() {
   // Outil « Devis loueur » : 5e entrée du menu (import d'un devis Ayvens, Arval,
   // BPCE ou Alphabet → devis Beev). UI uniquement, comme tcoView.
   const [leaserView, setLeaserView] = useState(false);
+  // Récapitulatif affiché après un import (devis loueur ou car policy).
+  const [importRecap, setImportRecap] = useState<ImportRecapItem[]>([]);
+  const pushImportRecap = (items: ImportRecapItem[]) => {
+    if (items.length > 0) setImportRecap((prev) => [...prev.filter((p) => !items.some((i) => i.instanceId === p.instanceId)), ...items]);
+  };
   // Vue « Groupes de comparaison » (tableau plein écran). UI uniquement.
   const [groupsView, setGroupsView] = useState(false);
   // Liste ordonnée des groupes du devis (l'ordre fixe la couleur de chaque groupe). Elle
@@ -1241,7 +1247,10 @@ function App() {
   // Beev rapproché ; null = absent de la base : une fiche est créée depuis le devis
   // (complétée par les données ouvertes). `stay` : ne pas quitter la vue en cours
   // (ajout automatique à l'import).
-  const addLeaserQuoteToDevis = async ({ quote, vehicle: matched }: { quote: LeaserQuote; vehicle: Vehicle | null }, opts: { stay?: boolean } = {}) => {
+  const addLeaserQuoteToDevis = async (
+    { quote, vehicle: matched, confidence }: { quote: LeaserQuote; vehicle: Vehicle | null; confidence?: "high" | "medium" },
+    opts: { stay?: boolean; recap?: boolean; source?: string } = {},
+  ) => {
     let vehicle = matched;
     let created = false;
     if (!vehicle) {
@@ -1276,14 +1285,16 @@ function App() {
       (sv.vehicle.id === v.id && !sv.leaserQuoteId && !sv.leaserQuoteRef) ||
       (sv.vehicle.id === v.id && !!quote.offerNumber && sv.leaserQuoteRef === quote.offerNumber)
     );
-    const updated = Object.values(selectedV).some(isSameLine);
+    const existingNow = Object.values(selectedV).find(isSameLine);
+    const updated = !!existingNow;
+    const targetId = existingNow ? (existingNow.instanceId ?? existingNow.vehicle.id) : newInstanceId();
     setSelectedV((s) => {
-      const existing = Object.values(s).find(isSameLine);
+      const existing = s[targetId] ?? Object.values(s).find(isSameLine);
       if (existing) {
         const key = existing.instanceId ?? existing.vehicle.id;
         return { ...s, [key]: { ...existing, vehicle: existing.vehicle.id === v.id ? existing.vehicle : v, ...fromQuote, options: optionLines.length > 0 ? optionLines : existing.options } };
       }
-      const instanceId = newInstanceId();
+      const instanceId = targetId;
       return {
         ...s,
         [instanceId]: {
@@ -1301,6 +1312,14 @@ function App() {
         },
       };
     });
+    if (opts.recap) {
+      pushImportRecap([{
+        instanceId: targetId,
+        source: opts.source || quote.fileName || quote.leaserLabel,
+        label: [quote.leaserLabel, `${quote.vehicle.brand} ${quote.vehicle.model} ${quote.vehicle.finition}`.trim()].filter(Boolean).join(" · "),
+        status: created ? "cree" : confidence === "high" ? "reconnu" : "a-verifier",
+      }]);
+    }
     if (!client.company && quote.client && !/beev/i.test(quote.client)) setClient({ ...client, company: quote.client });
     if (!opts.stay) { setLeaserView(false); setTcoView(false); }
     if (projectType !== "vehicles") setProjectType("vehicles");
@@ -1321,7 +1340,7 @@ function App() {
     try {
       const quote = await parseLeaserQuotePdf(file);
       const hit = autoMatchLeaser(matchLeaserCatalogue(quote, vehicles));
-      await addLeaserQuoteToDevis({ quote, vehicle: hit?.match.vehicle ?? null }, { stay: true });
+      await addLeaserQuoteToDevis({ quote, vehicle: hit?.match.vehicle ?? null, confidence: hit?.confidence }, { stay: true, recap: true, source: file.name });
     } catch (e) {
       toast.error(`Lecture du devis impossible : ${file.name}${e instanceof Error ? ` (${e.message})` : ""}`);
     }
@@ -1330,21 +1349,31 @@ function App() {
   // Import Car Policy : chaque véhicule importé (ou son équivalent déjà présent
   // dans la base Beev) arrive directement dans la Sélection en cours, avec le
   // km/an, la durée et la quantité lus dans le fichier quand ils existent.
-  const addCarPolicyToSelection = (items: Array<{ vehicle: Vehicle; kmPerYear?: number; durationMonths?: number; quantity?: number }>) => {
-    const inSel = (s: Record<string, SelectedVehicle>, v: Vehicle) =>
-      Object.values(s).some((sv) => sv.vehicle.id === v.id && !!sv.vehicle.isCurrentFleet === !!v.isCurrentFleet);
-    const added = items.filter((it) => !inSel(selectedV, it.vehicle)).length;
+  const addCarPolicyToSelection = (
+    items: Array<{ vehicle: Vehicle; kmPerYear?: number; durationMonths?: number; quantity?: number; matched?: boolean; label?: string }>,
+    source = "Car policy",
+  ) => {
+    const inSel = (sel: Record<string, SelectedVehicle>, v: Vehicle) =>
+      Object.values(sel).some((sv) => sv.vehicle.id === v.id && !!sv.vehicle.isCurrentFleet === !!v.isCurrentFleet);
+    // Identifiants de ligne fixés AVANT la mise à jour : le récapitulatif s'y réfère.
+    const seen: Vehicle[] = [];
+    const toAdd = items
+      .filter((it) => {
+        if (inSel(selectedV, it.vehicle) || seen.some((x) => x.id === it.vehicle.id && !!x.isCurrentFleet === !!it.vehicle.isCurrentFleet)) return false;
+        seen.push(it.vehicle);
+        return true;
+      })
+      .map((it) => ({ ...it, instanceId: newInstanceId() }));
     setSelectedV((s) => {
       const next = { ...s };
-      for (const it of items) {
+      for (const it of toAdd) {
         const v = it.vehicle;
         if (inSel(next, v)) continue;
         const offer = findBestOffer(leaserOffers, v.id, it.durationMonths ?? 48, it.kmPerYear ?? energy.kmPerYear);
         const duration = it.durationMonths ?? offer?.durationMonths ?? 48;
         const kmPerYear = it.kmPerYear ?? (offer && offer.durationMonths > 0 ? offer.kmTotal / (offer.durationMonths / 12) : energy.kmPerYear);
-        const instanceId = newInstanceId();
-        next[instanceId] = {
-          instanceId,
+        next[it.instanceId] = {
+          instanceId: it.instanceId,
           vehicle: v,
           quantity: it.quantity && it.quantity > 0 ? it.quantity : 1,
           discountPct: v.remise ?? 0,
@@ -1358,8 +1387,26 @@ function App() {
       }
       return next;
     });
-    return added;
+    pushImportRecap(toAdd.map((it): ImportRecapItem => ({
+      instanceId: it.instanceId,
+      source,
+      label: it.label || `${it.vehicle.brand} ${it.vehicle.model} ${it.vehicle.version}`.trim(),
+      status: it.matched ? "reconnu" : it.vehicle.aiMeta ? "a-verifier" : "fichier",
+    })));
+    return toAdd.length;
   };
+
+  // Récapitulatif d'import : corrections faites dans la fenêtre, appliquées à la ligne.
+  const recapChangeVehicle = (instanceId: string, v: Vehicle) =>
+    setSelectedV((s) => {
+      const line = s[instanceId];
+      if (!line) return s;
+      return { ...s, [instanceId]: { ...line, vehicle: { ...v, isCurrentFleet: line.vehicle.isCurrentFleet }, discountPct: line.vehicle.isCurrentFleet ? line.discountPct : (v.remise ?? line.discountPct) } };
+    });
+  const recapPatchLine = (instanceId: string, patch: Partial<SelectedVehicle>) =>
+    setSelectedV((s) => (s[instanceId] ? { ...s, [instanceId]: { ...s[instanceId], ...patch } } : s));
+  const recapRemove = (instanceId: string) =>
+    setSelectedV((s) => { const next = { ...s }; delete next[instanceId]; return next; });
 
   if (presenting) {
     // Mode présentation : on rebranche les sélections sur la version actuelle
@@ -1852,6 +1899,15 @@ function App() {
 
           {/* Outil Devis loueur toujours monté (masqué hors de sa vue) : les devis
               importés restent disponibles quand on revient à la Sélection en cours. */}
+          <ImportRecapDialog
+            items={importRecap}
+            lines={selectedV}
+            catalogue={vehicles}
+            onChangeVehicle={recapChangeVehicle}
+            onPatchLine={recapPatchLine}
+            onRemove={recapRemove}
+            onClose={() => setImportRecap([])}
+          />
           <div hidden={!leaserView}>
             <LeaserQuoteTool vehicles={vehicles} client={client} canSaveOffer={isOps} onAddToDevis={addLeaserQuoteToDevis} />
           </div>

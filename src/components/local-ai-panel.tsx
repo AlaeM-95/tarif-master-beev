@@ -3,7 +3,7 @@
 // dictionnaire. Aucune clé, aucun envoi de données : le modèle (≈ 1 Go) se télécharge
 // une fois, puis reste en cache dans le navigateur.
 
-import { useSyncExternalStore, useState } from "react";
+import { useEffect, useSyncExternalStore, useState } from "react";
 import { Cpu, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -15,9 +15,14 @@ import {
 export function LocalAiPanel() {
   const st = useSyncExternalStore(subscribeLocalAi, getLocalAiState, getLocalAiState);
   const [busy, setBusy] = useState(false);
-  const supported = webGpuSupported();
-  const enabled = isLocalAiEnabled();
-  const model = selectedLocalModel();
+  // WebGPU et les réglages (localStorage) n'existent que dans le navigateur : avant
+  // le montage on affiche le même rendu que le serveur, sinon React signale une
+  // différence d'affichage à l'hydratation (erreur #418).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const supported = !mounted || webGpuSupported();
+  const enabled = mounted && isLocalAiEnabled();
+  const model = mounted ? selectedLocalModel() : LOCAL_MODELS[0].id;
   const meta = LOCAL_MODELS.find((m) => m.id === model) ?? LOCAL_MODELS[0];
 
   const toggle = async () => {

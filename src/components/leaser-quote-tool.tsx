@@ -40,7 +40,7 @@ import {
 import { LEASER_QUOTE_CSS, printLeaserQuote, renderLeaserQuoteHtml } from "@/lib/leaser-quote-html";
 
 /** vehicle = véhicule de la base Beev rapproché ; null = absent de la base (fiche créée depuis le devis). */
-export type LeaserQuoteDraft = { quote: LeaserQuote; vehicle: Vehicle | null; ecoOk?: boolean };
+export type LeaserQuoteDraft = { quote: LeaserQuote; vehicle: Vehicle | null; ecoOk?: boolean; confidence?: "high" | "medium" };
 
 type ClientLite = { company?: string; salesRep?: string; salesRepEmail?: string; salesRepPhone?: string };
 
@@ -48,7 +48,7 @@ type Props = {
   vehicles: Vehicle[];
   client: ClientLite;
   canSaveOffer: boolean;
-  onAddToDevis: (draft: LeaserQuoteDraft, opts?: { stay?: boolean }) => void | Promise<void>;
+  onAddToDevis: (draft: LeaserQuoteDraft, opts?: { stay?: boolean; recap?: boolean; source?: string }) => void | Promise<void>;
 };
 
 const eur2 = (n: number) => n.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
@@ -130,7 +130,7 @@ export function LeaserQuoteTool({ vehicles, client, canSaveOffer, onAddToDevis }
         // corrections faites ensuite ici mettent la même ligne à jour.
         for (const a of added) {
           const hit = autoMatch(matchCatalogue(a, vehicles));
-          await onAddToDevis({ quote: a, vehicle: hit?.match.vehicle ?? null }, { stay: true });
+          await onAddToDevis({ quote: a, vehicle: hit?.match.vehicle ?? null, confidence: hit?.confidence }, { stay: true, recap: true, source: a.fileName });
         }
       }
     } finally {

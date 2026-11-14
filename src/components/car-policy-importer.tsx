@@ -40,7 +40,7 @@ export function CarPolicyImporter({
 }: {
   /** Ajoute automatiquement les véhicules lus à la Sélection en cours (avec km/an,
    *  durée et quantité du fichier). Renvoie le nombre de lignes ajoutées. */
-  onAutoAdd?: (items: Array<{ vehicle: Vehicle; kmPerYear?: number; durationMonths?: number; quantity?: number }>) => number;
+  onAutoAdd?: (items: Array<{ vehicle: Vehicle; kmPerYear?: number; durationMonths?: number; quantity?: number; matched?: boolean; label?: string }>, source?: string) => number;
   /** Devis loueur PDF déposé ici : lu, rapproché de la base et ajouté à la sélection. */
   onLeaserPdf?: (file: File) => Promise<void>;
   /** Liste des véhicules actuellement importés (state React du parent) */
@@ -68,6 +68,7 @@ export function CarPolicyImporter({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [report, setReport] = useState<ImportReport | null>(null);
   const [importing, setImporting] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   // Véhicules importés qui existent déjà dans le catalogue (non importés) :
   // on en informe le commercial pour qu'il les sélectionne directement.
   const [duplicates, setDuplicates] = useState<Vehicle[]>([]);
@@ -126,9 +127,12 @@ export function CarPolicyImporter({
           const x = raw as Extra;
           const base = catByKey.get(dedupKey(x));
           const vehicle = base ? { ...base, isCurrentFleet: x.isCurrentFleet } : x;
-          return { vehicle, kmPerYear: x.kmPerYear, durationMonths: x.durationMonths, quantity: x.quantity };
+          return {
+            vehicle, kmPerYear: x.kmPerYear, durationMonths: x.durationMonths, quantity: x.quantity,
+            matched: !!base, label: `${x.brand} ${x.model} ${x.version ?? ""}`.trim(),
+          };
         });
-        const n = onAutoAdd(items);
+        const n = onAutoAdd(items, file.name);
         if (n > 0) toast.success(`${n} véhicule${n > 1 ? "s" : ""} ajouté${n > 1 ? "s" : ""} à la Sélection en cours`);
       }
       if (dupes.length > 0 && !onAutoAdd) {
@@ -144,6 +148,19 @@ export function CarPolicyImporter({
       toast.error(`Échec import : ${msg}`);
     } finally {
       setImporting(false);
+    }
+  };
+
+  // Plusieurs fichiers d'un coup : les devis loueurs (PDF) les uns après les autres,
+  // puis le premier tableur (car policy) — une car policy remplace la liste importée.
+  const handleFiles = async (files: File[]) => {
+    const isPdf = (f: File) => /\.pdf$/i.test(f.name) || f.type === "application/pdf";
+    const pdfs = files.filter(isPdf);
+    const sheets = files.filter((f) => !isPdf(f));
+    for (const f of pdfs) await handleFile(f);
+    if (sheets.length > 0) {
+      if (sheets.length > 1) toast.info(`Une seule car policy à la fois : ${sheets[0].name} est importée.`);
+      await handleFile(sheets[0]);
     }
   };
 
@@ -195,7 +212,17 @@ export function CarPolicyImporter({
         <LocalAiPanel />
 
         {/* Drop zone / upload */}
-        <div className="border border-dashed border-beev-violet/40 rounded-lg p-6 text-center bg-beev-violet-20/40">
+        <div
+          className={`border border-dashed rounded-lg p-6 text-center transition ${dragOver ? "border-beev-violet bg-beev-violet-20" : "border-beev-violet/40 bg-beev-violet-20/40"}`}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            const fs = Array.from(e.dataTransfer.files ?? []);
+            if (fs.length) void handleFiles(fs);
+          }}
+        >
           <Upload className="w-7 h-7 mx-auto text-beev-violet mb-2" />
           <p className="text-sm font-medium mb-1">
             {importing
@@ -214,9 +241,10 @@ export function CarPolicyImporter({
               ref={fileInputRef}
               type="file"
               accept=".xlsx,.xls,.csv,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+              multiple
               onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void handleFile(f);
+                const fs = e.target.files ? Array.from(e.target.files) : [];
+                if (fs.length) void handleFiles(fs);
               }}
               className="hidden"
               id="car-policy-file"
