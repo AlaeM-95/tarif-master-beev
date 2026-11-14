@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,7 +30,6 @@ import { AuditConseilEditor } from "@/components/audit-conseil-editor";
 import { CatalogueTcoEditor } from "@/components/catalogue-tco-editor";
 import { CarPolicyImporter } from "@/components/car-policy-importer";
 import { CompanySearchField } from "@/components/company-search-input";
-import { HubspotClientSearch } from "@/components/hubspot-client-search";
 import { LeaserQuoteTool, type LeaserQuoteDraft } from "@/components/leaser-quote-tool";
 import { ComparisonGroupsBoard, GroupChips, VehicleGroupsStatus } from "@/components/comparison-groups-board";
 import { comparatorNotes, groupNamesOf, groupsPatch, vehicleGroups } from "@/lib/comparison-groups";
@@ -214,12 +213,27 @@ function App() {
   useEffect(() => {
     try { localStorage.setItem("beev_b2b2e_include_pdf", b2b2eIncludeInPdf ? "1" : "0"); } catch { /* ignore */ }
   }, [b2b2eIncludeInPdf]);
-  const [client, setClient] = useState({
+  const [clientState, setClientState] = useState({
     company: "", contact: "", email: "",
     salesRep: "", salesRepEmail: "", salesRepPhone: "",
     date: "",
     notes: "",
   });
+  // Date du devis = TOUJOURS la date du jour, jamais modifiable : elle est imposée
+  // ici, à la lecture comme à l'écriture. Toute date reçue (saisie, devis repris,
+  // stockage local) est ignorée ; le PDF, l'enregistrement et l'écran utilisent
+  // donc tous la date du jour.
+  const todayFr = new Date().toLocaleDateString("fr-FR");
+  const client = useMemo(() => ({ ...clientState, date: todayFr }), [clientState, todayFr]);
+  type ClientState = typeof clientState;
+  const setClient = useCallback((next: ClientState | ((prev: ClientState) => ClientState)) => {
+    setClientState((prev) => {
+      const v = typeof next === "function" ? (next as (p: ClientState) => ClientState)(prev) : next;
+      const today = new Date().toLocaleDateString("fr-FR");
+      if (v === prev && prev.date === today) return prev; // rien à changer : pas de rendu inutile
+      return { ...v, date: today };
+    });
+  }, []);
 
   // Garde-fou : ne persiste pas tant que la première hydration depuis localStorage
   // n'a pas eu lieu, sinon on écraserait les données sauvegardées avec l'état vide
@@ -2750,11 +2764,10 @@ function ClientCard({ client, setClient, isAdmin }: { client: any; setClient: (c
           )}
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
-          <div className="sm:col-span-2"><HubspotClientSearch client={client} setClient={setClient} /></div>
           <Field label="Société *"><CompanySearchField client={client} setClient={setClient} /></Field>
           <Field label="Contact client"><Input value={client.contact} onChange={(e) => setClient({ ...client, contact: e.target.value })} placeholder="Nom Prénom" /></Field>
           <Field label="Email client"><Input type="email" value={client.email} onChange={(e) => setClient({ ...client, email: e.target.value })} /></Field>
-          <Field label="Date"><Input value={client.date} onChange={(e) => setClient({ ...client, date: e.target.value })} /></Field>
+          <Field label="Date (date du jour)"><Input value={client.date} readOnly disabled title="Date du jour, mise automatiquement et non modifiable" className="bg-muted/50 cursor-not-allowed" /></Field>
           <Field label="Commercial Beev"><Input value={client.salesRep} onChange={(e) => setClient({ ...client, salesRep: e.target.value })} placeholder="Alaé Mahmoudi" /></Field>
           <Field label="Email commercial"><Input value={client.salesRepEmail} onChange={(e) => setClient({ ...client, salesRepEmail: e.target.value })} placeholder="alae@beev.co" /></Field>
           <Field label="Téléphone commercial"><Input value={client.salesRepPhone} onChange={(e) => setClient({ ...client, salesRepPhone: e.target.value })} placeholder="+33 6 ..." /></Field>
@@ -2841,11 +2854,10 @@ function ClientCard({ client, setClient, isAdmin }: { client: any; setClient: (c
       </CardHeader>
       <CardContent className="grid gap-4 sm:grid-cols-2">
         <p className="sm:col-span-2 text-[10px] uppercase font-semibold text-muted-foreground tracking-wide -mb-1">Client</p>
-        <div className="sm:col-span-2"><HubspotClientSearch client={client} setClient={setClient} /></div>
         <Field label="Société *"><CompanySearchField client={client} setClient={setClient} /></Field>
         <Field label="Contact client"><Input value={client.contact} onChange={(e) => setClient({ ...client, contact: e.target.value })} placeholder="Nom Prénom" /></Field>
         <Field label="Email client"><Input type="email" value={client.email} onChange={(e) => setClient({ ...client, email: e.target.value })} /></Field>
-        <Field label="Date"><Input value={client.date} onChange={(e) => setClient({ ...client, date: e.target.value })} /></Field>
+        <Field label="Date (date du jour)"><Input value={client.date} readOnly disabled title="Date du jour, mise automatiquement et non modifiable" className="bg-muted/50 cursor-not-allowed" /></Field>
 
         <p className="sm:col-span-2 text-[10px] uppercase font-semibold text-muted-foreground tracking-wide pt-2 border-t -mb-1">Commercial Beev</p>
         <Field label="Commercial Beev"><Input value={client.salesRep} onChange={(e) => setClient({ ...client, salesRep: e.target.value })} placeholder="Alaé Mahmoudi" /></Field>

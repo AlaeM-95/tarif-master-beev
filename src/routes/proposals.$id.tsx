@@ -70,7 +70,7 @@ function ProposalDetailPage() {
           company: proposal.clientCompany,
           contact: proposal.clientContact,
           email: proposal.clientEmail,
-          date: proposal.proposalDate,
+          date: new Date().toLocaleDateString("fr-FR"), // date du jour, toujours
           salesRep: proposal.salesRepName,
           salesRepEmail: proposal.salesRepEmail,
           salesRepPhone: proposal.salesRepPhone,
