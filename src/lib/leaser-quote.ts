@@ -1043,11 +1043,13 @@ export function matchCatalogue(q: LeaserQuote, vehicles: Vehicle[]): CatalogueMa
         const vCompact = compact(target);
         score += (finTok.filter((t) => tokenHit(t, vTok, vCompact)).length / finTok.length) * 2;
       }
-      // Batterie : identique → bonus ; nettement différente (58 vs 79 kWh) → autre version.
+      // Batterie : identique → bonus ; écart brut / utile (84 vs 79 kWh, ≤ 10 %) → même
+      // version, sans bonus ; nettement différente (58 vs 79 kWh) → autre version.
       let conflict = false;
       if (kwhVal && v.batteryKwh) {
-        if (Math.abs(v.batteryKwh - kwhVal) < 1.5) score += 1;
-        else if (Math.abs(v.batteryKwh - kwhVal) > 3) { score -= 1.5; conflict = true; }
+        const diff = Math.abs(v.batteryKwh - kwhVal);
+        if (diff < 1.5) score += 1;
+        else if (diff > 3 && diff / Math.max(v.batteryKwh, kwhVal) > 0.1) { score -= 1.5; conflict = true; }
       }
       if (q.vehicle.powerHp && v.powerHp && Math.abs(v.powerHp - q.vehicle.powerHp) / q.vehicle.powerHp <= 0.05) score += 1;
       return { vehicle: v, score, conflict };
