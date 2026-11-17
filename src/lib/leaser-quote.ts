@@ -1009,7 +1009,11 @@ export function matchCatalogue(q: LeaserQuote, vehicles: Vehicle[]): CatalogueMa
   const allModelTok = norm(q.vehicle.model).split(" ").filter(Boolean);
   const longTok = allModelTok.filter((t) => t.length >= 3);
   const modelTok = longTok.length > 0 ? longTok : allModelTok;
-  const finTok = norm(q.vehicle.finition).split(" ").filter((t) => t.length > 1 && !/^\d+(kw|ch|cv)?$/.test(t));
+  // Mots de finition qui départagent les versions (« Select », « Clever », « Style ») :
+  // les mentions techniques (84 kWh, 286PS, RWD, BVA…) sont écartées, elles diluaient
+  // le mot utile (Explorer « Select » contre « Premium »).
+  const TECH = /^(kwh|kw|ch|cv|ps|hp|din|rwd|awd|fwd|4x4|4wd|2wd|auto|bva|bvm|bvm5|bvm6|dsg|edc|eat8|boite)$/;
+  const finTok = norm(q.vehicle.finition).split(" ").filter((t) => t.length > 1 && !/\d/.test(t) && !TECH.test(t));
   // « 82.5 kWh » devient « 82 5 kwh » après normalisation ; « 204 77 kwh » (ch puis kWh) : on garde 77.
   const kwh = norm(`${q.vehicle.finition} ${q.vehicle.model}`).match(/(\d+)(?: (\d{1,2}))?\s*kwh/);
   const kwhVal = kwh ? (kwh[2] && Number(kwh[1]) > 150 ? Number(kwh[2]) : Number(kwh[2] ? `${kwh[1]}.${kwh[2]}` : kwh[1])) : null;
@@ -1037,11 +1041,15 @@ export function matchCatalogue(q: LeaserQuote, vehicles: Vehicle[]): CatalogueMa
       if (qModel && modelScore === 0) return { vehicle: v, score: 0 };
       score += modelScore;
       // Version / finition : les mots du devis retrouvés dans la version (ou le modèle) Beev.
+      // Aucun mot commun (Sportline ≠ Plus) : jamais « Reconnu ».
+      let trimMiss = false;
       if (finTok.length > 0) {
         const target = `${v.version} ${v.model}`;
         const vTok = norm(target).split(" ");
         const vCompact = compact(target);
-        score += (finTok.filter((t) => tokenHit(t, vTok, vCompact)).length / finTok.length) * 2;
+        const fHit = finTok.filter((t) => tokenHit(t, vTok, vCompact)).length;
+        score += (fHit / finTok.length) * 2;
+        trimMiss = fHit === 0;
       }
       // Batterie : identique → bonus ; écart brut / utile (84 vs 79 kWh, ≤ 10 %) → même
       // version, sans bonus ; nettement différente (58 vs 79 kWh) → autre version.
@@ -1052,7 +1060,7 @@ export function matchCatalogue(q: LeaserQuote, vehicles: Vehicle[]): CatalogueMa
         else if (diff > 3 && diff / Math.max(v.batteryKwh, kwhVal) > 0.1) { score -= 1.5; conflict = true; }
       }
       if (q.vehicle.powerHp && v.powerHp && Math.abs(v.powerHp - q.vehicle.powerHp) / q.vehicle.powerHp <= 0.05) score += 1;
-      return { vehicle: v, score, conflict };
+      return { vehicle: v, score, conflict: conflict || trimMiss };
     })
     .filter((x) => x.score > 1)
     .sort((a, b) => b.score - a.score)
