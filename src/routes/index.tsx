@@ -2002,6 +2002,7 @@ function App() {
               pageEnabled={pdfConfig.showGroupComparison !== false}
               onEnablePage={() => { updatePdfConfig({ showGroupComparison: true }); toast.success("Page « Comparateur par groupe » activée"); }}
               energy={energy}
+              onEnergyChange={setEnergy}
               leaserOffers={leaserOffers}
             />
           ) : (

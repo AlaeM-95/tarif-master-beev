@@ -4,14 +4,14 @@
 // Chaque groupe a sa couleur, la même partout dans l'outil.
 
 import { useState, type ReactNode } from "react";
-import { AlertTriangle, Check, CheckCircle2, Layers, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, Fuel, Layers, Pencil, Plus, RotateCcw, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { SelectedVehicle } from "@/lib/pdf";
 import { groupIssues, groupTone, vehicleGroups, type GroupIssue } from "@/lib/comparison-groups";
 import { GroupTcoSimulator } from "@/components/group-tco-simulator";
-import type { EnergyParams } from "@/lib/store";
+import { DEFAULT_ENERGY, type EnergyParams } from "@/lib/store";
 import type { LeaserOffer } from "@/lib/leaser-offers";
 
 const eur0 = (n: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
@@ -109,11 +109,13 @@ type Props = {
   onEnablePage: () => void;
   /** Prix de l'énergie et mix de recharge : servent au TCO par durée et kilométrage. */
   energy: EnergyParams;
+  /** Modifie les hypothèses d'énergie du devis (mêmes valeurs que « Paramètres TCO & énergie »). */
+  onEnergyChange?: (e: EnergyParams) => void;
   /** Offres loueur du catalogue : loyers connus pour d'autres durées et kilométrages. */
   leaserOffers: LeaserOffer[];
 };
 
-export function ComparisonGroupsBoard({ vehicles, groupNames, onSetGroups, onCreateGroup, onRenameGroup, onDeleteGroup, onGoVehicles, onOpenVehicle, onPatchVehicle, pageEnabled, onEnablePage, energy, leaserOffers }: Props) {
+export function ComparisonGroupsBoard({ vehicles, groupNames, onSetGroups, onCreateGroup, onRenameGroup, onDeleteGroup, onGoVehicles, onOpenVehicle, onPatchVehicle, pageEnabled, onEnablePage, energy, onEnergyChange, leaserOffers }: Props) {
   const [search, setSearch] = useState("");
   const [onlyFree, setOnlyFree] = useState(false);
   const [newName, setNewName] = useState("");
@@ -146,6 +148,8 @@ export function ComparisonGroupsBoard({ vehicles, groupNames, onSetGroups, onCre
           <Button type="submit" size="sm" className="gap-1.5" disabled={!newName.trim()}><Plus className="h-4 w-4" /> Créer</Button>
         </form>
       </div>
+
+      {vehicles.length > 0 && onEnergyChange && <EnergyAssumptions energy={energy} onChange={onEnergyChange} />}
 
       {vehicles.length === 0 ? (
         <div className="rounded-2xl border border-dashed bg-card px-6 py-14 text-center space-y-3">
@@ -432,6 +436,73 @@ export function VehicleGroupsStatus({ sv, allVehicles, groupNames, pageEnabled, 
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// Hypothèses du calcul (prix du carburant et de l'électricité, part de recharge à
+// domicile) modifiables depuis la vue Groupes. Ce sont les paramètres du devis : ils
+// s'appliquent à toute l'analyse TCO (tous les groupes) et au PDF.
+function AssumptionField({ label, unit, value, step, min, max, onCommit }: { label: string; unit: string; value: number; step: number; min?: number; max?: number; onCommit: (n: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const shown = draft ?? String(value).replace(".", ",");
+  const commit = () => {
+    if (draft == null) return;
+    const n = Number(draft.replace(",", ".").replace(/\s/g, ""));
+    if (Number.isFinite(n) && n >= (min ?? 0) && (max == null || n <= max)) onCommit(n);
+    setDraft(null);
+  };
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="flex items-center gap-1.5">
+        <Input
+          inputMode="decimal"
+          value={shown}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+          className="h-8 w-24 text-right text-sm"
+          aria-label={label}
+          data-step={step}
+        />
+        <span className="text-xs text-muted-foreground">{unit}</span>
+      </span>
+    </label>
+  );
+}
+
+function EnergyAssumptions({ energy, onChange }: { energy: EnergyParams; onChange: (e: EnergyParams) => void }) {
+  const changed = energy.fuelPriceL !== DEFAULT_ENERGY.fuelPriceL || energy.kWhHome !== DEFAULT_ENERGY.kWhHome
+    || energy.kWhPublic !== DEFAULT_ENERGY.kWhPublic || energy.mixHomePct !== DEFAULT_ENERGY.mixHomePct;
+  return (
+    <div className="rounded-2xl border bg-card p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="max-w-xl">
+          <p className="flex items-center gap-2 text-sm font-semibold"><Fuel className="h-4 w-4" /> Hypothèses du calcul</p>
+          <p className="text-xs text-muted-foreground">
+            Prix de l'énergie et recharge utilisés pour le coût complet de tous les groupes, à l'écran et dans le PDF.
+            Validez une valeur avec Entrée : les tableaux se recalculent aussitôt.
+          </p>
+        </div>
+        {changed && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1.5 text-xs"
+            onClick={() => onChange({ ...energy, fuelPriceL: DEFAULT_ENERGY.fuelPriceL, kWhHome: DEFAULT_ENERGY.kWhHome, kWhPublic: DEFAULT_ENERGY.kWhPublic, mixHomePct: DEFAULT_ENERGY.mixHomePct })}
+          >
+            <RotateCcw className="h-3.5 w-3.5" /> Valeurs par défaut
+          </Button>
+        )}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-x-6 gap-y-3">
+        <AssumptionField label="Carburant (essence / gazole)" unit="€ / L" value={energy.fuelPriceL} step={0.01} onCommit={(n) => onChange({ ...energy, fuelPriceL: n })} />
+        <AssumptionField label="Électricité à domicile" unit="€ / kWh" value={energy.kWhHome} step={0.01} onCommit={(n) => onChange({ ...energy, kWhHome: n })} />
+        <AssumptionField label="Électricité en public" unit="€ / kWh" value={energy.kWhPublic} step={0.01} onCommit={(n) => onChange({ ...energy, kWhPublic: n })} />
+        <AssumptionField label="Recharge à domicile" unit="%" value={energy.mixHomePct} step={1} max={100} onCommit={(n) => onChange({ ...energy, mixHomePct: Math.round(n) })} />
+      </div>
     </div>
   );
 }
