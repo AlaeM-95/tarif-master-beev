@@ -559,11 +559,17 @@ function parseBpce(text: string, fileName: string): LeaserQuote {
   q.dateIso = dmyToIso(g1(text, /Date\s*:\s*(\d{2}\/\d{2}\/\d{4})/));
   if (/Valable un mois/i.test(text)) q.validityMonths = 1;
 
-  const after = rx(text, /Place de La Coupole\s*\n\s*([^\n]+)/i)?.[1]?.trim() ?? "";
+  // Client : 3e ligne de l'en-tête (après « DR … Date : » puis l'adresse de l'agence BPCE,
+  // qui varie : « 4, Place de La Coupole », « 4 quai de Bercy »…).
+  const after = (rx(text, /^\s*DR [^\n]*Date\s*:[^\n]*\n[^\n]*\n\s*([^\n]+)/m)?.[1]
+    ?? rx(text, /Place de La Coupole\s*\n\s*([^\n]+)/i)?.[1] ?? "").trim();
   if (after && /^[A-Z0-9 &'.-]{4,}$/.test(after) && !/\d{4,}/.test(after)) q.client = after;
   else flag(q, "client", "check", "Client à vérifier : repéré dans le bloc adresse du loueur");
 
-  const vline = g1(text, /AFFECTATION\s*\n\s*([^\n]+)/i);
+  const vlineRaw = g1(text, /AFFECTATION\s*\n\s*([^\n]+)/i);
+  // « (éco scoré) » : éco-score atteint (abattement AEN de 70 %) ; « 100% ELEC » : bruit.
+  if (/\(\s*[ée]co\s*scor[ée]+\s*\)/i.test(vlineRaw)) q.vehicle.ecoScoreOk = true;
+  const vline = vlineRaw.replace(/\(\s*[ée]co\s*scor[ée]+\s*\)/i, "").replace(/\s100\s?%/g, "").replace(/\s+/g, " ").trim();
   if (vline) {
     const sp = splitVehicle(vline.replace(/\s+AUTO\s*$/i, ""));
     Object.assign(q.vehicle, sp);
@@ -622,7 +628,7 @@ function parseBpce(text: string, fileName: string): LeaserQuote {
   if (q.scope.rc === 0) q.extras.push("Responsabilité civile exclue");
   const and = g1(text, /([\d\s]+,\d{2})\s*\n\s*AND\s*\(hors déduction/i);
   if (and) flag(q, "fiscal", "check", `AND annoncé par le loueur : ${and.replace(/\s/g, " ")} € (périodicité non indiquée, information seulement)`);
-  flag(q, "ecoscore", "absent", "Éco-score absent du devis : repris du catalogue Beev");
+  if (q.vehicle.ecoScoreOk == null) flag(q, "ecoscore", "absent", "Éco-score absent du devis : repris du catalogue Beev");
   return q;
 }
 

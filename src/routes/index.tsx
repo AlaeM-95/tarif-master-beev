@@ -1323,22 +1323,31 @@ function App() {
     const contractText = `${quote.contract.months} mois · ${km.toLocaleString("fr-FR")} km/an · ${quote.rent.totalTtc.toLocaleString("fr-FR", { style: "currency", currency: "EUR" })}`;
 
     // Ordre : 1) même devis déjà importé → mise à jour ; 2) même véhicule chez le même
-    // loueur → même contrat : mise à jour, autre contrat : configuration supplémentaire ;
+    // loueur : même contrat ET même n° d'offre → mise à jour ; autre contrat → configuration
+    // supplémentaire de la ligne de la même offre (ou d'une ligne qui n'a pas encore ce
+    // contrat) ; même contrat mais AUTRE offre (options, couleur…) → nouvelle ligne ;
     // 3) même véhicule sans devis, ou même n° d'offre → mise à jour ; 4) nouvelle ligne.
     const cur = selRef.current;
     let existing = Object.values(cur).find((sv) => sv.leaserQuoteId === quote.id);
-    const base = !existing && opts.recap && quote.contract.months > 0 && quote.rent.totalTtc > 0
-      ? Object.values(cur).find((sv) => !sv.vehicle.isCurrentFleet && sv.leaserMergeKey === mergeKey)
-      : undefined;
-    if (base && sameContract(base.durationMonths, base.kmPerYear)) existing = base;
-    if (!existing && !base) existing = Object.values(cur).find(isSameLine);
+    let base: SelectedVehicle | undefined;
+    const canMerge = !existing && opts.recap && quote.contract.months > 0 && quote.rent.totalTtc > 0;
+    const sameOffer = (sv: SelectedVehicle) => (sv.leaserQuoteRef ?? "") === (quote.offerNumber ?? "");
+    if (canMerge) {
+      const bases = Object.values(cur).filter((sv) => !sv.vehicle.isCurrentFleet && sv.leaserMergeKey === mergeKey);
+      const hasContract = (sv: SelectedVehicle) => sameContract(sv.durationMonths, sv.kmPerYear)
+        || (sv.additionalConfigs ?? []).some((c) => sameContract(Math.round(c.durationMonths), c.kmPerYear));
+      existing = bases.find((sv) => sameContract(sv.durationMonths, sv.kmPerYear) && sameOffer(sv));
+      if (!existing) base = (quote.offerNumber ? bases.find((sv) => sameOffer(sv) && !sameContract(sv.durationMonths, sv.kmPerYear)) : undefined)
+        ?? bases.find((sv) => !hasContract(sv));
+    }
+    if (!existing && !base) existing = Object.values(cur).find((sv) => sv.leaserMergeKey !== mergeKey && isSameLine(sv));
     let next: Record<string, SelectedVehicle>;
     let targetId: string;
     let mode: "maj" | "ajout" | "config";
     if (existing) {
       mode = "maj";
       targetId = existing.instanceId ?? existing.vehicle.id;
-      next = { ...cur, [targetId]: { ...existing, vehicle: existing.vehicle.id === v.id || existing === base ? existing.vehicle : v, ...fromQuote, leaserMergeKey: mergeKey, options: optionLines.length > 0 ? optionLines : existing.options, ...withGroup(existing) } };
+      next = { ...cur, [targetId]: { ...existing, vehicle: existing.vehicle.id === v.id || existing.leaserMergeKey === mergeKey ? existing.vehicle : v, ...fromQuote, leaserMergeKey: mergeKey, options: optionLines.length > 0 ? optionLines : existing.options, ...withGroup(existing) } };
     } else if (base) {
       mode = "config";
       targetId = base.instanceId ?? base.vehicle.id;
