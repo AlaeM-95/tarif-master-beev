@@ -122,13 +122,23 @@ export function PropositionFlotteEditor({
   const beev = analysis.compared.reduce((s, g) => s + g.beev, 0) + (analysis.compared.length ? borne.total : 0);
   const canGenerate = analysis.groups.length > 0;
 
+  // Borne du catalogue : nom du produit (sans le nom d'offre « Beev … » ni la puissance),
+  // photo, et prix pose comprise de la version choisie ET de sa variante de l'autre
+  // puissance quand elle existe (7,4 kW monophasé / 11 kW triphasé).
   const pickCharger = (id: string) => {
     const c = homeChargers.find((x) => x.id === id);
     if (!c) { setBorne({ chargerId: "" }); return; }
-    const price = Math.round((c.priceHt || 0) + (c.installPriceHt || 0));
-    const lines = [...cfg.borne.lines];
-    if (price > 0) lines[0] = { label: lines[0]?.label || `${c.powerKw} kW`, priceHt: price };
-    setBorne({ chargerId: c.id, name: `${c.brand} ${c.model}`.trim(), image: c.marketingImageUrl || c.image || "", lines });
+    const stripPower = (m: string) => m.replace(/\s*\d+(?:[.,]\d+)?\s*kW\b.*$/i, "").trim();
+    const product = stripPower(c.model) || c.model;
+    const name = /^beev\b/i.test(c.brand) ? product : `${c.brand} ${product}`.trim();
+    const priceOf = (x: Charger) => Math.round((x.priceHt || 0) + (x.installPriceHt || 0));
+    const variants = homeChargers.filter((x) => x.brand === c.brand && stripPower(x.model) === product).sort((a, b) => a.powerKw - b.powerKw);
+    const label = (x: Charger) => `${x.powerKw <= 7.4 ? "Monophasé" : "Triphasé"} ${String(x.powerKw).replace(".", ",")} kW`;
+    const lines = variants.length > 1
+      ? variants.filter((x) => priceOf(x) > 0).map((x) => ({ label: label(x), priceHt: priceOf(x) }))
+      : [{ label: label(c), priceHt: priceOf(c) }, ...cfg.borne.lines.slice(1)];
+    const lineIndex = Math.max(0, variants.length > 1 ? variants.findIndex((x) => x.id === c.id) : 0);
+    setBorne({ chargerId: c.id, name, image: c.marketingImageUrl || c.image || "", lines: lines.length ? lines : cfg.borne.lines, lineIndex });
   };
 
   const generate = async () => {

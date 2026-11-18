@@ -134,7 +134,8 @@ export function analyseFlotte(selection: SelectedVehicle[], e: EnergyParams) {
     const qty = g.cur ? qtyOf(g.cur) : qtyOf(best);
     const today = g.cur ? g.cur.tco * qty : 0;
     const beev = best.tco * qty;
-    return { name: g.name, cur: g.cur, best, alts: props.slice(1, 3), qty, today, beev, saving: g.cur ? today - beev : 0 };
+    // 4 lignes au plus par page : actuel + recommandé + 2 alternatives, ou recommandé + 3.
+    return { name: g.name, cur: g.cur, best, alts: props.slice(1, g.cur ? 3 : 4), qty, today, beev, saving: g.cur ? today - beev : 0 };
   });
   return { lines, skipped, groups, compared: groups.filter((g) => g.cur) };
 }
@@ -355,7 +356,10 @@ function vehicleSlide(ctx: Ctx, n: number, t: number, g: FlotteGroup, idx: numbe
   const max = Math.max(...rowsL.map((r) => r.l.tco), 1);
   const sub = (l: TcoLine) => (isEv(l.sv.vehicle) && l.sv.vehicle.rangeWltp > 0 ? `${fmt(l.sv.vehicle.rangeWltp)} km d'autonomie` : `${l.months} mois`);
   const right = (l: TcoLine) => {
-    if (!g.cur) return `<b>${eur(l.tco * g.qty)}</b><span class="ref">coût complet</span>`;
+    if (!g.cur) {
+      if (l === g.best) return `<b>${eur(l.tco * g.qty)}</b><span class="ref">meilleur coût</span>`;
+      return `<b>${eur(l.tco * g.qty)}</b><span class="dpill outline">${signed((l.tco - g.best.tco) * g.qty)}</span>`;
+    }
     if (l === g.cur) return `<b>${eur(l.tco * g.qty)}</b><span class="ref">référence</span>`;
     const d = (l.tco - g.cur.tco) * g.qty;
     return `<b>${eur(l.tco * g.qty)}</b><span class="dpill ${l === g.best ? "neg" : "outline"}">${signed(d)}</span>`;
@@ -368,8 +372,10 @@ function vehicleSlide(ctx: Ctx, n: number, t: number, g: FlotteGroup, idx: numbe
     </div>`).join("");
   const title = g.cur
     ? `${nameOf(g.best)} : ${eur(Math.max(0, g.saving))} économisés, soit ${MINUS}${pct(g.saving, g.today)} %`
-    : `${nameOf(g.best)} : ${eur(g.beev)} de coût complet`;
-  const kicker = `Véhicule ${idx + 1} sur ${count}${g.cur ? ` · remplace ${nameOf(g.cur)}` : g.name && g.name !== "Votre flotte" ? ` · ${g.name}` : ""}`;
+    : rowsL.length > 1 ? `${nameOf(g.best)} : le coût complet le plus bas, ${eur(g.beev)}` : `${nameOf(g.best)} : ${eur(g.beev)} de coût complet`;
+  const kicker = g.cur
+    ? `Véhicule ${idx + 1} sur ${count} · remplace ${nameOf(g.cur)}`
+    : `${count > 1 ? `Groupe ${idx + 1} sur ${count}` : "Votre sélection"}${g.name && g.name !== "Votre flotte" ? ` · ${g.name}` : ""}`;
   return frame(ctx, n, t, "Véhicules", "Montants TTC · détail chiffré en annexe", `
     <div class="kicker">${esc(kicker)}</div>
     <h2 class="one">${esc(title)}</h2>
@@ -526,7 +532,7 @@ export function buildPropositionFlotteHtml(input: PropositionFlotteInput, fonts?
   const a: Totals = { ...base, today, beev, saving: today - beev, months, borne };
 
   const showRecharge = cfg.borne.enabled && cfg.show.recharge;
-  const sections = SECTIONS.filter((s) => (s === "Recharge" ? showRecharge : s === "Pourquoi Beev" ? cfg.show.why : s === "Annexes" ? cfg.show.glossary || cfg.show.annex || cfg.show.method : true));
+  const sections = SECTIONS.filter((s) => (s === "Synthèse" ? a.compared.length > 0 : s === "Recharge" ? showRecharge : s === "Pourquoi Beev" ? cfg.show.why : s === "Annexes" ? cfg.show.glossary || cfg.show.annex || cfg.show.method : true));
   const ctx: Ctx = { cfg, assets, clientName: input.clientName, sections };
 
   const builders: Array<(n: number, t: number) => string> = [() => coverSlide(ctx)];
