@@ -104,7 +104,10 @@ export function displayName(v: { brand: string; model: string }): string {
   const ACCENTS: Record<string, string> = { coupe: "Coupé", electrique: "Électrique", modele: "Modèle" };
   const model = (s: string) =>
     (s ?? "").trim().split(/\s+/).filter(Boolean)
-      .map((w) => ACCENTS[w.toLowerCase()] ?? (w.length <= 3 || /\d/.test(w) ? w : cap(w))).join(" ");
+      .map((w) => ACCENTS[w.toLowerCase()] ?? (w.includes("-")
+        // « SANTA-FE » → « Santa-Fe » ; « E-5008 » reste tel quel.
+        ? w.split("-").map((p) => (/\d/.test(p) || p.length <= 1 ? p : cap(p))).join("-")
+        : w.length <= 3 || /\d/.test(w) ? w : cap(w))).join(" ");
   return `${brand(v.brand)} ${model(v.model)}`.trim();
 }
 
