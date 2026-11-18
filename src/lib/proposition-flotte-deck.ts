@@ -134,8 +134,9 @@ export function analyseFlotte(selection: SelectedVehicle[], e: EnergyParams) {
     const qty = g.cur ? qtyOf(g.cur) : qtyOf(best);
     const today = g.cur ? g.cur.tco * qty : 0;
     const beev = best.tco * qty;
-    // 4 lignes au plus par page : actuel + recommandé + 2 alternatives, ou recommandé + 3.
-    return { name: g.name, cur: g.cur, best, alts: props.slice(1, g.cur ? 3 : 4), qty, today, beev, saving: g.cur ? today - beev : 0 };
+    // Lignes par page : actuel + recommandé + 1 alternative (place pour les explications),
+    // ou, sans flotte actuelle, recommandé + 3 alternatives.
+    return { name: g.name, cur: g.cur, best, alts: props.slice(1, g.cur ? 2 : 4), qty, today, beev, saving: g.cur ? today - beev : 0 };
   });
   return { lines, skipped, groups, compared: groups.filter((g) => g.cur) };
 }
@@ -617,9 +618,9 @@ section.dark .nav{color:#9a978f;} section.dark .nav .on{color:#fff;}
 .s1{background:var(--ink);} .s2{background:var(--blue);} .s3{background:var(--rose);}
 .vrows{position:absolute;top:262px;left:120px;right:120px;display:flex;flex-direction:column;gap:18px;}
 .vrow{display:grid;grid-template-columns:270px 340px 1fr 240px;align-items:center;gap:28px;border:1.5px solid var(--line);border-radius:28px;padding:14px 30px;background:var(--bg);height:170px;}
-.vrows.n2 .vrow{height:220px;} .vrows.n4 .vrow{height:132px;}
+.vrows.n2 .vrow{height:220px;} .vrows.n4 .vrow{height:160px;}
 .vrow.reco{background:var(--reco);border-color:var(--reco);}
-.vph{width:100%;height:140px;object-fit:contain;} .vrows.n2 .vph{height:190px;} .vrows.n4 .vph{height:104px;} .noimg{background:transparent;}
+.vph{width:100%;height:140px;object-fit:contain;} .vrows.n2 .vph{height:190px;} .vrows.n4 .vph{height:124px;} .noimg{background:transparent;}
 .vinfo span{font-size:20px;} .vinfo b{display:block;font-size:31px;line-height:1.15;} .vinfo small{display:block;font-size:19px;}
 .vrows.n4 .vinfo b{font-size:27px;} .vrows.n4 .ppill{margin:3px 0;}
 .ppill{display:inline-block;background:var(--ink);color:#fff;border-radius:12px;padding:6px 14px;margin:6px 0;font-size:18px;} .ppill b{display:inline;font-size:28px;}
