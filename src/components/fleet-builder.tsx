@@ -104,6 +104,23 @@ export function FleetBuilder({
     .filter((v) => v.energy === "Électrique")
     .sort((a, b) => (b.rangeWltp || 0) - (a.rangeWltp || 0));
 
+  // Catalogue chargé APRÈS l'import (chargement Supabase plus lent que la lecture du
+  // fichier) : les lignes importées sans aucun EV proposé sont recalculées dès que des
+  // électriques sont disponibles, au lieu de rester vides jusqu'au rechargement.
+  const evCount = allEvs.length;
+  useEffect(() => {
+    if (evCount === 0) return;
+    setLines((ls) => {
+      if (!ls.some((l) => l.recommendations.length === 0)) return ls;
+      return ls.map((l) => {
+        if (l.recommendations.length > 0) return l;
+        const recos = recommendEvs(l.current, catalogue, 3);
+        return { ...l, recommendations: recos, selectedIds: recos[0] ? [recos[0].id] : [] };
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evCount]);
+
   const tcoAn = (v: Vehicle, loyer: number, km: number, durMonths: number) => {
     const duree = durMonths / 12;
     const r = calculateTcoFull(
@@ -429,7 +446,9 @@ export function FleetBuilder({
                               className="h-9 w-full rounded-lg border border-dashed border-border bg-white px-3 text-[12px] text-muted-foreground hover:border-[#3809EA]/40"
                               title="Ajouter un autre modèle du catalogue"
                             >
-                              <option value="">{`+ Ajouter un autre modèle${opts.segmentEmpty ? " (aucun EV dans ce segment : tout le catalogue)" : ` ${cur.category ? `du segment ${cur.category}` : "du segment"}`}…`}</option>
+                              <option value="">{evCount === 0
+                                ? "Catalogue des électriques pas encore chargé : patientez ou rechargez la page"
+                                : `+ Ajouter un autre modèle${opts.segmentEmpty ? " (aucun EV dans ce segment : tout le catalogue)" : ` ${cur.category ? `du segment ${cur.category}` : "du segment"}`}…`}</option>
                               {opts.inRange.length > 0 && (
                                 <optgroup label="Même segment · gamme comparable">{opts.inRange.map(evOption)}</optgroup>
                               )}
