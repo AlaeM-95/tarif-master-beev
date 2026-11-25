@@ -1286,9 +1286,13 @@ function App() {
     const v = vehicle;
     const assurance = leaserAssurance(quote);
     const apport = leaserNetApport(quote);
-    const optionLines: LineItem[] = quote.price.options
+    const pricedOptions: LineItem[] = quote.price.options
       .filter((o) => (o.priceTtc ?? 0) > 0)
       .map((o) => ({ label: o.name, qty: 1, unitHt: o.priceTtc as number }));
+    // Options sans prix détaillé (BPCE) mais montant global connu : une seule ligne.
+    const optionLines: LineItem[] = pricedOptions.length === 0 && quote.price.options.length > 0 && (quote.price.optionsTtc ?? 0) > 0
+      ? [{ label: `Options : ${quote.price.options.map((o) => o.name).join(", ")}`, qty: 1, unitHt: quote.price.optionsTtc as number }]
+      : pricedOptions;
     const km = leaserKmPerYear(quote);
     // Données du devis loueur reportées dans la ligne de la Sélection en cours :
     // durée, kilométrage annuel, loyer, apport, assurance, options. Une donnée non

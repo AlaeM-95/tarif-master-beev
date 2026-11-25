@@ -362,7 +362,12 @@ export function LeaserQuoteTool({ vehicles, client, canSaveOffer, onAddToDevis }
               <div className="rounded-xl border bg-card p-4 space-y-3">
                 <h3 className="text-sm font-semibold">Prix, contrat et loyer</h3>
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Prix catalogue TTC (€)" q={q} flagKey="prix"><NumInput value={q.price.catalogueTtc} onChange={(v) => setPrice({ catalogueTtc: v })} /></Field>
+                  <Field label="Prix catalogue TTC (€)" q={q} flagKey="prix"><NumInput value={q.price.catalogueTtc} onChange={(v) => setPrice({
+                    catalogueTtc: v,
+                    // Devis à total unique (BPCE) : options = total − prix catalogue.
+                    ...(v != null && q.price.totalTtc != null && q.price.totalTtc > v && q.price.options.every((o) => o.priceTtc == null)
+                      ? { optionsTtc: Math.round((q.price.totalTtc - v) * 100) / 100 } : {}),
+                  })} /></Field>
                   <Field label="Options TTC (€)" q={q}><NumInput value={q.price.optionsTtc} onChange={(v) => setPrice({ optionsTtc: v })} /></Field>
                   <Field label="Catalogue + options TTC (€)" q={q} className="col-span-2"><NumInput value={q.price.totalTtc} onChange={(v) => setPrice({ totalTtc: v })} placeholder="si le devis ne sépare pas les deux" /></Field>
                   <Field label="Durée (mois)" q={q} flagKey="contrat"><NumInput value={q.contract.months || null} onChange={(v) => setCt({ months: v ?? 0 })} step="1" /></Field>

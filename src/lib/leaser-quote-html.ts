@@ -160,9 +160,15 @@ export function renderLeaserQuoteHtml(q: LeaserQuote, o: QuoteRenderOpts): strin
     return s === 1 ? `<span class="lq-pill"><b>✓</b> ${label}</span>` : `<span class="lq-pill na">${label} : à confirmer</span>`;
   }).join("");
 
-  const opts = q.price.options
-    .map((x) => `<div class="r"><span>${esc(x.name)}</span><b>${x.priceTtc == null ? "inclus au total" : eur(x.priceTtc)}</b></div>`)
-    .join("");
+  // Devis sans prix par option (BPCE : un seul total catalogue + options) : une fois le
+  // prix catalogue connu, les options sont regroupées sur une ligne avec la différence.
+  const unpriced = q.price.options.length > 0 && q.price.options.every((x) => x.priceTtc == null);
+  const optGap = q.price.optionsTtc ?? (q.price.catalogueTtc != null && total > q.price.catalogueTtc ? Math.round((total - q.price.catalogueTtc) * 100) / 100 : null);
+  const opts = unpriced && q.price.catalogueTtc != null && optGap != null && optGap > 0
+    ? `<div class="r"><span>Options : ${esc(q.price.options.map((x) => x.name).join(", "))}</span><b>${eur(optGap)}</b></div>`
+    : q.price.options
+      .map((x) => `<div class="r"><span>${esc(x.name)}</span><b>${x.priceTtc == null ? "incluse au total" : eur(x.priceTtc)}</b></div>`)
+      .join("");
   const prixRows =
     q.price.catalogueTtc != null
       ? `<div class="r"><span>Prix catalogue TTC</span><b>${eur(q.price.catalogueTtc)}</b></div>${opts}<div class="r tot"><span>Total véhicule et options</span><b>${eur(total)}</b></div>`

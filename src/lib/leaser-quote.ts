@@ -605,9 +605,13 @@ function parseBpce(text: string, fileName: string): LeaserQuote {
 
   q.price.totalTtc = toNum(rx(text, new RegExp(`PRIX CATALOGUE ET OPTIONS TTC\\s+${M}`, "i"))?.[1]);
   q.price.note = "Le devis donne un seul total pour le véhicule et ses options.";
-  const optBlock = rx(text, /Options\s*:\s*\n([\s\S]*?)PRIX CATALOGUE ET OPTIONS/i)?.[1] ?? "";
-  const reOpt = /\s*(.+?)-((?:JATO\w+)|(?:R\d{1,3})|(?:\d{3}))(?=\s|$)/g;
-  for (const l of optBlock.split("\n")) {
+  // Options du devis, et celles de l'annexe quand le devis renvoie à « Cf. Annexe -
+  // Liste des options » (une ou deux par ligne, précédées de « ¤ »).
+  const optBlock = (rx(text, /Options\s*:\s*\n([\s\S]*?)PRIX CATALOGUE ET OPTIONS/i)?.[1] ?? "")
+    + "\n" + (rx(text, /Liste des Options\s*:\s*\n([\s\S]*?)(?:Calcul prévisionnel|=== PAGE|$)/i)?.[1] ?? "");
+  // Code constructeur collé au libellé : « -JATOMET », « -JATOQPA$M », « -1M6 », « -PAV »…
+  const reOpt = /\s*(.+?)-((?:JATO\S+)|[A-Z0-9]{2,6})(?=\s|$)/g;
+  for (const l of optBlock.replace(/¤/g, " ").split("\n")) {
     let m: RegExpExecArray | null;
     reOpt.lastIndex = 0;
     while ((m = reOpt.exec(l)) !== null) {
