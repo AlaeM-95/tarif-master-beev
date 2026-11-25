@@ -146,6 +146,8 @@ function App() {
   const { data: loadedProposal } = useProposal(loadedProposalId);
   const { save: saveProposal, proposals: allProposals, remove: removeProposal } = useProposals();
   const { vehicles, update: updateVehicle, add: addVehicle, remove: removeVehicle, removeAll: removeAllVehicles, importMany: importVehicles, duplicate: duplicateVehicle } = useVehicles();
+  const vehiclesRef = useRef(vehicles);
+  vehiclesRef.current = vehicles;
   // Offres loueurs (table leaser_offers — migration 018). Permet de pré-remplir
   // le loyer négocié à la sélection et d'afficher un badge "AYVENS 649€/mois"
   // sur la carte véhicule.
@@ -169,7 +171,7 @@ function App() {
       for (const it of items) {
         const i = next.findIndex((p) => p.instanceId === it.instanceId);
         if (i < 0) next.push(it);
-        else next[i] = { ...next[i], contracts: [...(next[i].contracts ?? []), ...(it.contracts ?? [])] };
+        else next[i] = { ...next[i], status: it.status, contracts: [...new Set([...(next[i].contracts ?? []), ...(it.contracts ?? [])])] };
       }
       return next;
     });
@@ -1333,7 +1335,7 @@ function App() {
     if (existing) {
       mode = "maj";
       targetId = existing.instanceId ?? existing.vehicle.id;
-      next = { ...cur, [targetId]: { ...existing, vehicle: existing.vehicle.id === v.id || existing.leaserQuoteId === quote.id ? existing.vehicle : v, ...fromQuote, options: optionLines.length > 0 ? optionLines : existing.options, ...withGroup(existing) } };
+      next = { ...cur, [targetId]: { ...existing, vehicle: matched && existing.vehicle.id !== matched.id ? matched : existing.vehicle.id === v.id || existing.leaserQuoteId === quote.id ? existing.vehicle : v, ...fromQuote, options: optionLines.length > 0 ? optionLines : existing.options, ...withGroup(existing) } };
     } else {
       mode = "ajout";
       targetId = newInstanceId();
@@ -1387,7 +1389,9 @@ function App() {
   const importLeaserPdf = async (file: File) => {
     try {
       const quote = await parseLeaserQuotePdf(file);
-      const hit = autoMatchLeaser(matchLeaserCatalogue(quote, vehicles));
+      // Catalogue pas encore chargé (page tout juste ouverte) : on l'attend 10 s au plus.
+      for (let i = 0; i < 20 && vehiclesRef.current.length === 0; i++) await new Promise((r) => setTimeout(r, 500));
+      const hit = autoMatchLeaser(matchLeaserCatalogue(quote, vehiclesRef.current));
       await addLeaserQuoteToDevis({ quote, vehicle: hit?.match.vehicle ?? null, confidence: hit?.confidence }, { stay: true, recap: true, source: file.name });
     } catch (e) {
       toast.error(`Lecture du devis impossible : ${file.name}${e instanceof Error ? ` (${e.message})` : ""}`);

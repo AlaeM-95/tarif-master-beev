@@ -110,6 +110,16 @@ export function LeaserQuoteTool({ vehicles, client, canSaveOffer, onAddToDevis }
   const blockers = q ? blockingFlags(q) : [];
   const expired = q ? isExpired(q) : false;
 
+  // Le catalogue peut ne pas être encore chargé quand un devis est déposé juste après
+  // l'ouverture de la page : on l'attend (10 s au plus) avant de rapprocher, sinon le
+  // véhicule serait créé depuis le devis alors qu'il existe dans la base.
+  const vehiclesRef = useRef(vehicles);
+  vehiclesRef.current = vehicles;
+  const loadedCatalogue = async () => {
+    for (let i = 0; i < 20 && vehiclesRef.current.length === 0; i++) await new Promise((r) => setTimeout(r, 500));
+    return vehiclesRef.current;
+  };
+
   const addFiles = async (files: FileList | File[]) => {
     const pdfs = Array.from(files).filter((f) => /\.pdf$/i.test(f.name) || f.type === "application/pdf");
     if (pdfs.length === 0) { toast.error("Déposez un fichier PDF de devis loueur."); return; }
@@ -128,8 +138,9 @@ export function LeaserQuoteTool({ vehicles, client, canSaveOffer, onAddToDevis }
         // Ajout automatique à la Sélection en cours : véhicule de la base rapproché
         // (marque, modèle, version), sinon fiche créée depuis le devis. Les
         // corrections faites ensuite ici mettent la même ligne à jour.
+        const base = await loadedCatalogue();
         for (const a of added) {
-          const hit = autoMatch(matchCatalogue(a, vehicles));
+          const hit = autoMatch(matchCatalogue(a, base));
           await onAddToDevis({ quote: a, vehicle: hit?.match.vehicle ?? null, confidence: hit?.confidence }, { stay: true, recap: true, source: a.fileName });
         }
       }

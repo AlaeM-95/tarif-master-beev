@@ -489,12 +489,34 @@ function parseArval(text: string, fileName: string): LeaserQuote {
   const optEnd = optRegion.search(/^Accessoires\b/m);
   if (optEnd > 0) optRegion = optRegion.slice(0, optEnd);
   optRegion = optRegion.replace(new RegExp(`^Options\\s*\\n?\\s*${M}\\s*€\\s*TTC`, "i"), "").replace(/•/g, " ");
-  for (const l of optRegion.split("\n")) {
-    const om = l.trim().match(new RegExp(`^(?:\\S*\\$\\S+\\s+)?(.+?)\\s+${M}\\s*€\\s*TTC$`));
-    if (!om) continue;
-    const name = om[1].trim();
-    if (/loyer|accessoire/i.test(name)) continue;
-    q.price.options.push({ name: prettyOption(name), priceTtc: toNum(om[2]) });
+  // Un libellé long passe sur deux lignes dans le PDF : « 71G Câble de recharge … pour »,
+  // puis « 240,00 € TTC » seul, puis « prise ». Le texte sans prix attend son prix ;
+  // une suite en minuscule après un prix seul complète l'option qui précède.
+  let pending = "";
+  let lastFromPending: QuoteOption | null = null;
+  for (const raw of optRegion.split("\n")) {
+    const l = raw.trim();
+    if (!l) continue;
+    const om = l.match(new RegExp(`^(?:\\S*\\$\\S+\\s+)?(.+?)\\s+${M}\\s*€\\s*TTC$`));
+    const priceOnly = l.match(new RegExp(`^${M}\\s*€\\s*TTC$`));
+    if (om) {
+      const name = om[1].trim();
+      lastFromPending = null;
+      if (/loyer|accessoire/i.test(name)) continue;
+      q.price.options.push({ name: prettyOption(pending ? `${pending} ${name}` : name), priceTtc: toNum(om[2]) });
+      pending = "";
+    } else if (priceOnly) {
+      if (!pending) continue;
+      const o: QuoteOption = { name: prettyOption(pending), priceTtc: toNum(priceOnly[1]) };
+      q.price.options.push(o);
+      lastFromPending = o;
+      pending = "";
+    } else if (lastFromPending && !pending && /^[a-zà-ÿ(]/.test(l)) {
+      lastFromPending.name = prettyOption(`${lastFromPending.name} ${l}`);
+      lastFromPending = null;
+    } else {
+      pending = pending ? `${pending} ${l}` : l;
+    }
   }
   const optSum = Math.round(q.price.options.reduce((a, o) => a + (o.priceTtc ?? 0), 0) * 100) / 100;
   if ((optTot ?? 0) > 0 && Math.abs(optSum - (optTot ?? 0)) > 0.05) {
@@ -1039,6 +1061,10 @@ export function matchCatalogue(q: LeaserQuote, vehicles: Vehicle[]): CatalogueMa
         modelScore = (modelTok.filter((t) => tokenHit(t, vmTok, vModel)).length / modelTok.length) * 3;
       }
       if (qModel && modelScore === 0) return { vehicle: v, score: 0 };
+      // Numéro de modèle différent (ID.4 ≠ ID.7, 208 ≠ 2008) : autre véhicule.
+      const qNums = qModel.match(/\d+/g) ?? [];
+      const vNums = vModel.match(/\d+/g) ?? [];
+      if (qNums.length > 0 && vNums.length > 0 && !qNums.some((n) => vNums.includes(n))) return { vehicle: v, score: 0 };
       score += modelScore;
       // Version / finition : les mots du devis retrouvés dans la version (ou le modèle) Beev.
       // Aucun mot commun (Sportline ≠ Plus) : jamais « Reconnu ».
