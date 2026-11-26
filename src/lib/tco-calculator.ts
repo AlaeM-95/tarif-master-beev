@@ -101,6 +101,9 @@ export const TAUX_IS_ENTREPRISE = 0.25;
 // de 70 % limité à 4 641,60 € par an.
 export const AEN_PLAFOND_PCT_PRIX = 0.15;
 export const AEN_ABATTEMENT_MAX_AN = 4641.6;
+/** Charges sociales sur l'AEN (estimation Beev) : patronales 42 %, salariales 25 %. */
+export const AEN_TAUX_EMPLOYEUR = 0.42;
+export const AEN_TAUX_SALARIE = 0.25;
 
 // Plafond AND (Avantage Non Déductible) — dépend du CO₂
 function getPlafondAND(co2: number): number {
@@ -341,8 +344,8 @@ export function calculateTcoFull(v: Vehicle, contract: TcoContractParams, monthl
   const aenAbattement = Math.min(aenBrut * tauxAbattement, AEN_ABATTEMENT_MAX_AN);
   const aenAnnuel = aenBrut - aenAbattement;
   const aenMensuel = aenAnnuel / 12;
-  const partSalarialeAnnuelle = aenAnnuel * 0.25;
-  const partEmployeurAnnuelle = aenAnnuel * 0.42;
+  const partSalarialeAnnuelle = aenAnnuel * AEN_TAUX_SALARIE;
+  const partEmployeurAnnuelle = aenAnnuel * AEN_TAUX_EMPLOYEUR;
   const partSalarialeMensuelle = partSalarialeAnnuelle / 12;
   const partEmployeurMensuelle = partEmployeurAnnuelle / 12;
   const aenEmployeurTotal = partEmployeurAnnuelle * contract.dureeAnnees;

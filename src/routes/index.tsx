@@ -3853,8 +3853,9 @@ function TcoCalculator({
             <CardTitle className="text-base">Détail fiscal et social</CardTitle>
             <p className="text-xs text-muted-foreground">
               TVS (taxe CO₂ + pollution), malus CO₂ et poids appliqués à l'achat (intégrés au TCO),
-              AND annualisé (Avantage Non Déductible IS), AEN (Avantage en Nature) avec part
-              salariale (25%) et part employeur (42%).
+              AND annualisé (Avantage Non Déductible IS), AEN (Avantage en Nature) séparé
+              entre la part employeur (charges patronales 42 %, coût réel pour l'entreprise) et la part
+              salarié (cotisations 25 %, à titre indicatif).
             </p>
           </CardHeader>
           <CardContent>
@@ -3868,8 +3869,8 @@ function TcoCalculator({
                     <th className="py-2 px-2 text-right">Malus poids</th>
                     <th className="py-2 px-2 text-right">Surcoût AND (25 %) / an</th>
                     <th className="py-2 px-2 text-right">AEN / mois</th>
-                    <th className="py-2 px-2 text-right">Part salariale</th>
-                    <th className="py-2 px-2 text-right">Part employeur</th>
+                    <th className="py-2 px-2 text-right">Part employeur (42 %)</th>
+                    <th className="py-2 px-2 text-right">Part salarié (25 %, indicatif)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3884,8 +3885,8 @@ function TcoCalculator({
                       <td className="py-2 px-2 text-right">{fmtEur(r.full.malusPoids)}</td>
                       <td className="py-2 px-2 text-right">{fmtEur(r.full.coutFiscalANDAnnuel)}</td>
                       <td className="py-2 px-2 text-right">{fmtEur(r.full.aenMensuel)}</td>
-                      <td className="py-2 px-2 text-right">{fmtEur(r.full.partSalarialeMensuelle)} <span className="text-muted-foreground">/mois</span></td>
-                      <td className="py-2 px-2 text-right">{fmtEur(r.full.partEmployeurMensuelle)} <span className="text-muted-foreground">/mois</span></td>
+                      <td className="py-2 px-2 text-right font-semibold">{fmtEur(r.full.partEmployeurMensuelle)} <span className="text-muted-foreground font-normal">/mois</span></td>
+                      <td className="py-2 px-2 text-right text-muted-foreground">{fmtEur(r.full.partSalarialeMensuelle)} <span>/mois</span></td>
                     </tr>
                   ))}
                 </tbody>

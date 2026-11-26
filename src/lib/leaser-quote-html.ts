@@ -99,11 +99,18 @@ export const LEASER_QUOTE_CSS = `
 .lq-rows .r.tot span{color:var(--ink);font-weight:700}
 .lq-rows .r b{font-weight:700;text-align:right}
 .lq-note{font-size:10.5px;color:var(--muted);line-height:1.45}
-.lq-aen{background:#EDF6FF;border-radius:12px;padding:14px 16px;display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap}
+.lq-aen{background:#EDF6FF;border-radius:12px;padding:14px 16px}
 .lq-aen .t{font-weight:700}
-.lq-aen .s{font-size:11.5px;color:#4d5f73;max-width:46ch}
-.lq-aen .v{font-size:22px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:#173E66}
-.lq-aen .v em{font-size:12px;font-weight:500;font-style:normal;color:#4d5f73}
+.lq-aen .s{font-size:11.5px;color:#4d5f73;max-width:70ch;margin-top:2px}
+.lq-aen-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
+.lq-aen-cell{background:#fff;border-radius:10px;padding:10px 12px}
+.lq-aen-cell .k{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#173E66}
+.lq-aen-cell .v{font-size:20px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:#173E66;margin-top:2px}
+.lq-aen-cell .v em{font-size:11.5px;font-weight:500;font-style:normal;color:#4d5f73}
+.lq-aen-cell .d{font-size:11px;color:#4d5f73;line-height:1.4;margin-top:2px}
+.lq-aen-cell.info{background:transparent;border:1px dashed #b9cde3}
+.lq-aen-cell.info .v{color:#4d5f73}
+@media (max-width:560px){.lq-aen-grid{grid-template-columns:1fr}}
 .lq-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .lq-step{border:1px solid var(--line);border-radius:12px;padding:11px 13px}
 .lq-step b{display:block;font-size:13px;margin-bottom:2px}
@@ -236,8 +243,20 @@ export function renderLeaserQuoteHtml(q: LeaserQuote, o: QuoteRenderOpts): strin
     <div class="lq-rows"><h3 class="lq-sec">Conditions</h3>${kmSupp}${tol}${extras}</div>
   </section>
   <section class="lq-aen lq-sec-wrap">
-    <div><div class="t">Avantage en nature du collaborateur</div><div class="s">${esc(aenTxt)}</div></div>
-    <div class="v">${eur(Math.round(aen.netMonth))}<em> / mois imposable</em></div>
+    <div class="t">Avantage en nature (AEN)</div>
+    <div class="s">${esc(aenTxt)}</div>
+    <div class="lq-aen-grid">
+      <div class="lq-aen-cell">
+        <div class="k">Côté employeur</div>
+        <div class="v">${eur(Math.round(aen.employeurMonth))}<em> / mois</em></div>
+        <div class="d">Charges patronales sur l'avantage en nature (42 %)${q.contract.months > 0 ? `, soit ${eur(Math.round(aen.employeurMonth * q.contract.months))} sur ${q.contract.months} mois` : ""}. Coût réel pour l'entreprise.</div>
+      </div>
+      <div class="lq-aen-cell info">
+        <div class="k">Côté salarié · à titre indicatif</div>
+        <div class="v">${eur(Math.round(aen.netMonth))}<em> / mois imposable</em></div>
+        <div class="d">Ajouté au salaire brut du collaborateur : environ ${eur(Math.round(aen.salarieMonth))} / mois de cotisations salariales (25 %), plus l'impôt sur le revenu selon sa situation.</div>
+      </div>
+    </div>
   </section>
   <section class="lq-sec-wrap">
     <h3 class="lq-sec">Prochaines étapes</h3>

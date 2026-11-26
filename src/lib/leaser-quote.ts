@@ -10,7 +10,7 @@
 // la lecture, aucune API externe.
 
 import type { Vehicle } from "./catalog";
-import { AEN_ABATTEMENT_MAX_AN, AEN_PLAFOND_PCT_PRIX } from "./tco-calculator";
+import { AEN_ABATTEMENT_MAX_AN, AEN_PLAFOND_PCT_PRIX, AEN_TAUX_EMPLOYEUR, AEN_TAUX_SALARIE } from "./tco-calculator";
 
 // ============================================================================
 // Modèle commun
@@ -237,13 +237,17 @@ export function kmPerYear(q: LeaserQuote): number {
 /** Avantage en nature du collaborateur, méthode Beev (identique au calculateur
  *  TCO) : 50 % du loyer annuel, plafonné à 15 % du prix d'achat TTC, abattement
  *  de 70 % limité à 4 641,60 € par an si véhicule électrique éco-scoré. */
-export function aenMonthly(q: LeaserQuote, ecoOk: boolean): { brutMonth: number; netMonth: number } {
+/** AEN mensuel : brut, imposable (après abattement), charges patronales dues par
+ *  l'employeur sur cet avantage (coût réel) et cotisations salariales estimées
+ *  (information du collaborateur). */
+export function aenMonthly(q: LeaserQuote, ecoOk: boolean): { brutMonth: number; netMonth: number; employeurMonth: number; salarieMonth: number } {
   const loyerAn = q.rent.totalTtc * 12;
   const prix = priceTotal(q);
   let brut = loyerAn * 0.5;
   if (prix > 0) brut = Math.min(brut, prix * AEN_PLAFOND_PCT_PRIX);
   const abat = ecoOk ? Math.min(brut * 0.7, AEN_ABATTEMENT_MAX_AN) : 0;
-  return { brutMonth: brut / 12, netMonth: (brut - abat) / 12 };
+  const net = (brut - abat) / 12;
+  return { brutMonth: brut / 12, netMonth: net, employeurMonth: net * AEN_TAUX_EMPLOYEUR, salarieMonth: net * AEN_TAUX_SALARIE };
 }
 
 export function effectiveEcoOk(q: LeaserQuote, catalogueEco?: boolean): boolean {
