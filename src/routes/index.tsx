@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles, Copy, BarChart3, Receipt, Map as MapIcon, BookOpen, FileSearch, Layers } from "lucide-react";
+import { Trash2, FileDown, RotateCcw, Plus, Zap, Battery, Gauge, Settings2, Presentation, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Car, Home, Building2, Download, AlertTriangle, Save, FolderOpen, FileText, Users, Sparkles, Copy, BarChart3, Receipt, Map as MapIcon, BookOpen, FileSearch, Layers, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { useChargers, useEnergy, useVehicles, useProjectType, fmtEur, fmtEur2, DEFAULT_ENERGY, type EnergyParams } from "@/lib/store";
 import { computeTco, generateProposalPdf, lineItemClientUnit, lineItemClientTotal, computeChargerLease, chargerQtyMultiplier, getVehicleSpecRows, type SelectedCharger, type SelectedVehicle, type PricingConfig, type SiteSpecs } from "@/lib/pdf";
@@ -135,7 +135,9 @@ function App() {
   const { can } = usePermissions();
   // Logos de marque (catalogue véhicules) : chargés une fois, transmis à
   // VehicleCatalogByBrand → VehicleCard. Repli sur monogramme si absent.
-  const { logos: brandLogos } = useBrandLogos();
+  const { logos: brandLogos, setLogo: setBrandLogo } = useBrandLogos();
+  // Admin : marque dont on modifie le logo depuis la grille du catalogue.
+  const [logoBrand, setLogoBrand] = useState<string | null>(null);
   // Permissions configurables par l'admin (matrice par rôle). canEditProduct
   // pilote l'édition des fiches produit véhicule depuis le catalogue. Les
   // liens du menu Administration suivent les permissions backoffice.
@@ -1682,6 +1684,57 @@ function App() {
         client={{ company: client.company, salesRep: client.salesRep, salesRepEmail: client.salesRepEmail, salesRepPhone: client.salesRepPhone }}
         chargers={chargers}
       />
+      {/* Admin : logo d'une marque, modifié depuis la grille du catalogue (même table
+          brand_logos que /admin/vehicles, visible de tous aussitôt enregistré). */}
+      <Dialog open={!!logoBrand} onOpenChange={(o) => { if (!o) setLogoBrand(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Logo {logoBrand}</DialogTitle>
+          </DialogHeader>
+          {logoBrand && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-16 h-16 rounded-lg border bg-white grid place-content-center overflow-hidden flex-none">
+                  {brandLogos?.[logoBrand] ? (
+                    <img src={brandLogos[logoBrand]} alt={logoBrand} className="w-full h-full object-contain p-1.5" />
+                  ) : (
+                    <span className="text-sm font-bold text-foreground/60">{brandInitials(logoBrand)}</span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Déposez une image (PNG sur fond transparent de préférence, JPEG ou WebP) ou collez son adresse. Le logo s'affiche
+                  pour tous les utilisateurs sur la grille, les fiches véhicules et la sélection.
+                </p>
+              </div>
+              <ImageUpload
+                key={logoBrand}
+                currentUrl={brandLogos?.[logoBrand]}
+                folder="brand-logos"
+                label="Logo"
+                onChange={(url) => {
+                  if ((url || "") === (brandLogos?.[logoBrand] || "")) return;
+                  setBrandLogo.mutate({ brand: logoBrand, logoUrl: url }, {
+                    onSuccess: () => toast.success(url ? `Logo ${logoBrand} enregistré` : `Logo ${logoBrand} retiré`),
+                    onError: (e) => toast.error(`Logo non enregistré : ${e instanceof Error ? e.message : String(e)}`),
+                  });
+                }}
+              />
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:justify-between">
+            {logoBrand && brandLogos?.[logoBrand] ? (
+              <Button variant="ghost" size="sm" className="text-destructive" onClick={() => {
+                const b = logoBrand;
+                setBrandLogo.mutate({ brand: b, logoUrl: "" }, { onSuccess: () => toast.success(`Logo ${b} retiré : monogramme affiché`) });
+              }}>
+                <Trash2 className="w-3.5 h-3.5 mr-1" /> Retirer le logo
+              </Button>
+            ) : <span />}
+            <Button onClick={() => setLogoBrand(null)}>Terminé</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <CatalogueClientEditor
         open={catalogueClientOpen}
         onOpenChange={setCatalogueClientOpen}
@@ -2369,6 +2422,7 @@ function App() {
                 canEditPricing={canEditPricing}
                 isAdmin={uiV2}
                 brandLogos={brandLogos}
+                onEditBrandLogo={isAdmin ? setLogoBrand : undefined}
                 onToggle={toggleV}
                 onUpdate={isSales ? (id, patch) => updateVehicle(id, patch).catch((e: Error) => toast.error(`Échec de la sauvegarde : ${e.message}`)) : undefined}
                 onDelete={isOps ? async (v) => {
@@ -3153,7 +3207,7 @@ function ClientCard({ client, setClient, isAdmin }: { client: any; setClient: (c
 // Si l'utilisateur tape une recherche, les marques avec résultats sont
 // automatiquement dépliées pour rendre les véhicules trouvables.
 function VehicleCatalogByBrand({
-  vehicles, allVehicles, allVehicleCount, selectedV, onToggle, onUpdate, onDelete, onDuplicate, existingCategories, leaserOffers, hasActiveSearch, compareIds, onToggleCompare, canEditPricing, isAdmin, brandLogos,
+  vehicles, allVehicles, allVehicleCount, selectedV, onToggle, onUpdate, onDelete, onDuplicate, existingCategories, leaserOffers, hasActiveSearch, compareIds, onToggleCompare, canEditPricing, isAdmin, brandLogos, onEditBrandLogo,
 }: {
   vehicles: Vehicle[];
   /** Catalogue complet non filtré — utilisé pour proposer des véhicules
@@ -3173,6 +3227,8 @@ function VehicleCatalogByBrand({
   canEditPricing?: boolean;
   isAdmin?: boolean;
   brandLogos?: Record<string, string>;
+  /** Admin : ouvre la modification du logo d'une marque (crayon sur la grille). */
+  onEditBrandLogo?: (brand: string) => void;
 }) {
   // Groupement par marque (trie alphabétique sauf BMW/Audi/Mercedes/Tesla en tête)
   const byBrand = useMemo(() => {
@@ -3364,8 +3420,8 @@ function VehicleCatalogByBrand({
                   const isOpen = expanded.has(brand) || hasActiveSearch;
                   const selCount = selectedCountByBrand[brand] ?? 0;
                   return (
+                    <div key={brand} className="relative group">
                     <button
-                      key={brand}
                       type="button"
                       title={`${brand} · ${list.length} modèle${list.length > 1 ? "s" : ""}`}
                       onClick={() => {
@@ -3393,6 +3449,18 @@ function VehicleCatalogByBrand({
                         </span>
                       )}
                     </button>
+                    {onEditBrandLogo && (
+                      <button
+                        type="button"
+                        title={`Modifier le logo ${brand}`}
+                        aria-label={`Modifier le logo ${brand}`}
+                        onClick={() => onEditBrandLogo(brand)}
+                        className="absolute -top-1.5 -left-1.5 w-5 h-5 rounded-full border bg-background shadow-sm grid place-content-center text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    )}
+                    </div>
                   );
                 })}
               </div>
@@ -3413,6 +3481,11 @@ function VehicleCatalogByBrand({
                           )}
                         </div>
                         <span className="text-xs text-muted-foreground">{list.length} modèle{list.length > 1 ? "s" : ""}</span>
+                        {onEditBrandLogo && (
+                          <button type="button" onClick={() => onEditBrandLogo(brand)} className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
+                            <Pencil className="w-3 h-3" /> {brandLogos?.[brand] ? "Modifier le logo" : "Ajouter le logo"}
+                          </button>
+                        )}
                         {stockCount > 0 && (
                           <span className="text-[10px] inline-flex items-center gap-1 rounded-full bg-[#35DA76]/10 text-[#35DA76] px-2 py-0.5 font-medium">
                             {stockCount} en stock
