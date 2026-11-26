@@ -253,8 +253,8 @@ export function renderLeaserQuoteHtml(q: LeaserQuote, o: QuoteRenderOpts): strin
       </div>
       <div class="lq-aen-cell info">
         <div class="k">Côté salarié · à titre indicatif</div>
-        <div class="v">${eur(Math.round(aen.netMonth))}<em> / mois imposable</em></div>
-        <div class="d">Ajouté au salaire brut du collaborateur : environ ${eur(Math.round(aen.salarieMonth))} / mois de cotisations salariales (25 %).</div>
+        <div class="v">${eur(Math.round(aen.salarieMonth))}<em> / mois</em></div>
+        <div class="d">Cotisations salariales (25 %) sur un avantage de ${eur(Math.round(aen.netMonth))} / mois ajouté au salaire brut, hors impôt sur le revenu.</div>
       </div>
     </div>
   </section>
