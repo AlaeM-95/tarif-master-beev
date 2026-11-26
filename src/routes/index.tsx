@@ -1702,7 +1702,7 @@ function App() {
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Déposez une image (PNG sur fond transparent de préférence, JPEG ou WebP) ou collez son adresse. Le logo s'affiche
+                  Déposez une image dans n'importe quel format (PNG sur fond transparent de préférence) ou collez son adresse. Le logo s'affiche
                   pour tous les utilisateurs sur la grille, les fiches véhicules et la sélection.
                 </p>
               </div>
