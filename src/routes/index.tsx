@@ -127,6 +127,11 @@ function ReorderButtons({ index, total, onMove }: { index?: number; total?: numb
 
 function App() {
   const { isAdmin, isOps, isSales, signOut } = useAuth();
+  // Interface v2 (grille de logos par marque, cartes véhicules, filtres repliables,
+  // Sélection en cours épurée + panneau de réglages, fiche client groupée,
+  // configuration PDF par phase) : la même pour tous les comptes. isAdmin reste
+  // réservé aux droits (champs « Réservé admin », ajout / suppression).
+  const uiV2 = true;
   const { can } = usePermissions();
   // Logos de marque (catalogue véhicules) : chargés une fois, transmis à
   // VehicleCatalogByBrand → VehicleCard. Repli sur monogramme si absent.
@@ -2003,7 +2008,7 @@ function App() {
       <main className={`container mx-auto px-6 pt-20 pb-8 grid gap-8 ${wideView ? "" : "lg:grid-cols-[1fr_380px]"}`}>
         <div className="space-y-8">
           <ProjectTypeSelector value={activeTab} onChange={switchProject} />
-          <ClientCard client={client} setClient={setClient} isAdmin={isAdmin} />
+          <ClientCard client={client} setClient={setClient} isAdmin={uiV2} />
 
           {/* Outil Devis loueur toujours monté (masqué hors de sa vue) : les devis
               importés restent disponibles quand on revient à la Sélection en cours. */}
@@ -2098,7 +2103,7 @@ function App() {
           {!tcoView && projectType === "vehicles" && !fleetMode && (
             <VehicleSpotlight
               vehicles={vehicles}
-              isAdmin={isAdmin}
+              isAdmin={uiV2}
               brandLogoUrl={(() => {
                 const featured = vehicles.find((x) => x.featured);
                 return featured ? brandLogos?.[featured.brand] : undefined;
@@ -2163,9 +2168,9 @@ function App() {
                 const advActive = vehiclePriceMax !== null || vehicleMonthlyMax !== null || vehicleDurationFilter !== null || vehicleKmFilter !== null;
                 const anyActive = !!vehicleSearch || vehicleEnergyFilter !== "all" || advActive;
 
-                // Interface historique (non-admin) : tous les filtres sur une
-                // seule ligne, sans repli ni barre fixée au scroll.
-                if (!isAdmin) {
+                // Interface historique : tous les filtres sur une seule ligne,
+                // sans repli ni barre fixée au scroll (plus utilisée : uiV2).
+                if (!uiV2) {
                   return (
                     <div className="flex flex-wrap items-center gap-2 mb-4 p-3 rounded-lg bg-card border">
                       <div className="relative flex-1 min-w-[200px]">
@@ -2362,7 +2367,7 @@ function App() {
                 allVehicleCount={vehicles.length}
                 selectedV={selectedV}
                 canEditPricing={canEditPricing}
-                isAdmin={isAdmin}
+                isAdmin={uiV2}
                 brandLogos={brandLogos}
                 onToggle={toggleV}
                 onUpdate={isSales ? (id, patch) => updateVehicle(id, patch).catch((e: Error) => toast.error(`Échec de la sauvegarde : ${e.message}`)) : undefined}
@@ -2582,7 +2587,7 @@ function App() {
         </div>
 
         {!wideView && (
-        <aside className={`lg:sticky lg:top-24 self-start max-h-[calc(100vh-7rem)] overflow-auto${isAdmin ? "" : " space-y-4"}`}>
+        <aside className={`lg:sticky lg:top-24 self-start max-h-[calc(100vh-7rem)] overflow-auto${uiV2 ? "" : " space-y-4"}`}>
           {(() => {
             const pdfPanel = (
               /* Panneau de configuration PDF — toggle des sections à inclure */
@@ -2592,7 +2597,7 @@ function App() {
                 reset={resetPdfConfig}
                 projectType={projectType}
                 onPreviewSection={(key) => previewSection(key)}
-                isAdmin={isAdmin}
+                isAdmin={uiV2}
                 hasModelYPair={(() => {
                   const list = Object.values(selectedV);
                   const isMY = (sv: SelectedVehicle) =>
@@ -2640,7 +2645,7 @@ function App() {
                             <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wide">
                               Véhicules ({counts.v})
                             </p>
-                            {isAdmin && (
+                            {uiV2 && (
                               <button
                                 type="button"
                                 className="text-[10px] font-semibold text-primary hover:underline"
@@ -2659,7 +2664,7 @@ function App() {
                             const tripartiteUrl = sv.vehicle.tripartitePdfUrl || vehicles.find((vv) => vv.brand === sv.vehicle.brand && vv.tripartitePdfUrl)?.tripartitePdfUrl;
                             // v2 admin : carte épurée + réglages dans un panneau latéral.
                             // Non-admin : éditeur dense en ligne (comportement actuel).
-                            if (isAdmin) {
+                            if (uiV2) {
                               return (
                                 <VehicleSummaryCard key={key} sv={sv} energy={energy}
                                   onQty={(n) => setSelectedV((s) => ({ ...s, [key]: { ...(s[key] ?? sv), quantity: n } }))}
@@ -2681,7 +2686,7 @@ function App() {
                               onRemove={() => setSelectedV((s) => { const next = { ...s }; delete next[key]; return next; })} />
                             );
                           })}
-                          {isAdmin && (() => {
+                          {uiV2 && (() => {
                             const props = Object.values(selectedV).filter((sv) => !sv.vehicle.isCurrentFleet);
                             const qty = props.reduce((s, sv) => s + sv.quantity, 0);
                             const month = props.reduce((s, sv) => s + sv.quantity * sv.negotiatedMonthly, 0);
@@ -2737,7 +2742,7 @@ function App() {
               </Card>
             );
 
-            if (!isAdmin) {
+            if (!uiV2) {
               return (<>{pdfPanel}{selectionCard}</>);
             }
             return (
