@@ -6,6 +6,52 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/lib/supabase";
 
+// Formats stockés tels quels (acceptés par le bucket et lisibles dans les PDF) ;
+// tout autre format d'image (AVIF, SVG, GIF, BMP, ICO, TIFF, HEIC…) est converti
+// en PNG dans le navigateur avant l'envoi, transparence conservée.
+const KEEP_TYPES = ["image/png", "image/jpeg", "image/webp"];
+const IMAGE_EXT = /\.(png|jpe?g|webp|avif|svg|gif|bmp|ico|tiff?|heic|heif|jfif|apng)$/i;
+const MAX_BYTES = 5 * 1024 * 1024;
+
+const isImageFile = (f: File) => f.type.startsWith("image/") || IMAGE_EXT.test(f.name);
+
+async function canvasBlob(c: HTMLCanvasElement, type: string, q?: number): Promise<Blob | null> {
+  return new Promise((res) => c.toBlob(res, type, q));
+}
+
+/** Convertit une image dans un format stockable (PNG, ou WebP si le PNG dépasse 5 Mo). */
+async function toStorableImage(file: File): Promise<File> {
+  if (KEEP_TYPES.includes(file.type) && file.size <= MAX_BYTES) return file;
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.decoding = "async";
+    img.src = url;
+    try { await img.decode(); }
+    catch { throw new Error("Format illisible par le navigateur : enregistrez l'image en PNG ou JPEG puis réessayez."); }
+    let w = img.naturalWidth || 1024;
+    let h = img.naturalHeight || 1024;
+    const isSvg = file.type === "image/svg+xml" || /\.svg$/i.test(file.name);
+    // SVG (vectoriel) : rendu net à 1 024 px de large ; images très grandes : 2 400 px au plus.
+    const target = isSvg ? Math.max(1024, w) : w;
+    const scale = Math.min(target / w, 2400 / Math.max(w, h));
+    w = Math.max(1, Math.round(w * scale));
+    h = Math.max(1, Math.round(h * scale));
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    c.getContext("2d")!.drawImage(img, 0, 0, w, h);
+    const base = file.name.replace(/\.[^.]+$/, "") || "image";
+    const png = await canvasBlob(c, "image/png");
+    if (png && png.size <= MAX_BYTES) return new File([png], `${base}.png`, { type: "image/png" });
+    const webp = await canvasBlob(c, "image/webp", 0.9);
+    if (webp && webp.size <= MAX_BYTES) return new File([webp], `${base}.webp`, { type: "image/webp" });
+    throw new Error("Image trop lourde même après conversion (max 5 Mo).");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 type ImageUploadProps = {
   currentUrl?: string;
   onChange: (url: string) => void;
@@ -43,21 +89,33 @@ export function ImageUpload({ currentUrl, onChange, folder, label = "Image" }: I
   // Preview affichée : on privilégie le draft (réactif) au currentUrl (latence DB).
   const displayUrl = urlDraft || currentUrl;
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [dragOver, setDragOver] = useState(false);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (file) void uploadFile(file);
+  };
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Fichier trop volumineux (max 5 Mo)");
+  const uploadFile = async (picked: File) => {
+    if (!isImageFile(picked)) {
+      toast.error("Ce fichier n'est pas une image.");
       return;
     }
-    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-      toast.error("Format non supporté (PNG, JPEG ou WebP uniquement)");
+    if (picked.size > 25 * 1024 * 1024) {
+      toast.error("Fichier trop volumineux (max 25 Mo avant conversion)");
       return;
     }
-
     setUploading(true);
-    const ext = file.name.split(".").pop() || "png";
+    let file: File;
+    try {
+      file = await toStorableImage(picked);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Conversion de l'image impossible");
+      setUploading(false);
+      return;
+    }
+
+    const ext = file.type === "image/jpeg" ? "jpg" : file.type.split("/")[1] || "png";
     const fileName = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
 
     // Essaie 'vehicle-images' d'abord, fallback sur 'documents' si le bucket
@@ -106,7 +164,17 @@ export function ImageUpload({ currentUrl, onChange, folder, label = "Image" }: I
   };
 
   return (
-    <div className="space-y-2">
+    <div
+      className={`space-y-2 rounded-md transition-colors ${dragOver ? "bg-primary/5 ring-2 ring-primary/40" : ""}`}
+      onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragOver(true); } }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const f = e.dataTransfer.files?.[0];
+        if (f && !uploading) void uploadFile(f);
+      }}
+    >
       <Label className="text-[10px] text-muted-foreground uppercase">{label}</Label>
 
       {displayUrl && (
@@ -134,7 +202,7 @@ export function ImageUpload({ currentUrl, onChange, folder, label = "Image" }: I
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/png,image/jpeg,image/webp"
+          accept="image/*,.avif,.svg,.heic,.heif,.ico,.bmp,.tif,.tiff"
           onChange={handleFileSelect}
           className="hidden"
         />
@@ -147,7 +215,7 @@ export function ImageUpload({ currentUrl, onChange, folder, label = "Image" }: I
           className="gap-2 h-8 text-xs"
         >
           <Upload className="w-3 h-3" />
-          {uploading ? "Upload..." : currentUrl ? "Remplacer" : "Téléverser une image"}
+          {uploading ? "Envoi…" : currentUrl ? "Remplacer" : "Téléverser une image"}
         </Button>
         <Button
           type="button"
@@ -160,6 +228,8 @@ export function ImageUpload({ currentUrl, onChange, folder, label = "Image" }: I
           {showUrlInput ? "Masquer URL" : "Coller une URL"}
         </Button>
       </div>
+
+      <p className="text-[10px] text-muted-foreground">Glissez une image ici · tous formats (AVIF, SVG, GIF, HEIC… convertis en PNG)</p>
 
       {showUrlInput && (
         <Input
