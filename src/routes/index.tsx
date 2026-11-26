@@ -1019,7 +1019,7 @@ function App() {
           textOverrides: Object.keys(pdfTextOverrides).length > 0 ? pdfTextOverrides : undefined,
           preview,
           ignoreSyncedTco: tcoView || energyCustomized,
-          adminMode: isAdmin,
+          adminMode: uiV2, // PDF v2 pour tous les comptes
           // Anglais réservé au type véhicules pour l'instant (cf. plan de
           // traduction) — le toggle FR/EN n'est de toute façon affiché que
           // dans ce contexte, mais on sécurise ici aussi.
@@ -1104,7 +1104,7 @@ function App() {
         pdfConfig: iso as unknown as PdfDisplayConfig,
         b2b2eInput,
         preview: true,
-        adminMode: isAdmin,
+        adminMode: uiV2, // PDF v2 pour tous les comptes
       });
     } catch {
       toast.error("Aperçu de section impossible pour le moment.");
@@ -5468,6 +5468,9 @@ function SelectedVehicleRow({ sv, energy, onChange, onApplyAll, onRemove, onDupl
 }
 
 function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total, onMove, isAdmin }: { sc: SelectedCharger; onChange: (p: Partial<SelectedCharger>) => void; onRemove: () => void; onDuplicate?: () => void; index?: number; total?: number; onMove?: (dir: -1 | 1) => void; isAdmin?: boolean }) {
+  // Le PDF v2 (pour tous) affiche le chiffrage à l'achat même en location : chacun
+  // doit pouvoir le masquer sur une borne.
+  const uiV2Charger = true;
   const [openLi, setOpenLi] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const setLi = (i: number, p: Partial<LineItem>) => onChange({ lineItems: sc.lineItems.map((x, idx) => idx === i ? { ...x, ...p } : x) });
@@ -5579,7 +5582,7 @@ function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total,
                 <NumField label="Loyer mensuel HT (par borne)" value={sc.leaseMonthly ?? 0} onChange={(n) => onChange({ leaseMonthly: n })} />
                 <NumField label="Durée du contrat (mois)" value={sc.leaseDurationMonths ?? 36} onChange={(n) => onChange({ leaseDurationMonths: n })} />
               </div>
-              {isAdmin && (
+              {(isAdmin || uiV2Charger) && (
                 <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer select-none">
                   <input
                     type="checkbox"
@@ -5588,8 +5591,8 @@ function SelectedChargerRow({ sc, onChange, onRemove, onDuplicate, index, total,
                     onChange={(e) => onChange({ hideAchatPricing: e.target.checked })}
                   />
                   <span>
-                    Masquer le tableau de chiffrage à l'achat sur cette fiche (les comptes admin le voient par défaut
-                    même en location). Garde l'offre en location ci-dessus intacte.
+                    Masquer le tableau de chiffrage à l'achat sur cette fiche (affiché par défaut même en location).
+                    Garde l'offre en location ci-dessus intacte.
                   </span>
                 </label>
               )}

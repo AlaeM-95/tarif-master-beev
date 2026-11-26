@@ -79,6 +79,7 @@ function ProposalDetailPage() {
         vehicles: proposal.selectedVehicles,
         chargers: proposal.selectedChargers,
         energy: proposal.energyParams,
+        adminMode: true, // même PDF (design v2) que depuis l'éditeur, pour tous les comptes
       });
       toast.success("PDF généré");
     } catch (err) {
