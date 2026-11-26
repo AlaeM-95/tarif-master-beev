@@ -29,6 +29,7 @@ import { BpuB2B2EEditor } from "@/components/bpu-b2b2e-editor";
 import { AuditConseilEditor } from "@/components/audit-conseil-editor";
 import { CatalogueTcoEditor } from "@/components/catalogue-tco-editor";
 import { PropositionFlotteEditor } from "@/components/proposition-flotte-editor";
+import { CatalogueClientEditor } from "@/components/catalogue-client-editor";
 import { CarPolicyImporter } from "@/components/car-policy-importer";
 import { CompanySearchField } from "@/components/company-search-input";
 import { LeaserQuoteTool } from "@/components/leaser-quote-tool";
@@ -895,6 +896,7 @@ function App() {
   const [auditConseilOpen, setAuditConseilOpen] = useState(false);
   const [catalogueTcoOpen, setCatalogueTcoOpen] = useState(false);
   const [propositionFlotteOpen, setPropositionFlotteOpen] = useState(false);
+  const [catalogueClientOpen, setCatalogueClientOpen] = useState(false);
   // v2 Sélection (admin) : clé du véhicule dont le panneau de réglages est ouvert.
   const [configVKey, setConfigVKey] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -1675,6 +1677,14 @@ function App() {
         client={{ company: client.company, salesRep: client.salesRep, salesRepEmail: client.salesRepEmail, salesRepPhone: client.salesRepPhone }}
         chargers={chargers}
       />
+      <CatalogueClientEditor
+        open={catalogueClientOpen}
+        onOpenChange={setCatalogueClientOpen}
+        selection={Object.values(selectedV)}
+        energy={energy}
+        client={{ company: client.company }}
+        chargers={chargers}
+      />
 
       {/* v2 admin : panneau latéral de réglages détaillés d'un véhicule.
           Réutilise l'éditeur complet SelectedVehicleRow comme corps du drawer. */}
@@ -1911,6 +1921,14 @@ function App() {
                   title="Nouveau format : économie totale, une page par véhicule recommandé, offre borne à domicile en option"
                 >
                   <BarChart3 className="w-4 h-4 mr-2 text-beev-rose" /> Proposition flotte (nouveau format)
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setCatalogueClientOpen(true)}
+                  disabled={visibleCount === 0}
+                  className="cursor-pointer"
+                  title="Format A4 : une page par gamme, comparatif, TCO et AEN, borne à domicile, Fleet Manager, effort commercial"
+                >
+                  <BarChart3 className="w-4 h-4 mr-2 text-beev-violet" /> Catalogue client (format A4)
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
